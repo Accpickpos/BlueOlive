@@ -35,7 +35,7 @@ class TenantAdmin(admin.ModelAdmin):
 
 @admin.register(Shop)
 class ShopAdmin(admin.ModelAdmin):
-    list_display = ("name", "tenant", "schema_name", "created_at")
+    list_display = ("name", "tenant", "schema_name", "subdomain", "created_at")
     readonly_fields = ("created_at",)
     search_fields = ("name", "schema_name", "tenant__name")
 

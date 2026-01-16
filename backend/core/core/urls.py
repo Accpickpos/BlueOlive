@@ -29,6 +29,5 @@ urlpatterns = [
     path('home/', TemplateView.as_view(template_name='home.html'), name='tenant_home'),
     path('login/', TemplateView.as_view(template_name='login.html'), name='login'),
     path('dashboard/', LoginRequiredTemplateView.as_view(template_name='dashboard.html'), name='dashboard'),
-    path('debtors/', include('apps.debtors.urls')),
     path('', include('shop_users.urls')),
 ]

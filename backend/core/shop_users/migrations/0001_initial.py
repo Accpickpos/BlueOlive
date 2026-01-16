@@ -12,7 +12,6 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('auth', '0012_alter_user_first_name_max_length'),
-        ('tenancy', '0002_shop_is_head_office_and_more'),
     ]
 
     operations = [
@@ -33,13 +32,14 @@ class Migration(migrations.Migration):
                 ('phone', models.CharField(blank=True, max_length=20)),
                 ('role', models.CharField(choices=[('ADMIN', 'Admin'), ('STAFF', 'Staff'), ('MANAGER', 'Manager'), ('CUSTOMER', 'Customer')], default='CUSTOMER', help_text='User role within the tenant', max_length=20)),
                 ('groups', models.ManyToManyField(blank=True, help_text='The groups this user belongs to. A user will get all permissions granted to each of their groups.', related_name='user_set', related_query_name='user', to='auth.group', verbose_name='groups')),
-                ('tenant', models.ForeignKey(blank=True, help_text='Leave blank for superusers only', null=True, on_delete=django.db.models.deletion.CASCADE, related_name='users', to='tenancy.tenant')),
+                ('tenant_id', models.IntegerField(blank=True, null=True, db_column='tenant_id', help_text='ID of the tenant (stored as integer to avoid cross-schema FK)')),
+                ('shop_id', models.IntegerField(blank=True, null=True, db_column='shop_id', help_text='ID of the shop (stored as integer to avoid cross-schema FK)')),
                 ('user_permissions', models.ManyToManyField(blank=True, help_text='Specific permissions for this user.', related_name='user_set', related_query_name='user', to='auth.permission', verbose_name='user permissions')),
             ],
             options={
                 'swappable': 'AUTH_USER_MODEL',
-                'indexes': [models.Index(fields=['tenant', 'role'], name='shop_users__tenant__f05a04_idx'), models.Index(fields=['tenant', 'username'], name='shop_users__tenant__33aeb2_idx')],
-                'unique_together': {('username', 'tenant')},
+                'indexes': [models.Index(fields=['tenant_id', 'role'], name='shop_users_tenant_role_idx'), models.Index(fields=['tenant_id', 'username'], name='shop_users_tenant_user_idx')],
+                'unique_together': {('username', 'tenant_id')},
             },
             managers=[
                 ('objects', shop_users.managers.TenantUserManager()),

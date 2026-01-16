@@ -24,7 +24,6 @@
             <li><strong>Tenant: <span id="tenant"></span> | User: <span id="user"></span></strong></li>
             <li><a href="#shops">Shop Management</a></li>
             <li><a href="#users">User Management</a></li>
-            <li><a href="/debtors/">Debtors</a></li>
             <li><a href="#cashbook">Cash Book</a></li>
             <li><a href="#creditors">Creditors</a></li>
             <li><a href="#stock">Stock Control</a></li>
@@ -41,6 +40,7 @@
                 <th>Name</th>
                 <th>Description</th>
                 <th>Schema</th>
+                <th>Subdomain</th>
                 <th>Head Office</th>
                 <th>Actions</th>
             </tr>
@@ -58,6 +58,8 @@
         <input type="text" id="shopName" placeholder="Shop Name" required>
         <textarea id="shopDescription" placeholder="Description" rows="3"></textarea>
         <input type="text" id="schemaName" placeholder="Schema Name" readonly>
+        <label for="shopSubdomain">Subdomain:</label>
+        <input type="text" id="shopSubdomain" placeholder="Subdomain">
         <label><input type="checkbox" id="isHeadOffice"> Head Office</label>
         <button id="saveShop">Save</button>
         <button id="cancelShop">Cancel</button>
@@ -237,7 +239,6 @@
 
             // Define permissions
             const canManageUsers = isSuper || role === 'ADMIN';
-            const canViewDebtors = isSuper || ['ADMIN', 'MANAGER', 'STAFF'].includes(role);
             const canViewCashBook = isSuper || ['ADMIN', 'MANAGER', 'STAFF'].includes(role);
             const canViewCreditors = isSuper || ['ADMIN', 'MANAGER', 'STAFF'].includes(role);
             const canViewStock = isSuper || ['ADMIN', 'MANAGER', 'STAFF'].includes(role);
@@ -245,7 +246,6 @@
             // Show/hide navigation links
             document.querySelector('a[href="#shops"]').style.display = canManageUsers ? 'inline' : 'none';
             document.querySelector('a[href="#users"]').style.display = canManageUsers ? 'inline' : 'none';
-            document.querySelector('a[href="#debtors"]').style.display = canViewDebtors ? 'inline' : 'none';
             document.querySelector('a[href="#cashbook"]').style.display = canViewCashBook ? 'inline' : 'none';
             document.querySelector('a[href="#creditors"]').style.display = canViewCreditors ? 'inline' : 'none';
             document.querySelector('a[href="#stock"]').style.display = canViewStock ? 'inline' : 'none';
@@ -312,6 +312,7 @@
                     <td>${shop.name}</td>
                     <td>${shop.description || ''}</td>
                     <td>${shop.schema_name}</td>
+                    <td>${shop.subdomain || ''}</td>
                     <td>${shop.is_head_office ? 'Yes' : 'No'}</td>
                     <td>
                         <button onclick="editShop(${shop.id})">Edit</button>
@@ -384,9 +385,15 @@
                 return;
             }
 
+            // Ensure subdomain is set
+            if (!document.getElementById('shopSubdomain').value) {
+                document.getElementById('shopSubdomain').value = slugify(name);
+            }
+
             const data = {
                 name,
                 description: document.getElementById('shopDescription').value,
+                subdomain: document.getElementById('shopSubdomain').value,
                 is_head_office: document.getElementById('isHeadOffice').checked,
             };
             if (window.isSuperuser || window.userRole === 'ADMIN') {
@@ -635,7 +642,9 @@
         }
 
         document.getElementById('shopName').addEventListener('input', () => {
-            document.getElementById('schemaName').value = slugify(document.getElementById('shopName').value);
+            const slug = slugify(document.getElementById('shopName').value);
+            document.getElementById('schemaName').value = slug;
+            document.getElementById('shopSubdomain').value = slug;
         });
 
         document.getElementById('logout').addEventListener('click', async () => {

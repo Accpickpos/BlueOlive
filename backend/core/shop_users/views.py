@@ -8,6 +8,9 @@ from tenancy.tenant_context import get_current_tenant
 from .models import ShopUser
 from .serializers import ShopUserSerializer
 
+import logging
+logger = logging.getLogger(__name__)
+
 class IsTenantUserOrSuperuser(permissions.BasePermission):
     """
     Custom permission to only allow users to access their own tenant's users,
@@ -27,17 +30,20 @@ class IsTenantUserOrSuperuser(permissions.BasePermission):
         if request.user.is_superuser:
             return True
         # Users can only access objects in their tenant and must be admin
-        return obj.tenant == request.user.tenant and request.user.role == 'ADMIN'
+        return obj.tenant_id == request.user.tenant_id and request.user.role == 'ADMIN'
 
 class LoginView(DjangoLoginView):
     def post(self, request, *args, **kwargs):
         username = request.POST.get('username') or request.data.get('username')
         password = request.POST.get('password') or request.data.get('password')
         user = authenticate(request, username=username, password=password)
+        logger.info(f"Login attempt for {username}: authenticated={user is not None}, user_tenant_id={user.tenant_id if user else None}")
         if user is not None:
             current_tenant = get_current_tenant()
-            if user.is_superuser or user.tenant == current_tenant:
+            if user.is_superuser or user.tenant_id == current_tenant.id:
                 login(request, user)
+                # Set session cookie domain to current subdomain to isolate sessions
+                request.session.cookie_domain = request.get_host().split(":")[0]
                 return JsonResponse({'message': 'Login successful'})
             else:
                 return JsonResponse({'error': 'Invalid credentials'}, status=400)
@@ -63,10 +69,10 @@ class ShopUserViewSet(viewsets.ModelViewSet):
         else:
             tenant = get_current_tenant()
             if tenant:
-                return ShopUser.objects.filter(tenant=tenant)
+                return ShopUser.objects.filter(tenant_id=tenant.id)
             else:
                 # Fallback: only show user's own tenant
-                return ShopUser.objects.filter(tenant=user.tenant)
+                return ShopUser.objects.filter(tenant_id=user.tenant_id)
 
     def perform_create(self, serializer):
         """
@@ -78,8 +84,9 @@ class ShopUserViewSet(viewsets.ModelViewSet):
             serializer.save()
         else:
             # Regular admin creates users in their tenant
-            tenant = get_current_tenant() or user.tenant
-            serializer.save(tenant=tenant)
+            tenant = get_current_tenant() or user.get_tenant()
+            tenant_id = tenant.id if tenant else user.tenant_id
+            serializer.save(tenant_id=tenant_id)
 
 @api_view(['GET'])
 def current_user(request):

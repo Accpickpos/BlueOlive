@@ -67,6 +67,8 @@ class Shop(models.Model):
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="shops")
     name = models.CharField(max_length=200)
     schema_name = models.CharField(max_length=100, unique=True)
+    subdomain = models.CharField(max_length=100, blank=True, null=True, help_text="Subdomain for shop access, e.g., 'shop1'")
+    description = models.TextField(blank=True, null=True)
     is_head_office = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -85,6 +87,9 @@ class Shop(models.Model):
         if self.is_head_office:
             # Ensure no other head office for this tenant
             Shop.objects.filter(tenant=self.tenant, is_head_office=True).exclude(pk=self.pk).update(is_head_office=False)
+        if not self.subdomain:
+            from django.utils.text import slugify
+            self.subdomain = slugify(self.name)
         super().save(*args, **kwargs)
 
 

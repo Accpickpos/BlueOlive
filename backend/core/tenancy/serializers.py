@@ -64,7 +64,7 @@ class TenantSerializer(serializers.ModelSerializer):
             is_staff=True,
             is_superuser=False,  # Tenant admin, not global superuser
             role='ADMIN',  # Tenant admin role
-            tenant=tenant
+            tenant_id=tenant.id
         )
 
         # Return tenant with additional info for frontend

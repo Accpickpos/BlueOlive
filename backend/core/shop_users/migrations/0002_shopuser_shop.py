@@ -8,13 +8,8 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('shop_users', '0001_initial'),
-        ('tenancy', '0006_alter_tenant_email'),
     ]
 
     operations = [
-        migrations.AddField(
-            model_name='shopuser',
-            name='shop',
-            field=models.ForeignKey(blank=True, help_text='Shop the user is assigned to (optional for admins)', null=True, on_delete=django.db.models.deletion.CASCADE, related_name='users', to='tenancy.shop'),
-        ),
+        # Shop field already added as integer in 0001_initial
     ]

@@ -155,6 +155,7 @@ class ShopUserBackend(BaseBackend):
             return None
         
         tenant = get_current_tenant()
+        logger.info(f"Authenticate called for username: {username}, current tenant: {tenant.name if tenant else 'None'}")
         authenticated_user = None
         
         # Strategy 1: Try to authenticate as superuser (tenant-independent)
@@ -187,11 +188,23 @@ class ShopUserBackend(BaseBackend):
             return None
         
         try:
-            user = ShopUser.objects.get(username=username, tenant=tenant)
-            if user.check_password(password) and self.user_can_authenticate(user):
+            user = ShopUser.objects.get(username=username)
+            logger.debug(f"Found user: {username}, user tenant_id: {user.tenant_id}, current tenant id: {tenant.id if tenant else 'None'}")
+            logger.debug(f"User {username} shop_id: {user.shop_id}")
+            password_valid = user.check_password(password)
+            can_auth = self.user_can_authenticate(user)
+            logger.debug(f"Password valid: {password_valid}, can authenticate: {can_auth}")
+            if password_valid and can_auth:
                 authenticated_user = user
                 logger.info(
                     f'Tenant user authenticated: {username}, '
+                    f'tenant: {tenant.name}, '
+                    f'IP: {self._get_client_ip(request)}'
+                )
+            else:
+                logger.info(
+                    f'Authentication failed: invalid credentials for user {username}, '
+                    f'password valid: {password_valid}, active: {can_auth}, '
                     f'tenant: {tenant.name}, '
                     f'IP: {self._get_client_ip(request)}'
                 )
@@ -232,6 +245,7 @@ class ShopUserBackend(BaseBackend):
         try:
             # Use base manager to bypass tenant filters
             user = ShopUser._base_manager.get(pk=user_id)
+            logger.debug(f"User {user.username} tenant_id: {user.tenant_id}, shop_id: {user.shop_id}")
         except ShopUser.DoesNotExist:
             logger.debug(f'get_user failed: user_id {user_id} not found')
             return None
@@ -248,19 +262,21 @@ class ShopUserBackend(BaseBackend):
             return user
         
         # Regular users must match current tenant
-        if user.tenant:
+        user_tenant = user.get_tenant()
+        if user_tenant:
             tenant = get_current_tenant()
-            
+            logger.debug(f"get_user: user {user.username} (id={user_id}), user tenant: {user_tenant.name}, current tenant: {tenant.name if tenant else 'None'}")
+
             if not tenant:
                 logger.warning(
                     f'get_user failed: no tenant context for user {user.username} (id={user_id})'
                 )
                 return None
-            
-            if tenant != user.tenant:
+
+            if tenant != user_tenant:
                 logger.warning(
                     f'get_user failed: tenant mismatch for user {user.username} (id={user_id}), '
-                    f'user tenant: {user.tenant.name}, current tenant: {tenant.name}'
+                    f'user tenant: {user_tenant.name}, current tenant: {tenant.name}'
                 )
                 return None
         

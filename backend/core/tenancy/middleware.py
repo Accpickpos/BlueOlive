@@ -27,6 +27,10 @@ class TenantMiddleware:
             clear_current()
             return response
 
+        # Log tenant setting for login requests
+        if request.path.startswith('/api/login/'):
+            logger.info(f"Processing login request for path: {request.path}, host: {request.get_host()}")
+
         host = request.get_host().split(":")[0]
         # Example: tenant is subdomain
         # extract subdomain e.g. tenant1.example.com -> tenant1
@@ -56,6 +60,7 @@ class TenantMiddleware:
 
         # register tenant in thread-local
         set_current_tenant(tenant)
+        logger.info(f"Set current tenant: {tenant.name} (id={tenant.id}) for request path: {request.path}")
 
         # Ensure connections registered (register_tenant_connection may be called on creation)
         from tenancy.utils import register_tenant_connection
@@ -76,6 +81,7 @@ class TenantMiddleware:
             except Shop.DoesNotExist:
                 shop_schema = "public"  # fallback if no head office
         set_current_shop(shop_schema)
+        logger.info(f"Set current shop schema: {shop_schema} for request path: {request.path}")
 
         # Set search_path for this tenant DB connection immediately
         alias = tenant.db_alias

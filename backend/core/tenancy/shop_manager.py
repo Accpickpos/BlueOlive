@@ -2,7 +2,48 @@
 from django.db import connections
 from django.core.management import call_command
 from django.apps import apps
+from django.db.migrations.loader import MigrationLoader
 from .tenant_context import set_current_tenant, clear_current_tenant
+
+
+def fake_all_shared_migrations(database, shared_app_labels, tenant_app_labels):
+    """
+    Fake ALL migrations from shared and tenant apps in the migrations recorder.
+    This prevents Django from trying to migrate them to the tenant schema.
+    """
+    from django.db.migrations.recorder import MigrationRecorder
+    
+    try:
+        recorder = MigrationRecorder(connections[database])
+        
+        # Check if migration table exists
+        if not recorder.has_table():
+            return
+        
+        applied = set(recorder.applied_migrations())
+        loader = MigrationLoader(None, ignore_no_migrations=True)
+        
+        # Get all migrations from shared and tenant apps, except auth, contenttypes, and shop_users which we migrate
+        apps_to_fake = [app for app in shared_app_labels + tenant_app_labels if app not in ['auth', 'contenttypes', 'shop_users']]
+        
+        for app_label in apps_to_fake:
+            if app_label not in loader.disk_migrations:
+                continue
+            
+            app_migrations = loader.disk_migrations[app_label]
+            
+            # Fake all migrations for this shared/tenant app
+            for migration_name in sorted(app_migrations.keys()):
+                migration_key = (app_label, migration_name)
+                
+                if migration_key not in applied:
+                    print(f"  Faking {app_label}.{migration_name}")
+                    recorder.record_applied(app_label, migration_name)
+    
+    except Exception as e:
+        print(f"  Warning: Could not fake shared migrations: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def create_shop_schema(tenant, schema_name):
@@ -48,10 +89,21 @@ def create_shop_schema(tenant, schema_name):
         set_current_tenant(tenant)
 
         try:
-            # Run migrations for shop apps
-            for app_name in settings.SHOP_APPS:
-                app_label = app_name.split('.')[-1]
-
+            # Get shared and tenant app labels
+            shared_app_labels = [app.split('.')[-1] for app in settings.SHARED_APPS]
+            tenant_app_labels = [app.split('.')[-1] for app in settings.TENANT_APPS]
+            
+            # Pre-fake all shared and tenant app migrations to prevent them from running
+            print(f"\nPre-faking shared app migrations in {schema_name}...")
+            fake_all_shared_migrations(alias, shared_app_labels, tenant_app_labels)
+            
+            # Run migrations with dependencies first
+            # contenttypes, auth and shop_users must be migrated first
+            migration_order = ['contenttypes', 'auth', 'shop_users'] + [
+                app.split('.')[-1] for app in settings.SHOP_APPS if not app.endswith('shop_users')
+            ]
+            
+            for app_label in migration_order:
                 try:
                     app_config = apps.get_app_config(app_label)
                     print(f"Migrating {app_config.label} to schema {schema_name}...")
@@ -62,11 +114,11 @@ def create_shop_schema(tenant, schema_name):
                         cur.execute("SHOW search_path")
                         sp = cur.fetchone()
                         print(f"  search_path before migration: {sp[0]}")
-
+                    
                     call_command("migrate", app_config.label, database=alias, verbosity=1)
 
                 except LookupError:
-                    print(f"Warning: App '{app_name}' not found in installed apps")
+                    print(f"Warning: App '{app_label}' not found in installed apps")
 
             # Verify tables were created
             with connections[alias].cursor() as cur:
