@@ -3,6 +3,7 @@ from django.contrib import admin
 from django.conf import settings
 from tenancy.models import Tenant
 from tenancy.models import Shop
+from tenancy.audit import AuditLog
 from tenancy.utils import provision_tenant
 from tenancy.shop_manager import create_shop_schema
 from tenancy.utils import register_tenant_connection
@@ -47,6 +48,31 @@ class ShopAdmin(admin.ModelAdmin):
         - Run migrations for that schema
         """
         super().save_model(request, obj, form, change)
+
+
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    """
+    Read-only audit log viewer for security monitoring.
+    Allows admins to review security events without modification.
+    """
+    list_display = ('timestamp', 'user', 'action', 'resource_type', 'ip_address', 'success')
+    list_filter = ('action', 'success', 'timestamp', 'tenant_id')
+    search_fields = ('user__username', 'ip_address', 'resource_id')
+    readonly_fields = ('timestamp', 'user', 'action', 'resource_type', 'resource_id', 
+                       'ip_address', 'user_agent', 'tenant_id', 'details', 'success', 'error_message')
+    
+    def has_add_permission(self, request):
+        """Prevent manual audit log creation"""
+        return False
+    
+    def has_delete_permission(self, request, obj=None):
+        """Prevent audit log deletion - logs are immutable for compliance"""
+        return False
+    
+    def has_change_permission(self, request, obj=None):
+        """Prevent audit log modification"""
+        return False
 
         if not change:
             tenant = obj.tenant

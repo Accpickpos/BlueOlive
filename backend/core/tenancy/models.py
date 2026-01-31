@@ -147,6 +147,7 @@ class Tenant(models.Model):
     db_password = EncryptedCharField(max_length=200)  # Encrypted field
     db_host = models.CharField(max_length=200, default='localhost')
     db_port = models.IntegerField(default=5432)
+    is_active = models.BooleanField(default=True, help_text="Whether this tenant is active")
     created_at = models.DateTimeField(auto_now_add=True)
     tenant_control = models.BooleanField(default=True)
 
@@ -176,6 +177,7 @@ class Shop(models.Model):
     subdomain = models.CharField(max_length=100, blank=True, help_text="Subdomain for shop access, e.g., 'downtown'")
     description = models.TextField(blank=True, null=True)
     is_head_office = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True, help_text="Whether this shop is active")
     created_at = models.DateTimeField(auto_now_add=True)
 
     tenant_control = True

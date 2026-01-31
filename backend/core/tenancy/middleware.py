@@ -1,265 +1,348 @@
-# # tenancy/middleware.py
-# import logging
-# from django.http import HttpResponseForbidden
-# from django.db import connections
-# from tenancy.tenant_context import set_current_tenant, set_current_shop, clear_current
-# from tenancy.models import Tenant, Shop
-
-# logger = logging.getLogger(__name__)
-
-# class TenantMiddleware:
-#     """
-#     1) Identify tenant from request (subdomain / header / api key)
-#     2) Set thread-local tenant
-#     3) Ensure tenant connection is registered in settings.connections (register dynamically if missing)
-#     4) Optionally set shop schema based on request (header or URL)
-#     5) Set search_path for the tenant DB connection to the requested schema
-#     """
-#     def __init__(self, get_response):
-#         self.get_response = get_response
-
-#     def __call__(self, request):
-#         # Allow public endpoints without tenant check
-#         public_paths = ['/admin', '/favicon.ico', '/api/tenants/', '/api/current_tenant/']
-#         if (request.path == '/' or any(request.path.startswith(path) for path in public_paths)) and not request.path.startswith('/api/login/'):
-#             logger.debug(f"Skipping tenant middleware for public path: {request.path}")
-#             response = self.get_response(request)
-#             clear_current()
-#             return response
-
-#         # Log tenant setting for login requests
-#         if request.path.startswith('/api/login/'):
-#             logger.info(f"Processing login request for path: {request.path}, host: {request.get_host()}")
-
-#         host = request.get_host().split(":")[0]
-#         # Example: tenant is subdomain
-#         # extract subdomain e.g. tenant1.example.com -> tenant1
-#         # Also support localhost: tenant.localhost -> tenant
-#         parts = host.split(".")
-#         if len(parts) > 2:
-#             subdomain = parts[0]
-#         elif len(parts) == 2 and parts[1] == "localhost":
-#             subdomain = parts[0]
-#         else:
-#             subdomain = None
-
-#         # Or use header: X-Tenant or Authorization token
-#         tenant_key = request.headers.get("X-Tenant") or subdomain
-#         if not tenant_key:
-#             # If you allow public endpoints, skip; else block
-#             logger.warning(f"No tenant specified for path: {request.path}")
-#             return HttpResponseForbidden("Tenant not specified")
-
-#         tenant = None
-#         try:
-#             tenant = Tenant.objects.get(subdomain=tenant_key)
-#             logger.info(f"Resolved tenant: {tenant.name} for subdomain: {tenant_key}")
-#         except Tenant.DoesNotExist:
-#             logger.warning(f"Invalid subdomain: {tenant_key}")
-#             return HttpResponseForbidden("Invalid subdomain")
-
-#         # register tenant in thread-local
-#         set_current_tenant(tenant)
-#         logger.info(f"Set current tenant: {tenant.name} (id={tenant.id}) for request path: {request.path}")
-
-#         # Ensure connections registered (register_tenant_connection may be called on creation)
-#         from tenancy.utils import register_tenant_connection
-#         register_tenant_connection(tenant)
-
-#         # Determine shop schema: from user, header, or default
-#         shop_schema = None
-#         if hasattr(request, 'user') and request.user.is_authenticated and request.user.shop:
-#             # Use user's assigned shop
-#             shop_schema = request.user.shop.schema_name
-#         if not shop_schema:
-#             shop_schema = request.headers.get("X-Shop-Schema")  # e.g. 'shop_123'
-#         if not shop_schema:
-#             # Fallback to head office shop schema
-#             try:
-#                 head_office = tenant.shops.get(is_head_office=True)
-#                 shop_schema = head_office.schema_name
-#             except Shop.DoesNotExist:
-#                 shop_schema = "public"  # fallback if no head office
-#         set_current_shop(shop_schema)
-#         logger.info(f"Set current shop schema: {shop_schema} for request path: {request.path}")
-
-#         # Set search_path for this tenant DB connection immediately
-#         alias = tenant.db_alias
-#         conn = connections[alias]
-#         # If connection isn't established yet, Django will connect on first use;
-#         # but we can force a cursor and set search_path now.
-#         with conn.cursor() as cur:
-#             cur.execute(f'SET search_path TO "{shop_schema}", public;')
-
-#         response = self.get_response(request)
-#         clear_current()
-#         return response
-
-
 # tenancy/middleware.py
 import logging
-from django.http import HttpResponseForbidden
-from django.db import connections
-from tenancy.tenant_context import set_current_tenant, set_current_shop, clear_current
+import re
+from django.http import HttpResponseNotFound, JsonResponse
+from django.conf import settings
 from tenancy.models import Tenant, Shop
+from tenancy.tenant_context import (
+    set_current_tenant, 
+    set_current_shop, 
+    clear_current
+)
+from tenancy.utils import register_tenant_connection
 
 logger = logging.getLogger(__name__)
 
+
 class TenantMiddleware:
     """
-    1) Identify tenant from request (subdomain / header / api key)
-    2) Identify shop from nested subdomain or header
-    3) Set thread-local tenant and shop
-    4) Ensure tenant connection is registered in settings.connections (register dynamically if missing)
-    5) Set search_path for the tenant DB connection to the requested schema
+    Middleware to identify tenant and shop from the request.
     
-    Supported formats:
-    - tenant.localhost -> tenant only, uses head office shop
-    - shop.tenant.localhost -> tenant and shop via nested subdomain
-    - tenant.example.com -> tenant only
-    - shop.tenant.example.com -> tenant and shop via nested subdomain
-    - Headers: X-Tenant and X-Shop-Schema for explicit specification
+    Supports multiple identification methods:
+    1. Subdomain: tenant1.example.com
+    2. Custom domain: custom-domain.com
+    3. Header: X-Tenant-Slug
+    4. Development: localhost with tenant parameter or default tenant
     """
+    
     def __init__(self, get_response):
         self.get_response = get_response
-
+    
     def __call__(self, request):
-        # Allow public endpoints without tenant check
-        public_paths = ['/admin', '/favicon.ico', '/api/tenants/', '/api/current_tenant/']
-        if (request.path == '/' or any(request.path.startswith(path) for path in public_paths)) and not request.path.startswith('/api/login/'):
-            logger.debug(f"Skipping tenant middleware for public path: {request.path}")
-            response = self.get_response(request)
-            clear_current()
-            return response
-
-        # Log tenant setting for login requests
-        if request.path.startswith('/api/login/'):
-            logger.info(f"Processing login request for path: {request.path}, host: {request.get_host()}")
-
-        host = request.get_host().split(":")[0]
-        
-        # Parse subdomain(s) to extract tenant and optionally shop
-        tenant_key, shop_subdomain = self._parse_subdomains(host)
-        
-        # Allow header override for tenant
-        tenant_key = request.headers.get("X-Tenant") or tenant_key
-        
-        if not tenant_key:
-            logger.warning(f"No tenant specified for path: {request.path}")
-            return HttpResponseForbidden("Tenant not specified")
-
-        # Resolve tenant
-        tenant = None
-        try:
-            tenant = Tenant.objects.get(subdomain=tenant_key)
-            logger.info(f"Resolved tenant: {tenant.name} for subdomain: {tenant_key}")
-        except Tenant.DoesNotExist:
-            logger.warning(f"Invalid tenant subdomain: {tenant_key}")
-            return HttpResponseForbidden("Invalid tenant subdomain")
-
-        # Register tenant in thread-local
-        set_current_tenant(tenant)
-        logger.info(f"Set current tenant: {tenant.name} (id={tenant.id}) for request path: {request.path}")
-
-        # Ensure connections registered
-        from tenancy.utils import register_tenant_connection
-        register_tenant_connection(tenant)
-
-        # Determine shop schema with priority:
-        # 1. Authenticated user's assigned shop
-        # 2. X-Shop-Schema header
-        # 3. Shop subdomain from URL
-        # 4. Head office (default fallback)
-        shop_schema = None
-        
-        # Priority 1: User's assigned shop
-        if hasattr(request, 'user') and request.user.is_authenticated and hasattr(request.user, 'shop') and request.user.shop:
-            shop_schema = request.user.shop.schema_name
-            logger.info(f"Using shop from authenticated user: {shop_schema}")
-        
-        # Priority 2: Header override
-        if not shop_schema:
-            header_shop = request.headers.get("X-Shop-Schema")
-            if header_shop:
-                shop_schema = header_shop
-                logger.info(f"Using shop from X-Shop-Schema header: {shop_schema}")
-        
-        # Priority 3: Shop subdomain from URL
-        if not shop_schema and shop_subdomain:
-            try:
-                shop = Shop.objects.get(tenant=tenant, subdomain=shop_subdomain)
-                shop_schema = shop.schema_name
-                logger.info(f"Resolved shop from subdomain '{shop_subdomain}': {shop_schema}")
-            except Shop.DoesNotExist:
-                logger.warning(f"Shop subdomain '{shop_subdomain}' not found for tenant {tenant.name}")
-                # Don't fail here, fall through to head office
-        
-        # Priority 4: Fallback to head office
-        if not shop_schema:
-            try:
-                head_office = tenant.shops.get(is_head_office=True)
-                shop_schema = head_office.schema_name
-                logger.info(f"Using head office shop: {shop_schema}")
-            except Shop.DoesNotExist:
-                shop_schema = "public"  # Ultimate fallback
-                logger.warning(f"No head office found for tenant {tenant.name}, using 'public' schema")
-        
-        set_current_shop(shop_schema)
-        logger.info(f"Set current shop schema: {shop_schema} for request path: {request.path}")
-
-        # Set search_path for this tenant DB connection immediately
-        alias = tenant.db_alias
-        conn = connections[alias]
-        # Force connection and set search_path
-        with conn.cursor() as cur:
-            cur.execute(f'SET search_path TO "{shop_schema}", public;')
-            logger.debug(f"Set search_path to '{shop_schema}' for connection {alias}")
-
-        response = self.get_response(request)
+        # Clear any existing context
         clear_current()
+        
+        try:
+            # Identify tenant
+            tenant = self._identify_tenant(request)
+            
+            if tenant:
+                # Register tenant database connection
+                register_tenant_connection(tenant)
+                
+                # Set tenant context
+                set_current_tenant(tenant)
+                
+                # Identify and set shop (if applicable)
+                shop = self._identify_shop(request, tenant)
+                if shop:
+                    set_current_shop(shop.schema_name)
+                    request.shop = shop
+                
+                request.tenant = tenant
+                logger.debug(f"Tenant set: {tenant.name} (shop: {shop.name if shop else 'None'})")
+            else:
+                # No tenant found
+                request.tenant = None
+                request.shop = None
+                logger.warning("No tenant identified for request")
+        
+        except Exception as e:
+            logger.error(f"Error in tenant middleware: {str(e)}")
+            request.tenant = None
+            request.shop = None
+        
+        # Process request
+        response = self.get_response(request)
+        
+        # Clear context after request
+        clear_current()
+        
         return response
     
-    def _parse_subdomains(self, host):
+    def _identify_tenant(self, request):
         """
-        Parse the host to extract tenant subdomain and optional shop subdomain.
+        Identify tenant from request using multiple methods.
+        Priority: JWT Token > Domain/Subdomain > Header (development only) > Query Parameter
         
+        SECURITY: JWT token is authoritative source of tenant (signed by server)
+        Headers/queries are NOT trusted for tenant identification
+        """
+        # Method 0: Try to extract tenant from JWT token first (MOST SECURE)
+        tenant = self._get_tenant_from_jwt(request)
+        if tenant:
+            logger.debug(f"Tenant from JWT token: {tenant.slug}")
+            return tenant
+        
+        # Get the host
+        host = request.get_host().split(':')[0]  # Remove port if present
+        logger.debug(f"Parsing host: {host}")
+        
+        # Method 1: Check for development/localhost
+        if self._is_local_host(host):
+            return self._handle_localhost(request)
+        
+        # Method 2: Check for custom domain
+        tenant = self._get_tenant_by_domain(host)
+        if tenant:
+            logger.debug(f"Tenant from custom domain: {tenant.slug}")
+            return tenant
+        
+        # Method 3: Extract from subdomain
+        tenant = self._get_tenant_from_subdomain(host)
+        if tenant:
+            logger.debug(f"Tenant from subdomain: {tenant.slug}")
+            return tenant
+        
+        logger.warning(f"No tenant found for host: {host}")
+        return None
+    
+    def _get_tenant_from_jwt(self, request):
+        """
+        Extract and validate tenant from JWT token in httpOnly cookie.
+        This is the most secure method as JWT is signed by the server.
+        """
+        try:
+            access_token = request.COOKIES.get('access_token')
+            if not access_token:
+                return None
+            
+            from rest_framework_simplejwt.tokens import AccessToken
+            token = AccessToken(access_token)
+            tenant_id = token.get('tenant_id')
+            
+            if tenant_id:
+                from tenancy.models import Tenant
+                tenant = Tenant.objects.filter(id=tenant_id).first()
+                if tenant:
+                    logger.debug(f"JWT token validated for tenant_id={tenant_id}")
+                    return tenant
+                else:
+                    logger.warning(f"JWT has invalid tenant_id={tenant_id}")
+        except Exception as e:
+            logger.debug(f"JWT extraction failed (expected for non-authenticated requests): {str(e)}")
+        
+        return None
+    
+    def _is_local_host(self, host):
+        """Check if host is localhost or IP address."""
+        local_hosts = ['localhost', '127.0.0.1', '0.0.0.0', '[::1]']
+        
+        # Check exact matches
+        if host in local_hosts:
+            return True
+        
+        # Check if it's an IP address (simple check)
+        ip_pattern = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
+        if ip_pattern.match(host):
+            return True
+        
+        return False
+    
+    def _handle_localhost(self, request):
+        """
+        Handle localhost development scenarios.
+        
+        Options:
+        1. Use query parameter: ?tenant=acme
+        2. Use default tenant from settings
+        3. Use first active tenant
+        """
+        # Option 1: Check for tenant query parameter
+        tenant_param = request.GET.get('tenant')
+        if tenant_param:
+            logger.debug(f"Using tenant from query param: {tenant_param}")
+            tenant = self._get_tenant_by_slug(tenant_param)
+            if tenant:
+                return tenant
+        
+        # Option 2: Use default tenant from settings
+        default_tenant_slug = getattr(settings, 'DEFAULT_TENANT_SLUG', None)
+        if default_tenant_slug:
+            logger.debug(f"Using default tenant from settings: {default_tenant_slug}")
+            tenant = self._get_tenant_by_slug(default_tenant_slug)
+            if tenant:
+                return tenant
+        
+        # Option 3: Use first active tenant (development only!)
+        if settings.DEBUG:
+            tenant = Tenant.objects.filter(is_active=True).first()
+            if tenant:
+                logger.debug(f"Using first active tenant (DEV mode): {tenant.slug}")
+                return tenant
+        
+        logger.warning("No tenant available for localhost")
+        return None
+    
+    def _get_tenant_from_subdomain(self, host):
+        """
+        Extract tenant from subdomain.
         Examples:
-        - localhost -> (None, None)
-        - tenant.localhost -> ('tenant', None)
-        - shop.tenant.localhost -> ('tenant', 'shop')
-        - example.com -> (None, None)
-        - tenant.example.com -> ('tenant', None)
-        - shop.tenant.example.com -> ('tenant', 'shop')
-        
-        Returns:
-            tuple: (tenant_subdomain, shop_subdomain)
+        - acme.example.com -> 'acme'
+        - retail.myapp.com -> 'retail'
         """
-        parts = host.split(".")
+        # Get the main domain from settings
+        main_domain = getattr(settings, 'MAIN_DOMAIN', None)
         
-        # Handle localhost scenarios
-        if "localhost" in parts:
-            if len(parts) == 1:
-                # Just 'localhost'
-                return (None, None)
-            elif len(parts) == 2:
-                # tenant.localhost
-                return (parts[0], None)
-            elif len(parts) >= 3:
-                # shop.tenant.localhost (or more nested)
-                # Take the rightmost subdomain as tenant, leftmost as shop
-                return (parts[-2], parts[0])
+        if not main_domain:
+            logger.warning("MAIN_DOMAIN not configured in settings")
+            return None
         
-        # Handle regular domain scenarios (example.com)
-        else:
-            if len(parts) <= 2:
-                # example.com or just domain
-                return (None, None)
-            elif len(parts) == 3:
-                # tenant.example.com
-                return (parts[0], None)
-            elif len(parts) >= 4:
-                # shop.tenant.example.com (or more nested)
-                # Take second-to-last subdomain as tenant, leftmost as shop
-                return (parts[-3], parts[0])
+        # Check if host ends with main domain
+        if not host.endswith(main_domain):
+            return None
         
-        return (None, None)
+        # Extract subdomain
+        subdomain = host.replace(f'.{main_domain}', '')
+        
+        # Ignore 'www'
+        if subdomain == 'www':
+            return None
+        
+        # Ignore if no subdomain
+        if subdomain == host or '.' in subdomain:
+            return None
+        
+        logger.debug(f"Extracted subdomain: {subdomain}")
+        return self._get_tenant_by_slug(subdomain)
+    
+    def _get_tenant_by_slug(self, slug):
+        """Get tenant by slug."""
+        try:
+            return Tenant.objects.get(slug=slug, is_active=True)
+        except Tenant.DoesNotExist:
+            logger.warning(f"Tenant not found: {slug}")
+            return None
+    
+    def _get_tenant_by_domain(self, domain):
+        """Get tenant by custom domain."""
+        try:
+            return Tenant.objects.get(custom_domain=domain, is_active=True)
+        except Tenant.DoesNotExist:
+            return None
+        except Exception:
+            # custom_domain field might not exist
+            return None
+    
+    def _identify_shop(self, request, tenant):
+        """
+        Identify shop from request.
+        
+        Methods:
+        1. Header: X-Shop-Slug
+        2. Query parameter: ?shop=downtown
+        3. Session: request.session.get('shop_id')
+        4. Default shop for tenant
+        """
+        # Method 1: Check header
+        shop_slug = request.headers.get('X-Shop-Slug')
+        if shop_slug:
+            try:
+                return Shop.objects.get(
+                    tenant=tenant,
+                    subdomain=shop_slug,
+                    is_active=True
+                )
+            except Shop.DoesNotExist:
+                logger.warning(f"Shop not found: {shop_slug}")
+        
+        # Method 2: Check query parameter
+        shop_param = request.GET.get('shop')
+        if shop_param:
+            try:
+                # Try by subdomain first
+                return Shop.objects.get(
+                    tenant=tenant,
+                    subdomain=shop_param,
+                    is_active=True
+                )
+            except Shop.DoesNotExist:
+                # Try by ID
+                try:
+                    return Shop.objects.get(
+                        tenant=tenant,
+                        id=int(shop_param),
+                        is_active=True
+                    )
+                except (Shop.DoesNotExist, ValueError):
+                    logger.warning(f"Shop not found: {shop_param}")
+        
+        # Method 3: Check session
+        if hasattr(request, 'session') and 'shop_id' in request.session:
+            try:
+                return Shop.objects.get(
+                    tenant=tenant,
+                    id=request.session['shop_id'],
+                    is_active=True
+                )
+            except Shop.DoesNotExist:
+                logger.warning(f"Shop from session not found: {request.session['shop_id']}")
+        
+        # Method 4: Use default shop if configured
+        default_shop = getattr(settings, 'USE_DEFAULT_SHOP', False)
+        if default_shop:
+            shop = Shop.objects.filter(tenant=tenant, is_active=True).first()
+            if shop:
+                logger.debug(f"Using default shop: {shop.subdomain or shop.name}")
+                return shop
+        
+        return None
+
+
+class TenantRequiredMiddleware:
+    """
+    Middleware to enforce that a valid tenant must be identified.
+    Returns 404 if no tenant is found.
+    
+    Place this AFTER TenantMiddleware in MIDDLEWARE.
+    """
+    
+    # Paths that don't require a tenant
+    EXEMPT_PATHS = [
+        '/health/',
+        '/metrics/',
+        '/static/',
+        '/media/',
+    ]
+    
+    def __init__(self, get_response):
+        self.get_response = get_response
+    
+    def __call__(self, request):
+        # Check if path is exempt
+        if self._is_exempt(request.path):
+            return self.get_response(request)
+        
+        # Check if tenant is set
+        if not hasattr(request, 'tenant') or request.tenant is None:
+            logger.error(f"No tenant for path: {request.path}")
+            
+            if request.path.startswith('/api/'):
+                return JsonResponse({
+                    'error': 'Tenant not found',
+                    'detail': 'Please specify a valid tenant'
+                }, status=404)
+            else:
+                return HttpResponseNotFound(
+                    '<h1>Tenant Not Found</h1>'
+                    '<p>Please access this application through a valid tenant domain.</p>'
+                )
+        
+        return self.get_response(request)
+    
+    def _is_exempt(self, path):
+        """Check if path is exempt from tenant requirement."""
+        for exempt_path in self.EXEMPT_PATHS:
+            if path.startswith(exempt_path):
+                return True
+        return False

@@ -7,16 +7,26 @@ from psycopg2 import extensions
 import time
 
 def register_tenant_connection(tenant):
+    """
+    Register tenant database connection using credentials from Django settings.
+    This ensures all tenants use the same PostgreSQL credentials as the main database.
+    """
     alias = tenant.db_alias
+    # Use credentials from settings, not from tenant object
+    # This allows old tenants with incorrect db_password to still work
+    default_db = settings.DATABASES['default']
+    
     db_config = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": tenant.db_name,
-        "USER": tenant.db_user,
-        "PASSWORD": tenant.db_password,
+        "USER": default_db['USER'],  # Use settings USER, not tenant.db_user
+        "PASSWORD": default_db['PASSWORD'],  # Use settings PASSWORD, not tenant.db_password
         "HOST": tenant.db_host,
         "PORT": tenant.db_port,
         "CONN_MAX_AGE": 60,  # tune as needed
-        "OPTIONS": {},
+        "OPTIONS": {
+            'options': '-c search_path=public'
+        },
         "TIME_ZONE": settings.TIME_ZONE,
         "AUTOCOMMIT": True,
         "ATOMIC_REQUESTS": False,

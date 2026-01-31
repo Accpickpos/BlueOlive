@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -29,61 +30,200 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-change-me-in-producti
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.localhost').split(',')
+# SUBDOMAIN SUPPORT
+# Development: allows *.localhost (e.g., acme.localhost, shop1.acme.localhost)
+# Production: allows *.yourdomain.com
+ALLOWED_HOSTS = os.environ.get(
+    'ALLOWED_HOSTS', 
+    'localhost,127.0.0.1,.localhost'
+).split(',')
 
 
 # Application definition
 
+# SHARED_APPS: These live in the main 'blue_olive' database only
+# These are system/platform tables shared across all tenants
 SHARED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
+    # Core Django apps (in default DB only, except auth/contenttypes which are everywhere)
+    'django.contrib.auth',        # Auth tables in ALL databases
+    'django.contrib.contenttypes', # Contenttypes in ALL databases
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    # 3rd-party
+    # 3rd-party (in default DB)
     'rest_framework',
+    'rest_framework_simplejwt',
     'corsheaders',
 
-    # Local apps
-    'tenancy',
-    'shop_users',
+    # Platform management (blue_olive database only)
+    'tenancy',  # Tenant and Shop models
 ]
 
+# TENANT_APPS: These live in each tenant's database
+# Each tenant has their own separate copy of these tables
 TENANT_APPS = [
-]
-
-SHOP_APPS = [
-    # 'apps.debtors',
-    'apps.cash_book',
+    'django.contrib.admin',                      # Admin in tenant databases (since ShopUser is there)
+    'rest_framework_simplejwt.token_blacklist',  # Token blacklist needs to be with users
+    'shop_users',                                # Users belong to specific tenants
+    'apps.cash_book',                            # Shop-specific business apps
     'apps.creditors',
+    'apps.debtors',
     'apps.stock_control',
-    'apps.purchase_orders'
+    'apps.purchase_orders',
+    'apps.settings',
 ]
 
 # Django requires INSTALLED_APPS to know which apps are available
-INSTALLED_APPS = SHARED_APPS + TENANT_APPS + SHOP_APPS
+INSTALLED_APPS = SHARED_APPS + TENANT_APPS
 
+
+# SHOP_APP_LABELS: Apps that are migrated per-shop to their own schemas
+# These are a subset of TENANT_APP_LABELS
+SHOP_APP_LABELS = [
+    'cash_book',
+    'creditors',
+    'debtors',
+    'stock_control',
+    'purchase_orders',
+    'settings',
+]
+
+# For the database router: specify which app labels are tenant-specific
+# This is used by TenantDatabaseRouter.allow_migrate()
+TENANT_APP_LABELS = [
+    'admin',           # Django admin
+    'token_blacklist', # JWT token blacklist (has FK to user)
+    'shop_users',      # Custom user model
+
+] + SHOP_APP_LABELS
+
+# Custom user model
 AUTH_USER_MODEL = 'shop_users.ShopUser'
 
+# Authentication backends
 AUTHENTICATION_BACKENDS = [
-    'shop_users.auth_backends.ShopUserBackend',
+    'tenancy.auth_backends.TenantAwareAuthBackend',  # Custom tenant-aware backend
+    'django.contrib.auth.backends.ModelBackend',      # Default backend
 ]
 
 LOGIN_URL = '/login/'
 
+
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+
+
+# JWT Configuration
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'UPDATE_LAST_LOGIN': True,
+    
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+    'VERIFYING_KEY': None,
+    'AUDIENCE': None,
+    'ISSUER': None,
+    'JWK_URL': None,
+    'LEEWAY': 0,
+    
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+    'USER_AUTHENTICATION_RULE': 'rest_framework_simplejwt.authentication.default_user_authentication_rule',
+    
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    'TOKEN_TYPE_CLAIM': 'token_type',
+    'TOKEN_USER_CLASS': 'rest_framework_simplejwt.models.TokenUser',
+    
+    'JTI_CLAIM': 'jti',
+    
+    'SLIDING_TOKEN_REFRESH_EXP_CLAIM': 'refresh_exp',
+    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5),
+    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
+}
+
+
+# REST Framework Settings
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'tenancy.jwt_authentication.TenantJWTAuthentication',  # Custom tenant-aware JWT
+        'rest_framework.authentication.SessionAuthentication',   # For browsable API
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
+    'DEFAULT_RENDERER_CLASSES': (
+        'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',
+    ),
+    'DEFAULT_PARSER_CLASSES': (
+        'rest_framework.parsers.JSONParser',
+        'rest_framework.parsers.FormParser',
+        'rest_framework.parsers.MultiPartParser',
+    ),
+    'DEFAULT_THROTTLE_CLASSES': (
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ),
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',
+        'user': '1000/hour',
+        'login': '5/minute',
+    }
+}
+
+
+# Middleware
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
-    'tenancy.middleware.TenantMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'tenancy.middleware.TenantMiddleware',  # Tenant middleware should be after auth
 ]
+
+DEFAULT_TENANT_SLUG = 'dev'
+USE_DEFAULT_SHOP = True
+
+# CORS settings
+CORS_ALLOWED_ORIGINS = os.environ.get(
+    'CORS_ALLOWED_ORIGINS',
+    'http://localhost:3000,http://127.0.0.1:3000'
+).split(',')
+
+CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'x-tenant',
+    'x-shop',
+]
+
+# CSRF trusted origins for cross-origin requests
+CSRF_TRUSTED_ORIGINS = os.environ.get(
+    'CSRF_TRUSTED_ORIGINS',
+    'http://localhost:3000,http://127.0.0.1:3000'
+).split(',')
 
 ROOT_URLCONF = 'core.urls'
 
@@ -119,10 +259,32 @@ DATABASES = {
         # Short-lived connections by default; allow long for pooling if used
         "CONN_MAX_AGE": 0,
     },
-    # Other tenant DBs are added to DATABASES at runtime (see code below).
+    # Other tenant DBs are added to DATABASES at runtime by tenancy.utils
 }
 
 DATABASE_ROUTERS = ["tenancy.db_router.TenantDatabaseRouter"]
+
+# Caching Configuration (for tenant/shop lookups)
+# Development: In-memory cache
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'blueolive-cache',
+    }
+}
+
+# Production: Use Redis (uncomment and configure)
+# CACHES = {
+#     'default': {
+#         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+#         'LOCATION': 'redis://127.0.0.1:6379/1',
+#         'OPTIONS': {
+#             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+#         },
+#         'KEY_PREFIX': 'blueolive',
+#         'TIMEOUT': 300,
+#     }
+# }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -164,6 +326,8 @@ STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static'),
 ]
 
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
@@ -173,9 +337,16 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+    },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
         },
     },
     'root': {
@@ -195,7 +366,3 @@ LOGGING = {
         },
     },
 }
-
-# CORS settings
-CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',')
-CORS_ALLOW_CREDENTIALS = True
