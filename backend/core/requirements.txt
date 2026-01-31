@@ -1,9 +1,64 @@
-asgiref==3.10.0
+# =========================
+# Core Python / Django
+# =========================
 Django==5.2.7
-djangorestframework==3.16.1
-django-cors-headers==4.4.0
-psycopg2-binary==2.9.11
-python-dotenv
-django-filter
+asgiref==3.10.0
 sqlparse==0.5.3
 tzdata==2025.2
+cryptography>=41.0.0
+
+# =========================
+# Django REST Framework
+# =========================
+djangorestframework==3.16.1
+django-filter==24.3
+
+# =========================
+# CORS
+# =========================
+django-cors-headers==4.4.0
+
+# =========================
+# Authentication (JWT)
+# =========================
+djangorestframework-simplejwt==5.3.1
+PyJWT>=2.8.0
+
+# =========================
+# Database
+# =========================
+psycopg2-binary==2.9.11
+
+# =========================
+# Environment Variables
+# =========================
+python-dotenv==1.0.1
+
+# =========================
+# FastAPI / ASGI
+# =========================
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# =========================
+# Data & Validation
+# =========================
+sqlalchemy==2.0.23
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# =========================
+# HTTP Client
+# =========================
+httpx==0.25.2
+
+# =========================
+# Migrations (FastAPI side)
+# =========================
+alembic==1.13.0
+
+# =========================
+# Development & Testing
+# =========================
+pytest==7.4.3
+pytest-asyncio==0.21.1

@@ -155,12 +155,12 @@ class ShopUserBackend(BaseBackend):
             return None
         
         tenant = get_current_tenant()
-        logger.info(f"Authenticate called for username: {username}, current tenant: {tenant.name if tenant else 'None'}")
+        logger.info(f"Authenticate called for username: {username}, current tenant: {tenant.name if tenant else 'None'}, tenant db_alias: {tenant.db_alias if tenant else 'None'}")
         authenticated_user = None
         
         # Strategy 1: Try to authenticate as superuser (tenant-independent)
         try:
-            user = ShopUser._base_manager.get(username=username, is_superuser=True)
+            user = ShopUser.objects.using('default').get(username=username, is_superuser=True)
             if user.check_password(password) and self.user_can_authenticate(user):
                 authenticated_user = user
                 logger.info(
@@ -188,10 +188,55 @@ class ShopUserBackend(BaseBackend):
             return None
         
         try:
-            user = ShopUser.objects.get(username=username)
+            # Use tenant database if available
+            if tenant:
+                logger.info(f"Querying user {username} in tenant database {tenant.db_alias}")
+                # Use raw SQL to ensure we query the public schema
+                from django.db import connections
+                try:
+                    conn = connections[tenant.db_alias]
+                    logger.info(f"Tenant database connection available: {tenant.db_alias}")
+                except Exception as e:
+                    logger.error(f"Failed to get tenant database connection: {tenant.db_alias}, error: {str(e)}")
+                    raise
+                    
+                with conn.cursor() as cur:
+                    cur.execute('SET search_path TO public')
+                    cur.execute('''
+                        SELECT id, username, password, email, first_name, last_name,
+                               is_active, is_staff, is_superuser, date_joined,
+                               tenant_id, role, phone
+                        FROM shop_users_shopuser
+                        WHERE username = %s
+                    ''', [username])
+                    row = cur.fetchone()
+                    if row:
+                        # Create user object from raw data
+                        user = ShopUser()
+                        user.id = row[0]
+                        user.username = row[1]
+                        user.password = row[2]
+                        user.email = row[3]
+                        user.first_name = row[4]
+                        user.last_name = row[5]
+                        user.is_active = row[6]
+                        user.is_staff = row[7]
+                        user.is_superuser = row[8]
+                        user.date_joined = row[9]
+                        user.tenant_id = row[10]
+                        user.role = row[11]
+                        user.phone = row[12]
+                        logger.info(f"Found user in {tenant.db_alias}: {user.username}, checking password")
+                    else:
+                        logger.error(f"User not found in {tenant.db_alias}: {username}")
+                        raise ShopUser.DoesNotExist()
+            else:
+                user = ShopUser.objects.get(username=username)
+            
             logger.debug(f"Found user: {username}, user tenant_id: {user.tenant_id}, current tenant id: {tenant.id if tenant else 'None'}")
-            logger.debug(f"User {username} shop_id: {user.shop_id}")
-            password_valid = user.check_password(password)
+            # Check password manually since user object is not a full model instance
+            from django.contrib.auth.hashers import check_password
+            password_valid = check_password(password, user.password)
             can_auth = self.user_can_authenticate(user)
             logger.debug(f"Password valid: {password_valid}, can authenticate: {can_auth}")
             if password_valid and can_auth:
