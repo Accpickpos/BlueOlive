@@ -235,3 +235,7 @@ def create_shop_schema_on_save(sender, instance, created, **kwargs):
         except Exception as e:
             print(f"Warning: Failed to create schema for shop {instance.name}: {e}")
             # Don't raise, allow shop creation to succeed
+
+
+# Import AuditLog from audit.py to make it accessible
+from tenancy.audit import AuditLog  # noqa: E402, F401
