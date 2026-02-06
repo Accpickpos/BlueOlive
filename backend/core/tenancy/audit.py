@@ -57,6 +57,7 @@ class AuditLog(models.Model):
     class Meta:
         verbose_name = 'Audit Log'
         verbose_name_plural = 'Audit Logs'
+        managed = False  # Table is created manually in migration 0005_create_auditlog_table
         indexes = [
             models.Index(fields=['timestamp']),
             models.Index(fields=['user', 'timestamp']),

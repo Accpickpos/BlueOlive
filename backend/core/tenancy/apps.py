@@ -28,3 +28,15 @@ class TenancyConfig(AppConfig):
             import logging
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to register tenant connections: {e}")
+    
+    def get_models(self, include_auto_created=False, include_swapped=False):
+        """
+        Override to exclude AuditLog from Django's makemigrations detection.
+        AuditLog uses managed=False since the table is created manually in migration 0005.
+        Note: Django admin and other features that use get_models() will still work
+        because Django admin uses its own registry for registered models.
+        """
+        models = super().get_models(include_auto_created, include_swapped)
+        # Exclude AuditLog from auto-migration detection only
+        from tenancy.audit import AuditLog
+        return [m for m in models if m is not AuditLog]
