@@ -1,6 +1,7 @@
 'use client';
 import { useRouter } from 'next/navigation';
 import { useAuthContext } from '@/lib/AuthContext';
+import { clearAuthData } from '@/lib/api';
 import { ReactNode, useEffect, useState } from 'react';
 import { AlertCircle, Home, Shield, LogOut } from 'lucide-react';
 import Link from 'next/link';
@@ -145,8 +146,7 @@ export default function AdminRoute({ children }: AdminRouteProps) {
               <button
                 onClick={() => {
                   // Clear auth and redirect to login
-                  localStorage.removeItem('access_token');
-                  localStorage.removeItem('refresh_token');
+                  clearAuthData();
                   router.push('/auth');
                 }}
                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 px-4 rounded-lg transition flex items-center justify-center gap-2"

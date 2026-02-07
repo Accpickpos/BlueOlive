@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/navbar";
 import { AuthProvider } from "@/lib/AuthContext";
+import { QueryProvider } from "@/lib/QueryProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -23,12 +24,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="flex bg-gray-100">
-        <AuthProvider>
-          <div className="flex-1 flex flex-col">
-            {/* <Navbar /> */}
-            <main className="p-6">{children}</main>
-          </div>
-        </AuthProvider>
+        <QueryProvider>
+          <AuthProvider>
+            <div className="flex-1 flex flex-col">
+              {/* <Navbar /> */}
+              <main className="p-6">{children}</main>
+            </div>
+          </AuthProvider>
+        </QueryProvider>
       </body>
     </html>
   );

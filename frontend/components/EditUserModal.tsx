@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { updateUser, getShops } from '@/lib/api';
+import { extractErrorMessage } from '@/lib/utils';
 import { X } from 'lucide-react';
 
 interface EditUserModalProps {
@@ -33,6 +34,7 @@ export default function EditUserModal({
   const [role, setRole] = useState(user.role);
   const [isActive, setIsActive] = useState(user.is_active);
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [shops, setShops] = useState<Shop[]>([]);
   const [selectedShopIds, setSelectedShopIds] = useState<number[]>(user.shop_ids || []);
   const [loading, setLoading] = useState(false);
@@ -52,8 +54,8 @@ export default function EditUserModal({
     try {
       const shopsList = await getShops();
       setShops(shopsList);
-    } catch (err) {
-      setError('Failed to load shops');
+    } catch (err: any) {
+      setError(extractErrorMessage(err));
     } finally {
       setShopsLoading(false);
     }
@@ -72,6 +74,13 @@ export default function EditUserModal({
     setLoading(true);
     setError('');
 
+    // Validate passwords match if password is being changed
+    if (password.trim() && password !== confirmPassword) {
+      setError('Passwords do not match');
+      setLoading(false);
+      return;
+    }
+
     try {
       const updateData: any = {
         role,
@@ -82,18 +91,14 @@ export default function EditUserModal({
       // Only include password if it was entered
       if (password.trim()) {
         updateData.password = password;
+        updateData.confirm_password = confirmPassword;
       }
       
       await updateUser(user.id, updateData);
       onSuccess();
     } catch (err: any) {
       console.error('Update error:', err);
-      const errorMsg = err.response?.data?.detail || 
-                      err.response?.data?.[0] ||
-                      JSON.stringify(err.response?.data) ||
-                      err.message || 
-                      'Failed to update user';
-      setError(errorMsg);
+      setError(extractErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -164,6 +169,24 @@ export default function EditUserModal({
             <p className="text-xs text-gray-500 mt-1">Password should be at least 8 characters</p>
           </div>
 
+          {password && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Confirm New Password
+              </label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter new password"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              {password && confirmPassword && password !== confirmPassword && (
+                <p className="text-xs text-red-600 mt-1">Passwords do not match</p>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center">
             <input
               type="checkbox"
@@ -216,7 +239,7 @@ export default function EditUserModal({
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (password.trim() && password !== confirmPassword)}
               className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Updating...' : 'Update User'}

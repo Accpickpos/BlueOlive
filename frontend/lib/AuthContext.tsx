@@ -29,13 +29,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refetch = useCallback(async () => {
     try {
       setIsLoading(true);
+      // Cookies are sent automatically with withCredentials: true
+      // No need to check localStorage
       const response = await apiRequest('/api/auth/profile/');
       setUser(response.data);
-      console.log('Auth profile refetched successfully:', response.data);
     } catch (error: any) {
       // 401 is expected when user hasn't logged in - don't log as error
       if (error?.response?.status === 401) {
-        console.log('User not authenticated (401), clearing user data');
         setUser(null);
       } else if (error?.message === 'Network Error' || !error?.response) {
         // Network error - backend might not be running

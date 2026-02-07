@@ -126,15 +126,24 @@ class TenantDatabaseRouter:
 
         # Tenant apps should only migrate to tenant databases
         if app_label in tenant_app_labels:
+            # STRICT: Tenant apps MUST NOT migrate to default database
+            if db == "default":
+                logger.warning(
+                    f"Migration of {app_label} to default database blocked. "
+                    f"Tenant apps must only migrate to tenant databases. "
+                    f"Use: TENANT_DB_ALIAS=<alias> python manage.py migrate"
+                )
+                return False
+            
             # Check if we're explicitly migrating a tenant database
             tenant_db = getattr(settings, 'TENANT_DB_ALIAS', None)
             if tenant_db:
                 # We're migrating a specific tenant database
                 return db == tenant_db
             
-            # During normal migration (no TENANT_DB_ALIAS set)
-            # Skip tenant apps on default database
-            return db != "default"
+            # During normal migration (no TENANT_DB_ALIAS set), only migrate to explicit tenant DBs
+            # This prevents accidental migrations to wrong databases
+            return False
 
         # All other apps (shared apps) → default database only
         # This includes: sessions, messages, staticfiles, rest_framework, 

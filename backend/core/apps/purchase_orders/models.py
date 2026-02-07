@@ -1,514 +1,489 @@
-"""
-PURCHASE ORDERS APP - Django Models
-Complete purchase order management models
-
-LOCATION: accpick_project/purchase_orders/models.py
-
-Models in this file:
-- PurchaseOrder
-- PurchaseOrderLineItem
-- BackOrder
-- BackOrderLineItem
-"""
-
 from django.db import models
 from django.core.validators import MinValueValidator
-from django.contrib.auth import get_user_model
 from decimal import Decimal
-from apps.settings.models import TimeStampedModel, TaxCode
+from django.utils import timezone
+from datetime import timedelta
 
-User = get_user_model()
 
-
-# ============================================================================
-# PURCHASE ORDER MODEL
-# ============================================================================
-
-class PurchaseOrder(TimeStampedModel):
-    """
-    Purchase order to supplier
-    """
+class PurchaseOrder(models.Model):
+    """Purchase Order header"""
     
-    # PO identification
-    po_number = models.CharField(
-        max_length=20,
-        unique=True,
-        help_text="Purchase order number"
-    )
-    po_date = models.DateField()
+    STATUS_CHOICES = [
+        ('OUTSTANDING', 'Outstanding'),
+        ('PARTIALLY_RECEIVED', 'Partially Received'),
+        ('FULLY_RECEIVED', 'Fully Received'),
+        ('CANCELLED', 'Cancelled'),
+    ]
     
-    # Supplier
+    PRICING_METHOD_CHOICES = [
+        ('COST', 'At Cost Price'),
+        ('RETAIL', 'At Retail Price'),
+    ]
+    
+    order_number = models.AutoField(primary_key=True)
     supplier = models.ForeignKey(
         'creditors.Creditor',
         on_delete=models.PROTECT,
-        related_name='purchase_orders',
-        null=True,
-        blank=True
+        related_name='purchase_orders'
     )
     
-    # Delivery details
-    expected_delivery_date = models.DateField(
-        null=True,
-        blank=True,
-        help_text="Expected delivery date"
-    )
-    delivery_address = models.TextField(
-        blank=True,
-        help_text="Delivery address (if different from default)"
-    )
+    # Dates
+    order_date = models.DateField(default=timezone.now)
+    delivery_date = models.DateField(help_text="Expected delivery date")
     
-    # Order status
-    STATUS_CHOICES = [
-        ('DRAFT', 'Draft'),
-        ('SENT', 'Sent to Supplier'),
-        ('CONFIRMED', 'Confirmed by Supplier'),
-        ('PARTIAL', 'Partially Received'),
-        ('COMPLETE', 'Fully Received'),
-        ('CANCELLED', 'Cancelled'),
-    ]
-    status = models.CharField(
-        max_length=20,
-        choices=STATUS_CHOICES,
-        default='DRAFT'
+    # Status
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='OUTSTANDING')
+    
+    # Pricing
+    pricing_method = models.CharField(
+        max_length=10,
+        choices=PRICING_METHOD_CHOICES,
+        default='COST',
+        help_text="Price items at cost or retail"
     )
     
     # Totals
-    order_total = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Total order value (exclusive VAT)"
-    )
-    order_total_vat = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Total VAT"
-    )
-    order_total_inclusive = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Total including VAT"
-    )
+    total_quantity_ordered = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_quantity_received = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_quantity_outstanding = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
-    # Receiving tracking
-    total_quantity_ordered = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False
-    )
-    total_quantity_received = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False
-    )
+    total_value_exclusive = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_value_vat = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_value_inclusive = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     
-    # References
-    supplier_reference = models.CharField(
-        max_length=50,
+    # Outstanding values
+    outstanding_value_exclusive = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    outstanding_value_vat = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    outstanding_value_inclusive = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    # Flags
+    is_back_order = models.BooleanField(default=False, help_text="Created from delivery variance")
+    parent_order = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
-        help_text="Supplier's reference/quote number"
+        related_name='back_orders',
+        help_text="Original order if this is a back order"
     )
+    
+    # Notes
     notes = models.TextField(blank=True)
     
-    # Who created this PO
-    created_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='purchase_orders_created'
-    )
-    
-    # Approval
-    is_approved = models.BooleanField(default=False)
-    approved_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='purchase_orders_approved'
-    )
-    approved_at = models.DateTimeField(null=True, blank=True)
-    
-    # When sent to supplier
-    sent_to_supplier_date = models.DateField(null=True, blank=True)
-    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         db_table = 'purchase_orders'
-        ordering = ['-po_date', '-po_number']
+        ordering = ['-order_date', '-order_number']
         indexes = [
-            models.Index(fields=['po_number']),
-            models.Index(fields=['supplier']),
+            models.Index(fields=['supplier', 'status']),
+            models.Index(fields=['delivery_date']),
             models.Index(fields=['status']),
-            models.Index(fields=['po_date']),
         ]
-        verbose_name = 'Purchase Order'
-        verbose_name_plural = 'Purchase Orders'
-    
+
     def __str__(self):
-        return f"PO-{self.po_number} - {self.supplier.name}"
-    
-    def save(self, *args, **kwargs):
-        if not self.po_number:
-            self.po_number = self._generate_po_number()
-        super().save(*args, **kwargs)
-    
-    def _generate_po_number(self):
-        """Generate next PO number"""
-        last_po = PurchaseOrder.objects.order_by('-id').first()
-        if last_po and last_po.po_number:
-            try:
-                num = int(last_po.po_number.split('-')[-1])
-                return f"PO-{num + 1:06d}"
-            except:
-                pass
-        return "PO-000001"
-    
+        return f"PO {self.order_number} - {self.supplier.name} - {self.order_date}"
+
     def calculate_totals(self):
         """Calculate order totals from line items"""
         lines = self.line_items.all()
         
         self.total_quantity_ordered = sum(line.quantity_ordered for line in lines)
         self.total_quantity_received = sum(line.quantity_received for line in lines)
+        self.total_quantity_outstanding = sum(line.quantity_outstanding for line in lines)
         
-        self.order_total = sum(line.line_total_exclusive for line in lines)
-        self.order_total_vat = sum(line.tax_amount for line in lines)
-        self.order_total_inclusive = sum(line.line_total_inclusive for line in lines)
+        self.total_value_exclusive = sum(line.total_exclusive for line in lines)
+        self.total_value_vat = sum(line.total_vat for line in lines)
+        self.total_value_inclusive = sum(line.total_inclusive for line in lines)
         
-        # Update status based on quantities
+        self.outstanding_value_exclusive = sum(line.outstanding_exclusive for line in lines)
+        self.outstanding_value_vat = sum(line.outstanding_vat for line in lines)
+        self.outstanding_value_inclusive = sum(line.outstanding_inclusive for line in lines)
+        
+        # Update status
         if self.total_quantity_received == 0:
-            if self.status == 'PARTIAL':
-                self.status = 'SENT'
+            self.status = 'OUTSTANDING'
         elif self.total_quantity_received >= self.total_quantity_ordered:
-            self.status = 'COMPLETE'
-        elif self.total_quantity_received > 0:
-            self.status = 'PARTIAL'
+            self.status = 'FULLY_RECEIVED'
+        else:
+            self.status = 'PARTIALLY_RECEIVED'
         
         self.save()
-    
-    @property
-    def is_fully_received(self):
-        """Check if order is fully received"""
-        return self.total_quantity_received >= self.total_quantity_ordered
-    
-    @property
-    def outstanding_quantity(self):
-        """Calculate outstanding quantity"""
-        return self.total_quantity_ordered - self.total_quantity_received
+
+    def cancel(self):
+        """Cancel the purchase order"""
+        if self.status == 'FULLY_RECEIVED':
+            raise ValueError("Cannot cancel a fully received order")
+        
+        self.status = 'CANCELLED'
+        self.cancelled_at = timezone.now()
+        self.save()
+        
+        # Update stock on order quantities
+        for line in self.line_items.all():
+            stock_item = line.stock_item
+            stock_item.quantity_on_order -= line.quantity_outstanding
+            stock_item.save()
 
 
-class PurchaseOrderLineItem(TimeStampedModel):
-    """
-    Line items on purchase order
-    """
+class PurchaseOrderLine(models.Model):
+    """Purchase Order line items"""
     
     purchase_order = models.ForeignKey(
         PurchaseOrder,
         on_delete=models.CASCADE,
         related_name='line_items'
     )
-    line_number = models.PositiveSmallIntegerField(default=1)
+    line_number = models.IntegerField()
     
-    # Stock item
     stock_item = models.ForeignKey(
         'stock_control.StockItem',
         on_delete=models.PROTECT,
-        related_name='po_lines'
-    )
-    
-    # Order details
-    quantity_ordered = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        validators=[MinValueValidator(Decimal('0.01'))],
-        help_text="Quantity ordered"
-    )
-    unit_cost = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        help_text="Cost per unit (quoted price)"
-    )
-    tax_code = models.ForeignKey(
-        TaxCode,
-        on_delete=models.PROTECT,
-        help_text="VAT code"
-    )
-    
-    # Receiving tracking
-    quantity_received = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        help_text="Quantity received so far"
-    )
-    quantity_outstanding = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Still to be received"
-    )
-    
-    # Calculated amounts
-    line_total_exclusive = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Line total (exclusive VAT)"
-    )
-    tax_amount = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="VAT amount"
-    )
-    line_total_inclusive = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Line total (inclusive VAT)"
-    )
-    
-    # Line status
-    is_complete = models.BooleanField(
-        default=False,
-        editable=False,
-        help_text="Fully received"
-    )
-    
-    # Notes
-    notes = models.TextField(blank=True)
-    
-    class Meta:
-        db_table = 'purchase_order_line_items'
-        ordering = ['line_number']
-        unique_together = [['purchase_order', 'line_number']]
-        verbose_name = 'Purchase Order Line Item'
-        verbose_name_plural = 'Purchase Order Line Items'
-    
-    def save(self, *args, **kwargs):
-        # Calculate amounts
-        self.line_total_exclusive = self.quantity_ordered * self.unit_cost
-        self.tax_amount = self.line_total_exclusive * (self.tax_code.rate / 100)
-        self.line_total_inclusive = self.line_total_exclusive + self.tax_amount
-        
-        # Calculate outstanding
-        self.quantity_outstanding = self.quantity_ordered - self.quantity_received
-        self.is_complete = (self.quantity_received >= self.quantity_ordered)
-        
-        super().save(*args, **kwargs)
-    
-    def __str__(self):
-        return f"Line {self.line_number}: {self.stock_item.stock_code} x {self.quantity_ordered}"
-
-
-# ============================================================================
-# BACK ORDER MODEL
-# ============================================================================
-
-class BackOrder(TimeStampedModel):
-    """
-    Back order - items ordered by customers but not in stock
-    """
-    
-    backorder_number = models.CharField(
-        max_length=20,
-        unique=True,
-        help_text="Back order number"
-    )
-    backorder_date = models.DateField()
-    
-    # Customer
-    debtor = models.ForeignKey(
-        'debtors.Debtor',
-        on_delete=models.PROTECT,
-        related_name='back_orders'
-    )
-    
-    # Original sales order reference
-    original_order_number = models.CharField(
-        max_length=50,
-        blank=True,
-        help_text="Original sales order/invoice number"
-    )
-    
-    # Status
-    STATUS_CHOICES = [
-        ('PENDING', 'Pending'),
-        ('ORDERED', 'Ordered from Supplier'),
-        ('PARTIAL', 'Partially Received'),
-        ('READY', 'Ready to Deliver'),
-        ('COMPLETE', 'Delivered to Customer'),
-        ('CANCELLED', 'Cancelled'),
-    ]
-    status = models.CharField(
-        max_length=20,
-        choices=STATUS_CHOICES,
-        default='PENDING'
-    )
-    
-    # Linked purchase order (if created)
-    purchase_order = models.ForeignKey(
-        PurchaseOrder,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='back_orders'
-    )
-    
-    # Totals
-    total_quantity = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False
-    )
-    total_value = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False
-    )
-    
-    # Customer notification
-    customer_notified = models.BooleanField(
-        default=False,
-        help_text="Customer notified of back order"
-    )
-    notification_date = models.DateField(null=True, blank=True)
-    
-    # Expected availability
-    expected_availability_date = models.DateField(
-        null=True,
-        blank=True,
-        help_text="When stock expected"
-    )
-    
-    notes = models.TextField(blank=True)
-    
-    class Meta:
-        db_table = 'back_orders'
-        ordering = ['-backorder_date']
-        indexes = [
-            models.Index(fields=['backorder_number']),
-            models.Index(fields=['debtor']),
-            models.Index(fields=['status']),
-        ]
-        verbose_name = 'Back Order'
-        verbose_name_plural = 'Back Orders'
-    
-    def __str__(self):
-        return f"BO-{self.backorder_number} - {self.debtor.name}"
-    
-    def save(self, *args, **kwargs):
-        if not self.backorder_number:
-            self.backorder_number = self._generate_bo_number()
-        super().save(*args, **kwargs)
-    
-    def _generate_bo_number(self):
-        """Generate next back order number"""
-        last_bo = BackOrder.objects.order_by('-id').first()
-        if last_bo and last_bo.backorder_number:
-            try:
-                num = int(last_bo.backorder_number.split('-')[-1])
-                return f"BO-{num + 1:06d}"
-            except:
-                pass
-        return "BO-000001"
-    
-    def calculate_totals(self):
-        """Calculate totals from line items"""
-        lines = self.line_items.all()
-        self.total_quantity = sum(line.quantity_backordered for line in lines)
-        self.total_value = sum(line.line_value for line in lines)
-        self.save()
-
-
-class BackOrderLineItem(TimeStampedModel):
-    """
-    Line items on back order
-    """
-    
-    back_order = models.ForeignKey(
-        BackOrder,
-        on_delete=models.CASCADE,
-        related_name='line_items'
-    )
-    line_number = models.PositiveSmallIntegerField(default=1)
-    
-    # Stock item
-    stock_item = models.ForeignKey(
-        'stock_control.StockItem',
-        on_delete=models.PROTECT,
-        related_name='backorder_lines'
+        related_name='purchase_order_lines'
     )
     
     # Quantities
-    quantity_backordered = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        validators=[MinValueValidator(Decimal('0.01'))],
-        help_text="Quantity on back order"
-    )
-    quantity_fulfilled = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        help_text="Quantity fulfilled so far"
-    )
-    quantity_outstanding = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Still outstanding"
-    )
+    quantity_ordered = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0.01)])
+    quantity_received = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    quantity_outstanding = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
-    # Pricing (at time of back order)
-    unit_selling_price = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        help_text="Selling price promised to customer"
-    )
-    line_value = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False
-    )
+    # Pricing
+    unit_cost = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    tax_code = models.IntegerField(default=1)  # 1=14%, 2=0%
     
-    # Status
-    is_complete = models.BooleanField(
-        default=False,
-        editable=False
-    )
+    # Line totals (ordered)
+    total_exclusive = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_vat = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_inclusive = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     
-    notes = models.TextField(blank=True)
+    # Outstanding totals
+    outstanding_exclusive = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    outstanding_vat = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    outstanding_inclusive = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     
+    # Stock info at time of order
+    quantity_on_hand_at_order = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    monthly_sales_at_order = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    
+    # Flags
+    is_fully_received = models.BooleanField(default=False)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
     class Meta:
-        db_table = 'back_order_line_items'
+        db_table = 'purchase_order_lines'
         ordering = ['line_number']
-        unique_together = [['back_order', 'line_number']]
-        verbose_name = 'Back Order Line Item'
-        verbose_name_plural = 'Back Order Line Items'
-    
-    def save(self, *args, **kwargs):
-        # Calculate outstanding and value
-        self.quantity_outstanding = self.quantity_backordered - self.quantity_fulfilled
-        self.line_value = self.quantity_backordered * self.unit_selling_price
-        self.is_complete = (self.quantity_fulfilled >= self.quantity_backordered)
-        
-        super().save(*args, **kwargs)
-    
+        unique_together = ['purchase_order', 'line_number']
+        indexes = [
+            models.Index(fields=['stock_item']),
+            models.Index(fields=['is_fully_received']),
+        ]
+
     def __str__(self):
-        return f"Line {self.line_number}: {self.stock_item.stock_code} x {self.quantity_backordered}"
+        return f"PO {self.purchase_order.order_number} - Line {self.line_number}: {self.stock_item.stock_code}"
+
+    def calculate_totals(self):
+        """Calculate line totals"""
+        # Ordered totals
+        self.total_exclusive = self.quantity_ordered * self.unit_cost
+        if self.tax_code == 1:
+            self.total_vat = self.total_exclusive * Decimal('0.14')
+        else:
+            self.total_vat = Decimal('0')
+        self.total_inclusive = self.total_exclusive + self.total_vat
+        
+        # Outstanding totals
+        self.quantity_outstanding = self.quantity_ordered - self.quantity_received
+        self.outstanding_exclusive = self.quantity_outstanding * self.unit_cost
+        if self.tax_code == 1:
+            self.outstanding_vat = self.outstanding_exclusive * Decimal('0.14')
+        else:
+            self.outstanding_vat = Decimal('0')
+        self.outstanding_inclusive = self.outstanding_exclusive + self.outstanding_vat
+        
+        # Check if fully received
+        self.is_fully_received = self.quantity_received >= self.quantity_ordered
+        
+        self.save()
+
+    def receive_stock(self, quantity, actual_cost=None):
+        """
+        Receive stock for this line item
+        
+        Args:
+            quantity: Quantity being received
+            actual_cost: Actual cost if different from ordered cost
+        
+        Returns:
+            dict: Variance information if any
+        """
+        if quantity <= 0:
+            raise ValueError("Quantity must be positive")
+        
+        if self.quantity_received + quantity > self.quantity_ordered:
+            raise ValueError("Cannot receive more than ordered quantity")
+        
+        # Update received quantity
+        self.quantity_received += quantity
+        self.calculate_totals()
+        
+        # Check for variance
+        variance = {}
+        if actual_cost and actual_cost != self.unit_cost:
+            variance['cost_variance'] = {
+                'ordered_cost': float(self.unit_cost),
+                'actual_cost': float(actual_cost),
+                'difference': float(actual_cost - self.unit_cost),
+                'quantity': float(quantity)
+            }
+        
+        if self.is_fully_received and self.quantity_received < self.quantity_ordered:
+            variance['quantity_variance'] = {
+                'ordered': float(self.quantity_ordered),
+                'received': float(self.quantity_received),
+                'short': float(self.quantity_ordered - self.quantity_received)
+            }
+        
+        return variance
+
+
+class PurchaseOrderReceipt(models.Model):
+    """Record of stock receipts against purchase orders"""
+    
+    purchase_order = models.ForeignKey(
+        PurchaseOrder,
+        on_delete=models.PROTECT,
+        related_name='receipts'
+    )
+    receipt_date = models.DateField(default=timezone.now)
+    invoice_number = models.CharField(max_length=50, help_text="Supplier's invoice number")
+    
+    # Link to creditor GRN if integrated
+    creditor_grn = models.ForeignKey(
+        'creditors.GoodsReceivedNote',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='purchase_order_receipts',
+        help_text="Link to Goods Received Note for accounting"
+    )
+    
+    # Totals received in this receipt
+    total_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_value_exclusive = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_value_vat = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_value_inclusive = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    # Variance tracking
+    has_variance = models.BooleanField(default=False)
+    variance_notes = models.TextField(blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'purchase_order_receipts'
+        ordering = ['-receipt_date']
+        indexes = [
+            models.Index(fields=['purchase_order', 'receipt_date']),
+        ]
+
+    def __str__(self):
+        return f"Receipt for PO {self.purchase_order.order_number} - {self.receipt_date}"
+    
+    def calculate_totals(self):
+        """Calculate receipt totals from line items"""
+        lines = self.line_items.all()
+        
+        self.total_quantity = sum(line.quantity_received for line in lines)
+        self.total_value_exclusive = sum(line.line_exclusive for line in lines)
+        self.total_value_vat = sum(line.line_vat for line in lines)
+        self.total_value_inclusive = sum(line.line_inclusive for line in lines)
+        
+        self.save()
+
+
+class PurchaseOrderReceiptLine(models.Model):
+    """Line items for purchase order receipts"""
+    
+    receipt = models.ForeignKey(
+        PurchaseOrderReceipt,
+        on_delete=models.CASCADE,
+        related_name='line_items'
+    )
+    purchase_order_line = models.ForeignKey(
+        PurchaseOrderLine,
+        on_delete=models.PROTECT,
+        related_name='receipt_lines'
+    )
+    
+    quantity_received = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0.01)])
+    actual_unit_cost = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    
+    # Calculated values
+    line_exclusive = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    line_vat = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    line_inclusive = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    # Variance flags
+    has_cost_variance = models.BooleanField(default=False)
+    cost_variance_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'purchase_order_receipt_lines'
+
+    def __str__(self):
+        return f"Receipt {self.receipt.id} - {self.purchase_order_line.stock_item.stock_code}"
+    
+    def calculate_totals(self):
+        """Calculate line totals from quantity and cost"""
+        self.line_exclusive = self.quantity_received * self.actual_unit_cost
+        tax_code = self.purchase_order_line.tax_code
+        
+        if tax_code == 1:
+            self.line_vat = self.line_exclusive * Decimal('0.14')
+        else:
+            self.line_vat = Decimal('0')
+        
+        self.line_inclusive = self.line_exclusive + self.line_vat
+        
+        # Check for cost variance
+        if self.actual_unit_cost != self.purchase_order_line.unit_cost:
+            self.has_cost_variance = True
+            self.cost_variance_amount = (self.actual_unit_cost - self.purchase_order_line.unit_cost) * self.quantity_received
+        
+        self.save()
+
+
+class BackOrder(models.Model):
+    """
+    Back orders created from delivery variances
+    Separate model to track the back order creation process
+    """
+    
+    original_order = models.ForeignKey(
+        PurchaseOrder,
+        on_delete=models.PROTECT,
+        related_name='created_back_orders'
+    )
+    back_order = models.OneToOneField(
+        PurchaseOrder,
+        on_delete=models.CASCADE,
+        related_name='back_order_info'
+    )
+    
+    created_date = models.DateField(default=timezone.now)
+    reason = models.TextField(help_text="Reason for back order (short delivery, etc)")
+    
+    # Original receipt that triggered back order
+    triggering_receipt = models.ForeignKey(
+        PurchaseOrderReceipt,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'back_orders'
+
+    def __str__(self):
+        return f"Back Order PO {self.back_order.order_number} from PO {self.original_order.order_number}"
+
+
+class PurchaseOrderTemplate(models.Model):
+    """
+    Template for recurring purchase orders or pre-configured orders
+    """
+    
+    template_name = models.CharField(max_length=100, unique=True)
+    supplier = models.ForeignKey(
+        'creditors.Creditor',
+        on_delete=models.PROTECT,
+        related_name='po_templates'
+    )
+    description = models.TextField(blank=True)
+    
+    # Default settings
+    default_delivery_days = models.IntegerField(default=7, help_text="Days from order to delivery")
+    pricing_method = models.CharField(max_length=10, choices=PurchaseOrder.PRICING_METHOD_CHOICES, default='COST')
+    
+    is_active = models.BooleanField(default=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'purchase_order_templates'
+        ordering = ['template_name']
+
+    def __str__(self):
+        return f"{self.template_name} - {self.supplier.name}"
+
+    def create_order(self, delivery_date=None):
+        """Create a purchase order from this template"""
+        from datetime import timedelta
+        
+        if not delivery_date:
+            delivery_date = timezone.now().date() + timedelta(days=self.default_delivery_days)
+        
+        order = PurchaseOrder.objects.create(
+            supplier=self.supplier,
+            delivery_date=delivery_date,
+            pricing_method=self.pricing_method,
+            notes=f"Created from template: {self.template_name}"
+        )
+        
+        # Copy template lines
+        for template_line in self.line_items.all():
+            PurchaseOrderLine.objects.create(
+                purchase_order=order,
+                line_number=template_line.line_number,
+                stock_item=template_line.stock_item,
+                quantity_ordered=template_line.default_quantity,
+                unit_cost=template_line.stock_item.cost_price,
+                tax_code=template_line.stock_item.tax_code,
+                quantity_on_hand_at_order=template_line.stock_item.quantity_on_hand,
+                monthly_sales_at_order=template_line.stock_item.sales_mtd_quantity
+            )
+        
+        order.calculate_totals()
+        return order
+
+
+class PurchaseOrderTemplateLine(models.Model):
+    """Line items for purchase order templates"""
+    
+    template = models.ForeignKey(
+        PurchaseOrderTemplate,
+        on_delete=models.CASCADE,
+        related_name='line_items'
+    )
+    line_number = models.IntegerField()
+    stock_item = models.ForeignKey(
+        'stock_control.StockItem',
+        on_delete=models.PROTECT,
+        related_name='po_template_lines'
+    )
+    default_quantity = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(0.01)],
+        help_text="Default quantity to order"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'purchase_order_template_lines'
+        ordering = ['line_number']
+        unique_together = ['template', 'line_number']
+
+    def __str__(self):
+        return f"{self.template.template_name} - Line {self.line_number}"

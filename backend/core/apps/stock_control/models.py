@@ -1,962 +1,421 @@
-"""
-STOCK APP - Django Models
-Complete inventory/stock control models
-
-LOCATION: accpick_project/stock/models.py
-
-Models in this file:
-- StockItem (main inventory item)
-- StockMovement (all stock movements)
-- StockTake (stock count sessions)
-- StockTakeItem (individual items counted)
-- StockAdjustment (manual adjustments)
-- SpecialDeal (temporary pricing)
-- FuturePrice (scheduled price changes)
-- ContractPrice (customer-specific pricing)
-- Bundle (pack/bundle/recipe)
-- BundleIngredient (items in a bundle)
-- ShrinkWrapRelationship (bulk to unit conversion)
-"""
-
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
-from django.contrib.auth import get_user_model
+from django.contrib.auth.models import User
 from decimal import Decimal
-from apps.settings.models import (
-    SalesDepartment,
-    TaxCode,
-    TimeStampedModel,
-    ActiveModel
-)
-
-User = get_user_model()
+from django.utils import timezone
+from apps.creditors.models import Creditor
+from apps.settings.models import TaxCode, SalesDepartment, SalesArea
 
 
-# ============================================================================
-# STOCK ITEM MODEL (Main Inventory)
-# ============================================================================
 
-class StockItem(TimeStampedModel, ActiveModel):
-    """
-    Main stock/inventory item
-    Supports multiple price levels, bundles, and complex pricing
-    """
+class StockItem(models.Model):
+    """Main Stock Item model"""
     
-    # === USER INPUT FIELDS ===
+    stock_code = models.CharField(max_length=13, unique=True, primary_key=True)
+    description = models.CharField(max_length=255)
+    department = models.ForeignKey(SalesDepartment, on_delete=models.PROTECT, related_name='stock_items')
+    supplier = models.ForeignKey(Creditor, on_delete=models.PROTECT, related_name='stock_items', null=True, blank=True)
+    supplier_code = models.CharField(max_length=50, blank=True, null=True, help_text="Supplier's stock code")
     
-    # Identification
-    stock_code = models.CharField(
-        max_length=13,
-        unique=True,
-        help_text="Stock code (1-13 alphanumeric)"
-    )
-    description = models.CharField(max_length=200)
+    # Tax and pricing
+    tax_code = models.ForeignKey(TaxCode, on_delete=models.PROTECT, related_name='stock_items', null=True, blank=True)
+    cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    average_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0, validators=[MinValueValidator(0)])
     
-    # Categorization
-    department = models.ForeignKey(
-        SalesDepartment,
-        on_delete=models.PROTECT,
-        related_name='stock_items',
-        help_text="Sales department/category"
-    )
+    # Selling prices (3 price levels)
+    selling_price_1 = models.DecimalField(max_digits=10, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    selling_price_2 = models.DecimalField(max_digits=10, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    selling_price_3 = models.DecimalField(max_digits=10, decimal_places=2, default=0, validators=[MinValueValidator(0)])
     
-    # Tax
-    tax_code = models.ForeignKey(
-        TaxCode,
-        on_delete=models.PROTECT,
-        related_name='stock_items',
-        help_text="Default tax code (1=14%, 2=0%)"
-    )
-    
-    # Supplier information
-    supplier = models.ForeignKey(
-        'creditors.Creditor',
-        on_delete=models.PROTECT,
-        related_name='supplied_items',
-        help_text="Preferred supplier"
-    )
-    supplier_code = models.CharField(
-        max_length=50,
-        blank=True,
-        help_text="Supplier's stock code"
-    )
+    # Markup percentages for each price level
+    markup_1 = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    markup_2 = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    markup_3 = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     
     # Stock control
-    reorder_quantity = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        help_text="Re-order level (below this = order more)"
-    )
-    default_selling_quantity = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=1,
-        help_text="Default quantity for sales"
-    )
-    allow_negative_quantities = models.BooleanField(
-        default=False,
-        help_text="Allow stock to go negative"
-    )
+    quantity_on_hand = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    quantity_counted = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Used during stock take")
+    reorder_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    quantity_on_order = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
-    # Pricing
-    cost_price = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        help_text="Current cost price (exclusive of VAT)"
-    )
-    
-    # Multiple selling prices
-    markup_percent_1 = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        default=0,
-        validators=[MinValueValidator(0)],
-        help_text="Markup % for selling price 1"
-    )
-    selling_price_1 = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        help_text="Selling price level 1"
-    )
-    
-    markup_percent_2 = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        default=0,
-        validators=[MinValueValidator(0)],
-        help_text="Markup % for selling price 2"
-    )
-    selling_price_2 = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        help_text="Selling price level 2"
-    )
-    
-    markup_percent_3 = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        default=0,
-        validators=[MinValueValidator(0)],
-        help_text="Markup % for selling price 3"
-    )
-    selling_price_3 = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        help_text="Selling price level 3"
-    )
-    
-    # Discount control
-    maximum_discount_percent = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        default=0,
-        validators=[MinValueValidator(0), MaxValueValidator(100)],
-        help_text="Maximum discount allowed at POS"
-    )
-    
-    # === SYSTEM GENERATED FIELDS ===
-    
-    # Quantities
-    quantity_on_hand = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Current stock on hand"
-    )
-    quantity_on_order = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Quantity on purchase orders"
-    )
-    quantity_on_sales_order = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Quantity on sales orders"
-    )
-    quantity_on_layby = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Quantity on laybys"
-    )
-    quantity_rfc = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Quantity on Returns For Credit"
-    )
-    
-    # Cost tracking
-    average_cost_price = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Weighted average cost"
-    )
-    last_cost_price = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Last purchase cost"
-    )
+    # Settings
+    default_selling_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=1)
+    allow_negative_quantities = models.BooleanField(default=True)
+    maximum_discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
     
     # Sales statistics
-    sales_quantity_mtd = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Sales quantity Month-to-Date"
-    )
-    sales_quantity_ytd = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Sales quantity Year-to-Date"
-    )
-    sales_value_mtd = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Sales value Month-to-Date"
-    )
-    sales_value_ytd = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Sales value Year-to-Date"
-    )
-    gross_profit_mtd = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Gross profit Month-to-Date"
-    )
-    gross_profit_ytd = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Gross profit Year-to-Date"
-    )
+    sales_mtd_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    sales_mtd_value = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    sales_ytd_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    sales_ytd_value = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     
     # Dates
-    date_last_purchased = models.DateField(null=True, blank=True, editable=False)
-    date_last_sold = models.DateField(null=True, blank=True, editable=False)
+    date_last_purchased = models.DateField(null=True, blank=True)
+    date_last_sold = models.DateField(null=True, blank=True)
     
+    # Bin location
+    bin_number = models.CharField(max_length=50, blank=True, null=True)
+    
+    # Flags
+    is_active = models.BooleanField(default=True)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.CharField(max_length=255, null=True, blank=True)
+    updated_by = models.CharField(max_length=255, null=True, blank=True)
+
     class Meta:
         db_table = 'stock_items'
         ordering = ['stock_code']
         indexes = [
-            models.Index(fields=['stock_code']),
             models.Index(fields=['description']),
+            models.Index(fields=['supplier', 'supplier_code']),
             models.Index(fields=['department']),
-            models.Index(fields=['supplier']),
-            models.Index(fields=['is_active']),
         ]
-        verbose_name = 'Stock Item'
-        verbose_name_plural = 'Stock Items'
-    
+
     def __str__(self):
         return f"{self.stock_code} - {self.description}"
-    
-    @property
-    def available_quantity(self):
-        """Calculate available quantity (on hand - committed)"""
-        return self.quantity_on_hand - self.quantity_on_sales_order - self.quantity_on_layby
-    
-    @property
-    def stock_value(self):
-        """Current stock value at cost"""
-        return self.quantity_on_hand * self.cost_price
-    
-    @property
-    def needs_reorder(self):
-        """Check if stock needs reordering"""
-        return self.quantity_on_hand <= self.reorder_quantity
-    
-    @property
-    def gross_profit_percent_mtd(self):
-        """Calculate GP% for MTD"""
-        if self.sales_value_mtd > 0:
-            return (self.gross_profit_mtd / self.sales_value_mtd) * 100
+
+    def calculate_markup(self, price_level=1):
+        """Calculate markup percentage for a given price level"""
+        if self.cost_price > 0:
+            selling_price = getattr(self, f'selling_price_{price_level}')
+            return ((selling_price - self.cost_price) / self.cost_price) * 100
         return 0
-    
-    @property
-    def gross_profit_percent_ytd(self):
-        """Calculate GP% for YTD"""
-        if self.sales_value_ytd > 0:
-            return (self.gross_profit_ytd / self.sales_value_ytd) * 100
+
+    def calculate_gross_profit(self, price_level=1):
+        """Calculate gross profit percentage"""
+        selling_price = getattr(self, f'selling_price_{price_level}')
+        if selling_price > 0:
+            return ((selling_price - self.cost_price) / selling_price) * 100
         return 0
 
 
-# ============================================================================
-# STOCK MOVEMENT MODEL
-# ============================================================================
-
-class StockMovement(TimeStampedModel):
-    """
-    Tracks all stock movements (in and out)
-    Complete audit trail of stock changes
-    """
-    
-    MOVEMENT_TYPE_CHOICES = [
-        ('RECEIPT', 'Stock Receipt'),
-        ('RETURN', 'Stock Return to Supplier'),
-        ('SALE', 'Sale'),
-        ('SALE_RETURN', 'Sales Return'),
-        ('ADJUSTMENT', 'Stock Adjustment'),
-        ('STOCKTAKE', 'Stock Take Adjustment'),
-        ('TRANSFER', 'Stock Transfer'),
-        ('BUNDLE_MAKE', 'Bundle Created (ingredients out)'),
-        ('BUNDLE_BREAK', 'Bundle Broken (ingredients in)'),
-        ('SHRINK_ISSUE', 'Shrink Issued from Bulk'),
-        ('LAYBY_IN', 'To Layby'),
-        ('LAYBY_OUT', 'From Layby'),
-        ('RFC_OUT', 'To Returns For Credit'),
-        ('RFC_IN', 'From Returns For Credit'),
-        ('JOB_OUT', 'To Job Card'),
-        ('JOB_IN', 'From Job Card'),
-    ]
-    
-    stock_item = models.ForeignKey(
-        StockItem,
-        on_delete=models.PROTECT,
-        related_name='movements'
-    )
-    
-    movement_type = models.CharField(
-        max_length=20,
-        choices=MOVEMENT_TYPE_CHOICES
-    )
-    movement_date = models.DateField()
-    
-    # Quantities
-    quantity_in = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        help_text="Quantity added to stock"
-    )
-    quantity_out = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        help_text="Quantity removed from stock"
-    )
-    quantity_balance = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        help_text="Stock balance after this movement"
-    )
-    
-    # Value
-    unit_cost = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        help_text="Cost per unit at time of movement"
-    )
-    
-    # Reference to source transaction
-    transaction_type = models.CharField(
-        max_length=50,
-        blank=True,
-        help_text="E.g., Invoice, GRN, StockTake"
-    )
-    transaction_number = models.CharField(
-        max_length=50,
-        blank=True,
-        help_text="Source transaction number"
-    )
-    
-    # Additional details
-    reference = models.CharField(
-        max_length=200,
-        blank=True,
-        help_text="Additional reference"
-    )
-    
-    # User who created this movement
-    created_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='stock_movements_created'
-    )
-    
-    class Meta:
-        db_table = 'stock_movements'
-        ordering = ['-movement_date', '-created_at']
-        indexes = [
-            models.Index(fields=['stock_item', 'movement_date']),
-            models.Index(fields=['movement_type']),
-            models.Index(fields=['transaction_number']),
-        ]
-        verbose_name = 'Stock Movement'
-        verbose_name_plural = 'Stock Movements'
-    
-    def __str__(self):
-        return f"{self.stock_item.stock_code} - {self.movement_type} - {self.movement_date}"
-
-
-# ============================================================================
-# STOCK TAKE MODELS
-# ============================================================================
-
-class StockTake(TimeStampedModel):
-    """
-    Stock take session (header)
-    Groups all items counted in one stock take
-    """
-    
-    stocktake_date = models.DateField()
-    
-    STATUS_CHOICES = [
-        ('IN_PROGRESS', 'In Progress'),
-        ('COMPLETED', 'Completed (not updated)'),
-        ('UPDATED', 'Updated to System'),
-    ]
-    status = models.CharField(
-        max_length=20,
-        choices=STATUS_CHOICES,
-        default='IN_PROGRESS'
-    )
-    
-    # Update options
-    reset_negative_to_zero = models.BooleanField(
-        default=False,
-        help_text="Set negative quantities to zero"
-    )
-    set_uncounted_to_zero = models.BooleanField(
-        default=False,
-        help_text="Set uncounted items to zero"
-    )
-    
-    # For "after trading" update
-    update_from_datetime = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="If updated after trading, from when?"
-    )
-    
-    # Who performed the stock take
-    performed_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='stocktakes_performed'
-    )
-    
-    # When updated to system
-    updated_at = models.DateTimeField(null=True, blank=True)
-    updated_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='stocktakes_updated'
-    )
-    
-    class Meta:
-        db_table = 'stock_takes'
-        ordering = ['-stocktake_date']
-        verbose_name = 'Stock Take'
-        verbose_name_plural = 'Stock Takes'
-    
-    def __str__(self):
-        return f"Stock Take {self.stocktake_date} - {self.status}"
-
-
-class StockTakeItem(models.Model):
-    """
-    Individual item counted in stock take
-    """
-    stocktake = models.ForeignKey(
-        StockTake,
-        on_delete=models.CASCADE,
-        related_name='items'
-    )
-    stock_item = models.ForeignKey(
-        StockItem,
-        on_delete=models.PROTECT,
-        related_name='stocktake_items'
-    )
-    
-    # System quantity before count
-    quantity_system = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        help_text="Quantity on system before count"
-    )
-    
-    # Counted quantity
-    quantity_counted = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        help_text="Quantity counted"
-    )
-    
-    # Variance
-    quantity_variance = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        editable=False,
-        help_text="Difference (counted - system)"
-    )
-    value_variance = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        editable=False,
-        help_text="Variance value"
-    )
-    
-    class Meta:
-        db_table = 'stock_take_items'
-        unique_together = [['stocktake', 'stock_item']]
-        verbose_name = 'Stock Take Item'
-        verbose_name_plural = 'Stock Take Items'
-    
-    def save(self, *args, **kwargs):
-        # Calculate variance
-        self.quantity_variance = self.quantity_counted - self.quantity_system
-        self.value_variance = self.quantity_variance * self.stock_item.cost_price
-        super().save(*args, **kwargs)
-    
-    def __str__(self):
-        return f"{self.stock_item.stock_code} - Counted: {self.quantity_counted}"
-
-
-# ============================================================================
-# STOCK ADJUSTMENT MODEL
-# ============================================================================
-
-class StockAdjustment(TimeStampedModel):
-    """
-    Manual stock adjustments (not from stock take)
-    """
-    
-    ADJUSTMENT_TYPE_CHOICES = [
-        ('INCREASE', 'Increase Stock'),
-        ('DECREASE', 'Decrease Stock'),
-        ('CORRECTION', 'Correction'),
-    ]
-    
-    stock_item = models.ForeignKey(
-        StockItem,
-        on_delete=models.PROTECT,
-        related_name='adjustments'
-    )
-    
-    adjustment_date = models.DateField()
-    adjustment_type = models.CharField(max_length=20, choices=ADJUSTMENT_TYPE_CHOICES)
-    
-    quantity_before = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        editable=False
-    )
-    adjustment_quantity = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        help_text="Quantity to add (+) or remove (-)"
-    )
-    quantity_after = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        editable=False
-    )
-    
-    reason = models.TextField(help_text="Reason for adjustment")
-    reference = models.CharField(max_length=100, blank=True)
-    
-    is_posted = models.BooleanField(default=False)
-    posted_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='adjustments_posted'
-    )
-    
-    class Meta:
-        db_table = 'stock_adjustments'
-        ordering = ['-adjustment_date']
-        verbose_name = 'Stock Adjustment'
-        verbose_name_plural = 'Stock Adjustments'
-    
-    def __str__(self):
-        return f"{self.stock_item.stock_code} - {self.adjustment_type} - {self.adjustment_quantity}"
-
-
-# ============================================================================
-# SPECIAL DEAL MODEL (Temporary Pricing)
-# ============================================================================
-
-class SpecialDeal(TimeStampedModel):
-    """
-    Temporary special pricing for items or departments
-    """
-    
-    DEAL_TYPE_CHOICES = [
-        ('ITEM', 'Specific Item'),
-        ('DEPARTMENT', 'Entire Department'),
-    ]
-    
-    deal_type = models.CharField(max_length=20, choices=DEAL_TYPE_CHOICES)
-    
-    # Link to item or department
-    stock_item = models.ForeignKey(
-        StockItem,
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name='special_deals'
-    )
-    department = models.ForeignKey(
-        SalesDepartment,
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name='special_deals'
-    )
-    
-    # Date range
+class SpecialDeal(models.Model):
+    """Special pricing for specific periods"""
+    stock_item = models.ForeignKey(StockItem, on_delete=models.CASCADE, related_name='special_deals')
+    special_cost_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    special_selling_price_1 = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    special_selling_price_2 = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    special_selling_price_3 = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    special_markup_1 = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    special_markup_2 = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    special_markup_3 = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     start_date = models.DateField()
     end_date = models.DateField()
-    
-    # Special pricing
-    special_cost_price = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        help_text="Special cost price"
-    )
-    
-    special_markup_1 = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        default=0
-    )
-    special_selling_price_1 = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0
-    )
-    
-    special_markup_2 = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        default=0
-    )
-    special_selling_price_2 = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0
-    )
-    
-    special_markup_3 = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        default=0
-    )
-    special_selling_price_3 = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0
-    )
-    
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
     class Meta:
         db_table = 'special_deals'
         ordering = ['-start_date']
-        verbose_name = 'Special Deal'
-        verbose_name_plural = 'Special Deals'
-    
-    @property
-    def is_active(self):
-        """Check if deal is currently active"""
-        from django.utils import timezone
+
+    def __str__(self):
+        return f"Special Deal: {self.stock_item.stock_code} ({self.start_date} to {self.end_date})"
+
+    def is_valid_today(self):
+        """Check if special deal is valid for today"""
         today = timezone.now().date()
-        return self.start_date <= today <= self.end_date
-    
-    def __str__(self):
-        if self.stock_item:
-            return f"Special: {self.stock_item.stock_code} ({self.start_date} to {self.end_date})"
-        return f"Special: Dept {self.department.number} ({self.start_date} to {self.end_date})"
+        return self.start_date <= today <= self.end_date and self.is_active
 
 
-# ============================================================================
-# FUTURE PRICE MODEL
-# ============================================================================
-
-class FuturePrice(TimeStampedModel):
-    """
-    Scheduled future price changes
-    Auto-updates on specified date
-    """
-    stock_item = models.ForeignKey(
-        StockItem,
-        on_delete=models.CASCADE,
-        related_name='future_prices'
-    )
-    
-    effective_date = models.DateField(help_text="Date from which prices are effective")
-    
-    future_cost_price = models.DecimalField(max_digits=15, decimal_places=2)
-    
+class FuturePricing(models.Model):
+    """Future pricing for stock items"""
+    stock_item = models.ForeignKey(StockItem, on_delete=models.CASCADE, related_name='future_prices')
+    future_cost_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    future_selling_price_1 = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    future_selling_price_2 = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    future_selling_price_3 = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     future_markup_1 = models.DecimalField(max_digits=5, decimal_places=2, default=0)
-    future_selling_price_1 = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    
     future_markup_2 = models.DecimalField(max_digits=5, decimal_places=2, default=0)
-    future_selling_price_2 = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    
     future_markup_3 = models.DecimalField(max_digits=5, decimal_places=2, default=0)
-    future_selling_price_3 = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    
-    is_applied = models.BooleanField(
-        default=False,
-        help_text="Has been applied to stock item"
-    )
-    applied_at = models.DateTimeField(null=True, blank=True)
-    
+    effective_date = models.DateField()
+    is_applied = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
     class Meta:
-        db_table = 'future_prices'
+        db_table = 'future_pricing'
         ordering = ['effective_date']
-        verbose_name = 'Future Price'
-        verbose_name_plural = 'Future Prices'
-    
+
     def __str__(self):
-        return f"{self.stock_item.stock_code} - Effective {self.effective_date}"
+        return f"Future Price: {self.stock_item.stock_code} (Effective: {self.effective_date})"
 
 
-# ============================================================================
-# CONTRACT PRICING MODELS
-# ============================================================================
+class ShrinkWrap(models.Model):
+    """Shrink wrap relationships between bulk and individual items"""
+    bulk_pack_code = models.ForeignKey(StockItem, on_delete=models.CASCADE, related_name='shrink_bulks')
+    shrink_pack_code = models.ForeignKey(StockItem, on_delete=models.CASCADE, related_name='shrink_items')
+    quantity_in_bulk = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0.01)])
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
-class ContractPrice(TimeStampedModel):
-    """
-    Customer-specific contract pricing
-    """
-    debtor = models.ForeignKey(
-        'debtors.Debtor',
-        on_delete=models.CASCADE,
-        related_name='contract_prices'
-    )
-    
-    fixed_pricing = models.BooleanField(
-        default=False,
-        help_text="Cannot override at POS"
-    )
-    
     class Meta:
-        db_table = 'contract_prices'
-        verbose_name = 'Contract Price'
-        verbose_name_plural = 'Contract Prices'
-    
+        db_table = 'shrink_wraps'
+        unique_together = ['bulk_pack_code', 'shrink_pack_code']
+
     def __str__(self):
-        return f"Contract for {self.debtor.name}"
+        return f"{self.shrink_pack_code.stock_code} -> {self.bulk_pack_code.stock_code} ({self.quantity_in_bulk})"
 
 
-class ContractPriceItem(models.Model):
-    """
-    Individual items/rules in contract
-    """
-    contract = models.ForeignKey(
-        ContractPrice,
-        on_delete=models.CASCADE,
-        related_name='items'
-    )
-    
-    PRICING_TYPE_CHOICES = [
-        ('FIXED', 'Fixed Price per Item'),
-        ('DEPT_DISCOUNT', 'Department Discount %'),
-        ('DEPT_MARKUP', 'Department Markup %'),
-        ('SUPPLIER_DISCOUNT', 'Supplier Discount %'),
-        ('SUPPLIER_MARKUP', 'Supplier Markup %'),
-        ('SUPPLIER_DEPT_DISCOUNT', 'Supplier+Dept Discount %'),
-    ]
-    
-    pricing_type = models.CharField(max_length=30, choices=PRICING_TYPE_CHOICES)
-    
-    # Links (depending on type)
-    stock_item = models.ForeignKey(
-        StockItem,
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name='contract_price_items'
-    )
-    department = models.ForeignKey(
-        SalesDepartment,
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True
-    )
-    supplier = models.ForeignKey(
-        'creditors.Creditor',
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True
-    )
-    
-    # Pricing
-    contract_price = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        help_text="Fixed price (if FIXED type)"
-    )
-    discount_percent = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        default=0,
-        help_text="Discount % (if discount type)"
-    )
-    markup_percent = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        default=0,
-        help_text="Markup % (if markup type)"
-    )
-    
+class PackBundle(models.Model):
+    """Pack/Bundle finished products"""
+    stock_item = models.OneToOneField(StockItem, on_delete=models.CASCADE, related_name='pack_bundle', primary_key=True)
+    total_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
     class Meta:
-        db_table = 'contract_price_items'
-        verbose_name = 'Contract Price Item'
-        verbose_name_plural = 'Contract Price Items'
+        db_table = 'pack_bundles'
 
-
-# ============================================================================
-# BUNDLE (PACK) MODELS
-# ============================================================================
-
-class Bundle(TimeStampedModel):
-    """
-    Bundle/Pack/Recipe - Finished product made from ingredients
-    """
-    # The bundle IS a stock item
-    stock_item = models.OneToOneField(
-        StockItem,
-        on_delete=models.CASCADE,
-        related_name='bundle',
-        primary_key=True
-    )
-    
-    calculated_cost = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False,
-        help_text="Sum of ingredient costs"
-    )
-    
-    class Meta:
-        db_table = 'bundles'
-        verbose_name = 'Bundle/Pack'
-        verbose_name_plural = 'Bundles/Packs'
-    
     def __str__(self):
-        return f"Bundle: {self.stock_item.stock_code}"
-    
-    def calculate_cost(self):
+        return f"Pack/Bundle: {self.stock_item.stock_code}"
+
+    def calculate_total_cost(self):
         """Calculate total cost from ingredients"""
         total = sum(
-            ingredient.quantity_required * ingredient.ingredient_item.cost_price
+            ingredient.quantity * ingredient.ingredient_stock.cost_price
             for ingredient in self.ingredients.all()
         )
-        self.calculated_cost = total
+        self.total_cost = total
         self.save()
         return total
 
 
-class BundleIngredient(models.Model):
-    """
-    Ingredients in a bundle
-    """
-    bundle = models.ForeignKey(
-        Bundle,
-        on_delete=models.CASCADE,
-        related_name='ingredients'
-    )
-    ingredient_item = models.ForeignKey(
-        StockItem,
-        on_delete=models.PROTECT,
-        related_name='used_in_bundles',
-        help_text="Stock item used as ingredient"
-    )
-    quantity_required = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        help_text="Quantity needed per bundle"
-    )
-    
+class PackBundleIngredient(models.Model):
+    """Ingredients that make up a pack/bundle"""
+    pack_bundle = models.ForeignKey(PackBundle, on_delete=models.CASCADE, related_name='ingredients')
+    ingredient_stock = models.ForeignKey(StockItem, on_delete=models.PROTECT, related_name='used_in_bundles')
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0.01)])
+    cost_at_creation = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
     class Meta:
-        db_table = 'bundle_ingredients'
-        unique_together = [['bundle', 'ingredient_item']]
-        verbose_name = 'Bundle Ingredient'
-        verbose_name_plural = 'Bundle Ingredients'
-    
-    @property
-    def ingredient_cost(self):
-        """Cost of this ingredient"""
-        return self.quantity_required * self.ingredient_item.cost_price
-    
+        db_table = 'pack_bundle_ingredients'
+        unique_together = ['pack_bundle', 'ingredient_stock']
+
     def __str__(self):
-        return f"{self.ingredient_item.stock_code} x {self.quantity_required}"
+        return f"{self.ingredient_stock.stock_code} in {self.pack_bundle.stock_item.stock_code}"
+
+    def get_ingredient_value(self):
+        """Calculate value of this ingredient"""
+        return self.quantity * self.ingredient_stock.cost_price
 
 
-# ============================================================================
-# SHRINK WRAP RELATIONSHIP MODEL
-# ============================================================================
-
-class ShrinkWrapRelationship(TimeStampedModel):
-    """
-    Relationship between bulk pack and shrink/unit
-    E.g., 48-pack box → individual units
-    """
-    shrink_pack = models.ForeignKey(
-        StockItem,
-        on_delete=models.CASCADE,
-        related_name='as_shrink',
-        help_text="The smaller unit/shrink"
-    )
-    bulk_pack = models.ForeignKey(
-        StockItem,
-        on_delete=models.CASCADE,
-        related_name='as_bulk',
-        help_text="The larger bulk pack"
-    )
+class StockTransaction(models.Model):
+    """Stock movement transactions"""
     
-    quantity_in_bulk = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        help_text="How many shrinks in one bulk (e.g., 48)"
-    )
+    TRANSACTION_TYPES = [
+        ('INCOMING', 'Incoming Stock'),
+        ('RETURN', 'Stock Return'),
+        ('SALE', 'Sale'),
+        ('SALE_RETURN', 'Sale Return'),
+        ('ADJUSTMENT', 'Stock Adjustment'),
+        ('STOCK_TAKE', 'Stock Take'),
+        ('MANUFACTURE', 'Manufactured from Bundle'),
+        ('BUNDLE_USE', 'Used in Bundle'),
+        ('BULK_ISSUE', 'Issued from Bulk'),
+        ('LAYBYE_IN', 'Laybye Issue'),
+        ('LAYBYE_OUT', 'Laybye Return'),
+        ('JOB_IN', 'Job Card Issue'),
+        ('JOB_OUT', 'Job Card Return'),
+        ('RFC_IN', 'RFC Issue'),
+        ('RFC_OUT', 'RFC Return'),
+    ]
     
+    transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPES)
+    stock_item = models.ForeignKey(StockItem, on_delete=models.PROTECT, related_name='transactions')
+    transaction_date = models.DateTimeField(default=timezone.now)
+    transaction_number = models.CharField(max_length=50, blank=True, null=True)
+    
+    quantity_in = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    quantity_out = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    quantity_balance = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    
+    unit_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    
+    reference = models.CharField(max_length=255, blank=True, null=True)
+    station_number = models.IntegerField(null=True, blank=True, help_text="Station number for stock take updates")
+    
+    # Audit fields
+    created_by = models.CharField(max_length=255, null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
     class Meta:
-        db_table = 'shrink_wrap_relationships'
-        unique_together = [['shrink_pack', 'bulk_pack']]
-        verbose_name = 'Shrink Wrap Relationship'
-        verbose_name_plural = 'Shrink Wrap Relationships'
-    
+        db_table = 'stock_transactions'
+        ordering = ['-transaction_date', '-id']
+        indexes = [
+            models.Index(fields=['stock_item', 'transaction_date']),
+            models.Index(fields=['transaction_type']),
+            models.Index(fields=['transaction_date']),
+        ]
+
     def __str__(self):
-        return f"{self.bulk_pack.stock_code} → {self.quantity_in_bulk} x {self.shrink_pack.stock_code}"
+        return f"{self.transaction_type} - {self.stock_item.stock_code} - {self.transaction_date}"
+
+
+class StockTake(models.Model):
+    """Stock take sessions"""
+    
+    STATUS_CHOICES = [
+        ('IN_PROGRESS', 'In Progress'),
+        ('COMPLETED', 'Completed'),
+        ('UPDATED', 'Updated'),
+    ]
+    
+    stock_take_date = models.DateField(default=timezone.now)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='IN_PROGRESS')
+    description = models.TextField(blank=True, null=True)
+    
+    # Update options
+    reset_negatives_to_zero = models.BooleanField(default=False)
+    set_uncounted_to_zero = models.BooleanField(default=False)
+    
+    # After trading options
+    is_after_trading = models.BooleanField(default=False)
+    trading_start_date = models.DateTimeField(null=True, blank=True)
+    
+    created_by = models.CharField(max_length=100, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'stock_takes'
+        ordering = ['-stock_take_date']
+
+    def __str__(self):
+        return f"Stock Take - {self.stock_take_date} ({self.status})"
+
+
+class StockTakeItem(models.Model):
+    """Individual items counted in a stock take"""
+    stock_take = models.ForeignKey(StockTake, on_delete=models.CASCADE, related_name='items')
+    stock_item = models.ForeignKey(StockItem, on_delete=models.PROTECT, related_name='stock_take_items')
+    
+    quantity_on_hand = models.DecimalField(max_digits=10, decimal_places=2, help_text="System quantity before count")
+    quantity_counted = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    variance_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    variance_value = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    cost_price_at_count = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    
+    is_counted = models.BooleanField(default=False)
+    count_date = models.DateTimeField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'stock_take_items'
+        unique_together = ['stock_take', 'stock_item']
+        indexes = [
+            models.Index(fields=['stock_take', 'is_counted']),
+        ]
+
+    def __str__(self):
+        return f"{self.stock_item.stock_code} - Count: {self.quantity_counted}"
+
+    def calculate_variance(self):
+        """Calculate variance between counted and system quantity"""
+        self.variance_quantity = self.quantity_counted - self.quantity_on_hand
+        self.variance_value = self.variance_quantity * self.cost_price_at_count
+        self.save()
+
+
+class ContractPricing(models.Model):
+    """Contract pricing for specific debtors"""
+    
+    PRICING_METHOD_CHOICES = [
+        ('ACTUAL', 'Actual Price'),
+        ('COST_MARKUP', 'Cost + Markup%'),
+    ]
+    
+    debtor = models.ForeignKey('debtors.Debtor', on_delete=models.CASCADE, related_name='contract_prices')
+    stock_item = models.ForeignKey(StockItem, on_delete=models.CASCADE, related_name='contract_prices', null=True, blank=True)
+    department = models.ForeignKey(SalesDepartment, on_delete=models.CASCADE, related_name='contract_prices', null=True, blank=True)
+    supplier = models.ForeignKey(Creditor, on_delete=models.CASCADE, related_name='contract_prices', null=True, blank=True)
+    
+    pricing_method = models.CharField(max_length=20, choices=PRICING_METHOD_CHOICES)
+    
+    # For actual price method
+    contract_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    
+    # For cost + markup method
+    markup_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    
+    # For discount methods
+    discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    
+    # Fixed pricing flag
+    is_fixed_pricing = models.BooleanField(default=False, help_text="Prevent POS from changing price")
+    
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'contract_pricing'
+        indexes = [
+            models.Index(fields=['debtor', 'stock_item']),
+            models.Index(fields=['debtor', 'department']),
+            models.Index(fields=['debtor', 'supplier']),
+        ]
+
+    def __str__(self):
+        item_desc = self.stock_item.stock_code if self.stock_item else (
+            self.department.department_name if self.department else 
+            self.supplier.name if self.supplier else "General"
+        )
+        return f"Contract: {self.debtor.account_number} - {item_desc}"
+
+    def get_price(self, stock_item=None):
+        """Calculate contract price based on method"""
+        if self.pricing_method == 'ACTUAL':
+            return self.contract_price
+        elif self.pricing_method == 'COST_MARKUP' and stock_item:
+            return stock_item.cost_price * (1 + self.markup_percent / 100)
+        return None
+
+
+class OneTouchLookupKey(models.Model):
+    """One-touch keyboard shortcuts for stock items at POS"""
+    key_character = models.CharField(max_length=1, unique=True, help_text="Single uppercase letter")
+    stock_item = models.ForeignKey(StockItem, on_delete=models.CASCADE, related_name='lookup_keys')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'one_touch_lookup_keys'
+
+    def __str__(self):
+        return f"{self.key_character} -> {self.stock_item.stock_code}"
+
+
+class StockMonthlyStatistic(models.Model):
+    """Monthly sales statistics for stock items"""
+    stock_item = models.ForeignKey(StockItem, on_delete=models.CASCADE, related_name='monthly_stats')
+    year = models.IntegerField()
+    month = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(12)])
+    
+    quantity_sold = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    value_sold = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    profit_value = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    profit_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'stock_monthly_statistics'
+        unique_together = ['stock_item', 'year', 'month']
+        ordering = ['-year', '-month']
+
+    def __str__(self):
+        return f"{self.stock_item.stock_code} - {self.year}/{self.month}"

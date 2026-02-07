@@ -35,6 +35,7 @@ export default function AuthPage() {
   const [messageType, setMessageType] = useState<'error' | 'success'>('error');
   const router = useRouter();
 
+  // Pre-fetch CSRF token on page load
   useEffect(() => {
     fetchCSRFToken().catch(() => {
       console.log('CSRF token pre-fetch initiated');

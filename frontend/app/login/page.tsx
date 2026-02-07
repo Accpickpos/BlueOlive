@@ -1,10 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { login, fetchCSRFToken } from '@/lib/api';
 import { useAuthContext } from '@/lib/AuthContext';
-import { useEffect } from 'react';
 
 export default function LoginPage() {
   const [subdomain, setSubdomain] = useState('');
@@ -16,6 +15,7 @@ export default function LoginPage() {
   const router = useRouter();
   const { refetch } = useAuthContext();
 
+  // Pre-fetch CSRF token on page load
   useEffect(() => {
     fetchCSRFToken().catch(() => {
       console.log('CSRF token pre-fetch initiated');

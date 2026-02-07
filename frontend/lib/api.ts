@@ -4,12 +4,12 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 const POS_API_BASE = process.env.NEXT_PUBLIC_POS_API_BASE || 'http://localhost:8001';
 
 /**
- * Security Note: Tokens are stored in httpOnly cookies (set by backend)
- * and are NOT accessible to JavaScript. The browser automatically includes
- * them in requests, providing protection against XSS attacks.
+ * Security Note: Cookie-based JWT Authentication
+ * Access tokens are stored in secure httpOnly cookies (set by backend on login)
+ * No Authorization header needed - cookies are sent automatically with withCredentials: true
+ * CSRF tokens are fetched from backend for mutating requests (POST, PUT, PATCH, DELETE)
  * 
- * To check if user is authenticated, make a request to /api/auth/profile/
- * or similar endpoint that returns 401 if not authenticated.
+ * To check if user is authenticated, make a request to /api/auth/profile/ that returns 401 if not authenticated.
  */
 
 export async function isAuthenticated(): Promise<boolean> {
@@ -21,13 +21,37 @@ export async function isAuthenticated(): Promise<boolean> {
   }
 }
 
+// Track if we're currently logging out to suppress unnecessary token refresh attempts
+let isLoggingOut = false;
+
 export function clearAuthData(): void {
-  // Cookies are automatically cleared by the server via logout endpoint
-  // No need to manually clear localStorage
+  // Reset CSRF token cache on logout
+  // Cookies are cleared by backend on logout endpoint
+  csrfToken = null;
+  isLoggingOut = true;
 }
 
 // Store CSRF token globally
 let csrfToken: string | null = null;
+
+// Helper to extract CSRF token from cookies
+function getCsrfTokenFromCookie(): string | null {
+  const name = 'csrftoken';
+  let cookieValue = null;
+  
+  if (typeof document !== 'undefined' && document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let cookie of cookies) {
+      cookie = cookie.trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  
+  return cookieValue;
+}
 
 // Function to get CSRF token from backend
 export async function fetchCSRFToken(): Promise<string> {
@@ -59,35 +83,53 @@ export async function fetchCSRFToken(): Promise<string> {
   return '';
 }
 
-// Helper to extract CSRF token from cookies
-function getCsrfTokenFromCookie(): string | null {
-  const name = 'csrftoken';
-  let cookieValue = null;
-  
-  if (document.cookie && document.cookie !== '') {
-    const cookies = document.cookie.split(';');
-    for (let cookie of cookies) {
-      cookie = cookie.trim();
-      if (cookie.substring(0, name.length + 1) === (name + '=')) {
-        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-        break;
-      }
-    }
-  }
-  
-  return cookieValue;
-}
-
-const api: AxiosInstance = axios.create({
+export const api: AxiosInstance = axios.create({
   baseURL: API_BASE,
   withCredentials: true, // Include cookies in cross-origin requests
+  timeout: 60000, // 60 second timeout
 });
 
-// Add CSRF token to headers for all requests
+// Track if we're currently refreshing token to avoid infinite loops
+let isRefreshing = false;
+let failedQueue: any[] = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  
+  isRefreshing = false;
+  failedQueue = [];
+};
+
+// Endpoints that don't require JWT authentication (public endpoints)
+const PUBLIC_ENDPOINTS = ['/api/auth/login/', '/api/auth/signup/', '/api/auth/csrf/'];
+
+function isPublicEndpoint(url: string | undefined): boolean {
+  if (!url) return false;
+  return PUBLIC_ENDPOINTS.some(endpoint => url.includes(endpoint));
+}
+
+// Add CSRF token for mutating requests and tenant header
 api.interceptors.request.use(async (config) => {
-  // Only add CSRF token for non-GET requests
+  // Cookies are sent automatically with withCredentials: true
+  // No need for Authorization header - httpOnly cookie handles authentication
+  
+  // Add tenant header if available
+  const tenant = typeof window !== 'undefined' ? localStorage.getItem('tenant') : null;
+  if (tenant) {
+    config.headers['X-Tenant'] = tenant;
+  } else {
+    // Use default tenant if no tenant in localStorage
+    config.headers['X-Tenant'] = 'dev';
+  }
+  
+  // Add CSRF token for mutating requests (POST, PUT, PATCH, DELETE)
   if (config.method && ['post', 'put', 'patch', 'delete'].includes(config.method.toLowerCase())) {
-    // Try to get CSRF token from cookie first
     let token = getCsrfTokenFromCookie();
     
     // If not found in cookie, fetch it
@@ -103,13 +145,75 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
+// Handle response errors and token refresh
+api.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  async (error) => {
+    const originalRequest = error.config;
+    const requestUrl = originalRequest?.url || '';
+    
+    // These endpoints return 401 as valid state (checking auth status)
+    // Don't attempt token refresh for these
+    const statusCheckEndpoints = ['/api/auth/profile/'];
+    const isStatusCheck = statusCheckEndpoints.some(endpoint => requestUrl.includes(endpoint));
+    
+    // Handle 401 Unauthorized - attempt to refresh token via httpOnly cookies
+    // Skip refresh if:
+    // 1. We're in the middle of logout (expected 401)
+    // 2. We're just checking authentication status (expected 401)
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isLoggingOut && !isStatusCheck) {
+      originalRequest._retry = true;
+      
+      if (isRefreshing) {
+        // Queue the request while token is being refreshed
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then(() => {
+          // Retry with refreshed cookies
+          return api(originalRequest);
+        });
+      }
+      
+      isRefreshing = true;
+      
+      try {
+        // Call refresh endpoint to refresh httpOnly cookies
+        await axios.post(`${API_BASE}/api/auth/token/refresh/`, {}, {
+          withCredentials: true,
+        });
+        
+        processQueue(null);
+        return api(originalRequest);
+      } catch (err) {
+        processQueue(err);
+        clearAuthData();
+        return Promise.reject(err);
+      }
+    }
+    
+    // Suppress error logging for expected auth status check 401s
+    if (error.response?.status === 401 && isStatusCheck) {
+      // Mark error to suppress console output
+      error.silent = true;
+    }
+    
+    return Promise.reject(error);
+  }
+);
+
 export async function apiRequest(endpoint: string, options: any = {}): Promise<AxiosResponse> {
-  const { method = 'GET', headers, body, ...rest } = options;
+  const { method = 'GET', headers = {}, body, ...rest } = options;
+  
   return api({
     url: endpoint,
     method,
-    headers,
-    data: body,
+    data: body || undefined,
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
     ...rest,
   });
 }
@@ -121,8 +225,10 @@ export async function login(tenant_slug: string, username: string, password: str
     tenant_slug,
   });
 
-  // Tokens are set in httpOnly cookies by the backend
-  // Frontend just stores user info if needed
+  // Backend returns user object, tokens are in httpOnly cookies set by the server
+  // Reset CSRF token cache after successful login
+  csrfToken = null;
+  
   return response;
 }
 
@@ -137,29 +243,44 @@ export async function signup(signupData: {
   subdomain: string;
 }): Promise<AxiosResponse> {
   const response = await api.post('/api/auth/signup/', signupData);
-  // Tokens are set in httpOnly cookies by the backend
+  
+  // Backend returns user object, tokens are in httpOnly cookies set by the server
+  // Reset CSRF token cache after successful signup
+  csrfToken = null;
+  
   return response;
 }
 
 export async function logout(): Promise<AxiosResponse> {
   try {
-    console.log('Calling logout endpoint...');
     const response = await api.post('/api/auth/logout/');
-    console.log('Logout successful:', response.data);
-    // Cookies are automatically cleared by the server
+    // Clear CSRF token cache and other auth data
+    clearAuthData();
     return response;
   } catch (error) {
-    console.error('Logout error:', error);
-    // Still consider it a success if we get a 4xx or 5xx response
-    // since the important thing is clearing cookies
+    // Still clear auth data even if logout endpoint fails
+    clearAuthData();
     throw error;
+  } finally {
+    // Reset logout flag after a brief delay to allow pending 401 responses to complete
+    setTimeout(() => {
+      isLoggingOut = false;
+    }, 100);
   }
 }
 
 export async function refreshToken(): Promise<AxiosResponse> {
-  // Refresh token is sent via httpOnly cookie automatically
-  const response = await api.post('/api/auth/token/refresh/');
-  return response;
+  // With httpOnly cookies, token refresh is handled automatically by the interceptor
+  // This function is kept for API compatibility but is rarely needed
+  try {
+    const response = await axios.post(`${API_BASE}/api/auth/token/refresh/`, {}, {
+      withCredentials: true,
+    });
+    return response;
+  } catch (error) {
+    clearAuthData();
+    throw error;
+  }
 }
 
 export async function getCurrentUser(): Promise<any> {
@@ -174,12 +295,20 @@ export async function getCurrentTenant(): Promise<any> {
 
 export async function getUsers(): Promise<any[]> {
   const res = await apiRequest('/api/users/');
-  return res.data;
+  // Handle both array and paginated responses
+  if (Array.isArray(res.data)) {
+    return res.data;
+  }
+  return res.data.results || [];
 }
 
 export async function getShops(): Promise<any[]> {
   const res = await apiRequest('/api/shops/');
-  return res.data;
+  // Handle both array and paginated responses
+  if (Array.isArray(res.data)) {
+    return res.data;
+  }
+  return res.data.results || [];
 }
 
 export async function createUser(userData: any): Promise<any> {
@@ -245,6 +374,45 @@ export async function createTenant(tenantData: any): Promise<AxiosResponse> {
 }
 
 // ========================================
+// Supplier/Creditors API
+// ========================================
+
+export async function getSuppliers(): Promise<any[]> {
+  const res = await apiRequest('/api/creditors/suppliers/');
+  if (Array.isArray(res.data)) {
+    return res.data;
+  }
+  return res.data.results || [];
+}
+
+export async function getSupplier(id: number): Promise<any> {
+  const res = await apiRequest(`/api/creditors/suppliers/${id}/`);
+  return res.data;
+}
+
+export async function createSupplier(supplierData: any): Promise<any> {
+  const res = await apiRequest('/api/creditors/suppliers/', {
+    method: 'POST',
+    data: supplierData,
+  });
+  return res.data;
+}
+
+export async function updateSupplier(id: number, supplierData: any): Promise<any> {
+  const res = await apiRequest(`/api/creditors/suppliers/${id}/`, {
+    method: 'PATCH',
+    data: supplierData,
+  });
+  return res.data;
+}
+
+export async function deleteSupplier(id: number): Promise<void> {
+  await apiRequest(`/api/creditors/suppliers/${id}/`, {
+    method: 'DELETE',
+  });
+}
+
+// ========================================
 // POS API Integration (FastAPI)
 // ========================================
 
@@ -252,6 +420,34 @@ const posApi: AxiosInstance = axios.create({
   baseURL: POS_API_BASE,
   withCredentials: true,
 });
+
+// Cookies are sent automatically with withCredentials: true
+// No need for Authorization header - httpOnly cookie handles authentication
+
+// Add token refresh handling to POS API response errors
+posApi.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    
+    // Handle 401 Unauthorized on POS API (same as main API)
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+      originalRequest._retry = true;
+      
+      try {
+        // Refresh token via httpOnly cookies
+        await axios.post(`${API_BASE}/api/auth/token/refresh/`, {}, {
+          withCredentials: true,
+        });
+        return posApi(originalRequest);
+      } catch (err) {
+        return Promise.reject(err);
+      }
+    }
+    
+    return Promise.reject(error);
+  }
+);
 
 // Invoice endpoints
 export async function createInvoice(invoiceData: any): Promise<any> {

@@ -84,6 +84,16 @@ class TenantViewSet(viewsets.ModelViewSet):
         else:  # list, retrieve
             return [permissions.IsAuthenticated]
 
+    def get_serializer_class(self):
+        """
+        Use TenantSerializer for creation with password validation.
+        Use TenantListSerializer for read operations (no password field).
+        """
+        from tenancy.serializers import TenantListSerializer
+        if self.action in ['create', 'update', 'partial_update']:
+            return TenantSerializer  # Include password field for creation/update
+        return TenantListSerializer  # Exclude password for read operations
+
     # perform_create removed since serializer.create handles user creation
 
 
@@ -98,7 +108,8 @@ class ShopViewSet(viewsets.ModelViewSet):
         """
         tenant = get_current_tenant()
         if tenant:
-            return Shop.objects.filter(tenant=tenant)
+            # Query from public database, not tenant database
+            return Shop.objects.using('default').filter(tenant=tenant)
         return Shop.objects.none()
     
     def get_permissions(self):
@@ -114,6 +125,14 @@ class ShopViewSet(viewsets.ModelViewSet):
             return [IsAdmin()]
         else:
             return [IsTenantMember()]
+
+    def get_serializer_class(self):
+        """
+        Use ShopSerializer for all operations.
+        ShopSerializer is lightweight for list/retrieve and comprehensive for create/update.
+        """
+        # ShopSerializer works for all actions - no need for separate serializers
+        return ShopSerializer
 
 
 # ============================================================================

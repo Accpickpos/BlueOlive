@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { getUsers, updateUser, deleteUser } from '@/lib/api';
+import { extractErrorMessage } from '@/lib/utils';
 import { Edit2, Trash2, Plus } from 'lucide-react';
 import AddUserModal from './AddUserModal';
 import EditUserModal from './EditUserModal';
@@ -41,7 +42,7 @@ export default function UsersListPanel({ refreshKey }: UsersListPanelProps) {
       const usersList = await getUsers();
       setUsers(usersList);
     } catch (err: any) {
-      setError('Failed to load users');
+      setError(extractErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -55,7 +56,7 @@ export default function UsersListPanel({ refreshKey }: UsersListPanelProps) {
       await deleteUser(id);
       setUsers(users.filter((u) => u.id !== id));
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to delete user');
+      setError(extractErrorMessage(err));
     } finally {
       setDeleting(null);
     }

@@ -10,17 +10,16 @@ LOCATION: accpick_project/settings/models.py
 PURPOSE: 
 This app provides global reference data used by ALL other apps:
 - Sales Departments (product categories)
-- Sales Areas (salesmen/territories)
+- Sales Areas (salesmen/user creating sales transactions or debtors,creditors etc)
 - Income Categories (cash book income types)
 - Expense Categories (expense types)
 - Tax Codes (VAT rates)
 - Payment Methods
 - Credit Terms
-- System Configuration (global settings)
-
+- System Configuration (global settings like address details, business's vat number, etc note These details appear on all Point-of-Sale documents where blank)
 DEPENDS ON: Nothing - this is the foundation
 
-Models in this file (10 + 2 abstract):
+Models in this file (11 + 2 abstract):
 - TimeStampedModel (abstract)
 - ActiveModel (abstract)
 - SalesDepartment
@@ -28,6 +27,7 @@ Models in this file (10 + 2 abstract):
 - IncomeCategory
 - ExpenseCategory
 - TaxCode
+- CostingCategory
 - PaymentMethod
 - CreditTerms
 - SystemConfiguration
@@ -37,6 +37,7 @@ Models in this file (10 + 2 abstract):
 
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from decimal import Decimal
 
@@ -207,7 +208,6 @@ class SalesArea(TimeStampedModel, ActiveModel):
     )
     name = models.CharField(
         max_length=100,
-        unique=True,
         help_text="Salesman name or area name"
     )
     
@@ -477,6 +477,129 @@ class TaxCode(TimeStampedModel, ActiveModel):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# COSTING CATEGORY MODEL
+# ═══════════════════════════════════════════════════════════════════════════
+
+class CostingCategory(TimeStampedModel, ActiveModel):
+    """
+    Costing categories for system costing method settings.
+    
+    Costing Method for Stock and Gross Profit Calculations:
+        A = Average Cost
+        L = Last Cost
+    
+    Pricing of Goods and Services:
+        I = Inclusive of VAT
+        E = Exclusive of VAT
+    """
+    # === COSTING METHOD ===
+    COSTING_METHOD_CHOICES = [
+        ('A', 'Average Cost'),
+        ('L', 'Last Cost'),
+    ]
+    
+    # === PRICING METHOD ===
+    PRICING_METHOD_CHOICES = [
+        ('I', 'Inclusive of VAT'),
+        ('E', 'Exclusive of VAT'),
+    ]
+    
+    # === FIELDS ===
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        help_text="Descriptive name for the costing category"
+    )
+    costing_method = models.CharField(
+        max_length=1,
+        choices=COSTING_METHOD_CHOICES,
+        default='A',
+        help_text="Method for calculating stock cost and gross profit"
+    )
+    pricing_method = models.CharField(
+        max_length=1,
+        choices=PRICING_METHOD_CHOICES,
+        default='E',
+        help_text="VAT pricing method for goods and services"
+    )
+    description = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Optional description of this costing category"
+    )
+    
+    class Meta:
+        db_table = 'costing_categories'
+        verbose_name = "Costing Category"
+        verbose_name_plural = "Costing Categories"
+        ordering = ['name']
+        indexes = [
+            models.Index(fields=['costing_method']),
+            models.Index(fields=['pricing_method']),
+            models.Index(fields=['costing_method', 'pricing_method']),
+            models.Index(fields=['is_active']),
+        ]
+    
+    def __str__(self):
+        return self.name
+    
+    # === PROPERTIES ===
+    @property
+    def uses_average_cost(self):
+        """Returns True if using Average Cost method"""
+        return self.costing_method == 'A'
+    
+    @property
+    def uses_last_cost(self):
+        """Returns True if using Last Cost method"""
+        return self.costing_method == 'L'
+    
+    @property
+    def is_vat_inclusive(self):
+        """Returns True if pricing is VAT inclusive"""
+        return self.pricing_method == 'I'
+    
+    @property
+    def is_vat_exclusive(self):
+        """Returns True if pricing is VAT exclusive"""
+        return self.pricing_method == 'E'
+    
+    # === METHODS ===
+    def get_methods_display(self):
+        """Returns formatted display of both methods"""
+        return f"{self.get_costing_method_display()} | {self.get_pricing_method_display()}"
+    
+    def clean(self):
+        """Custom validation"""
+        super().clean()
+        
+        # Validate costing method
+        if self.costing_method not in dict(self.COSTING_METHOD_CHOICES):
+            raise ValidationError({
+                'costing_method': 'Invalid costing method selected.'
+            })
+        
+        # Validate pricing method
+        if self.pricing_method not in dict(self.PRICING_METHOD_CHOICES):
+            raise ValidationError({
+                'pricing_method': 'Invalid pricing method selected.'
+            })
+        
+        # Validate name
+        if self.name:
+            self.name = self.name.strip()
+            if not self.name:
+                raise ValidationError({
+                    'name': 'Name cannot be empty or only whitespace.'
+                })
+    
+    def save(self, *args, **kwargs):
+        """Override save to ensure clean is called"""
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # PAYMENT METHOD MODEL
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -567,19 +690,16 @@ class SystemConfiguration(TimeStampedModel):
     """
     
     # === COMPANY INFORMATION ===
-    company_name = models.CharField(
-        max_length=200,
-        help_text="Company name"
-    )
-    company_address = models.TextField(blank=True)
-    company_phone = models.CharField(max_length=20, blank=True)
-    company_email = models.EmailField(blank=True)
-    company_vat_number = models.CharField(
+    # Note: Tenant and Shop context are implicit in the schema; no FK references needed
+    shop_address = models.TextField(blank=True, help_text="Shop address")
+    shop_phone = models.CharField(max_length=20, blank=True)
+    shop_email = models.EmailField(blank=True)
+    shop_vat_number = models.CharField(
         max_length=50,
         blank=True,
         help_text="VAT registration number"
     )
-    company_registration_number = models.CharField(
+    shop_registration_number = models.CharField(
         max_length=50,
         blank=True,
         help_text="Company registration number"
@@ -655,7 +775,7 @@ class SystemConfiguration(TimeStampedModel):
         verbose_name_plural = 'System Configuration'
     
     def __str__(self):
-        return f"System Config - {self.company_name}"
+        return "System Configuration"
     
     def save(self, *args, **kwargs):
         # Ensure only one instance exists
