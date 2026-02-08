@@ -72,6 +72,7 @@ TENANT_APPS = [
     'apps.stock_control',
     'apps.purchase_orders',
     'apps.settings',
+    'apps.pos',
 ]
 
 # Django requires INSTALLED_APPS to know which apps are available
@@ -87,6 +88,7 @@ SHOP_APP_LABELS = [
     'stock_control',
     'purchase_orders',
     'settings',
+    'pos',
 ]
 
 # For the database router: specify which app labels are tenant-specific
@@ -169,6 +171,8 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.FormParser',
         'rest_framework.parsers.MultiPartParser',
     ),
+    'DEFAULT_PAGINATION_CLASS': 'core.pagination.CustomPageNumberPagination',
+    'PAGE_SIZE': 10,
     'DEFAULT_THROTTLE_CLASSES': (
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
@@ -192,6 +196,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'tenancy.middleware.TenantMiddleware',  # Tenant middleware should be after auth
+    'tenancy.schema_middleware.SchemaMiddleware',  # Set PostgreSQL search_path for shop schema
 ]
 
 DEFAULT_TENANT_SLUG = 'dev'
@@ -265,26 +270,24 @@ DATABASES = {
 DATABASE_ROUTERS = ["tenancy.db_router.TenantDatabaseRouter"]
 
 # Caching Configuration (for tenant/shop lookups)
-# Development: In-memory cache
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'blueolive-cache',
+# Use Redis for production, in-memory cache for development
+if os.environ.get('CACHE_BACKEND') == 'redis':
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379/1'),
+            'KEY_PREFIX': 'blueolive',
+            'TIMEOUT': int(os.environ.get('CACHE_TIMEOUT', '300')),
+        }
     }
-}
-
-# Production: Use Redis (uncomment and configure)
-# CACHES = {
-#     'default': {
-#         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-#         'LOCATION': 'redis://127.0.0.1:6379/1',
-#         'OPTIONS': {
-#             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-#         },
-#         'KEY_PREFIX': 'blueolive',
-#         'TIMEOUT': 300,
-#     }
-# }
+else:
+    # Development: In-memory cache
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'blueolive-cache',
+        }
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -333,13 +336,20 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Logging
+# Logging - Environment-configurable
+DEFAULT_LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO' if not DEBUG else 'DEBUG')
+TENANCY_LOG_LEVEL = os.environ.get('TENANCY_LOG_LEVEL', 'DEBUG' if not DEBUG else 'DEBUG')
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'formatters': {
         'verbose': {
             'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
             'style': '{',
         },
     },
@@ -351,17 +361,17 @@ LOGGING = {
     },
     'root': {
         'handlers': ['console'],
-        'level': 'INFO',
+        'level': DEFAULT_LOG_LEVEL,
     },
     'loggers': {
         'django': {
             'handlers': ['console'],
-            'level': 'INFO',
+            'level': DEFAULT_LOG_LEVEL,
             'propagate': False,
         },
         'tenancy': {
             'handlers': ['console'],
-            'level': 'DEBUG',
+            'level': TENANCY_LOG_LEVEL,
             'propagate': False,
         },
     },

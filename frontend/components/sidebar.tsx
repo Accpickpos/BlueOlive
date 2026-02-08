@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import Image from "next/image";
 import {
   Home,
   FileText,
@@ -92,6 +91,7 @@ const menuConfig = [
           { type: "link", name: "Reports", href: "/dashboard/admin/purchase_orders/reports", icon: BarChart },
         ],
       },
+      { type: "link", name: "Settings", href: "/dashboard/admin/settings", icon: UserCog },
     ],
   },
 
@@ -117,7 +117,6 @@ const menuConfig = [
 
   { type: "link", name: "Expenses", href: "/dashboard/expenses", icon: DollarSign },
   { type: "link", name: "Reports", href: "/dashboard/reports", icon: BarChart },
-  { type: "link", name: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
 export default function Sidebar() {
@@ -208,8 +207,11 @@ export default function Sidebar() {
       {/* ========= SITE LOGO ========= */}
       <div className="flex items-center justify-center mb-6">
         <Link href="/" className="flex items-center gap-2">
-          <Image src="/logo.png" alt="Site Logo" width={40} height={40} className="rounded-lg" />
-          <span className="text-lg font-bold">MyApp</span>
+          {/* Logo placeholder - replace with actual logo.png when available */}
+          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-lg">
+            BO
+          </div>
+          <span className="text-lg font-bold">BlueOlive</span>
         </Link>
       </div>
 

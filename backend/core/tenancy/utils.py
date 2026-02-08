@@ -10,6 +10,9 @@ def register_tenant_connection(tenant):
     """
     Register tenant database connection using credentials from Django settings.
     This ensures all tenants use the same PostgreSQL credentials as the main database.
+    
+    CRITICAL: We set search_path=public at the connection level so that ALL queries
+    (including migrations) default to the public schema, not the dangerous pg_temp schema.
     """
     alias = tenant.db_alias
     # Use credentials from settings, not from tenant object
@@ -24,8 +27,10 @@ def register_tenant_connection(tenant):
         "HOST": tenant.db_host,
         "PORT": tenant.db_port,
         "CONN_MAX_AGE": 60,  # tune as needed
+        # CRITICAL: Set options so PostgreSQL sets search_path BEFORE running any queries
+        # This is applied at the connection level by psycopg2 before Django uses the connection
         "OPTIONS": {
-            'options': '-c search_path=public'
+            'options': '-c search_path=public -c statement_timeout=0'
         },
         "TIME_ZONE": settings.TIME_ZONE,
         "AUTOCOMMIT": True,

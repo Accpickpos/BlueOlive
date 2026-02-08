@@ -154,6 +154,47 @@ class TenantSerializer(serializers.ModelSerializer):
         return data
 
 
+class TenantListSerializer(serializers.ModelSerializer):
+    """
+    Read-only serializer for Tenant model.
+    Used for list and retrieve operations (excludes password field).
+    """
+    shops = serializers.SerializerMethodField()
+    user_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Tenant
+        fields = ['id', 'name', 'phone', 'email', 'slug', 'subdomain',
+                  'db_name', 'created_at', 'shops', 'user_count']
+        read_only_fields = ['id', 'slug', 'subdomain', 'db_name', 'created_at']
+
+    def get_shops(self, obj):
+        """
+        Get shops for this tenant with basic info.
+        """
+        shops = obj.shops.all()
+        return [
+            {
+                'id': shop.id,
+                'name': shop.name,
+                'subdomain': shop.subdomain,
+                'is_head_office': shop.is_head_office,
+            }
+            for shop in shops
+        ]
+
+    def get_user_count(self, obj):
+        """
+        Get count of users in this tenant.
+        """
+        try:
+            from tenancy.utils import register_tenant_connection
+            register_tenant_connection(obj)
+            return ShopUser.objects.using(obj.db_alias).filter(tenant_id=obj.id).count()
+        except:
+            return 0
+
+
 class ShopSerializer(serializers.ModelSerializer):
     """
     Serializer for Shop model with automatic schema setup.

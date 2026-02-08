@@ -4,6 +4,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework import viewsets
 from rest_framework.throttling import AnonRateThrottle
 from django.utils.decorators import method_decorator
@@ -205,6 +206,75 @@ class ProfileView(APIView):
         })
 
 
+class CookieTokenRefreshView(TokenRefreshView):
+    """
+    Custom token refresh view that reads refresh token from httpOnly cookie
+    and returns new access token in httpOnly cookie.
+    
+    Also supports JSON body refresh tokens for backward compatibility.
+    """
+    
+    def post(self, request, *args, **kwargs):
+        try:
+            # First, check if refresh token is in request body (JSON)
+            refresh_token = request.data.get('refresh')
+            
+            # If not in body, try to get from httpOnly cookie
+            if not refresh_token:
+                refresh_token = request.COOKIES.get('refresh_token')
+                if not refresh_token:
+                    logger.warning("No refresh token found in request body or cookies")
+                    raise AuthenticationFailed("No refresh token provided")
+            
+            logger.info(f"Attempting to refresh token for user")
+            
+            # Use SimpleJWT's refresh token validation
+            try:
+                refresh = RefreshToken(refresh_token)
+                access_token = refresh.access_token
+            except TokenError as e:
+                logger.error(f"Token refresh failed: {str(e)}")
+                raise AuthenticationFailed(f"Invalid or expired refresh token: {str(e)}")
+            
+            # Return tokens
+            response = Response({
+                'access': str(access_token),
+                'refresh': str(refresh),
+            })
+            
+            # Set access token in httpOnly cookie
+            response.set_cookie(
+                'access_token',
+                str(access_token),
+                max_age=3600,  # 1 hour (same as login)
+                httponly=True,
+                secure=False,  # Set to True in production with HTTPS
+                samesite='Lax',
+                path='/',
+            )
+            
+            # Optionally set refresh token in cookie (depends on security preference)
+            # Some backends prefer to only refresh via cookie input and return access via cookie
+            response.set_cookie(
+                'refresh_token',
+                str(refresh),
+                max_age=604800,  # 7 days (same as login)
+                httponly=True,
+                secure=False,  # Set to True in production with HTTPS
+                samesite='Lax',
+                path='/',
+            )
+            
+            logger.info("✓ Token successfully refreshed")
+            return response
+            
+        except AuthenticationFailed:
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during token refresh: {str(e)}")
+            raise AuthenticationFailed(f"Token refresh failed: {str(e)}")
+
+
 class ShopUserViewSet(viewsets.ModelViewSet):
     serializer_class = ShopUserSerializer
     permission_classes = [IsAuthenticated]
@@ -227,6 +297,13 @@ class ShopUserViewSet(viewsets.ModelViewSet):
             return [IsAdmin()]
         else:  # list, retrieve
             return [IsTenantMember()]
+
+    def get_serializer_class(self):
+        """Use ShopUserCreateSerializer for creation with stricter validation"""
+        from shop_users.serializers import ShopUserCreateSerializer
+        if self.action == 'create':
+            return ShopUserCreateSerializer
+        return ShopUserSerializer
 
     def get_queryset(self):
         from tenancy.permissions import IsTenantMember
@@ -469,6 +546,28 @@ class SignupView(APIView):
             register_tenant_connection(tenant)
             set_current_tenant(tenant)
 
+            # Run migrations on tenant database
+            try:
+                from tenancy.shop_manager import migrate_tenant_database
+                logger.info(f"Running migrations on tenant database: {tenant_db_name}")
+                migrate_tenant_database(tenant)
+                logger.info(f"✓ Migrations completed for tenant: {tenant.name}")
+            except Exception as e:
+                logger.error(f"Failed to run migrations on tenant database: {str(e)}")
+                tenant.delete()
+                return Response({'detail': f'Failed to run migrations: {str(e)}'}, status=500)
+
+            # Ensure search_path is set for user creation
+            try:
+                from django.db import connections
+                conn = connections[tenant.db_alias]
+                conn.close()
+                conn.connect()
+                with conn.cursor() as cur:
+                    cur.execute('SET search_path TO public')
+            except Exception as e:
+                logger.error(f"Failed to set search_path: {str(e)}")
+
             # Create user in tenant database
             try:
                 user = ShopUser(
@@ -494,7 +593,38 @@ class SignupView(APIView):
                 return Response({'detail': f'Failed to create user: {error_msg}'}, status=500)
 
             # Create tokens
-            refresh = RefreshToken.for_user(user)
+            # CRITICAL: Ensure current_tenant is set for token creation
+            # The database router uses get_current_tenant() to route OutstandingToken.objects.create()
+            # to the correct database
+            if get_current_tenant() != tenant:
+                logger.warning(f"Current tenant context mismatch before token creation! Setting tenant context...")
+                set_current_tenant(tenant)
+            
+            logger.info(f"Creating refresh token for user {user.id} in tenant {tenant.name}")
+            try:
+                # Create refresh token (this internally creates OutstandingToken)
+                # The database router will use the current tenant context to route OutstandingToken
+                # creation to the correct database (tenant.db_alias)
+                refresh = RefreshToken.for_user(user)
+                logger.info(f"✓ Refresh token created successfully")
+            except Exception as e:
+                logger.error(f"Failed to create refresh token: {str(e)}")
+                logger.warning(f"This likely means token_blacklist tables weren't created. Attempting fallback creation...")
+                
+                # Fallback: Try to create the token tables manually
+                try:
+                    from tenancy.shop_manager import verify_and_create_missing_tables
+                    verify_and_create_missing_tables(tenant, tenant.db_alias)
+                    logger.info(f"✓ Token tables created, retrying token creation...")
+                    refresh = RefreshToken.for_user(user)
+                    logger.info(f"✓ Refresh token created successfully after fallback")
+                except Exception as fallback_error:
+                    logger.error(f"✗ Fallback token creation failed: {str(fallback_error)}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    tenant.delete()
+                    return Response({'detail': f'Failed to create token: {str(fallback_error)}'}, status=500)
+            
             refresh['tenant_id'] = tenant.id
             refresh['tenant_slug'] = tenant.slug
 

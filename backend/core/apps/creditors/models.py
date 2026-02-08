@@ -18,11 +18,18 @@ Models in this file:
 - OpenItemAllocation (payment allocations)
 - RFC (Return For Credit to supplier)
 - RFCLineItem
+- CreditorTransactionLine (generic line item for transactions)
+- SupplierMonthlyPurchase (monthly purchase statistics)
+- ExpenseMonthlyTotal (monthly expense totals)
 """
 
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
+from django.utils import timezone
 from decimal import Decimal
 from apps.settings.models import (
     ExpenseCategory,
@@ -30,7 +37,8 @@ from apps.settings.models import (
     CreditTerms,
     PaymentMethod,
     TimeStampedModel,
-    ActiveModel
+    ActiveModel,
+    SalesArea
 )
 
 User = get_user_model()
@@ -57,33 +65,51 @@ class Creditor(TimeStampedModel, ActiveModel):
         unique=True,
         help_text="Supplier account number"
     )
+    account_number = models.CharField(
+        max_length=20,
+        unique=True,
+        help_text="Account number (alias for supplier_number)"
+    )
     name = models.CharField(max_length=200)
+    short_name = models.CharField(max_length=50, blank=True, help_text="Short name for display")
     
     # Contact
     contact_person = models.CharField(max_length=100, blank=True)
     telephone = models.CharField(max_length=20, blank=True)
+    telephone1 = models.CharField(max_length=20, blank=True, help_text="Primary telephone")
+    telephone2 = models.CharField(max_length=20, blank=True, help_text="Secondary telephone")
     fax = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
     
     # Physical address
     physical_address_line1 = models.CharField(max_length=100, blank=True)
     physical_address_line2 = models.CharField(max_length=100, blank=True)
+    physical_address_line3 = models.CharField(max_length=100, blank=True)
     physical_city = models.CharField(max_length=50, blank=True)
     physical_province = models.CharField(max_length=50, blank=True)
     physical_code = models.CharField(max_length=10, blank=True)
+    physical_postal_code = models.CharField(max_length=10, blank=True, help_text="Physical postal code")
     
     # Postal address
     postal_address_line1 = models.CharField(max_length=100, blank=True)
     postal_address_line2 = models.CharField(max_length=100, blank=True)
+    postal_address_line3 = models.CharField(max_length=100, blank=True)
     postal_city = models.CharField(max_length=50, blank=True)
     postal_province = models.CharField(max_length=50, blank=True)
     postal_code = models.CharField(max_length=10, blank=True)
+    postal_postal_code = models.CharField(max_length=10, blank=True, help_text="Postal postal code")
     
     # Account settings
     our_account_number = models.CharField(
         max_length=50,
         blank=True,
         help_text="Our account number with this supplier"
+    )
+    account_type = models.CharField(
+        max_length=10,
+        choices=ACCOUNT_CATEGORY_CHOICES,
+        default='BBF',
+        help_text="Account type (alias for account_category)"
     )
     credit_terms = models.ForeignKey(
         CreditTerms,
@@ -94,6 +120,19 @@ class Creditor(TimeStampedModel, ActiveModel):
         max_length=10,
         choices=ACCOUNT_CATEGORY_CHOICES,
         default='BBF'
+    )
+    
+    # VAT details
+    vat_number = models.CharField(max_length=50, blank=True, help_text="VAT registration number")
+    
+    # Sales area tracking
+    sales_area = models.ForeignKey(
+        SalesArea,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='suppliers',
+        help_text="Sales area/territory for supplier"
     )
     
     update_selling_price_on_receipt = models.BooleanField(
@@ -111,7 +150,9 @@ class Creditor(TimeStampedModel, ActiveModel):
     # Banking details
     bank_name = models.CharField(max_length=100, blank=True)
     branch_code = models.CharField(max_length=20, blank=True)
+    bank_branch_code = models.CharField(max_length=20, blank=True, help_text="Bank branch code")
     account_number = models.CharField(max_length=50, blank=True)
+    bank_account_number = models.CharField(max_length=50, blank=True, help_text="Bank account number")
     
     # === SYSTEM GENERATED FIELDS ===
     
@@ -130,10 +171,14 @@ class Creditor(TimeStampedModel, ActiveModel):
     balance_180_days = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False)
     
     last_paid_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False)
+    amount_last_paid = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False, help_text="Amount last paid (alias)")
     last_paid_date = models.DateField(null=True, blank=True, editable=False)
+    date_last_paid = models.DateField(null=True, blank=True, editable=False, help_text="Date last paid (alias)")
     
     purchases_mtd = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False)
     purchases_ytd = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False)
+    
+    rfc_outstanding_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False)
     
     class Meta:
         db_table = 'creditors'
@@ -142,6 +187,7 @@ class Creditor(TimeStampedModel, ActiveModel):
             models.Index(fields=['supplier_number']),
             models.Index(fields=['name']),
             models.Index(fields=['is_active']),
+            models.Index(fields=['sales_area']),
         ]
         verbose_name = 'Creditor'
         verbose_name_plural = 'Creditors'
@@ -149,7 +195,35 @@ class Creditor(TimeStampedModel, ActiveModel):
     def __str__(self):
         return f"{self.supplier_number} - {self.name}"
     
+    def get_total_balance(self):
+        """Calculate total balance across all aging periods"""
+        return (
+            self.balance_current + self.balance_30_days + self.balance_60_days +
+            self.balance_90_days + self.balance_120_days + self.balance_150_days +
+            self.balance_180_days
+        )
+    
+    def get_total_balance_with_rfc(self):
+        """Calculate total balance including RFC outstanding amount"""
+        return self.get_total_balance() + self.rfc_outstanding_amount
+    
+    def get_account_type_display(self):
+        """Return readable account type (alias for account_category display)"""
+        return self.get_account_category_display()
+    
+    def get_credit_terms_display(self):
+        """Return credit terms display"""
+        return str(self.credit_terms) if self.credit_terms else ""
+    
+    def clean(self):
+        """Validate creditor data"""
+        super().clean()
+        if not self.name or not self.name.strip():
+            raise ValidationError({'name': 'Creditor name is required'})
+    
     def save(self, *args, **kwargs):
+        """Override save to validate and calculate current balance"""
+        self.full_clean()
         self.current_balance = (
             self.balance_current + self.balance_30_days + self.balance_60_days +
             self.balance_90_days + self.balance_120_days + self.balance_150_days +
@@ -202,6 +276,9 @@ class CreditorTransaction(TimeStampedModel):
     class Meta:
         abstract = True
         ordering = ['-transaction_date', '-transaction_number']
+    
+    def __str__(self):
+        return f"{self.transaction_number} - {self.creditor.name}"
 
 
 # ============================================================================
@@ -726,3 +803,188 @@ class RFCLineItem(TimeStampedModel):
         self.tax_amount = self.line_value_exclusive * (self.tax_code.rate / 100)
         self.line_value_inclusive = self.line_value_exclusive + self.tax_amount
         super().save(*args, **kwargs)
+
+
+# ============================================================================
+# CREDITOR TRANSACTION LINE ITEM (Generic)
+# ============================================================================
+
+class CreditorTransactionLine(TimeStampedModel):
+    """Generic line item for creditor transactions using ContentType for polymorphism"""
+    
+    # Generic foreign key to link to any CreditorTransaction subclass
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    transaction = GenericForeignKey('content_type', 'object_id')
+    
+    line_number = models.PositiveSmallIntegerField(default=1)
+    
+    stock_item = models.ForeignKey(
+        'stock_control.StockItem',
+        on_delete=models.PROTECT,
+        related_name='transaction_lines',
+        null=True,
+        blank=True
+    )
+    
+    expense_category = models.ForeignKey(
+        ExpenseCategory,
+        on_delete=models.PROTECT,
+        related_name='transaction_lines',
+        null=True,
+        blank=True
+    )
+    
+    quantity = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0
+    )
+    
+    unit_cost = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0
+    )
+    
+    tax_code = models.ForeignKey(
+        TaxCode,
+        on_delete=models.PROTECT,
+        related_name='transaction_lines'
+    )
+    
+    tax_amount = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        editable=False
+    )
+    
+    amount_exclusive = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0
+    )
+    
+    amount_inclusive = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        editable=False
+    )
+    
+    class Meta:
+        db_table = 'creditor_transaction_lines'
+        ordering = ['line_number']
+    
+    def save(self, *args, **kwargs):
+        if self.amount_exclusive:
+            self.tax_amount = self.amount_exclusive * (self.tax_code.rate / 100)
+            self.amount_inclusive = self.amount_exclusive + self.tax_amount
+        elif self.quantity and self.unit_cost:
+            self.amount_exclusive = self.quantity * self.unit_cost
+            self.tax_amount = self.amount_exclusive * (self.tax_code.rate / 100)
+            self.amount_inclusive = self.amount_exclusive + self.tax_amount
+        
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        if self.stock_item:
+            return f"Line {self.line_number} - {self.stock_item.stock_code}"
+        elif self.expense_category:
+            return f"Line {self.line_number} - {self.expense_category.category_name}"
+        return f"Line {self.line_number}"
+
+
+# ============================================================================
+# MONTHLY STATISTICS MODELS
+# ============================================================================
+
+class SupplierMonthlyPurchase(TimeStampedModel):
+    """Monthly purchase statistics by supplier"""
+    
+    supplier = models.ForeignKey(
+        Creditor,
+        on_delete=models.CASCADE,
+        related_name='monthly_purchases'
+    )
+    
+    year = models.PositiveSmallIntegerField()
+    month = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(12)]
+    )
+    
+    total_purchases = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        editable=False
+    )
+    
+    quantity_purchased = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        editable=False
+    )
+    
+    number_of_transactions = models.PositiveIntegerField(default=0, editable=False)
+    
+    class Meta:
+        db_table = 'supplier_monthly_purchases'
+        ordering = ['-year', '-month']
+        unique_together = [['supplier', 'year', 'month']]
+        verbose_name = 'Supplier Monthly Purchase'
+        verbose_name_plural = 'Supplier Monthly Purchases'
+        indexes = [
+            models.Index(fields=['supplier', 'year', 'month']),
+            models.Index(fields=['-year', '-month']),
+        ]
+    
+    def __str__(self):
+        return f"{self.supplier.name} - {self.month:02d}/{self.year}"
+
+
+class ExpenseMonthlyTotal(TimeStampedModel):
+    """Monthly expense totals by category"""
+    
+    expense_category = models.ForeignKey(
+        ExpenseCategory,
+        on_delete=models.CASCADE,
+        related_name='monthly_totals'
+    )
+    
+    year = models.PositiveSmallIntegerField()
+    month = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(12)]
+    )
+    
+    total_amount = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        editable=False
+    )
+    
+    total_vat = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        editable=False
+    )
+    
+    number_of_invoices = models.PositiveIntegerField(default=0, editable=False)
+    
+    class Meta:
+        db_table = 'expense_monthly_totals'
+        ordering = ['-year', '-month']
+        unique_together = [['expense_category', 'year', 'month']]
+        verbose_name = 'Expense Monthly Total'
+        verbose_name_plural = 'Expense Monthly Totals'
+        indexes = [
+            models.Index(fields=['expense_category', 'year', 'month']),
+            models.Index(fields=['-year', '-month']),
+        ]
+    
+    def __str__(self):
+        return f"{self.expense_category.category_name} - {self.month:02d}/{self.year}"

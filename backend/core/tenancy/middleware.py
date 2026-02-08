@@ -291,7 +291,8 @@ class TenantMiddleware:
         # Method 4: Use default shop if configured
         default_shop = getattr(settings, 'USE_DEFAULT_SHOP', False)
         if default_shop:
-            shop = Shop.objects.filter(tenant=tenant, is_active=True).first()
+            # Query from public database, not tenant database
+            shop = Shop.objects.using('default').filter(tenant=tenant, is_active=True).first()
             if shop:
                 logger.debug(f"Using default shop: {shop.subdomain or shop.name}")
                 return shop

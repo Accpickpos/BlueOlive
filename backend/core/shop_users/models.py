@@ -2,6 +2,9 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.core.validators import validate_email
+from django.utils import timezone
+from datetime import timedelta
+import secrets
 
 
 class ShopUser(AbstractUser):
@@ -55,6 +58,23 @@ class ShopUser(AbstractUser):
     
     # Additional fields
     phone = models.CharField(max_length=20, blank=True, null=True)
+    
+    # Email verification fields
+    is_email_verified = models.BooleanField(
+        default=False,
+        help_text='Whether the user has verified their email address'
+    )
+    email_verification_token = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text='Token used for email verification (self-generated, not stored from token)'
+    )
+    email_verification_token_created = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the email verification token was created'
+    )
     
     class Meta:
         verbose_name = 'Shop User'
@@ -115,3 +135,60 @@ class ShopUser(AbstractUser):
                 raise ValueError("Cannot create user without tenant context")
 
         super().save(*args, **kwargs)
+    
+    def generate_email_verification_token(self):
+        """Generate and store an email verification token."""
+        self.email_verification_token = secrets.token_urlsafe(32)
+        self.email_verification_token_created = timezone.now()
+        self.save()
+        return self.email_verification_token
+    
+    def verify_email_token(self, token, token_expiry_hours=24):
+        """
+        Verify email token.
+        
+        Args:
+            token: The token to verify
+            token_expiry_hours: How many hours the token is valid (default: 24)
+            
+        Returns:
+            tuple: (is_valid, message)
+        """
+        if not self.email_verification_token:
+            return False, "No verification token found for this user"
+        
+        if self.email_verification_token != token:
+            return False, "Invalid verification token"
+        
+        if not self.email_verification_token_created:
+            return False, "Token creation time missing"
+        
+        # Check token expiry
+        token_age = timezone.now() - self.email_verification_token_created
+        if token_age > timedelta(hours=token_expiry_hours):
+            self.email_verification_token = None
+            self.email_verification_token_created = None
+            self.save()
+            return False, f"Verification token expired (valid for {token_expiry_hours} hours)"
+        
+        return True, "Token is valid"
+    
+    def confirm_email(self, token, token_expiry_hours=24):
+        """
+        Confirm user email with verification token.
+        
+        Returns:
+            tuple: (success, message)
+        """
+        is_valid, message = self.verify_email_token(token, token_expiry_hours)
+        
+        if not is_valid:
+            return False, message
+        
+        # Mark email as verified
+        self.is_email_verified = True
+        self.email_verification_token = None
+        self.email_verification_token_created = None
+        self.save()
+        
+        return True, "Email verified successfully"

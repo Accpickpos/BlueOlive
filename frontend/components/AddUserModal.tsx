@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createUser, getShops } from '@/lib/api';
+import { extractErrorMessage } from '@/lib/utils';
 import { X } from 'lucide-react';
 
 interface AddUserModalProps {
@@ -20,6 +21,7 @@ export default function AddUserModal({ isOpen, onClose, onSuccess }: AddUserModa
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState('STAFF');
   const [selectedShopIds, setSelectedShopIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
@@ -45,8 +47,7 @@ export default function AddUserModal({ isOpen, onClose, onSuccess }: AddUserModa
       }
     } catch (err: any) {
       console.error('Error fetching shops:', err);
-      const errorMsg = err.response?.data?.detail || err.message || 'Failed to load shops';
-      setError(errorMsg);
+      setError(extractErrorMessage(err));
       setShops([]);
     } finally {
       setShopsLoading(false);
@@ -66,11 +67,19 @@ export default function AddUserModal({ isOpen, onClose, onSuccess }: AddUserModa
     setLoading(true);
     setError('');
 
+    // Validate passwords match
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      setLoading(false);
+      return;
+    }
+
     try {
       await createUser({
         username: username || email,
         email,
         password,
+        confirm_password: confirmPassword,
         role,
         shop_ids: selectedShopIds,
       });
@@ -79,12 +88,13 @@ export default function AddUserModal({ isOpen, onClose, onSuccess }: AddUserModa
       setEmail('');
       setUsername('');
       setPassword('');
+      setConfirmPassword('');
       setRole('STAFF');
       setSelectedShopIds([]);
       onSuccess();
       onClose();
     } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || 'Failed to create user');
+      setError(extractErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -155,6 +165,23 @@ export default function AddUserModal({ isOpen, onClose, onSuccess }: AddUserModa
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
+              Confirm Password
+            </label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="Re-enter password"
+            />
+            {password && confirmPassword && password !== confirmPassword && (
+              <p className="text-xs text-red-600 mt-1">Passwords do not match</p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
               Role
             </label>
             <select
@@ -211,7 +238,7 @@ export default function AddUserModal({ isOpen, onClose, onSuccess }: AddUserModa
             </button>
             <button
               type="submit"
-              disabled={loading || !email.trim() || !password.trim() || selectedShopIds.length === 0}
+              disabled={loading || !email.trim() || !password.trim() || !confirmPassword.trim() || password !== confirmPassword || selectedShopIds.length === 0}
               className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Creating...' : 'Create User'}

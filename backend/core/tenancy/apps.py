@@ -16,18 +16,29 @@ class TenancyConfig(AppConfig):
 
     def _register_tenant_connections(self):
         """Register database connections for all active tenants."""
+        from django.db import connection
+        from django.db.utils import ProgrammingError
         from tenancy.models import Tenant
         from tenancy.utils import register_tenant_connection
 
         try:
+            # Check if the tenancy_tenant table exists before querying
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT 1 FROM information_schema.tables WHERE table_name='tenancy_tenant'"
+                )
+                if not cursor.fetchone():
+                    # Table doesn't exist yet, skip registration
+                    return
+
             tenants = Tenant.objects.filter(is_active=True)
             for tenant in tenants:
                 register_tenant_connection(tenant)
-        except Exception as e:
+        except (ProgrammingError, Exception) as e:
             # Log but don't fail app startup
             import logging
             logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to register tenant connections: {e}")
+            logger.debug(f"Skipping tenant connection registration: {e}")
     
     def get_models(self, include_auto_created=False, include_swapped=False):
         """

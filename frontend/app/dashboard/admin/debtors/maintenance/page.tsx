@@ -1,38 +1,18 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import DebtorAccountForm from "@/components/DebtorAccountForm";
-import DebtorBalanceModal from "@/components/DebtorBalanceModal";
+import DebtorsList from '@/components/DebtorsList';
+import { useState } from 'react';
 
 export default function DebtorsMaintenancePage() {
-  const [showAccountForm, setShowAccountForm] = useState(false);
-  const [showBalance, setShowBalance] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Debtors - Maintenance</h1>
-      <p className="text-gray-600">Choose what you want to manage.</p>
-
-      <div className="flex gap-4">
-        <button
-          onClick={() => setShowAccountForm(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded shadow"
-        >
-          Account Details
-        </button>
-        <button
-          onClick={() => setShowBalance(true)}
-          className="px-4 py-2 bg-purple-600 text-white rounded shadow"
-        >
-          Account Balance
-        </button>
+    <div className="p-6 space-y-4">
+      <div>
+        <h1 className="text-2xl font-bold">Debtors - Maintenance</h1>
+        <p className="text-gray-600">Create, update, and manage debtor records.</p>
       </div>
-
-      {/* Account Form Modal */}
-      <DebtorAccountForm open={showAccountForm} onClose={() => setShowAccountForm(false)} />
-
-      {/* Balance Modal */}
-      <DebtorBalanceModal open={showBalance} onClose={() => setShowBalance(false)} />
+      <DebtorsList onRefresh={refreshTrigger} />
     </div>
   );
 }

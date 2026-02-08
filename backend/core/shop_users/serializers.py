@@ -58,7 +58,12 @@ class ShopUserSerializer(serializers.ModelSerializer):
         if not obj.shop_ids:
             return []
         
-        shops = Shop.objects.filter(id__in=obj.shop_ids).values('id', 'name', 'subdomain')
+        # Shop model is in public database, not tenant database
+        try:
+            shops = Shop.objects.using('default').filter(id__in=obj.shop_ids).values('id', 'name', 'subdomain')
+        except Exception:
+            # If query fails, return empty list
+            return []
         return list(shops)
     
     def create(self, validated_data):
@@ -79,7 +84,7 @@ class ShopUserSerializer(serializers.ModelSerializer):
         user = ShopUser(**validated_data)
         
         if password:
-            user.password = make_password(password)
+            user.set_password(password)  # Use set_password instead of make_password
         
         # Save to tenant database
         user.save(using=tenant.db_alias)
@@ -96,7 +101,7 @@ class ShopUserSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         
         if password:
-            instance.password = make_password(password)
+            instance.set_password(password)  # Use set_password instead of make_password
         
         # Save to tenant database
         if tenant:
@@ -112,6 +117,11 @@ class ShopUserCreateSerializer(serializers.ModelSerializer):
     """
     password = serializers.CharField(write_only=True, required=True, min_length=8)
     confirm_password = serializers.CharField(write_only=True, required=True)
+    shop_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_empty=True
+    )
     
     class Meta:
         model = ShopUser
@@ -124,6 +134,7 @@ class ShopUserCreateSerializer(serializers.ModelSerializer):
             'confirm_password',
             'role',
             'phone',
+            'shop_ids',
         ]
     
     def validate(self, attrs):
@@ -142,17 +153,21 @@ class ShopUserCreateSerializer(serializers.ModelSerializer):
         """
         validated_data.pop('confirm_password')
         password = validated_data.pop('password')
+        shop_ids = validated_data.pop('shop_ids', [])
         
         # Get tenant from context
         tenant = get_current_tenant()
         if not tenant:
             raise serializers.ValidationError("No tenant context available")
         
-        # Set tenant_id
+        # Set tenant_id and shop_ids
         validated_data['tenant_id'] = tenant.id
+        validated_data['shop_ids'] = shop_ids if shop_ids else []
         
         user = ShopUser(**validated_data)
-        user.password = make_password(password)
-        user.save()
+        user.set_password(password)  # Use set_password instead of make_password
+        
+        # Save to tenant database
+        user.save(using=tenant.db_alias)
         
         return user

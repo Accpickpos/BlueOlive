@@ -1,23 +1,18 @@
 /**
  * POS Transaction API Client
  * 
- * Handles all communication with FastAPI POS backend for:
- * - Invoices
+ * Handles all communication with Django REST Framework POS backend for:
+ * - Invoices (Debtors)
  * - Cash Sales
  * - Receipts
  * - Laybyes
  * - Quotations
  * - Other transactions
  * 
- * Uses tenant context from headers
+ * Uses shared axios instance with tenant context from headers
  */
 
-import { useAuth } from './useAuth';
-
-export interface TenantContext {
-  tenantSlug: string;
-  tenantName: string;
-}
+import { api } from './api';
 
 export interface LineItem {
   item_code: string;
@@ -84,94 +79,88 @@ export interface QuotationCreateData {
 
 // Type for API responses
 export interface TransactionResponse {
-  id: string;
-  number: string;
-  status: string;
-  created_at: string;
+  id: string | number;
+  number?: string;
+  status?: string;
+  created_at?: string;
   [key: string]: any;
 }
 
 class POSTransactionAPI {
-  private baseUrl: string;
-  private tenantSlug: string;
-  private authToken: string | null;
-
-  constructor(baseUrl: string = 'http://localhost:8001', tenantSlug: string = '', authToken: string | null = null) {
-    this.baseUrl = baseUrl.replace(/\/$/, '');
-    this.tenantSlug = tenantSlug;
-    this.authToken = authToken;
-  }
-
   /**
-   * Update tenant context
-   */
-  setTenantContext(tenantSlug: string, authToken: string | null = null) {
-    this.tenantSlug = tenantSlug;
-    if (authToken) {
-      this.authToken = authToken;
-    }
-  }
-
-  /**
-   * Get headers with tenant and auth context
-   */
-  private getHeaders(): Record<string, string> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'X-Tenant-Slug': this.tenantSlug,
-    };
-
-    if (this.authToken) {
-      headers['Authorization'] = `Bearer ${this.authToken}`;
-    }
-
-    return headers;
-  }
-
-  /**
-   * Make HTTP request with error handling
+   * Make HTTP request using shared axios instance with error handling
    */
   private async request<T>(
     method: string,
     endpoint: string,
     data?: any
   ): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
-    const options: RequestInit = {
-      method,
-      headers: this.getHeaders(),
-    };
-
-    if (data && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
-      options.body = JSON.stringify(data);
+    try {
+      console.log(`\n=== POS API REQUEST ===`);
+      console.log(`Method: ${method}`);
+      console.log(`Endpoint: ${endpoint}`);
+      console.log(`Has data: ${!!data}`);
+      
+      let response;
+      switch (method.toUpperCase()) {
+        case 'GET':
+          console.log('Making GET request...');
+          response = await api.get(endpoint);
+          break;
+        case 'POST':
+          console.log('Making POST request...');
+          console.log('Data:', data);
+          response = await api.post(endpoint, data);
+          break;
+        case 'PUT':
+          console.log('Making PUT request...');
+          response = await api.put(endpoint, data);
+          break;
+        case 'PATCH':
+          console.log('Making PATCH request...');
+          response = await api.patch(endpoint, data);
+          break;
+        case 'DELETE':
+          console.log('Making DELETE request...');
+          response = await api.delete(endpoint);
+          break;
+        default:
+          throw new Error(`Unsupported HTTP method: ${method}`);
+      }
+      console.log('Response status:', response.status);
+      console.log('Response data:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('=== POS API ERROR ===');
+      console.error('Error:', error);
+      console.error('Error response:', error.response?.data);
+      
+      if (error.response?.data?.detail) {
+        throw new Error(error.response.data.detail);
+      }
+      if (error.response?.data) {
+        throw new Error(JSON.stringify(error.response.data));
+      }
+      throw error;
     }
-
-    const response = await fetch(url, options);
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: response.statusText }));
-      throw new Error(error.detail || `HTTP ${response.status}`);
-    }
-
-    return response.json();
   }
 
   // ============================================================
-  // INVOICE ENDPOINTS
+  // INVOICE ENDPOINTS (from debtors app)
   // ============================================================
 
   /**
    * Create new invoice
    */
   async createInvoice(data: InvoiceCreateData): Promise<TransactionResponse> {
-    return this.request('POST', '/api/v1/invoices/', data);
+    return this.request('POST', '/api/debtors/invoices/', data);
   }
 
   /**
    * Get invoice by ID
    */
-  async getInvoice(invoiceId: string): Promise<TransactionResponse> {
-    return this.request('GET', `/api/v1/invoices/${invoiceId}/`);
+  async getInvoice(invoiceId: string | number): Promise<TransactionResponse> {
+    return this.request('GET', `/api/debtors/invoices/${invoiceId}/`);
   }
 
   /**
@@ -183,8 +172,8 @@ class POSTransactionAPI {
     from_date?: string;
     to_date?: string;
     page?: number;
-  }): Promise<{ results: TransactionResponse[]; count: number }> {
-    let endpoint = '/api/v1/invoices/';
+  }): Promise<{ results: TransactionResponse[]; count: number; next?: string; previous?: string }> {
+    let endpoint = '/api/debtors/invoices/';
     if (filters) {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => {
@@ -200,22 +189,22 @@ class POSTransactionAPI {
   /**
    * Update invoice
    */
-  async updateInvoice(invoiceId: string, data: Partial<InvoiceCreateData>): Promise<TransactionResponse> {
-    return this.request('PUT', `/api/v1/invoices/${invoiceId}/`, data);
+  async updateInvoice(invoiceId: string | number, data: Partial<InvoiceCreateData>): Promise<TransactionResponse> {
+    return this.request('PUT', `/api/debtors/invoices/${invoiceId}/`, data);
   }
 
   /**
-   * Post (finalize) invoice
+   * Partially update invoice
    */
-  async postInvoice(invoiceId: string): Promise<TransactionResponse> {
-    return this.request('POST', `/api/v1/invoices/${invoiceId}/post/`);
+  async partialUpdateInvoice(invoiceId: string | number, data: Partial<InvoiceCreateData>): Promise<TransactionResponse> {
+    return this.request('PATCH', `/api/debtors/invoices/${invoiceId}/`, data);
   }
 
   /**
    * Delete invoice
    */
-  async deleteInvoice(invoiceId: string): Promise<void> {
-    await this.request('DELETE', `/api/v1/invoices/${invoiceId}/`);
+  async deleteInvoice(invoiceId: string | number): Promise<void> {
+    await this.request('DELETE', `/api/debtors/invoices/${invoiceId}/`);
   }
 
   // ============================================================
@@ -226,14 +215,14 @@ class POSTransactionAPI {
    * Create new cash sale
    */
   async createCashSale(data: CashSaleCreateData): Promise<TransactionResponse> {
-    return this.request('POST', '/api/v1/cash-sales/', data);
+    return this.request('POST', '/api/pos/cash-sales/', data);
   }
 
   /**
    * Get cash sale by ID
    */
-  async getCashSale(saleId: string): Promise<TransactionResponse> {
-    return this.request('GET', `/api/v1/cash-sales/${saleId}/`);
+  async getCashSale(saleId: string | number): Promise<TransactionResponse> {
+    return this.request('GET', `/api/pos/cash-sales/${saleId}/`);
   }
 
   /**
@@ -244,8 +233,8 @@ class POSTransactionAPI {
     from_date?: string;
     to_date?: string;
     page?: number;
-  }): Promise<{ results: TransactionResponse[]; count: number }> {
-    let endpoint = '/api/v1/cash-sales/';
+  }): Promise<{ results: TransactionResponse[]; count: number; next?: string; previous?: string }> {
+    let endpoint = '/api/pos/cash-sales/';
     if (filters) {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => {
@@ -259,10 +248,24 @@ class POSTransactionAPI {
   }
 
   /**
-   * Post (finalize) cash sale
+   * Update cash sale
    */
-  async postCashSale(saleId: string): Promise<TransactionResponse> {
-    return this.request('POST', `/api/v1/cash-sales/${saleId}/post/`);
+  async updateCashSale(saleId: string | number, data: Partial<CashSaleCreateData>): Promise<TransactionResponse> {
+    return this.request('PUT', `/api/pos/cash-sales/${saleId}/`, data);
+  }
+
+  /**
+   * Partially update cash sale
+   */
+  async partialUpdateCashSale(saleId: string | number, data: Partial<CashSaleCreateData>): Promise<TransactionResponse> {
+    return this.request('PATCH', `/api/pos/cash-sales/${saleId}/`, data);
+  }
+
+  /**
+   * Delete cash sale
+   */
+  async deleteCashSale(saleId: string | number): Promise<void> {
+    await this.request('DELETE', `/api/pos/cash-sales/${saleId}/`);
   }
 
   // ============================================================
@@ -273,14 +276,14 @@ class POSTransactionAPI {
    * Create new receipt
    */
   async createReceipt(data: ReceiptCreateData): Promise<TransactionResponse> {
-    return this.request('POST', '/api/v1/receipts/', data);
+    return this.request('POST', '/api/pos/receipts-on-account/', data);
   }
 
   /**
    * Get receipt by ID
    */
-  async getReceipt(receiptId: string): Promise<TransactionResponse> {
-    return this.request('GET', `/api/v1/receipts/${receiptId}/`);
+  async getReceipt(receiptId: string | number): Promise<TransactionResponse> {
+    return this.request('GET', `/api/pos/receipts-on-account/${receiptId}/`);
   }
 
   /**
@@ -291,8 +294,8 @@ class POSTransactionAPI {
     from_date?: string;
     to_date?: string;
     page?: number;
-  }): Promise<{ results: TransactionResponse[]; count: number }> {
-    let endpoint = '/api/v1/receipts/';
+  }): Promise<{ results: TransactionResponse[]; count: number; next?: string; previous?: string }> {
+    let endpoint = '/api/pos/receipts-on-account/';
     if (filters) {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => {
@@ -306,10 +309,24 @@ class POSTransactionAPI {
   }
 
   /**
-   * Post (finalize) receipt
+   * Update receipt
    */
-  async postReceipt(receiptId: string): Promise<TransactionResponse> {
-    return this.request('POST', `/api/v1/receipts/${receiptId}/post/`);
+  async updateReceipt(receiptId: string | number, data: Partial<ReceiptCreateData>): Promise<TransactionResponse> {
+    return this.request('PUT', `/api/pos/receipts-on-account/${receiptId}/`, data);
+  }
+
+  /**
+   * Partially update receipt
+   */
+  async partialUpdateReceipt(receiptId: string | number, data: Partial<ReceiptCreateData>): Promise<TransactionResponse> {
+    return this.request('PATCH', `/api/pos/receipts-on-account/${receiptId}/`, data);
+  }
+
+  /**
+   * Delete receipt
+   */
+  async deleteReceipt(receiptId: string | number): Promise<void> {
+    await this.request('DELETE', `/api/pos/receipts-on-account/${receiptId}/`);
   }
 
   // ============================================================
@@ -320,14 +337,14 @@ class POSTransactionAPI {
    * Create new laybye
    */
   async createLaybye(data: LaybeyCreateData): Promise<TransactionResponse> {
-    return this.request('POST', '/api/v1/laybyes/', data);
+    return this.request('POST', '/api/pos/laybyes/', data);
   }
 
   /**
    * Get laybye by ID
    */
-  async getLaybye(laybeyId: string): Promise<TransactionResponse> {
-    return this.request('GET', `/api/v1/laybyes/${laybeyId}/`);
+  async getLaybye(laybeyId: string | number): Promise<TransactionResponse> {
+    return this.request('GET', `/api/pos/laybyes/${laybeyId}/`);
   }
 
   /**
@@ -337,8 +354,8 @@ class POSTransactionAPI {
     debtor_account_number?: string;
     status?: string;
     page?: number;
-  }): Promise<{ results: TransactionResponse[]; count: number }> {
-    let endpoint = '/api/v1/laybyes/';
+  }): Promise<{ results: TransactionResponse[]; count: number; next?: string; previous?: string }> {
+    let endpoint = '/api/pos/laybyes/';
     if (filters) {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => {
@@ -349,6 +366,27 @@ class POSTransactionAPI {
       }
     }
     return this.request('GET', endpoint);
+  }
+
+  /**
+   * Update laybye
+   */
+  async updateLaybye(laybeyId: string | number, data: Partial<LaybeyCreateData>): Promise<TransactionResponse> {
+    return this.request('PUT', `/api/pos/laybyes/${laybeyId}/`, data);
+  }
+
+  /**
+   * Partially update laybye
+   */
+  async partialUpdateLaybye(laybeyId: string | number, data: Partial<LaybeyCreateData>): Promise<TransactionResponse> {
+    return this.request('PATCH', `/api/pos/laybyes/${laybeyId}/`, data);
+  }
+
+  /**
+   * Delete laybye
+   */
+  async deleteLaybye(laybeyId: string | number): Promise<void> {
+    await this.request('DELETE', `/api/pos/laybyes/${laybeyId}/`);
   }
 
   // ============================================================
@@ -359,14 +397,14 @@ class POSTransactionAPI {
    * Create new quotation
    */
   async createQuotation(data: QuotationCreateData): Promise<TransactionResponse> {
-    return this.request('POST', '/api/v1/quotations/', data);
+    return this.request('POST', '/api/pos/quotations/', data);
   }
 
   /**
    * Get quotation by ID
    */
-  async getQuotation(quotationId: string): Promise<TransactionResponse> {
-    return this.request('GET', `/api/v1/quotations/${quotationId}/`);
+  async getQuotation(quotationId: string | number): Promise<TransactionResponse> {
+    return this.request('GET', `/api/pos/quotations/${quotationId}/`);
   }
 
   /**
@@ -377,8 +415,8 @@ class POSTransactionAPI {
     from_date?: string;
     to_date?: string;
     page?: number;
-  }): Promise<{ results: TransactionResponse[]; count: number }> {
-    let endpoint = '/api/v1/quotations/';
+  }): Promise<{ results: TransactionResponse[]; count: number; next?: string; previous?: string }> {
+    let endpoint = '/api/pos/quotations/';
     if (filters) {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => {
@@ -392,51 +430,28 @@ class POSTransactionAPI {
   }
 
   /**
-   * Convert quotation to invoice
+   * Update quotation
    */
-  async convertQuotationToInvoice(quotationId: string): Promise<TransactionResponse> {
-    return this.request('POST', `/api/v1/quotations/${quotationId}/convert-to-invoice/`);
-  }
-
-  // ============================================================
-  // SEARCH ENDPOINTS
-  // ============================================================
-
-  /**
-   * Search debtors by account number or name
-   */
-  async searchDebtors(query: string, limit: number = 20): Promise<any> {
-    const params = new URLSearchParams({
-      query,
-      limit: String(limit),
-    });
-    return this.request('GET', `/api/v1/invoices/search/debtors?${params}`);
+  async updateQuotation(quotationId: string | number, data: Partial<QuotationCreateData>): Promise<TransactionResponse> {
+    return this.request('PUT', `/api/pos/quotations/${quotationId}/`, data);
   }
 
   /**
-   * Search stock items by code or description
+   * Partially update quotation
    */
-  async searchStock(query: string, limit: number = 20): Promise<any> {
-    const params = new URLSearchParams({
-      query,
-      limit: String(limit),
-    });
-    return this.request('GET', `/api/v1/invoices/search/stock?${params}`);
+  async partialUpdateQuotation(quotationId: string | number, data: Partial<QuotationCreateData>): Promise<TransactionResponse> {
+    return this.request('PATCH', `/api/pos/quotations/${quotationId}/`, data);
   }
 
   /**
-   * Search creditors by account number or name
+   * Delete quotation
    */
-  async searchCreditors(query: string, limit: number = 20): Promise<any> {
-    const params = new URLSearchParams({
-      query,
-      limit: String(limit),
-    });
-    return this.request('GET', `/api/v1/invoices/search/creditors?${params}`);
+  async deleteQuotation(quotationId: string | number): Promise<void> {
+    await this.request('DELETE', `/api/pos/quotations/${quotationId}/`);
   }
 
   // ============================================================
-  // UTILITY ENDPOINTS
+  // SEARCH & UTILITY ENDPOINTS (if available)
   // ============================================================
 
   /**
@@ -446,7 +461,7 @@ class POSTransactionAPI {
     from_date?: string;
     to_date?: string;
   }): Promise<any> {
-    let endpoint = '/api/v1/transactions/summary/';
+    let endpoint = '/api/pos/transaction-queries/';
     if (filters) {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => {
@@ -458,30 +473,24 @@ class POSTransactionAPI {
     }
     return this.request('GET', endpoint);
   }
-
-  /**
-   * Get health check
-   */
-  async healthCheck(): Promise<any> {
-    return this.request('GET', '/health');
-  }
 }
 
-// Export singleton with creation hook
-let posAPI: POSTransactionAPI | null = null;
+// Singleton instance
+let posAPIInstance: POSTransactionAPI | null = null;
 
-export const usePOSAPI = (tenantSlug?: string, authToken?: string | null) => {
-  if (!posAPI) {
-    const slug = tenantSlug || localStorage.getItem('tenantSlug') || '';
-    const token = authToken || localStorage.getItem('authToken');
-    posAPI = new POSTransactionAPI(process.env.NEXT_PUBLIC_POS_API_URL, slug, token);
+/**
+ * Hook to get POS API instance with tenant context
+ * Creates singleton on first call
+ * 
+ * @param tenantSlug - Optional tenant slug to set context
+ * @returns POSTransactionAPI instance
+ */
+export const usePOSAPI = (tenantSlug?: string): POSTransactionAPI => {
+  if (!posAPIInstance) {
+    posAPIInstance = new POSTransactionAPI();
   }
-
-  if (tenantSlug || authToken) {
-    posAPI.setTenantContext(tenantSlug || '', authToken || null);
-  }
-
-  return posAPI;
+  return posAPIInstance;
 };
 
-export default POSTransactionAPI;
+// Export singleton instance for backward compatibility
+export const posAPI = new POSTransactionAPI();
