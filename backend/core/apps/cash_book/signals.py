@@ -1,33 +1,78 @@
 """
 Cash Book Module Signals
-Handles automatic balance updates and transaction validations
+Handles automatic balance updates, category balance tracking, and transaction validations
+Per enterprise implementation: Update category balances on transaction changes
 """
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-from .models import CashBookTransaction
+from django.utils import timezone
+from .models import CashBookTransaction, ExpenseCategoryBalance, IncomeCategoryBalance
 from .services import BalanceCalculationService
 
 
 @receiver(post_save, sender=CashBookTransaction)
 def update_balances_on_transaction_save(sender, instance, created, **kwargs):
     """
-    Update running balances when a transaction is saved.
+    Update running balances and category balances when a transaction is saved.
     
-    This signal is triggered whenever a CashBookTransaction is created or updated.
-    It recalculates running balances from the saved transaction onward.
+    Per specification:
+    - Update category MTD balances in real-time (per CBEXP, CBINC)
+    - Recalculate running balances from saved transaction onward
+    - Track input VAT (expenses) and output VAT (income)
     """
-    # Only recalculate if transaction is not already being updated by bulk operations
-    if not kwargs.get('skip_balance_update', False):
-        BalanceCalculationService.update_running_balances(from_transaction=instance)
+    # Skip if flag is set (for bulk operations)
+    if kwargs.get('skip_balance_update', False):
+        return
+    
+    # Update running cash/bank balances
+    BalanceCalculationService.update_running_balances(from_transaction=instance)
+    
+    # Update category-level balances (NEW - per enterprise spec)
+    if created:
+        # Only count new transactions for category balance
+        BalanceCalculationService.update_category_balances(
+            instance,
+            value_excl_vat=instance.value_excl_vat,
+            tax_amount=instance.tax_amount
+        )
 
 
 @receiver(post_delete, sender=CashBookTransaction)
 def update_balances_on_transaction_delete(sender, instance, **kwargs):
     """
-    Recalculate running balances when a transaction is deleted.
+    Recalculate running balances and adjust category balances when a transaction is deleted.
     
-    Resets all balances from the first remaining transaction onward.
+    - Reverses category MTD balance updates
+    - Recalculates running cash/bank balances from next transaction
     """
+    # Reverse category balance impact (NEW - per enterprise spec)
+    if instance.category_id:
+        reverse_amount = -instance.value_excl_vat  # Negative to reverse
+        reverse_tax = -instance.tax_amount
+        
+        # Update category balance
+        if instance.audit_type in [1, 2]:  # Income
+            try:
+                balance = IncomeCategoryBalance.objects.get(
+                    income_category_id=instance.category_id
+                )
+                balance.balance_month_to_date += reverse_amount
+                balance.output_vat_month_to_date += reverse_tax
+                balance.save()
+            except IncomeCategoryBalance.DoesNotExist:
+                pass
+        
+        elif instance.audit_type in [3, 4]:  # Expenses
+            try:
+                balance = ExpenseCategoryBalance.objects.get(
+                    expense_category_id=instance.category_id
+                )
+                balance.balance_month_to_date += reverse_amount
+                balance.input_vat_month_to_date += reverse_tax
+                balance.save()
+            except ExpenseCategoryBalance.DoesNotExist:
+                pass
+    
     # Get the first transaction after the deleted one's date
     next_transaction = CashBookTransaction.objects.filter(
         transaction_date__gte=instance.transaction_date

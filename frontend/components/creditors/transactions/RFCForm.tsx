@@ -2,12 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { AlertCircle } from 'lucide-react';
+import { useCreditorsAPI } from '@/lib/creditorsApi';
 
 interface RFCFormProps {
   onComplete: () => void;
 }
 
 export default function RFCForm({ onComplete }: RFCFormProps) {
+  const { listSuppliers } = useCreditorsAPI();
+  
   const [formData, setFormData] = useState({
     supplier: '',
     rfc_type: 'SEND',
@@ -38,11 +41,8 @@ export default function RFCForm({ onComplete }: RFCFormProps) {
 
   const fetchSuppliers = async () => {
     try {
-      const response = await fetch('/api/creditors/suppliers/');
-      if (response.ok) {
-        const data = await response.json();
-        setSuppliers(data.results || data);
-      }
+      const suppliers = await listSuppliers();
+      setSuppliers(suppliers);
     } catch (err) {
       console.error('Error fetching suppliers:', err);
     }

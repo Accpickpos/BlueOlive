@@ -196,7 +196,7 @@ export default function ExpenseTaxAnalysis({ onBack }: { onBack: () => void }) {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="text-sm font-medium block mb-2">Year</label>
-              <Select value={year.toString()} onValueChange={(val) => setYear(parseInt(val))}>
+              <Select value={year.toString()} onValueChange={(val: string) => setYear(parseInt(val))}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -211,7 +211,7 @@ export default function ExpenseTaxAnalysis({ onBack }: { onBack: () => void }) {
             </div>
             <div>
               <label className="text-sm font-medium block mb-2">Month</label>
-              <Select value={month.toString()} onValueChange={(val) => setMonth(parseInt(val))}>
+              <Select value={month.toString()} onValueChange={(val: string) => setMonth(parseInt(val))}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

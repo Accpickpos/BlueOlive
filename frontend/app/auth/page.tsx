@@ -35,12 +35,8 @@ export default function AuthPage() {
   const [messageType, setMessageType] = useState<'error' | 'success'>('error');
   const router = useRouter();
 
-  // Pre-fetch CSRF token on page load
-  useEffect(() => {
-    fetchCSRFToken().catch(() => {
-      console.log('CSRF token pre-fetch initiated');
-    });
-  }, []);
+  // Don't pre-fetch CSRF token - let it be fetched on-demand during login
+  // Pre-fetching can trigger rate limiting on stale sessions
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

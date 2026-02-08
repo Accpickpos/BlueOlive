@@ -22,7 +22,7 @@ export async function middleware(request: NextRequest) {
     try {
       // Make a server-side request to check user profile
       const apiBase = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
-      const response = await fetch(`${apiBase}/api/auth/profile/`, {
+      const response = await fetch(`${apiBase}/api/v1/users/auth/profile/`, {
         headers: {
           'Cookie': request.headers.get('cookie') || '',
         },

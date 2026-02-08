@@ -19,7 +19,7 @@ export default function PrintStockTakeForms({ onBack }: PrintStockTakeFormsProps
   const { data: departments } = useQuery({
     queryKey: ['departments'],
     queryFn: async () => {
-      const response = await api.get('/api/settings/departments/');
+      const response = await api.get('/api/v1/settings/departments/');
       return response.data.results || response.data;
     },
   });

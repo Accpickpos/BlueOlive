@@ -34,7 +34,7 @@ export function useAuth(): UseAuthReturn {
   const fetchUser = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await apiRequest('/api/auth/profile/');
+      const response = await apiRequest('/api/v1/users/auth/profile/');
       setUser(response.data);
     } catch (error: any) {
       // 401 is expected when user hasn't logged in - don't log as error

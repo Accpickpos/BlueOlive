@@ -76,10 +76,10 @@ class CashSaleService:
                     stock_item.save()
                     
                     # Create stock movement
-                    StockMovement.objects.create(
+                    StockTransaction.objects.create(
                         stock_item=stock_item,
-                        movement_type='SAL',
-                        movement_date=cash_sale.sale_date,
+                        transaction_type='SALE',
+                        transaction_date=cash_sale.sale_date,
                         transaction_number=cash_sale.sale_number,
                         quantity_out=line.quantity,
                         quantity_balance=stock_item.quantity_on_hand,
@@ -142,10 +142,10 @@ class CashSaleService:
                         stock_item.save()
                         
                         # Create reversing movement
-                        StockMovement.objects.create(
+                        StockTransaction.objects.create(
                             stock_item=stock_item,
-                            movement_type='CRN',
-                            movement_date=date.today(),
+                            transaction_type='RETURN',
+                            transaction_date=date.today(),
                             transaction_number=f"CANC-{cash_sale.sale_number}",
                             reference=reason,
                             quantity_in=line.quantity,

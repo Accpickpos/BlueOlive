@@ -17,7 +17,8 @@ from datetime import datetime, timedelta
 from .models import (
     IncomeCategory, CashBookTransaction, OtherIncome, OtherExpense,
     BankDeposit, CashWithdrawal, BankTransfer, BankCharge, InterestReceived,
-    BankReconciliation, BankReconciliationItem, CashFloat
+    BankReconciliation, BankReconciliationItem, CashFloat,
+    ExpenseCategoryBalance, IncomeCategoryBalance, UnpresentedCheque
 )
 from .serializers import *
 from .services import (
@@ -458,3 +459,189 @@ class CashFloatViewSet(viewsets.ModelViewSet):
     serializer_class = CashFloatSerializer
     permission_classes = [IsAuthenticated, CanCreateTransactions]
     ordering = ['-float_date']
+
+
+class ExpenseCategoryBalanceViewSet(viewsets.ModelViewSet):
+    """API endpoint for expense category balances (per spec CBEXP)"""
+    queryset = ExpenseCategoryBalance.objects.select_related('expense_category')
+    serializer_class = ExpenseCategoryBalanceSerializer
+    permission_classes = [IsAuthenticated, CanViewTransactions]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['expense_category']
+    search_fields = ['expense_category__name']
+    ordering_fields = ['balance_month_to_date', 'updated_at']
+    ordering = ['-balance_month_to_date']
+    
+    @action(detail=True, methods=['patch'])
+    def close_month(self, request, pk=None):
+        """Close month for category balance"""
+        balance = self.get_object()
+        
+        month = request.data.get('month')
+        year = request.data.get('year')
+        
+        if not month or not year:
+            return Response(
+                {'error': 'month and year are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            balance.set_month_balance(month, balance.balance_month_to_date)
+            balance.balance_month_to_date = Decimal('0')
+            balance.input_vat_month_to_date = Decimal('0')
+            balance.save()
+            
+            serializer = self.get_serializer(balance)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['post'])
+    def recalculate_mtd(self, request, pk=None):
+        """Recalculate MTD balance from transactions"""
+        balance = self.get_object()
+        
+        try:
+            mtd_value, mtd_vat = balance.calculate_mtd_from_transactions()
+            balance.save()
+            
+            serializer = self.get_serializer(balance)
+            return Response({
+                'balance': serializer.data,
+                'mtd_value': str(mtd_value),
+                'mtd_vat': str(mtd_vat)
+            })
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class IncomeCategoryBalanceViewSet(viewsets.ModelViewSet):
+    """API endpoint for income category balances (per spec CBINC)"""
+    queryset = IncomeCategoryBalance.objects.select_related('income_category')
+    serializer_class = IncomeCategoryBalanceSerializer
+    permission_classes = [IsAuthenticated, CanViewTransactions]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['income_category']
+    search_fields = ['income_category__name']
+    ordering_fields = ['balance_month_to_date', 'updated_at']
+    ordering = ['-balance_month_to_date']
+    
+    @action(detail=True, methods=['patch'])
+    def close_month(self, request, pk=None):
+        """Close month for category balance"""
+        balance = self.get_object()
+        
+        month = request.data.get('month')
+        year = request.data.get('year')
+        
+        if not month or not year:
+            return Response(
+                {'error': 'month and year are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            balance.set_month_balance(month, balance.balance_month_to_date)
+            balance.balance_month_to_date = Decimal('0')
+            balance.output_vat_month_to_date = Decimal('0')
+            balance.save()
+            
+            serializer = self.get_serializer(balance)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['post'])
+    def recalculate_mtd(self, request, pk=None):
+        """Recalculate MTD balance from transactions"""
+        balance = self.get_object()
+        
+        try:
+            mtd_value, mtd_vat = balance.calculate_mtd_from_transactions()
+            balance.save()
+            
+            serializer = self.get_serializer(balance)
+            return Response({
+                'balance': serializer.data,
+                'mtd_value': str(mtd_value),
+                'mtd_vat': str(mtd_vat)
+            })
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UnpresentedChequeViewSet(viewsets.ModelViewSet):
+    """API endpoint for unpresented cheques (per spec CBCHEQ)"""
+    queryset = UnpresentedCheque.objects.all()
+    serializer_class = UnpresentedChequeSerializer
+    permission_classes = [IsAuthenticated, CanViewTransactions]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['is_presented', 'tag', 'is_stale', 'requires_follow_up']
+    search_fields = ['cheque_number', 'reference']
+    ordering_fields = ['cheque_date', 'days_outstanding']
+    ordering = ['-cheque_date']
+    
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return UnpresentedChequeListSerializer
+        elif self.action == 'create':
+            return CreateUnpresentedChequeSerializer
+        return UnpresentedChequeSerializer
+    
+    @action(detail=True, methods=['patch'])
+    def mark_presented(self, request, pk=None):
+        """Mark cheque as presented"""
+        cheque = self.get_object()
+        
+        presented_date = request.data.get('presented_date')
+        
+        try:
+            cheque.mark_as_presented(presented_date)
+            serializer = UnpresentedChequeSerializer(cheque)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['get'])
+    def reconciliation_summary(self, request):
+        """Get unpresented cheques summary for bank reconciliation"""
+        month_end_date = request.query_params.get('month_end_date')
+        
+        if not month_end_date:
+            return Response(
+                {'error': 'month_end_date parameter is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            from datetime import datetime
+            month_end = datetime.strptime(month_end_date, '%Y-%m-%d').date()
+            summary = UnpresentedCheque.get_unpresented_summary(month_end)
+            return Response(summary)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['post'])
+    def bulk_mark_presented(self, request):
+        """Mark multiple cheques as presented"""
+        cheque_numbers = request.data.get('cheque_numbers', [])
+        presented_date = request.data.get('presented_date')
+        
+        if not cheque_numbers:
+            return Response(
+                {'error': 'cheque_numbers list is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            from cash_book.business_services import UnpresentedChequeService
+            count = UnpresentedChequeService.mark_cheques_as_presented(
+                cheque_numbers, presented_date
+            )
+            return Response({
+                'count': count,
+                'message': f'{count} cheques marked as presented'
+            })
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

@@ -8,7 +8,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework import viewsets
 from rest_framework.throttling import AnonRateThrottle
 from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
+from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie, csrf_exempt
 import logging
 
 from django.contrib.auth import authenticate
@@ -28,6 +28,7 @@ class LoginThrottle(AnonRateThrottle):
     rate = '5/min'
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class GetCSRFTokenView(APIView):
     """
     GET endpoint to retrieve CSRF token for unauthenticated users.
@@ -35,9 +36,23 @@ class GetCSRFTokenView(APIView):
     """
     permission_classes = [AllowAny]
 
-    @method_decorator(ensure_csrf_cookie)
     def get(self, request):
-        return Response({'detail': 'CSRF token set in cookie'}, status=200)
+        try:
+            logger.debug(f"GetCSRFTokenView called for {request.method} {request.path}")
+            
+            # Manually set CSRF cookie
+            from django.middleware.csrf import get_token
+            csrf_token = get_token(request)
+            
+            response = Response({'detail': 'CSRF token set in cookie'}, status=200)
+            # The cookie is automatically set by Django's CSRF middleware,
+            # but we can explicitly ensure it's there
+            response['X-CSRFToken'] = csrf_token
+            
+            return response
+        except Exception as e:
+            logger.error(f"GetCSRFTokenView error: {str(e)}", exc_info=True)
+            raise
 
 
 class TenantTokenView(APIView):
@@ -123,13 +138,16 @@ class TenantTokenView(APIView):
             })
 
             # Set httpOnly cookies (secure, not accessible to JavaScript)
+            # In development (localhost), secure=False; in production (HTTPS), secure=True
+            is_secure = request.is_secure()
+            
             response.set_cookie(
                 key='access_token',
                 value=access_token,
                 max_age=3600,  # 1 hour
-                secure=not request.is_secure().__class__.__name__ == 'False',  # HTTPS only in production
+                secure=is_secure,  # HTTPS only in production
                 httponly=True,  # Not accessible to JavaScript (XSS protection)
-                samesite='Strict',  # CSRF protection
+                samesite='Lax',  # Allows same-site requests with safe methods
                 path='/',
             )
             
@@ -137,9 +155,9 @@ class TenantTokenView(APIView):
                 key='refresh_token',
                 value=refresh_token,
                 max_age=604800,  # 7 days
-                secure=not request.is_secure().__class__.__name__ == 'False',
+                secure=is_secure,
                 httponly=True,
-                samesite='Strict',
+                samesite='Lax',
                 path='/',
             )
 
@@ -171,12 +189,12 @@ class LogoutView(APIView):
         response.delete_cookie(
             key='access_token',
             path='/',
-            samesite='Strict',
+            samesite='Lax',
         )
         response.delete_cookie(
             key='refresh_token',
             path='/',
-            samesite='Strict',
+            samesite='Lax',
         )
         
         return response
@@ -189,21 +207,29 @@ class ProfileView(APIView):
 
     def get(self, request):
         """Return current user profile if authenticated"""
-        if not request.user or not request.user.is_authenticated:
-            raise AuthenticationFailed('Not authenticated')
-        
-        user = request.user
-        is_admin = user.is_superuser or (hasattr(user, 'role') and user.role == 'ADMIN')
-        
-        return Response({
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "role": user.role,
-            "tenant_id": user.tenant_id,
-            "is_superuser": user.is_superuser,
-            "is_admin": is_admin,
-        })
+        try:
+            logger.debug(f"ProfileView.get called, user={request.user}, authenticated={request.user.is_authenticated if hasattr(request.user, 'is_authenticated') else 'N/A'}")
+            
+            if not request.user or not request.user.is_authenticated:
+                raise AuthenticationFailed('Not authenticated')
+            
+            user = request.user
+            is_admin = getattr(user, 'is_superuser', False) or (hasattr(user, 'role') and user.role == 'ADMIN')
+            
+            return Response({
+                "id": getattr(user, 'id', None),
+                "username": getattr(user, 'username', None),
+                "email": getattr(user, 'email', None),
+                "role": getattr(user, 'role', 'USER'),
+                "tenant_id": getattr(user, 'tenant_id', None),
+                "is_superuser": getattr(user, 'is_superuser', False),
+                "is_admin": is_admin,
+            })
+        except AuthenticationFailed:
+            raise
+        except Exception as e:
+            logger.error(f"ProfileView error: {str(e)}", exc_info=True)
+            raise
 
 
 class CookieTokenRefreshView(TokenRefreshView):
@@ -213,6 +239,7 @@ class CookieTokenRefreshView(TokenRefreshView):
     
     Also supports JSON body refresh tokens for backward compatibility.
     """
+    permission_classes = [AllowAny]
     
     def post(self, request, *args, **kwargs):
         try:

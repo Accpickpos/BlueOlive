@@ -105,6 +105,134 @@ class ActiveModel(models.Model):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# VAT CALCULATION MIXIN
+# ═══════════════════════════════════════════════════════════════════════════
+
+class VATMixin(models.Model):
+    """
+    Abstract mixin for models that require VAT/Tax calculation fields
+    Provides consistent VAT handling across all apps:
+    - CashBookTransaction
+    - CreditorInvoice and related models
+    - DebtorTransaction
+    - CashSale and POS models
+    
+    Ensures consistent: value_excl_vat + tax_amount = total_incl_vat
+    """
+    value_excl_vat = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        help_text="Amount excluding VAT"
+    )
+    tax_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        help_text="VAT/Tax amount"
+    )
+    total_incl_vat = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        help_text="Total amount including VAT"
+    )
+    
+    class Meta:
+        abstract = True
+    
+    def validate_vat_integrity(self):
+        """Verify VAT calculation is correct: value + tax = total"""
+        from decimal import Decimal
+        tolerance = Decimal('0.01')
+        expected_total = self.value_excl_vat + self.tax_amount
+        if abs(self.total_incl_vat - expected_total) > tolerance:
+            return False, f"VAT mismatch: {self.value_excl_vat} + {self.tax_amount} ≠ {self.total_incl_vat}"
+        return True, "VAT fields are valid"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# POSTING STATUS MIXIN
+# ═══════════════════════════════════════════════════════════════════════════
+
+class PostingStatusMixin(models.Model):
+    """
+    Abstract mixin for models that track posting status to General Ledger
+    Ensures consistent posting workflow across:
+    - CreditorTransaction
+    - DebtorTransaction
+    - POS transactions
+    
+    Once posted, transactions become immutable for audit trail integrity
+    """
+    is_posted = models.BooleanField(
+        default=False,
+        help_text="Whether this transaction has been posted to GL"
+    )
+    posted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        editable=False,
+        help_text="Timestamp when posted to GL"
+    )
+    posted_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='%(class)s_posted',
+        editable=False,
+        help_text="User who posted this transaction"
+    )
+    
+    class Meta:
+        abstract = True
+        indexes = [
+            models.Index(fields=['is_posted']),
+        ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# RECONCILIATION MIXIN
+# ═══════════════════════════════════════════════════════════════════════════
+
+class ReconciliationMixin(models.Model):
+    """
+    Abstract mixin for transactions that require reconciliation
+    Tracks reconciliation status for:
+    - CashBookTransaction (bank reconciliation)
+    - Future: supplier statement reconciliation
+    
+    Once reconciled, transactions are locked to maintain audit trails
+    """
+    is_reconciled = models.BooleanField(
+        default=False,
+        help_text="Whether this transaction has been reconciled"
+    )
+    reconciled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        editable=False,
+        help_text="Timestamp when reconciled"
+    )
+    reconciled_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='%(class)s_reconciled',
+        editable=False,
+        help_text="User who reconciled this transaction"
+    )
+    
+    class Meta:
+        abstract = True
+        indexes = [
+            models.Index(fields=['is_reconciled']),
+        ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # SALES DEPARTMENT MODEL
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -710,6 +838,8 @@ class SystemConfiguration(TimeStampedModel):
         TaxCode,
         on_delete=models.PROTECT,
         related_name='system_configs',
+        null=True,
+        blank=True,
         help_text="Default tax code for new items"
     )
     
@@ -721,6 +851,7 @@ class SystemConfiguration(TimeStampedModel):
     
     # Financial year
     current_financial_year = models.PositiveIntegerField(
+        default=2024,
         help_text="Current financial year (e.g., 2024)"
     )
     current_period = models.PositiveIntegerField(
@@ -784,8 +915,16 @@ class SystemConfiguration(TimeStampedModel):
     
     @classmethod
     def load(cls):
-        """Get the singleton instance"""
-        obj, created = cls.objects.get_or_create(pk=1)
+        """Get the singleton instance, creating with defaults if needed"""
+        from django.utils import timezone
+        obj, created = cls.objects.get_or_create(
+            pk=1,
+            defaults={
+                'current_financial_year': timezone.now().year,
+                'current_period': 1,
+                'ageing_periods': [30, 60, 90, 120, 150, 180],
+            }
+        )
         return obj
 
 

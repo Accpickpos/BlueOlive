@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { ChevronLeft, Download, Eye } from 'lucide-react';
+import creditorsApi from '@/lib/creditorsApi';
 
 interface Transaction {
   id: number;
@@ -52,12 +53,8 @@ export default function TransactionsList({ onBack }: TransactionsListProps) {
   const fetchTransactions = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/creditors/transactions/');
-      if (response.ok) {
-        const data = await response.json();
-        const txns = data.results || data;
-        setTransactions(Array.isArray(txns) ? txns : []);
-      }
+      const response = await creditorsApi.transactions.list();
+      setTransactions(Array.isArray(response) ? response : []);
     } catch (err) {
       console.error('Error fetching transactions:', err);
       setTransactions([]);

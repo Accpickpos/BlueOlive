@@ -39,7 +39,7 @@ export default function SalesmanEnquiry() {
     try {
       const params = new URLSearchParams();
       params.append('name', salesman);
-      const response = await apiRequest(`/api/settings/sales-areas/?${params}`);
+      const response = await apiRequest(`/api/v1/settings/sales-areas/?${params}`);
       const responseData = (response as any).data || (response as any);
       const data = responseData.results ? responseData.results[0] : responseData;
       setSalesmanData(data);
@@ -55,7 +55,7 @@ export default function SalesmanEnquiry() {
     setLoading(true);
     setError('');
     try {
-      const response = await apiRequest('/api/settings/sales-areas/');
+      const response = await apiRequest('/api/v1/settings/sales-areas/');
       const responseData = (response as any).data || (response as any);
       const salesmen = responseData.results || responseData;
       if (Array.isArray(salesmen) && salesmen.length > 0) {

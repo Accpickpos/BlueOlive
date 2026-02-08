@@ -224,3 +224,32 @@ class UserAuditLog:
                 'new_role': new_role,
             }
         )
+
+
+class TenantAuditLog:
+    """
+    Convenience class for tenant-related audit logging
+    """
+    
+    @staticmethod
+    def log_cross_tenant_access_attempt(request, user, attempted_tenant_id, actual_tenant_id):
+        """Log when user attempts to access a different tenant's resources"""
+        AuditLog.log_action(
+            action='TENANT_ACCESS',
+            request=request,
+            user=user,
+            resource_type='CROSS_TENANT_ACCESS',
+            resource_id=str(attempted_tenant_id),
+            details={
+                'attempted_tenant_id': attempted_tenant_id,
+                'actual_tenant_id': actual_tenant_id,
+                'user_attempted_access_to': f'Tenant {attempted_tenant_id}',
+                'user_belongs_to': f'Tenant {actual_tenant_id}',
+            },
+            success=False,
+            error_message=f'Cross-tenant access denied: user belongs to tenant {actual_tenant_id}, attempted tenant {attempted_tenant_id}'
+        )
+        logger.warning(
+            f"Cross-tenant access attempt: user_id={user.id if user else 'unknown'} "
+            f"attempted_tenant={attempted_tenant_id}, actual_tenant={actual_tenant_id}"
+        )

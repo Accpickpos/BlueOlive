@@ -672,3 +672,295 @@ class FuturePricingViewSet(viewsets.ModelViewSet):
             'message': f'Applied {updated_count} future prices',
             'updated_count': updated_count
         })
+
+
+class ShrinkWrapViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Shrink/Wrap relationships (Bulk to Unit conversion)
+    
+    list: Get all shrink wrap relationships
+    create: Create new relationship
+    retrieve: Get relationship details
+    update: Update relationship
+    partial_update: Partially update relationship
+    destroy: Delete relationship
+    """
+    queryset = ShrinkWrap.objects.select_related('shrink_pack_code', 'bulk_pack_code').all()
+    serializer_class = ShrinkWrapSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['shrink_pack_code', 'bulk_pack_code']
+    search_fields = ['shrink_pack_code__stock_code', 'bulk_pack_code__stock_code']
+
+
+class PackBundleViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Pack/Bundle (BOM - Bill of Materials)
+    
+    list: Get all pack/bundles
+    create: Create new pack/bundle with ingredients
+    retrieve: Get pack/bundle details
+    update: Update pack/bundle
+    partial_update: Partially update pack/bundle
+    destroy: Delete pack/bundle
+    """
+    queryset = PackBundle.objects.select_related('stock_item').prefetch_related('ingredients').all()
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['stock_item']
+    search_fields = ['stock_item__stock_code', 'stock_item__description']
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return PackBundleCreateSerializer
+        return PackBundleSerializer
+    
+    @action(detail=True, methods=['patch'])
+    def update_total_cost(self, request, pk=None):
+        """Recalculate total cost from ingredients"""
+        bundle = self.get_object()
+        total_cost = bundle.calculate_total_cost()
+        return Response({
+            'total_cost': float(total_cost),
+            'message': 'Total cost updated'
+        })
+
+
+class StockTransactionViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Stock Transactions (Transaction Ledger)
+    
+    list: Get all transactions
+    create: Create new transaction
+    retrieve: Get transaction details
+    """
+    queryset = StockTransaction.objects.select_related('stock_item', 'department', 'debtor', 'supplier').all()
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['stock_item', 'transaction_type', 'transaction_date']
+    ordering_fields = ['transaction_date', 'created_at']
+    ordering = ['-transaction_date']
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return StockTransactionCreateSerializer
+        return StockTransactionSerializer
+    
+    @action(detail=False, methods=['get'])
+    def running_balance(self, request):
+        """Get running balance for a stock item"""
+        stock_code = request.query_params.get('stock_code')
+        if not stock_code:
+            return Response(
+                {'error': 'stock_code parameter required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            stock_item = StockItem.objects.get(stock_code=stock_code)
+        except StockItem.DoesNotExist:
+            return Response(
+                {'error': f'Stock item {stock_code} not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        transactions = StockTransaction.objects.filter(
+            stock_item=stock_item
+        ).order_by('transaction_date')
+        
+        serializer = StockTransactionSerializer(transactions, many=True)
+        return Response({
+            'stock_code': stock_code,
+            'current_qoh': float(stock_item.quantity_on_hand),
+            'transactions': serializer.data
+        })
+
+
+class StockTakeViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Stock Take (Physical Inventory Count)
+    
+    list: Get all stock takes
+    create: Create new stock take
+    retrieve: Get stock take details
+    update: Update stock take
+    partial_update: Partially update stock take
+    """
+    queryset = StockTake.objects.prefetch_related('items').all()
+    serializer_class = StockTakeSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['status']
+    ordering_fields = ['stock_take_date']
+    ordering = ['-stock_take_date']
+    
+    @action(detail=True, methods=['post'])
+    def add_item(self, request, pk=None):
+        """Add or update a counted item to stock take"""
+        stock_take = self.get_object()
+        serializer = StockTakeCountSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            stock_item = serializer.validated_data['stock_item']
+            quantity_counted = serializer.validated_data['quantity_counted']
+            add_to_previous = serializer.validated_data.get('add_to_previous', False)
+            
+            item, created = StockTakeItem.objects.get_or_create(
+                stock_take=stock_take,
+                stock_item=stock_item,
+                defaults={
+                    'quantity_on_hand': stock_item.quantity_on_hand,
+                    'cost_price_at_count': stock_item.cost_price
+                }
+            )
+            
+            if add_to_previous and not created:
+                quantity_counted += item.quantity_counted
+            
+            item.quantity_counted = quantity_counted
+            item.is_counted = True
+            item.count_date = timezone.now()
+            item.calculate_variance()
+            
+            return Response(
+                StockTakeItemSerializer(item).data,
+                status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
+            )
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['post'])
+    def complete(self, request, pk=None):
+        """Mark stock take as completed"""
+        stock_take = self.get_object()
+        
+        if stock_take.status != 'IN_PROGRESS':
+            return Response(
+                {'error': 'Can only complete stock takes in progress'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        stock_take.status = 'COMPLETED'
+        stock_take.completed_at = timezone.now()
+        stock_take.save()
+        
+        return Response(StockTakeSerializer(stock_take).data)
+    
+    @action(detail=True, methods=['post'])
+    def post_to_inventory(self, request, pk=None):
+        """Post stock take results to update inventory"""
+        stock_take = self.get_object()
+        
+        if stock_take.status != 'COMPLETED':
+            return Response(
+                {'error': 'Can only post completed stock takes'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        updated_items = []
+        for item in stock_take.items.all():
+            stock_item = item.stock_item
+            variance = item.quantity_counted - item.quantity_on_hand
+            
+            if variance != 0:
+                # Create adjustment transaction
+                StockTransaction.objects.create(
+                    transaction_type='STOCK_TAKE',
+                    stock_item=stock_item,
+                    transaction_date=stock_take.stock_take_date,
+                    quantity_in=variance if variance > 0 else 0,
+                    quantity_out=abs(variance) if variance < 0 else 0,
+                    value=abs(variance) * stock_item.cost_price,
+                    comments=f'Stock take {stock_take.id} adjustment',
+                    created_by=request.user.username if request.user.is_authenticated else 'system'
+                )
+                
+                # Update stock item
+                stock_item.quantity_on_hand = item.quantity_counted
+                stock_item.closing_stock_balance = item.quantity_counted
+                stock_item.save()
+                updated_items.append(stock_item.stock_code)
+        
+        stock_take.status = 'UPDATED'
+        stock_take.save()
+        
+        return Response({
+            'message': 'Stock take posted to inventory',
+            'stock_take_id': stock_take.id,
+            'updated_items': updated_items,
+            'total_updated': len(updated_items)
+        })
+
+
+class ContractPricingViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Contract Pricing (Debtor-specific pricing)
+    
+    list: Get all contracts
+    create: Create new contract
+    retrieve: Get contract details
+    update: Update contract
+    partial_update: Partially update contract
+    destroy: Delete contract
+    """
+    queryset = ContractPricing.objects.select_related('debtor', 'stock_item', 'department', 'supplier').all()
+    serializer_class = ContractPricingSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['debtor', 'pricing_method', 'is_active']
+    search_fields = ['debtor__name', 'stock_item__stock_code']
+
+
+class OneTouchLookupKeyViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for One-Touch POS Shortcuts
+    
+    list: Get all lookup keys
+    create: Create new lookup key
+    retrieve: Get lookup key details
+    update: Update lookup key
+    partial_update: Partially update lookup key
+    destroy: Delete lookup key
+    """
+    queryset = OneTouchLookupKey.objects.select_related('stock_item').all()
+    serializer_class = OneTouchLookupKeySerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    search_fields = ['key_character', 'stock_item__stock_code', 'stock_item__description']
+    
+    @action(detail=False, methods=['get'])
+    def lookup_by_key(self, request):
+        """Quick lookup by single character key"""
+        key = request.query_params.get('key', '').upper()
+        
+        if not key or len(key) != 1:
+            return Response(
+                {'error': 'key parameter must be a single character'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            lookup_key = OneTouchLookupKey.objects.get(key_character=key)
+            serializer = self.get_serializer(lookup_key)
+            return Response(serializer.data)
+        except OneTouchLookupKey.DoesNotExist:
+            return Response(
+                {'error': f'No lookup key found for character {key}'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+
+class StockMonthlyStatisticViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for Stock Monthly Statistics (Read-only)
+    
+    list: Get all monthly statistics
+    retrieve: Get monthly statistic details
+    """
+    queryset = StockMonthlyStatistic.objects.select_related('stock_item').all()
+    serializer_class = StockMonthlyStatisticSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['stock_item', 'year', 'month']
+    ordering_fields = ['year', 'month']
+    ordering = ['-year', '-month']

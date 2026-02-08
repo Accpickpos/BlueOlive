@@ -6,13 +6,13 @@ from datetime import timedelta
 
 
 class PurchaseOrder(models.Model):
-    """Purchase Order header"""
+    """Purchase Order header (POMAST equivalent)"""
     
     STATUS_CHOICES = [
-        ('OUTSTANDING', 'Outstanding'),
-        ('PARTIALLY_RECEIVED', 'Partially Received'),
-        ('FULLY_RECEIVED', 'Fully Received'),
-        ('CANCELLED', 'Cancelled'),
+        ('O', 'Outstanding'),
+        ('P', 'Partially Received'),
+        ('F', 'Fully Received'),
+        ('C', 'Cancelled'),
     ]
     
     PRICING_METHOD_CHOICES = [
@@ -27,12 +27,19 @@ class PurchaseOrder(models.Model):
         related_name='purchase_orders'
     )
     
-    # Dates
+    # Dates and time
     order_date = models.DateField(default=timezone.now)
+    order_time = models.TimeField(null=True, blank=True)
     delivery_date = models.DateField(help_text="Expected delivery date")
     
+    # Quantity
+    quantity_ordered = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+    
+    # Value
+    value = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
     # Status
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='OUTSTANDING')
+    status = models.CharField(max_length=1, choices=STATUS_CHOICES, default='O')
     
     # Pricing
     pricing_method = models.CharField(
@@ -42,8 +49,7 @@ class PurchaseOrder(models.Model):
         help_text="Price items at cost or retail"
     )
     
-    # Totals
-    total_quantity_ordered = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    # Totals (for reporting)
     total_quantity_received = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total_quantity_outstanding = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
@@ -91,13 +97,14 @@ class PurchaseOrder(models.Model):
         """Calculate order totals from line items"""
         lines = self.line_items.all()
         
-        self.total_quantity_ordered = sum(line.quantity_ordered for line in lines)
+        self.quantity_ordered = sum(line.quantity_ordered for line in lines)
         self.total_quantity_received = sum(line.quantity_received for line in lines)
         self.total_quantity_outstanding = sum(line.quantity_outstanding for line in lines)
         
         self.total_value_exclusive = sum(line.total_exclusive for line in lines)
         self.total_value_vat = sum(line.total_vat for line in lines)
         self.total_value_inclusive = sum(line.total_inclusive for line in lines)
+        self.value = self.total_value_exclusive
         
         self.outstanding_value_exclusive = sum(line.outstanding_exclusive for line in lines)
         self.outstanding_value_vat = sum(line.outstanding_vat for line in lines)
@@ -105,20 +112,20 @@ class PurchaseOrder(models.Model):
         
         # Update status
         if self.total_quantity_received == 0:
-            self.status = 'OUTSTANDING'
-        elif self.total_quantity_received >= self.total_quantity_ordered:
-            self.status = 'FULLY_RECEIVED'
+            self.status = 'O'
+        elif self.total_quantity_received >= self.quantity_ordered:
+            self.status = 'F'
         else:
-            self.status = 'PARTIALLY_RECEIVED'
+            self.status = 'P'
         
         self.save()
 
     def cancel(self):
         """Cancel the purchase order"""
-        if self.status == 'FULLY_RECEIVED':
+        if self.status == 'F':
             raise ValueError("Cannot cancel a fully received order")
         
-        self.status = 'CANCELLED'
+        self.status = 'C'
         self.cancelled_at = timezone.now()
         self.save()
         
@@ -130,7 +137,7 @@ class PurchaseOrder(models.Model):
 
 
 class PurchaseOrderLine(models.Model):
-    """Purchase Order line items"""
+    """Purchase Order line items (POTRAN equivalent)"""
     
     purchase_order = models.ForeignKey(
         PurchaseOrder,
@@ -139,20 +146,42 @@ class PurchaseOrderLine(models.Model):
     )
     line_number = models.IntegerField()
     
+    # Stock details
+    stock_code = models.CharField(max_length=13, blank=True)
     stock_item = models.ForeignKey(
         'stock_control.StockItem',
         on_delete=models.PROTECT,
+        null=True,
+        blank=True,
         related_name='purchase_order_lines'
     )
     
     # Quantities
-    quantity_ordered = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0.01)])
-    quantity_received = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    quantity_outstanding = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    quantity = models.DecimalField(max_digits=10, decimal_places=3, validators=[MinValueValidator(0.001)])
+    quantity_delivered = models.DecimalField(max_digits=10, decimal_places=3, default=0)
+    free_quantity = models.DecimalField(max_digits=10, decimal_places=3, default=0)
+    quantity_outstanding = models.DecimalField(max_digits=10, decimal_places=3, default=0)
     
-    # Pricing
-    unit_cost = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
-    tax_code = models.IntegerField(default=1)  # 1=14%, 2=0%
+    # Pricing - Base cost
+    base_price = models.DecimalField(max_digits=10, decimal_places=3, validators=[MinValueValidator(0)])
+    
+    # Discounts - Monetary
+    monetary_discount1 = models.DecimalField(max_digits=8, decimal_places=3, default=0)
+    monetary_discount2 = models.DecimalField(max_digits=8, decimal_places=3, default=0)
+    monetary_discount3 = models.DecimalField(max_digits=8, decimal_places=3, default=0)
+    
+    # Discounts - Percentage
+    percent_discount1 = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    percent_discount2 = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    percent_discount3 = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    
+    # Selling prices
+    selling_price1 = models.DecimalField(max_digits=14, decimal_places=4, default=0)
+    selling_price2 = models.DecimalField(max_digits=14, decimal_places=4, default=0)
+    selling_price3 = models.DecimalField(max_digits=14, decimal_places=4, default=0)
+    
+    # Comments
+    comments = models.CharField(max_length=30, blank=True)
     
     # Line totals (ordered)
     total_exclusive = models.DecimalField(max_digits=12, decimal_places=2, default=0)
@@ -168,6 +197,9 @@ class PurchaseOrderLine(models.Model):
     quantity_on_hand_at_order = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     monthly_sales_at_order = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
+    # Tax code
+    tax_code = models.IntegerField(default=1)  # 1=14%, 2=0%
+    
     # Flags
     is_fully_received = models.BooleanField(default=False)
     
@@ -179,17 +211,26 @@ class PurchaseOrderLine(models.Model):
         ordering = ['line_number']
         unique_together = ['purchase_order', 'line_number']
         indexes = [
-            models.Index(fields=['stock_item']),
+            models.Index(fields=['stock_code']),
             models.Index(fields=['is_fully_received']),
         ]
 
     def __str__(self):
-        return f"PO {self.purchase_order.order_number} - Line {self.line_number}: {self.stock_item.stock_code}"
+        return f"PO {self.purchase_order.order_number} - Line {self.line_number}: {self.stock_code}"
 
     def calculate_totals(self):
         """Calculate line totals"""
+        # Calculate net price after all discounts
+        net_price = self.base_price
+        net_price -= self.monetary_discount1
+        net_price -= self.monetary_discount2
+        net_price -= self.monetary_discount3
+        net_price = net_price * (1 - (self.percent_discount1 / 100))
+        net_price = net_price * (1 - (self.percent_discount2 / 100))
+        net_price = net_price * (1 - (self.percent_discount3 / 100))
+        
         # Ordered totals
-        self.total_exclusive = self.quantity_ordered * self.unit_cost
+        self.total_exclusive = self.quantity * net_price
         if self.tax_code == 1:
             self.total_vat = self.total_exclusive * Decimal('0.14')
         else:
@@ -197,8 +238,8 @@ class PurchaseOrderLine(models.Model):
         self.total_inclusive = self.total_exclusive + self.total_vat
         
         # Outstanding totals
-        self.quantity_outstanding = self.quantity_ordered - self.quantity_received
-        self.outstanding_exclusive = self.quantity_outstanding * self.unit_cost
+        self.quantity_outstanding = self.quantity - self.quantity_delivered - self.free_quantity
+        self.outstanding_exclusive = self.quantity_outstanding * net_price
         if self.tax_code == 1:
             self.outstanding_vat = self.outstanding_exclusive * Decimal('0.14')
         else:
@@ -206,7 +247,7 @@ class PurchaseOrderLine(models.Model):
         self.outstanding_inclusive = self.outstanding_exclusive + self.outstanding_vat
         
         # Check if fully received
-        self.is_fully_received = self.quantity_received >= self.quantity_ordered
+        self.is_fully_received = self.quantity_delivered >= self.quantity
         
         self.save()
 
@@ -224,20 +265,20 @@ class PurchaseOrderLine(models.Model):
         if quantity <= 0:
             raise ValueError("Quantity must be positive")
         
-        if self.quantity_received + quantity > self.quantity_ordered:
+        if self.quantity_delivered + quantity > self.quantity:
             raise ValueError("Cannot receive more than ordered quantity")
         
-        # Update received quantity
-        self.quantity_received += quantity
+        # Update delivered quantity
+        self.quantity_delivered += quantity
         self.calculate_totals()
         
         # Check for variance
         variance = {}
-        if actual_cost and actual_cost != self.unit_cost:
+        if actual_cost and actual_cost != self.base_price:
             variance['cost_variance'] = {
-                'ordered_cost': float(self.unit_cost),
+                'ordered_cost': float(self.base_price),
                 'actual_cost': float(actual_cost),
-                'difference': float(actual_cost - self.unit_cost),
+                'difference': float(actual_cost - self.base_price),
                 'quantity': float(quantity)
             }
         

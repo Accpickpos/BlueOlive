@@ -59,7 +59,7 @@ export default function IndividualAccountEnquiry({ onBack }: { onBack: () => voi
   useEffect(() => {
     const fetchSuppliers = async () => {
       try {
-        const response = await apiRequest('/api/creditors/suppliers/');
+        const response = await apiRequest('/api/v1/creditors/creditors/');
         setSuppliers(response.data.results || response.data);
       } catch (err) {
         console.error('Error fetching suppliers:', err);

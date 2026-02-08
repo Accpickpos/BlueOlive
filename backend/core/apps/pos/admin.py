@@ -125,9 +125,9 @@ class LaybyeLineInline(admin.TabularInline):
     fields = [
         'line_number', 'stock_item', 'quantity',
         'unit_price', 'discount_percentage', 'tax_code',
-        'line_total', 'vat_amount'
+        'line_total'
     ]
-    readonly_fields = ['line_total', 'vat_amount']
+    readonly_fields = ['line_total']
 
 
 class LaybyelPaymentInline(admin.TabularInline):

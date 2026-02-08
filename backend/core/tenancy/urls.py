@@ -4,7 +4,8 @@ from rest_framework.routers import DefaultRouter
 from .views import TenantViewSet, ShopViewSet, current_tenant, tenant_shops, all_shops
 
 router = DefaultRouter()
-router.register(r'tenants', TenantViewSet, basename='tenant')
+# Register viewsets with empty prefixes since path() calls set the prefix
+router.register(r'', TenantViewSet, basename='tenant')
 router.register(r'shops', ShopViewSet, basename='shop')
 
 urlpatterns = [
@@ -13,3 +14,4 @@ urlpatterns = [
     path('tenant_shops/', tenant_shops, name='tenant-shops'),
     path('all_shops/', all_shops, name='all-shops'),
 ]
+

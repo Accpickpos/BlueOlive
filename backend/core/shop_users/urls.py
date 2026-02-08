@@ -11,12 +11,12 @@ router.register(r'admin/superusers', UserManagementViewSet, basename='superuser'
 
 urlpatterns = [
     path('', include(router.urls)),
-    # Authentication endpoints
-    path('auth/csrf/', GetCSRFTokenView.as_view(), name='csrf_token'),
-    path('auth/signup/', SignupView.as_view(), name='signup'),
-    path('auth/login/', TenantTokenView.as_view(), name='token_obtain_pair'),
-    path('auth/unified-login/', UnifiedLoginView.as_view(), name='unified_login'),
-    path('auth/logout/', LogoutView.as_view(), name='logout'),
-    path('auth/token/refresh/', CookieTokenRefreshView.as_view(), name='token_refresh'),
-    path('auth/profile/', ProfileView.as_view(), name='profile'),
+    # Authentication endpoints (already under /api/v1/users/auth/ in main urls.py)
+    path('csrf/', GetCSRFTokenView.as_view(), name='csrf_token'),
+    path('signup/', SignupView.as_view(), name='signup'),
+    path('login/', TenantTokenView.as_view(), name='token_obtain_pair'),
+    path('unified-login/', UnifiedLoginView.as_view(), name='unified_login'),
+    path('logout/', LogoutView.as_view(), name='logout'),
+    path('token/refresh/', CookieTokenRefreshView.as_view(), name='token_refresh'),
+    path('profile/', ProfileView.as_view(), name='profile'),
 ]

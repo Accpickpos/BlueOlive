@@ -2,12 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { AlertCircle } from 'lucide-react';
+import { useCreditorsAPI } from '@/lib/creditorsApi';
+import creditorsApi from '@/lib/creditorsApi';
 
 interface PaymentFormProps {
   onComplete: () => void;
 }
 
 export default function PaymentForm({ onComplete }: PaymentFormProps) {
+  const { listSuppliers } = useCreditorsAPI();
+  
   const [formData, setFormData] = useState({
     supplier: '',
     payment_date: new Date().toISOString().split('T')[0],
@@ -28,11 +32,8 @@ export default function PaymentForm({ onComplete }: PaymentFormProps) {
 
   const fetchSuppliers = async () => {
     try {
-      const response = await fetch('/api/creditors/suppliers/');
-      if (response.ok) {
-        const data = await response.json();
-        setSuppliers(data.results || data);
-      }
+      const suppliers = await listSuppliers();
+      setSuppliers(suppliers);
     } catch (err) {
       console.error('Error fetching suppliers:', err);
     }
@@ -67,15 +68,10 @@ export default function PaymentForm({ onComplete }: PaymentFormProps) {
         settlement_discount: parseFloat(formData.settlement_discount.toString()),
       };
 
-      const response = await fetch('/api/creditors/transactions/payment/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      const response = await creditorsApi.payments.create(payload);
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || 'Failed to create payment');
+      if (!response) {
+        throw new Error('Failed to create payment');
       }
 
       setSuccess('Payment recorded successfully!');

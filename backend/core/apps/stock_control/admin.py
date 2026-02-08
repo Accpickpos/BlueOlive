@@ -44,10 +44,10 @@ class SalesAreaAdmin(admin.ModelAdmin):
 
 @admin.register(StockItem)
 class StockItemAdmin(admin.ModelAdmin):
-    list_display = ['stock_code', 'description', 'department', 'cost_price', 'selling_price_1', 'quantity_on_hand', 'is_active']
+    list_display = ['stock_code', 'description', 'department', 'cost_price', 'selling_price_1', 'quantity_on_hand', 'available_qty_display', 'is_active']
     list_filter = ['department', 'supplier', 'is_active', 'created_at']
     search_fields = ['stock_code', 'description', 'supplier_code']
-    readonly_fields = ['created_at', 'updated_at', 'sales_mtd_quantity', 'sales_mtd_value', 'sales_ytd_quantity', 'sales_ytd_value']
+    readonly_fields = ['created_at', 'updated_at', 'sales_mtd_quantity', 'sales_mtd_value', 'sales_ytd_quantity', 'sales_ytd_value', 'display_available_quantity']
     
     fieldsets = (
         ('Basic Information', {
@@ -57,7 +57,7 @@ class StockItemAdmin(admin.ModelAdmin):
             'fields': ('cost_price', 'average_cost', 'selling_price_1', 'selling_price_2', 'selling_price_3', 'markup_1', 'markup_2', 'markup_3')
         }),
         ('Stock Control', {
-            'fields': ('quantity_on_hand', 'quantity_counted', 'quantity_on_order', 'reorder_quantity', 'default_selling_quantity', 'allow_negative_quantities')
+            'fields': ('quantity_on_hand', 'quantity_allocated', 'quantity_sale_order', 'display_available_quantity', 'quantity_counted', 'quantity_on_order', 'reorder_quantity', 'default_selling_quantity', 'allow_negative_quantities')
         }),
         ('Configuration', {
             'fields': ('tax_code', 'maximum_discount_percent', 'is_active')
@@ -73,6 +73,16 @@ class StockItemAdmin(admin.ModelAdmin):
     )
     
     ordering = ['stock_code']
+    
+    def available_qty_display(self, obj):
+        """Display available quantity"""
+        return obj.available_quantity
+    available_qty_display.short_description = 'Available Qty'
+    
+    def display_available_quantity(self, obj):
+        """Display calculated available quantity"""
+        return f"{obj.available_quantity:.2f} units"
+    display_available_quantity.short_description = 'Available Quantity (QOH - Allocated - SO)'
 
 
 @admin.register(SpecialDeal)
@@ -127,9 +137,10 @@ class FuturePricingAdmin(admin.ModelAdmin):
 
 @admin.register(ShrinkWrap)
 class ShrinkWrapAdmin(admin.ModelAdmin):
-    list_display = ['shrink_pack_code', 'quantity_in_bulk', 'bulk_pack_code']
+    list_display = ['shrink_pack_code', 'invoice_bulk_value', 'bulk_pack_code']
     search_fields = ['shrink_pack_code__stock_code', 'bulk_pack_code__stock_code']
     readonly_fields = ['created_at', 'updated_at']
+    raw_id_fields = ['shrink_pack_code', 'bulk_pack_code']
 
 
 class PackBundleIngredientInline(admin.TabularInline):

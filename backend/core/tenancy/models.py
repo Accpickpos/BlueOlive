@@ -173,6 +173,24 @@ class Shop(models.Model):
     """
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="shops")
     name = models.CharField(max_length=200)
+    code = models.CharField(
+        max_length=50,
+        unique=True,
+        help_text="Shop code (e.g., MS001)",
+        null=True,
+        blank=True
+    )
+    address = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Physical address of the shop"
+    )
+    phone = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+        help_text="Shop phone number"
+    )
     schema_name = models.CharField(max_length=100, unique=True)
     subdomain = models.CharField(max_length=100, blank=True, help_text="Subdomain for shop access, e.g., 'downtown'")
     description = models.TextField(blank=True, null=True)

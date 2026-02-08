@@ -17,6 +17,9 @@ router.register(r'bank-charges', views.BankChargeViewSet, basename='bank-charge'
 router.register(r'interest-received', views.InterestReceivedViewSet, basename='interest-received')
 router.register(r'bank-reconciliations', views.BankReconciliationViewSet, basename='bank-reconciliation')
 router.register(r'cash-floats', views.CashFloatViewSet, basename='cash-float')
+router.register(r'expense-category-balances', views.ExpenseCategoryBalanceViewSet, basename='expense-category-balance')
+router.register(r'income-category-balances', views.IncomeCategoryBalanceViewSet, basename='income-category-balance')
+router.register(r'unpresented-cheques', views.UnpresentedChequeViewSet, basename='unpresented-cheque')
 
 urlpatterns = [
     path('', include(router.urls)),

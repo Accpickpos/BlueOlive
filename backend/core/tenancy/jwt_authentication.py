@@ -42,6 +42,8 @@ class TenantJWTAuthentication(JWTAuthentication):
     def authenticate(self, request):
         """
         Authenticate using JWT from cookie or Authorization header.
+        Returns None if authentication is not attempted (allows public endpoints to work).
+        Only raises AuthenticationFailed if authentication is attempted but fails.
         """
         logger.info(f"TenantJWTAuthentication.authenticate() called, path={request.path}")
         logger.info(f"Request cookies: {list(request.COOKIES.keys())}")
@@ -50,23 +52,38 @@ class TenantJWTAuthentication(JWTAuthentication):
             # Try to get token from httpOnly cookie first
             token = request.COOKIES.get('access_token')
             if not token:
-                logger.warning("No access_token in cookies, checking Authorization header")
+                logger.debug("No access_token in cookies, checking Authorization header")
                 # Fall back to parent's method which checks Authorization header
-                result = super().authenticate(request)
+                try:
+                    result = super().authenticate(request)
+                    if result is None:
+                        logger.debug("No Authorization header found, allowing public/anonymous access")
+                        return None
+                except (AuthenticationFailed, InvalidToken) as e:
+                    # Authentication was attempted but failed - propagate the error
+                    logger.warning(f"Authorization header authentication failed: {str(e)}")
+                    raise
+                except Exception as e:
+                    # Log unexpected errors, but for authentication we return None (not authenticated)
+                    logger.debug(f"Authorization header check failed: {str(e)}")
+                    return None
             else:
-                logger.info(f"Token found in cookie, length={len(token)}")
+                logger.debug(f"Token found in cookie, length={len(token)}")
                 # Decode the token manually
                 from rest_framework_simplejwt.tokens import AccessToken
                 try:
                     validated_token = AccessToken(token)
-                    logger.info(f"Token validated successfully")
+                    logger.debug(f"Token validated successfully")
                     result = self.get_user(validated_token), validated_token
+                except (AuthenticationFailed, InvalidToken) as e:
+                    logger.warning(f"Token validation failed: {str(e)}")
+                    raise
                 except Exception as e:
                     logger.error(f"Failed to decode token: {str(e)}")
-                    raise
+                    raise AuthenticationFailed(f"Token validation error: {str(e)}")
             
             if result is None:
-                logger.warning(f"JWT authentication returned None")
+                logger.debug(f"JWT authentication returned None")
                 return None
             
             user, validated_token = result
@@ -105,9 +122,14 @@ class TenantJWTAuthentication(JWTAuthentication):
             
             return user, validated_token
             
-        except Exception as e:
-            logger.error(f"JWT authentication error: {str(e)}")
+        except (AuthenticationFailed, InvalidToken) as e:
+            # Authentication was attempted but failed - propagate the error
             raise
+        except Exception as e:
+            logger.error(f"Unexpected JWT authentication error: {str(e)}")
+            # For unexpected errors during authentication, log and return None
+            # This prevents 500 errors on authentication issues
+            return None
     
     def get_user(self, validated_token):
         """

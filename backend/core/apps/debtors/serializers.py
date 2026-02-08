@@ -1,512 +1,512 @@
 """
 Debtors serializers.
 Comprehensive serializers for all debtor-related models.
+Based on DMAST, DEBTRAN, DEBTOPEN, DPDC, DEBTORAUD tables.
 """
 from rest_framework import serializers
 from django.db import transaction
 from decimal import Decimal
 from .models import (
-    Debtor, DebtorTransaction, Invoice, InvoiceLine,
-    PostDatedCheque
+    Debtor, DebtorTransaction, DebtorAudit,
+    Debtopen, Dpdc, Darea
 )
-from apps.settings.models import SalesArea
-
-
-class SalesAreaNestedSerializer(serializers.ModelSerializer):
-    """Nested serializer for sales area."""
-    class Meta:
-        model = SalesArea
-        fields = ['id', 'number', 'name']
 
 
 class DebtorListSerializer(serializers.ModelSerializer):
-    """Serializer for debtor list view."""
-    total_balance = serializers.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        read_only=True
-    )
-    sales_area_name = serializers.CharField(
-        source='sales_area.name',
-        read_only=True,
-        allow_null=True
-    )
+    """Serializer for debtor list view (DMAST)."""
+    
+    total_balance = serializers.SerializerMethodField()
+    overdue_balance = serializers.SerializerMethodField()
+    is_blocked_flag = serializers.SerializerMethodField()
     
     class Meta:
         model = Debtor
         fields = [
-            'id',
-            'account_number',
-            'name',
-            'search_name',
-            'contact_person',
-            'telephone1',
-            'email',
-            'sales_area',
-            'sales_area_name',
-            'account_category',
-            'credit_limit',
-            'current_balance',
+            'dno',
+            'dname',
+            'dsname',
+            'dcontact',
+            'dtel',
+            'darea',
+            'acctype',
+            'dclimit',
+            'dcrnt',
             'total_balance',
+            'overdue_balance',
+            'is_blocked_flag',
             'is_active',
-            'is_blocked',
             'created_at',
         ]
+    
+    def get_total_balance(self, obj):
+        """Calculate total balance."""
+        try:
+            return obj.get_total_balance()
+        except (AttributeError, TypeError) as e:
+            # Handle missing fields or calculation errors
+            return Decimal(0)
+    
+    def get_overdue_balance(self, obj):
+        """Calculate overdue balance (> 30 days)."""
+        try:
+            return obj.get_overdue_balance()
+        except (AttributeError, TypeError) as e:
+            # Handle missing fields or calculation errors
+            return Decimal(0)
+    
+    def get_is_blocked_flag(self, obj):
+        """Get block status."""
+        try:
+            return obj.is_blocked()
+        except (AttributeError, TypeError) as e:
+            # Handle missing field or method error
+            return False
 
 
 class DebtorDetailSerializer(serializers.ModelSerializer):
-    """Detailed serializer for debtor."""
-    total_balance = serializers.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        read_only=True
-    )
-    sales_area_detail = SalesAreaNestedSerializer(
-        source='sales_area',
-        read_only=True
-    )
+    """Detailed serializer for debtor (DMAST)."""
+    
+    total_balance = serializers.SerializerMethodField()
+    overdue_balance = serializers.SerializerMethodField()
+    is_blocked_flag = serializers.SerializerMethodField()
+    available_credit = serializers.SerializerMethodField()
+    credit_utilization_pct = serializers.SerializerMethodField()
     
     class Meta:
         model = Debtor
-        fields = '__all__'
-        read_only_fields = [
-            'current_balance',
-            'balance_30_days',
-            'balance_60_days',
-            'balance_90_days',
-            'balance_120_days',
-            'balance_150_days',
-            'balance_180_days',
-            'last_payment_date',
-            'last_payment_amount',
-            'sales_mtd',
-            'sales_ytd',
+        fields = [
+            'dno',
+            'dname',
+            'dsname',
+            'dcontact',
+            'dtel',
+            'dfax',
+            'dadd1',
+            'dadd2',
+            'dadd3',
+            'dpcode',
+            'delad1',
+            'delad2',
+            'delad3',
+            'delad4',
+            'dtaxno',
+            'acctype',
+            'price',
+            'terms',
+            'ddiscper',
+            'pdisc',
+            'discprn',
+            'dclimit',
+            'darea',
+            'dintflag',
+            'blockflag',
+            'dposbal',
+            'dbalbfwd',
+            'dcrnt',
+            'd30',
+            'd60',
+            'd90',
+            'd120',
+            'd150',
+            'd180',
+            'total_balance',
+            'overdue_balance',
+            'available_credit',
+            'credit_utilization_pct',
+            'is_blocked_flag',
+            'dsalesm',
+            'dsalesy',
+            'dprofitm',
+            'dprofity',
+            'damtlpd',
+            'ddatlpd',
+            'is_active',
+            'created_at',
+            'updated_at',
         ]
+        read_only_fields = [
+            'dcrnt',
+            'd30',
+            'd60',
+            'd90',
+            'd120',
+            'd150',
+            'd180',
+            'dsalesm',
+            'dsalesy',
+            'dprofitm',
+            'dprofity',
+            'damtlpd',
+            'ddatlpd',
+        ]
+    
+    def get_total_balance(self, obj):
+        try:
+            return obj.get_total_balance()
+        except (AttributeError, TypeError):
+            return Decimal(0)
+    
+    def get_overdue_balance(self, obj):
+        try:
+            return obj.get_overdue_balance()
+        except (AttributeError, TypeError):
+            return Decimal(0)
+    
+    def get_available_credit(self, obj):
+        try:
+            return obj.dclimit - obj.get_total_balance()
+        except (AttributeError, TypeError):
+            return Decimal(0)
+    
+    def get_credit_utilization_pct(self, obj):
+        try:
+            total = obj.get_total_balance()
+            if obj.dclimit > 0:
+                return round((total / obj.dclimit) * 100, 2)
+            return 0
+        except (AttributeError, TypeError, ZeroDivisionError):
+            return 0
+    
+    def get_is_blocked_flag(self, obj):
+        try:
+            return obj.is_blocked()
+        except (AttributeError, TypeError):
+            return False
 
 
 class DebtorCreateUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for creating/updating debtors."""
+    """Serializer for creating/updating debtor (DMAST)."""
     
     class Meta:
         model = Debtor
-        fields = '__all__'
-        read_only_fields = [
-            'current_balance',
-            'balance_30_days',
-            'balance_60_days',
-            'balance_90_days',
-            'balance_120_days',
-            'balance_150_days',
-            'balance_180_days',
-            'last_payment_date',
-            'last_payment_amount',
-            'sales_mtd',
-            'sales_ytd',
+        fields = [
+            'dno',
+            'dname',
+            'dsname',
+            'dcontact',
+            'dtel',
+            'dfax',
+            'dadd1',
+            'dadd2',
+            'dadd3',
+            'dpcode',
+            'delad1',
+            'delad2',
+            'delad3',
+            'delad4',
+            'dtaxno',
+            'acctype',
+            'price',
+            'terms',
+            'ddiscper',
+            'pdisc',
+            'discprn',
+            'dclimit',
+            'darea',
+            'dintflag',
+            'blockflag',
+            'dposbal',
+            'is_active',
         ]
+        read_only_fields = []
     
-    def validate_account_number(self, value):
+    def validate_dno(self, value):
         """Ensure account number is unique."""
         instance = self.instance
-        if instance and instance.account_number == value:
+        if instance and instance.dno == value:
             return value
         
-        if Debtor.objects.filter(account_number=value).exists():
-            raise serializers.ValidationError(
-                "Account number already exists."
-            )
+        if Debtor.objects.filter(dno=value).exists():
+            raise serializers.ValidationError("Account number already exists.")
         return value
+    
+    def validate_dsname(self, value):
+        """Ensure short name is populated."""
+        if not value:
+            raise serializers.ValidationError("Short name is required.")
+        return value[:5].upper()
     
     def validate(self, data):
         """Validate debtor data."""
-        # Ensure search name is populated
-        if 'name' in data and 'search_name' not in data:
-            data['search_name'] = data['name'][:50].upper()
-        
         # Validate credit limit
-        if data.get('credit_limit', 0) < 0:
-            raise serializers.ValidationError({
-                'credit_limit': 'Credit limit cannot be negative.'
-            })
+        if data.get('dclimit', 0) < 0:
+            raise serializers.ValidationError({'dclimit': 'Credit limit cannot be negative.'})
         
-        # Validate discount
-        if data.get('trade_discount', 0) > 100:
-            raise serializers.ValidationError({
-                'trade_discount': 'Trade discount cannot exceed 100%.'
-            })
+        # Validate discounts
+        if not 0 <= data.get('ddiscper', 0) <= 100:
+            raise serializers.ValidationError({'ddiscper': 'Discount % must be 0-100.'})
+        
+        if not 0 <= data.get('pdisc', 0) <= 100:
+            raise serializers.ValidationError({'pdisc': 'Prompt discount must be 0-100.'})
+        
+        # Cash customers should not have credit limit
+        if data.get('acctype') == 'C' and data.get('dclimit', 0) > 0:
+            raise serializers.ValidationError({'dclimit': 'Cash customers should not have credit limit.'})
         
         return data
 
 
 class DebtorTransactionSerializer(serializers.ModelSerializer):
-    """Serializer for debtor transactions."""
+    """Serializer for debtor transactions (DEBTRAN)."""
+    
     debtor_name = serializers.CharField(
-        source='debtor.name',
+        source='dno.dname',
         read_only=True
     )
     debtor_account = serializers.CharField(
-        source='debtor.account_number',
+        source='dno.dno',
         read_only=True
     )
-    transaction_type_display = serializers.CharField(
-        source='get_transaction_type_display',
+    dtype_display = serializers.CharField(
+        source='get_dtype_display',
         read_only=True
     )
     
     class Meta:
         model = DebtorTransaction
-        fields = '__all__'
-        read_only_fields = ['created_at', 'updated_at']
-
-
-class InvoiceLineSerializer(serializers.ModelSerializer):
-    """Serializer for invoice line items."""
-    
-    class Meta:
-        model = InvoiceLine
         fields = [
-            'id',
-            'line_number',
-            'stock_code',
-            'description',
-            'quantity',
-            'unit_price',
-            'discount_percentage',
-            'tax_code',
-            'line_total',
-            'vat_amount',
-            'cost_price',
-            'line_profit',
-        ]
-        read_only_fields = ['id']
-    
-    def validate_quantity(self, value):
-        """Validate quantity is positive."""
-        if value <= 0:
-            raise serializers.ValidationError("Quantity must be positive.")
-        return value
-    
-    def validate_unit_price(self, value):
-        """Validate unit price is not negative."""
-        if value < 0:
-            raise serializers.ValidationError("Unit price cannot be negative.")
-        return value
-
-
-class InvoiceListSerializer(serializers.ModelSerializer):
-    """Serializer for invoice list view."""
-    debtor_name = serializers.CharField(
-        source='debtor.name',
-        read_only=True
-    )
-    debtor_account = serializers.CharField(
-        source='debtor.account_number',
-        read_only=True
-    )
-    line_count = serializers.IntegerField(
-        source='lines.count',
-        read_only=True
-    )
-    
-    class Meta:
-        model = Invoice
-        fields = [
-            'id',
-            'invoice_number',
-            'invoice_date',
-            'debtor',
-            'debtor_name',
+            'dno',
             'debtor_account',
-            'order_number',
-            'customer_reference',
-            'subtotal',
-            'vat_amount',
-            'total_amount',
-            'gross_profit',
-            'line_count',
-            'is_posted',
-            'is_cancelled',
+            'debtor_name',
+            'dtrano',
+            'dtype',
+            'dtype_display',
+            'dtdate',
+            'time',
+            'dtsub',
+            'dtgst',
+            'dttot',
+            'dtaxstat',
+            'source',
+            'ordno',
+            'custref',
+            'del1',
+            'del2',
+            'del3',
+            'del4',
             'created_at',
         ]
+        read_only_fields = ['created_at']
 
 
-class InvoiceDetailSerializer(serializers.ModelSerializer):
-    """Detailed serializer for invoice."""
-    debtor_detail = DebtorListSerializer(
-        source='debtor',
-        read_only=True
-    )
-    lines = InvoiceLineSerializer(many=True, read_only=True)
-    gross_profit_percentage = serializers.SerializerMethodField()
+class DebteopenSerializer(serializers.ModelSerializer):
+    """Serializer for open item transactions (DEBTOPEN)."""
     
-    class Meta:
-        model = Invoice
-        fields = '__all__'
-        read_only_fields = [
-            'subtotal',
-            'discount_amount',
-            'vat_amount',
-            'total_amount',
-            'total_cost',
-            'gross_profit',
-            'created_at',
-            'updated_at',
-        ]
-    
-    def get_gross_profit_percentage(self, obj):
-        """Calculate gross profit percentage."""
-        if obj.total_amount > 0:
-            return round((obj.gross_profit / obj.total_amount) * 100, 2)
-        return 0
-
-
-class InvoiceCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating invoices."""
-    lines = InvoiceLineSerializer(many=True)
-    
-    class Meta:
-        model = Invoice
-        fields = [
-            'debtor',
-            'invoice_number',
-            'invoice_date',
-            'delivery_name',
-            'delivery_address_line1',
-            'delivery_address_line2',
-            'delivery_telephone',
-            'order_number',
-            'customer_reference',
-            'job_card_number',
-            'sales_area',
-            'lines',
-        ]
-    
-    def validate_invoice_number(self, value):
-        """Ensure invoice number is unique."""
-        if Invoice.objects.filter(invoice_number=value).exists():
-            raise serializers.ValidationError(
-                "Invoice number already exists."
-            )
-        return value
-    
-    def validate_lines(self, value):
-        """Validate invoice has at least one line."""
-        if not value:
-            raise serializers.ValidationError(
-                "Invoice must have at least one line item."
-            )
-        return value
-    
-    @transaction.atomic
-    def create(self, validated_data):
-        """Create invoice with lines."""
-        lines_data = validated_data.pop('lines')
-        
-        # Create invoice
-        invoice = Invoice.objects.create(**validated_data)
-        
-        # Calculate totals
-        subtotal = Decimal('0.00')
-        total_vat = Decimal('0.00')
-        total_cost = Decimal('0.00')
-        
-        # Create lines
-        for idx, line_data in enumerate(lines_data, start=1):
-            line_data['invoice'] = invoice
-            line_data['line_number'] = idx
-            
-            # Calculate line totals
-            quantity = line_data['quantity']
-            unit_price = line_data['unit_price']
-            discount_pct = line_data.get('discount_percentage', Decimal('0.00'))
-            tax_code = line_data.get('tax_code', 1)
-            cost_price = line_data.get('cost_price', Decimal('0.00'))
-            
-            # Line total after discount
-            line_total = quantity * unit_price * (1 - discount_pct / 100)
-            
-            # VAT calculation (14% for tax code 1)
-            vat_rate = Decimal('0.14') if tax_code == 1 else Decimal('0.00')
-            vat_amount = line_total * vat_rate
-            
-            # Profit calculation
-            line_cost = quantity * cost_price
-            line_profit = line_total - line_cost
-            
-            line_data['line_total'] = line_total
-            line_data['vat_amount'] = vat_amount
-            line_data['line_profit'] = line_profit
-            
-            InvoiceLine.objects.create(**line_data)
-            
-            # Add to totals
-            subtotal += line_total
-            total_vat += vat_amount
-            total_cost += line_cost
-        
-        # Update invoice totals
-        invoice.subtotal = subtotal
-        invoice.vat_amount = total_vat
-        invoice.total_amount = subtotal + total_vat
-        invoice.total_cost = total_cost
-        invoice.gross_profit = subtotal - total_cost
-        invoice.save()
-        
-        return invoice
-
-
-class InvoiceUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for updating invoices."""
-    lines = InvoiceLineSerializer(many=True, required=False)
-    
-    class Meta:
-        model = Invoice
-        fields = [
-            'delivery_name',
-            'delivery_address_line1',
-            'delivery_address_line2',
-            'delivery_telephone',
-            'order_number',
-            'customer_reference',
-            'job_card_number',
-            'sales_area',
-            'lines',
-        ]
-    
-    def validate(self, data):
-        """Prevent updating posted invoices."""
-        if self.instance and self.instance.is_posted:
-            raise serializers.ValidationError(
-                "Cannot modify a posted invoice."
-            )
-        return data
-    
-    @transaction.atomic
-    def update(self, instance, validated_data):
-        """Update invoice and recalculate if lines changed."""
-        lines_data = validated_data.pop('lines', None)
-        
-        # Update invoice fields
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        
-        # If lines were provided, recreate them
-        if lines_data is not None:
-            # Delete existing lines
-            instance.lines.all().delete()
-            
-            # Recalculate totals (same logic as create)
-            subtotal = Decimal('0.00')
-            total_vat = Decimal('0.00')
-            total_cost = Decimal('0.00')
-            
-            for idx, line_data in enumerate(lines_data, start=1):
-                line_data['invoice'] = instance
-                line_data['line_number'] = idx
-                
-                quantity = line_data['quantity']
-                unit_price = line_data['unit_price']
-                discount_pct = line_data.get('discount_percentage', Decimal('0.00'))
-                tax_code = line_data.get('tax_code', 1)
-                cost_price = line_data.get('cost_price', Decimal('0.00'))
-                
-                line_total = quantity * unit_price * (1 - discount_pct / 100)
-                vat_rate = Decimal('0.14') if tax_code == 1 else Decimal('0.00')
-                vat_amount = line_total * vat_rate
-                line_cost = quantity * cost_price
-                line_profit = line_total - line_cost
-                
-                line_data['line_total'] = line_total
-                line_data['vat_amount'] = vat_amount
-                line_data['line_profit'] = line_profit
-                
-                InvoiceLine.objects.create(**line_data)
-                
-                subtotal += line_total
-                total_vat += vat_amount
-                total_cost += line_cost
-            
-            # Update totals
-            instance.subtotal = subtotal
-            instance.vat_amount = total_vat
-            instance.total_amount = subtotal + total_vat
-            instance.total_cost = total_cost
-            instance.gross_profit = subtotal - total_cost
-            instance.save()
-        
-        return instance
-
-
-class PostDatedChequeSerializer(serializers.ModelSerializer):
-    """Serializer for post-dated cheques."""
     debtor_name = serializers.CharField(
-        source='debtor.name',
+        source='dno.dname',
         read_only=True
     )
     debtor_account = serializers.CharField(
-        source='debtor.account_number',
+        source='dno.dno',
+        read_only=True
+    )
+    type_display = serializers.CharField(
+        source='get_type_display',
+        read_only=True
+    )
+    ageflag_display = serializers.CharField(
+        source='get_ageflag_display',
+        read_only=True
+    )
+    allocated_amount = serializers.SerializerMethodField()
+    is_fully_allocated = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Debtopen
+        fields = [
+            'dno',
+            'debtor_account',
+            'debtor_name',
+            'dtrano',
+            'type',
+            'type_display',
+            'date',
+            'total',
+            'balancedue',
+            'allocated_amount',
+            'is_fully_allocated',
+            'ageflag',
+            'ageflag_display',
+            'posted',
+            'created_at',
+        ]
+        read_only_fields = ['created_at']
+    
+    def get_allocated_amount(self, obj):
+        return obj.get_allocated_amount()
+    
+    def get_is_fully_allocated(self, obj):
+        return obj.is_fully_allocated()
+
+
+class DpdcSerializer(serializers.ModelSerializer):
+    """Serializer for post-dated cheques (DPDC)."""
+    
+    debtor_name = serializers.CharField(
+        source='dno.dname',
+        read_only=True
+    )
+    debtor_account = serializers.CharField(
+        source='dno.dno',
+        read_only=True
+    )
+    status_display = serializers.CharField(
+        source='get_status_display',
+        read_only=True
+    )
+    is_active = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Dpdc
+        fields = [
+            'dno',
+            'debtor_account',
+            'debtor_name',
+            'date',
+            'amount',
+            'status',
+            'status_display',
+            'is_active',
+            'created_at',
+        ]
+        read_only_fields = ['created_at']
+    
+    def get_is_active(self, obj):
+        return obj.status == 'A'
+
+
+class DebtorAuditSerializer(serializers.ModelSerializer):
+    """Serializer for debtor audit records (DEBTORAUD)."""
+    
+    debtor_account = serializers.CharField(
+        source='dno.dno',
+        read_only=True
+    )
+    type_display = serializers.CharField(
+        source='get_type_display',
+        read_only=True
+    )
+    thistype_display = serializers.CharField(
+        source='get_thistype_display',
         read_only=True
     )
     
     class Meta:
-        model = PostDatedCheque
-        fields = '__all__'
-        read_only_fields = ['is_processed', 'processed_date']
+        model = DebtorAudit
+        fields = [
+            'dno',
+            'debtor_account',
+            'dtrano',
+            'type',
+            'type_display',
+            'thistype',
+            'thistype_display',
+            'thistran',
+            'date',
+            'amount',
+            'created_at',
+        ]
+        read_only_fields = ['created_at']
+
+
+class DareaSerializer(serializers.ModelSerializer):
+    """Serializer for sales area (DAREA)."""
     
-    def validate(self, data):
-        """Validate PDC data."""
-        # Check if debtor is blocked
-        debtor = data.get('debtor')
-        if debtor and debtor.is_blocked:
-            raise serializers.ValidationError({
-                'debtor': 'Cannot process PDC for blocked debtor.'
-            })
-        
-        return data
+    total_sales = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Darea
+        fields = [
+            'darea',
+            'dareaname',
+            'arsls1',
+            'arsls2',
+            'arsls3',
+            'arsls4',
+            'arsls5',
+            'arsls6',
+            'arsls7',
+            'arsls8',
+            'arsls9',
+            'arsls10',
+            'arsls11',
+            'arsls12',
+            'total_sales',
+            'created_at',
+        ]
+        read_only_fields = ['created_at']
+    
+    def get_total_sales(self, obj):
+        return obj.get_total_sales()
+
+
+class PaginatedDebtorTransactionSerializer(serializers.Serializer):
+    """Helper serializer for paginated transactions."""
+    debtor_transactions = DebtorTransactionSerializer(many=True)
+    total_amount = serializers.DecimalField(max_digits=14, decimal_places=2)
+    total_vat = serializers.DecimalField(max_digits=14, decimal_places=2)
+    transaction_count = serializers.IntegerField()
 
 
 class AgeAnalysisSerializer(serializers.Serializer):
     """Serializer for age analysis report."""
-    account_number = serializers.CharField()
-    name = serializers.CharField()
-    contact_person = serializers.CharField()
-    telephone1 = serializers.CharField()
-    credit_limit = serializers.DecimalField(max_digits=12, decimal_places=2)
-    current = serializers.DecimalField(max_digits=12, decimal_places=2)
-    days_30 = serializers.DecimalField(max_digits=12, decimal_places=2)
-    days_60 = serializers.DecimalField(max_digits=12, decimal_places=2)
-    days_90 = serializers.DecimalField(max_digits=12, decimal_places=2)
-    days_120 = serializers.DecimalField(max_digits=12, decimal_places=2)
-    days_150 = serializers.DecimalField(max_digits=12, decimal_places=2)
-    days_180 = serializers.DecimalField(max_digits=12, decimal_places=2)
-    total_balance = serializers.DecimalField(max_digits=12, decimal_places=2)
-    last_payment_date = serializers.DateField(allow_null=True)
-    last_payment_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
-
-
-class DebtorStatementSerializer(serializers.Serializer):
-    """Serializer for debtor statement."""
-    debtor = DebtorDetailSerializer()
-    opening_balance = serializers.DecimalField(max_digits=12, decimal_places=2)
-    transactions = DebtorTransactionSerializer(many=True)
-    closing_balance = serializers.DecimalField(max_digits=12, decimal_places=2)
-    current_balance = serializers.DecimalField(max_digits=12, decimal_places=2)
-    balance_30_days = serializers.DecimalField(max_digits=12, decimal_places=2)
-    balance_60_days = serializers.DecimalField(max_digits=12, decimal_places=2)
-    balance_90_days = serializers.DecimalField(max_digits=12, decimal_places=2)
-    balance_120_days = serializers.DecimalField(max_digits=12, decimal_places=2)
-    balance_150_days = serializers.DecimalField(max_digits=12, decimal_places=2)
-    balance_180_days = serializers.DecimalField(max_digits=12, decimal_places=2)
+    dno = serializers.IntegerField()
+    dname = serializers.CharField()
+    dcontact = serializers.CharField()
+    dtel = serializers.CharField()
+    dclimit = serializers.DecimalField(max_digits=12, decimal_places=2)
+    current = serializers.DecimalField(max_digits=10, decimal_places=2)
+    days_30 = serializers.DecimalField(max_digits=10, decimal_places=2)
+    days_60 = serializers.DecimalField(max_digits=10, decimal_places=2)
+    days_90 = serializers.DecimalField(max_digits=10, decimal_places=2)
+    days_120 = serializers.DecimalField(max_digits=10, decimal_places=2)
+    days_150 = serializers.DecimalField(max_digits=10, decimal_places=2)
+    days_180 = serializers.DecimalField(max_digits=10, decimal_places=2)
+    total_balance = serializers.DecimalField(max_digits=10, decimal_places=2)
+    overdue_balance = serializers.DecimalField(max_digits=10, decimal_places=2)
+    ddatlpd = serializers.DateField(allow_null=True)
+    damtlpd = serializers.DecimalField(max_digits=10, decimal_places=2)
 
 
 class DebtorSummarySerializer(serializers.Serializer):
-    """Serializer for debtors summary."""
+    """Serializer for debtors summary report."""
     total_debtors = serializers.IntegerField()
     active_debtors = serializers.IntegerField()
     blocked_debtors = serializers.IntegerField()
-    total_balance = serializers.DecimalField(max_digits=12, decimal_places=2)
-    current_balance = serializers.DecimalField(max_digits=12, decimal_places=2)
-    overdue_30 = serializers.DecimalField(max_digits=12, decimal_places=2)
-    overdue_60 = serializers.DecimalField(max_digits=12, decimal_places=2)
-    overdue_90 = serializers.DecimalField(max_digits=12, decimal_places=2)
-    overdue_120_plus = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_balance = serializers.DecimalField(max_digits=14, decimal_places=2)
+    current_balance = serializers.DecimalField(max_digits=10, decimal_places=2)
+    overdue_30 = serializers.DecimalField(max_digits=10, decimal_places=2)
+    overdue_60 = serializers.DecimalField(max_digits=10, decimal_places=2)
+    overdue_90 = serializers.DecimalField(max_digits=10, decimal_places=2)
+    overdue_120_plus = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+
+class DebtranListSerializer(serializers.ModelSerializer):
+    """Simple list serializer for DEBTRAN transactions."""
+    
+    class Meta:
+        model = DebtorTransaction
+        fields = [
+            'dtrano',
+            'dtype',
+            'dtdate',
+            'dtsub',
+            'dtgst',
+            'dttot',
+        ]
+
+
+class DebtOpenListSerializer(serializers.ModelSerializer):
+    """Simple list serializer for DEBTOPEN items."""
+    
+    class Meta:
+        model = Debtopen
+        fields = [
+            'dtrano',
+            'type',
+            'date',
+            'total',
+            'balancedue',
+            'ageflag',
+            'posted',
+        ]

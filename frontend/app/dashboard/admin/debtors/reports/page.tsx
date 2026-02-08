@@ -1,8 +1,18 @@
 'use client';
 
-import React, { useState } from 'react';
-import axios from 'axios';
-import { Download, Filter, RotateCcw } from 'lucide-react';
+import Link from 'next/link';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import {
+  BarChart3,
+  FileText,
+  TrendingUp,
+  PieChart,
+  Calendar,
+  Users,
+  AlertCircle,
+  Download,
+} from 'lucide-react';
 
 interface ReportFilters {
   reportType: string;

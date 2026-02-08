@@ -1,437 +1,584 @@
 """
-Creditors app views and viewsets.
-Handles supplier management, transactions, and RFC operations.
+Enterprise-grade views for Creditors module
+Features: Comprehensive permissions, pagination, filtering, transaction management
 """
-from rest_framework import viewsets, status, filters
+
+import logging
+from rest_framework import viewsets, status, filters, pagination
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from django.db import transaction as db_transaction
 from django.shortcuts import get_object_or_404
-from decimal import Decimal
+from django.db.models import Q, Sum, F, DecimalField, Prefetch
 from django_filters.rest_framework import DjangoFilterBackend
+from datetime import datetime
+from decimal import Decimal
 
 from .models import (
     Creditor, GoodsReceivedNote, GRNLineItem,
     CreditorInvoice, CreditorInvoiceLineItem, CreditorCreditNote,
     CreditorCreditNoteLineItem, CreditorPayment, CreditorJournal,
-    CreditorOpenItem, OpenItemAllocation, RFC, RFCLineItem
+    CreditorOpenItem, OpenItemAllocation, RFC, RFCLineItem,
+    ExpenseCategoryMonthlyBalance, OpenItemAudit
 )
 from .serializers import (
-    SupplierListSerializer, SupplierDetailSerializer, SupplierCreateUpdateSerializer,
-    ExpenseCategorySerializer, GoodsReceivedNoteSerializer, CreditorInvoiceSerializer,
-    CreditorCreditNoteSerializer, CreditorPaymentSerializer, CreditorJournalSerializer,
-    CreditorTransactionLineSerializer, OpenItemAllocationSerializer, CreditorOpenItemSerializer,
-    RFCSerializer, RFCLineItemSerializer, SupplierMonthlyPurchaseSerializer,
-    ExpenseMonthlyTotalSerializer, StockReceivingSerializer,
-    StockReturnSerializer, ExpenseInvoiceSerializer, PaymentSerializer,
-    OpenItemPaymentSerializer, JournalSerializer, RFCCreateSerializer
+    CreditorListSerializer, CreditorDetailSerializer, CreditorCreateUpdateSerializer,
+    GoodsReceivedNoteSerializer, GoodsReceivedNoteCreateSerializer,
+    CreditorInvoiceSerializer, CreditorPaymentSerializer, CreditorJournalSerializer,
+    OpenItemAllocationSerializer, OpenItemSerializer,
+    RFCSerializer, RFCLineItemSerializer,
+    AgingAnalysisSerializer, BulkPaymentSerializer
 )
-from apps.settings.models import TaxCode, ExpenseCategory
 
 
-class SupplierViewSet(viewsets.ModelViewSet):
+
+# ============================================================================
+# PAGINATION
+# ============================================================================
+
+class StandardResultsSetPagination(pagination.PageNumberPagination):
+    """Standard pagination for list views"""
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+class LargeResultsSetPagination(pagination.PageNumberPagination):
+    """Pagination for large datasets"""
+    page_size = 50
+    page_size_query_param = 'page_size'
+    max_page_size = 500
+
+
+# ============================================================================
+# CREDITOR VIEWSET
+# ============================================================================
+
+class CreditorViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for managing suppliers/creditors.
+    Enterprise ViewSet for managing creditors/suppliers.
+    
+    Features:
+    - Comprehensive filtering, searching, and ordering
+    - Bulk operations (activate, deactivate, recalculate_aged_balances)
+    - Balance aging analysis
+    - Outstanding items summaries
+    - Pagination and optimization
     
     Endpoints:
-    - GET /suppliers/ - List suppliers
-    - POST /suppliers/ - Create supplier
-    - GET /suppliers/{id}/ - Get supplier details
-    - PUT /suppliers/{id}/ - Update supplier
-    - DELETE /suppliers/{id}/ - Soft delete supplier
-    - GET /suppliers/{id}/balance-analysis/ - Get balance aging
-    - POST /suppliers/{id}/take-on-balance/ - Set opening balance
+    - GET /creditors/ - List creditors
+    - POST /creditors/ - Create creditor
+    - GET /creditors/{id}/ - Get creditor details
+    - PUT /creditors/{id}/ - Update creditor
+    - PATCH /creditors/{id}/ - Partial update
+    - DELETE /creditors/{id}/ - Deactivate creditor
+    - GET /creditors/{id}/aging-analysis/ - Get balance aging
+    - GET /creditors/{id}/outstanding-items/ - Get overdue items
+    - GET /creditors/outstanding-balance/ - List all outstanding items
+    - POST /creditors/bulk-activate/ - Bulk activate
+    - POST /creditors/bulk-deactivate/ - Bulk deactivate
     """
     
     queryset = Creditor.objects.all()
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['is_active', 'account_category']
-    search_fields = ['name', 'email', 'telephone']
-    ordering_fields = ['supplier_number', 'name', 'created_at']
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [
+        DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter
+    ]
+    filterset_fields = ['is_active', 'account_category', 'credit_terms']
+    search_fields = ['supplier_number', 'name', 'email', 'telephone', 'contact_person']
+    ordering_fields = ['supplier_number', 'name', 'current_balance', 'created_at']
     ordering = ['supplier_number']
     
     def get_serializer_class(self):
         """Return appropriate serializer based on action"""
         if self.action == 'list':
-            return SupplierListSerializer
+            return CreditorListSerializer
         elif self.action in ['create', 'update', 'partial_update']:
-            return SupplierCreateUpdateSerializer
-        return SupplierDetailSerializer
+            return CreditorCreateUpdateSerializer
+        return CreditorDetailSerializer
     
     def get_queryset(self):
-        """Filter suppliers for current tenant"""
+        """Optimize queryset with select_related and prefetch_related"""
         queryset = Creditor.objects.all()
         
-        # Filter by active status
-        is_active = self.request.query_params.get('is_active', None)
-        if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
+        # Optimize with select_related
+        queryset = queryset.select_related(
+            'credit_terms', 'sales_area'
+        )
         
-        return queryset.select_related('credit_terms', 'sales_area')
+        # Filter by balance range if provided
+        balance_min = self.request.query_params.get('balance_min')
+        balance_max = self.request.query_params.get('balance_max')
+        
+        if balance_min:
+            try:
+                queryset = queryset.filter(current_balance__gte=Decimal(balance_min))
+            except (ValueError, TypeError):
+                pass
+        
+        if balance_max:
+            try:
+                queryset = queryset.filter(current_balance__lte=Decimal(balance_max))
+            except (ValueError, TypeError):
+                pass
+        
+        # Filter overdue items if requested
+        show_overdue = self.request.query_params.get('overdue_only')
+        if show_overdue and show_overdue.lower() == 'true':
+            queryset = queryset.filter(
+                Q(balance_30_days__gt=0) | Q(balance_60_days__gt=0) | 
+                Q(balance_90_days__gt=0) | Q(balance_120_days__gt=0) |
+                Q(balance_150_days__gt=0) | Q(balance_180_days__gt=0)
+            )
+        
+        return queryset
     
     @action(detail=True, methods=['get'])
-    def balance_analysis(self, request, pk=None):
-        """Get supplier balance aging analysis"""
-        supplier = self.get_object()
-        data = {
-            'account_number': supplier.account_number,
-            'name': supplier.name,
-            'balance_current': supplier.balance_current,
-            'balance_30_days': supplier.balance_30_days,
-            'balance_60_days': supplier.balance_60_days,
-            'balance_90_days': supplier.balance_90_days,
-            'balance_120_days': supplier.balance_120_days,
-            'balance_150_days': supplier.balance_150_days,
-            'balance_180_days': supplier.balance_180_days,
-            'total_balance': supplier.get_total_balance(),
-            'total_balance_with_rfc': supplier.get_total_balance_with_rfc(),
-            'amount_last_paid': supplier.amount_last_paid,
-            'date_last_paid': supplier.date_last_paid,
-            'credit_terms': supplier.credit_terms.days if supplier.credit_terms else None,
-            'our_account_number': supplier.our_account_number,
-        }
-        return Response(data)
+    def aging_analysis(self, request, pk=None):
+        """Get detailed aging analysis for creditor"""
+        creditor = self.get_object()
+        
+        serializer = AgingAnalysisSerializer({
+            'supplier_number': creditor.supplier_number,
+            'name': creditor.name,
+            'current_balance': creditor.balance_current,
+            'balance_30_days': creditor.balance_30_days,
+            'balance_60_days': creditor.balance_60_days,
+            'balance_90_days': creditor.balance_90_days,
+            'balance_120_days': creditor.balance_120_days,
+            'balance_150_days': creditor.balance_150_days,
+            'balance_180_days': creditor.balance_180_days,
+            'total_balance': creditor.get_current_balance(),
+            'last_paid_date': creditor.last_paid_date,
+            'credit_terms': creditor.credit_terms.credit_name if creditor.credit_terms else 'N/A'
+        })
+        
+        return Response(serializer.data)
     
-    @action(detail=True, methods=['post'])
-    def take_on_balance(self, request, pk=None):
-        """Set opening balance for supplier (Balance Brought Forward)"""
-        supplier = self.get_object()
+    @action(detail=True, methods=['get'])
+    def outstanding_items(self, request, pk=None):
+        """Get outstanding/overdue items for creditor"""
+        creditor = self.get_object()
         
-        try:
-            supplier.balance_current = Decimal(request.data.get('balance_current', 0))
-            supplier.balance_30_days = Decimal(request.data.get('balance_30_days', 0))
-            supplier.balance_60_days = Decimal(request.data.get('balance_60_days', 0))
-            supplier.balance_90_days = Decimal(request.data.get('balance_90_days', 0))
-            supplier.balance_120_days = Decimal(request.data.get('balance_120_days', 0))
-            supplier.balance_150_days = Decimal(request.data.get('balance_150_days', 0))
-            supplier.balance_180_days = Decimal(request.data.get('balance_180_days', 0))
-            supplier.save()
-            
-            serializer = self.get_serializer(supplier)
-            return Response(serializer.data)
-        except (ValueError, TypeError) as e:
-            return Response(
-                {'error': f'Invalid balance values: {str(e)}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-    @action(detail=False, methods=['get'])
-    def outstanding_balance(self, request):
-        """
-        Get outstanding balance items across all suppliers or for a specific supplier.
-        
-        Query params:
-        - supplier_id: (optional) Filter by specific supplier
-        
-        Returns list of open items with balance_due > 0
-        """
-        # Get outstanding items
-        outstanding_items = CreditorOpenItem.objects.filter(
+        outstanding = CreditorOpenItem.objects.filter(
+            creditor=creditor,
             balance_due__gt=0,
             is_fully_allocated=False
-        ).select_related('creditor')
+        ).order_by('transaction_date')
         
-        # Filter by supplier if provided
-        supplier_id = request.query_params.get('supplier_id')
-        if supplier_id:
-            outstanding_items = outstanding_items.filter(creditor_id=supplier_id)
+        serializer = OpenItemSerializer(outstanding, many=True)
         
-        # Order by transaction date (oldest first)
-        outstanding_items = outstanding_items.order_by('transaction_date')
-        
-        # Serialize
-        serializer = CreditorOpenItemSerializer(outstanding_items, many=True)
-        
-        # Calculate totals
-        total_outstanding = sum(item['balance_due'] for item in serializer.data)
-        
-        return Response({
-            'count': len(serializer.data),
-            'total_outstanding': total_outstanding,
-            'items': serializer.data
-        })
-
-class CreditorTransactionViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    ViewSet for viewing creditor transactions across all types.
-    Supports viewing GRN, Invoices, Credit Notes, Payments, and Journal entries.
-    
-    Endpoints:
-    - GET /transactions/ - List all transactions (by type)
-    - GET /transactions/?creditor={id} - List transactions for specific creditor
-    - GET /transactions/?type=GRN - Filter by transaction type
-    - GET /transactions/?posted=true - Filter by posted status
-    """
-    
-    permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['creditor', 'is_posted', 'transaction_type']
-    search_fields = ['transaction_number', 'transaction_reference']
-    ordering_fields = ['transaction_date', 'transaction_number', 'created_at']
-    ordering = ['-transaction_date', '-transaction_number']
-    
-    def get_serializer_class(self):
-        """Return appropriate serializer based on transaction type"""
-        transaction_type = self.request.query_params.get('type', None)
-        
-        if transaction_type == 'GRN':
-            return GoodsReceivedNoteSerializer
-        elif transaction_type == 'INV':
-            return CreditorInvoiceSerializer
-        elif transaction_type == 'CN':
-            return CreditorCreditNoteSerializer
-        elif transaction_type == 'PAY':
-            return CreditorPaymentSerializer
-        elif transaction_type in ['DJ', 'CJ']:
-            return CreditorJournalSerializer
-        
-        # Default to serializing transaction lines
-        return CreditorTransactionLineSerializer
-    
-    def get_queryset(self):
-        """
-        Combine all creditor transaction types into a single queryset.
-        Filters by creditor and transaction type if provided.
-        """
-        creditor_id = self.request.query_params.get('creditor', None)
-        transaction_type = self.request.query_params.get('type', None)
-        
-        # Build union of all transaction types
-        grn_qs = GoodsReceivedNote.objects.all()
-        invoice_qs = CreditorInvoice.objects.all()
-        credit_note_qs = CreditorCreditNote.objects.all()
-        payment_qs = CreditorPayment.objects.all()
-        journal_qs = CreditorJournal.objects.all()
-        
-        # Filter by creditor if specified
-        if creditor_id:
-            grn_qs = grn_qs.filter(creditor_id=creditor_id)
-            invoice_qs = invoice_qs.filter(creditor_id=creditor_id)
-            credit_note_qs = credit_note_qs.filter(creditor_id=creditor_id)
-            payment_qs = payment_qs.filter(creditor_id=creditor_id)
-            journal_qs = journal_qs.filter(creditor_id=creditor_id)
-        
-        # Filter by transaction type if specified
-        if transaction_type == 'GRN':
-            return grn_qs.select_related('creditor', 'posted_by')
-        elif transaction_type == 'INV':
-            return invoice_qs.select_related('creditor', 'posted_by')
-        elif transaction_type == 'CN':
-            return credit_note_qs.select_related('creditor', 'posted_by')
-        elif transaction_type == 'PAY':
-            return payment_qs.select_related('creditor', 'posted_by')
-        elif transaction_type in ['DJ', 'CJ']:
-            return journal_qs.select_related('creditor', 'posted_by')
-        
-        # Return combined queryset with all transaction types
-        from django.db.models import QuerySet
-        all_transactions = list(grn_qs) + list(invoice_qs) + list(credit_note_qs) + list(payment_qs) + list(journal_qs)
-        
-        # Sort by transaction date descending
-        all_transactions.sort(key=lambda x: (x.transaction_date, x.transaction_number), reverse=True)
-        
-        # Return as list (this will be converted to a proper queryset-like response)
-        # For better performance, clients should filter by type
-        return GoodsReceivedNote.objects.none()  # Return empty queryset as fallback
-    
-    @action(detail=False, methods=['get'])
-    def by_creditor(self, request):
-        """Get all transactions for a specific creditor"""
-        creditor_id = request.query_params.get('creditor_id')
-        if not creditor_id:
-            return Response(
-                {'error': 'creditor_id is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        creditor = get_object_or_404(Creditor, id=creditor_id)
-        
-        # Combine all transaction types for this creditor
-        transactions = []
-        
-        grn_list = GoodsReceivedNote.objects.filter(creditor=creditor).select_related('creditor', 'posted_by')
-        invoices = CreditorInvoice.objects.filter(creditor=creditor).select_related('creditor', 'posted_by')
-        credits = CreditorCreditNote.objects.filter(creditor=creditor).select_related('creditor', 'posted_by')
-        payments = CreditorPayment.objects.filter(creditor=creditor).select_related('creditor', 'posted_by')
-        journals = CreditorJournal.objects.filter(creditor=creditor).select_related('creditor', 'posted_by')
-        
-        # Combine and sort
-        all_transactions = list(grn_list) + list(invoices) + list(credits) + list(payments) + list(journals)
-        all_transactions.sort(key=lambda x: (x.transaction_date, x.transaction_number), reverse=True)
-        
-        # Convert to serialized data
-        serialized = []
-        for trans in all_transactions:
-            if isinstance(trans, GoodsReceivedNote):
-                serialized.append(GoodsReceivedNoteSerializer(trans).data)
-            elif isinstance(trans, CreditorInvoice):
-                serialized.append(CreditorInvoiceSerializer(trans).data)
-            elif isinstance(trans, CreditorCreditNote):
-                serialized.append(CreditorCreditNoteSerializer(trans).data)
-            elif isinstance(trans, CreditorPayment):
-                serialized.append(CreditorPaymentSerializer(trans).data)
-            elif isinstance(trans, CreditorJournal):
-                serialized.append(CreditorJournalSerializer(trans).data)
+        total_balance = outstanding.aggregate(
+            total=Sum('balance_due')
+        )['total'] or Decimal('0')
         
         return Response({
             'creditor': creditor.name,
-            'transaction_count': len(serialized),
-            'transactions': serialized
+            'count': outstanding.count(),
+            'total_outstanding': float(total_balance),
+            'items': serializer.data
         })
     
     @action(detail=False, methods=['get'])
-    def summary(self, request):
-        """Get summary of all transactions by type"""
-        summary = {
-            'grn': GoodsReceivedNote.objects.count(),
-            'invoices': CreditorInvoice.objects.count(),
-            'credit_notes': CreditorCreditNote.objects.count(),
-            'payments': CreditorPayment.objects.count(),
-            'journals': CreditorJournal.objects.count(),
-        }
-        return Response(summary)
+    def outstanding_balance(self, request):
+        """Get outstanding balance items with aging for all suppliers"""
+        try:
+            # Get creditors with outstanding balances
+            creditors = Creditor.objects.filter(
+                current_balance__gt=0
+            ).select_related('credit_terms', 'sales_area').order_by('-current_balance')
+            
+            # Filter by creditor if provided
+            creditor_id = request.query_params.get('creditor_id')
+            supplier_id = request.query_params.get('supplier_id')
+            supplier_account_number = request.query_params.get('supplier_account_number')
+            
+            if creditor_id:
+                creditors = creditors.filter(id=creditor_id)
+            elif supplier_id:
+                creditors = creditors.filter(id=supplier_id)
+            elif supplier_account_number:
+                creditors = creditors.filter(id=supplier_account_number)
+            
+            # Paginate
+            page = self.paginate_queryset(creditors)
+            if page is not None:
+                # Format response to match frontend expectations
+                data = []
+                for creditor in page:
+                    data.append({
+                        'id': creditor.id,
+                        'supplier_id': creditor.id,
+                        'creditor_id': creditor.id,
+                        'supplier_number': creditor.supplier_number,
+                        'name': creditor.name,
+                        'capture_date': datetime.now().date().isoformat(),
+                        'balance_current': float(creditor.current_balance or 0),
+                        'balance_30_days': float(creditor.balance_30_days or 0),
+                        'balance_60_days': float(creditor.balance_60_days or 0),
+                        'balance_90_days': float(creditor.balance_90_days or 0),
+                        'balance_120_days': float(creditor.balance_120_days or 0),
+                        'balance_150_days': float(creditor.balance_150_days or 0),
+                        'balance_180_days': float(creditor.balance_180_days or 0),
+                        'created_at': creditor.created_at.isoformat() if creditor.created_at else None,
+                        'updated_at': creditor.updated_at.isoformat() if creditor.updated_at else None,
+                    })
+                return self.get_paginated_response(data)
+            
+            # Non-paginated response
+            data = []
+            for creditor in creditors:
+                data.append({
+                    'id': creditor.id,
+                    'supplier_id': creditor.id,
+                    'creditor_id': creditor.id,
+                    'supplier_number': creditor.supplier_number,
+                    'name': creditor.name,
+                    'capture_date': datetime.now().date().isoformat(),
+                    'balance_current': float(creditor.current_balance or 0),
+                    'balance_30_days': float(creditor.balance_30_days or 0),
+                    'balance_60_days': float(creditor.balance_60_days or 0),
+                    'balance_90_days': float(creditor.balance_90_days or 0),
+                    'balance_120_days': float(creditor.balance_120_days or 0),
+                    'balance_150_days': float(creditor.balance_150_days or 0),
+                    'balance_180_days': float(creditor.balance_180_days or 0),
+                    'created_at': creditor.created_at.isoformat() if creditor.created_at else None,
+                    'updated_at': creditor.updated_at.isoformat() if creditor.updated_at else None,
+                })
+            return Response(data)
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f'Error in outstanding_balance: {str(e)}', exc_info=True)
+            return Response(
+                {'error': f'Failed to fetch outstanding balances: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=False, methods=['post'])
+    def bulk_activate(self, request):
+        """Bulk activate creditors"""
+        ids = request.data.get('ids', [])
+        if not ids:
+            return Response(
+                {'error': 'ids list is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        updated = Creditor.objects.filter(id__in=ids).update(is_active=True)
+        return Response({
+            'message': f'Activated {updated} creditors',
+            'count': updated
+        })
+    
+    @action(detail=False, methods=['post'])
+    def bulk_deactivate(self, request):
+        """Bulk deactivate creditors"""
+        ids = request.data.get('ids', [])
+        if not ids:
+            return Response(
+                {'error': 'ids list is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        updated = Creditor.objects.filter(id__in=ids).update(is_active=False)
+        return Response({
+            'message': f'Deactivated {updated} creditors',
+            'count': updated
+        })
+    
+    @action(detail=False, methods=['post'])
+    def recalculate_aged_balances(self, request):
+        """Recalculate aged balances for creditors"""
+        ids = request.data.get('ids', [])
+        
+        if ids:
+            creditors = Creditor.objects.filter(id__in=ids)
+        else:
+            creditors = Creditor.objects.all()
+        
+        count = 0
+        for creditor in creditors:
+            creditor.recalculate_aged_balances()
+            count += 1
+        
+        return Response({
+            'message': f'Recalculated aged balances for {count} creditors',
+            'count': count
+        })
 
 
-class ExpenseCategoryViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing expense categories"""
+# ============================================================================
+# GOODS RECEIVED NOTE VIEWSET
+# ============================================================================
+
+class GoodsReceivedNoteViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing Goods Received Notes"""
     
     permission_classes = [IsAuthenticated]
-    queryset = ExpenseCategory.objects.all()
-    serializer_class = ExpenseCategorySerializer
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['category_name', 'category_number']
-    ordering_fields = ['category_number', 'category_name']
-    ordering = ['category_number']
-
-
-class RFCViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for managing Returns for Credit (RFC).
-    
-    Endpoints:
-    - GET /rfc/ - List RFCs
-    - POST /rfc/ - Create new RFC
-    - GET /rfc/{id}/ - Get RFC details
-    - POST /rfc/{id}/credit-granted/ - Mark RFC as credit received
-    - POST /rfc/{id}/stock-replaced/ - Mark RFC as stock replaced
-    """
-    
-    permission_classes = [IsAuthenticated]
-    serializer_class = RFCSerializer
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['supplier', 'status']
-    ordering_fields = ['return_date', 'created_at']
-    ordering = ['-return_date']
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['creditor', 'is_posted', 'transaction_date']
+    search_fields = ['transaction_number', 'supplier_invoice_number', 'creditor__name']
+    ordering_fields = ['transaction_date', 'transaction_number']
+    ordering = ['-transaction_date']
     
     def get_serializer_class(self):
-        """Return appropriate serializer based on action"""
         if self.action == 'create':
-            return RFCCreateSerializer
-        return RFCSerializer
+            return GoodsReceivedNoteCreateSerializer
+        return GoodsReceivedNoteSerializer
     
     def get_queryset(self):
-        """Get RFC records"""
-        return RFC.objects.all().select_related(
-            'supplier', 'credit_transaction'
+        return GoodsReceivedNote.objects.select_related(
+            'creditor', 'posted_by'
+        ).prefetch_related('line_items')
+    
+    @db_transaction.atomic
+    def create(self, request, *args, **kwargs):
+        """Create GRN with transaction handling"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+# ============================================================================
+# CREDITOR INVOICE VIEWSET
+# ============================================================================
+
+class CreditorInvoiceViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing Creditor Invoices"""
+    
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['creditor', 'is_posted', 'transaction_date']
+    search_fields = ['transaction_number', 'supplier_invoice_number', 'creditor__name']
+    ordering_fields = ['transaction_date', 'due_date']
+    ordering = ['-transaction_date']
+    serializer_class = CreditorInvoiceSerializer
+    
+    def get_queryset(self):
+        return CreditorInvoice.objects.select_related(
+            'creditor', 'posted_by'
+        ).prefetch_related('line_items')
+    
+    @action(detail=False, methods=['get'])
+    def overdue_invoices(self, request):
+        """Get all overdue invoices"""
+        today = datetime.now().date()
+        invoices = CreditorInvoice.objects.filter(
+            due_date__lt=today,
+            is_posted=True
+        ).select_related('creditor').order_by('due_date')
+        
+        page = self.paginate_queryset(invoices)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = self.get_serializer(invoices, many=True)
+        return Response(serializer.data)
+
+
+# ============================================================================
+# CREDITOR PAYMENT VIEWSET
+# ============================================================================
+
+class CreditorPaymentViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing Creditor Payments"""
+    
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['creditor', 'is_posted', 'payment_method']
+    search_fields = ['transaction_number', 'creditor__name', 'cheque_number']
+    ordering_fields = ['transaction_date']
+    ordering = ['-transaction_date']
+    serializer_class = CreditorPaymentSerializer
+    
+    def get_queryset(self):
+        return CreditorPayment.objects.select_related(
+            'creditor', 'posted_by', 'payment_method'
+        )
+    
+    @db_transaction.atomic
+    def create(self, request, *args, **kwargs):
+        """Create payment with open item allocation"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        payment = serializer.save()
+        
+        # Handle allocations if provided
+        allocations = request.data.get('allocations', [])
+        for allocation in allocations:
+            try:
+                open_item = CreditorOpenItem.objects.get(id=allocation['open_item_id'])
+                OpenItemAllocation.objects.create(
+                    payment=payment,
+                    open_item=open_item,
+                    amount_paid=Decimal(allocation['amount_paid']),
+                    settlement_discount=Decimal(allocation.get('settlement_discount', 0))
+                )
+                
+                # Update open item balance
+                open_item.balance_due -= Decimal(allocation['amount_paid'])
+                if open_item.balance_due <= 0:
+                    open_item.is_fully_allocated = True
+                open_item.save()
+            except (CreditorOpenItem.DoesNotExist, KeyError):
+                pass
+        
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+# ============================================================================
+# CREDITOR JOURNAL VIEWSET
+# ============================================================================
+
+class CreditorJournalViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing Creditor Journals"""
+    
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['creditor', 'journal_type', 'is_posted']
+    search_fields = ['transaction_number', 'creditor__name']
+    ordering_fields = ['transaction_date']
+    ordering = ['-transaction_date']
+    serializer_class = CreditorJournalSerializer
+    
+    def get_queryset(self):
+        return CreditorJournal.objects.select_related(
+            'creditor', 'posted_by'
+        )
+
+
+# ============================================================================
+# OPEN ITEM VIEWSET
+# ============================================================================
+
+class OpenItemViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet for viewing open items"""
+    
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['creditor', 'transaction_type', 'is_fully_allocated']
+    search_fields = ['transaction_number', 'creditor__name']
+    ordering_fields = ['transaction_date', 'due_date', 'balance_due']
+    ordering = ['transaction_date']
+    serializer_class = OpenItemSerializer
+    
+    def get_queryset(self):
+        return CreditorOpenItem.objects.select_related(
+            'creditor'
+        ).order_by('transaction_date')
+    
+    @action(detail=False, methods=['get'])
+    def overdue(self, request):
+        """Get overdue open items"""
+        today = datetime.now().date()
+        overdue = CreditorOpenItem.objects.filter(
+            due_date__lt=today,
+            balance_due__gt=0,
+            is_fully_allocated=False
+        ).order_by('due_date')
+        
+        page = self.paginate_queryset(overdue)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = self.get_serializer(overdue, many=True)
+        return Response(serializer.data)
+
+
+# ============================================================================
+# RFC VIEWSET
+# ============================================================================
+
+class RFCViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing Returns for Credit"""
+    
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['creditor', 'status']
+    search_fields = ['rfc_number', 'creditor__name']
+    ordering_fields = ['return_date', 'status']
+    ordering = ['-return_date']
+    serializer_class = RFCSerializer
+    
+    def get_queryset(self):
+        return RFC.objects.select_related(
+            'creditor'
         ).prefetch_related('line_items')
     
     @action(detail=True, methods=['post'])
-    def credit_granted(self, request, pk=None):
-        """Process RFC credit received"""
+    def mark_credited(self, request, pk=None):
+        """Mark RFC as credited"""
         rfc = self.get_object()
         
-        if rfc.status != 'PENDING':
+        if rfc.status != 'pending':
             return Response(
-                {'error': 'Only pending RFCs can be marked as credit received'},
+                {'error': 'Only pending RFCs can be marked as credited'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        try:
-            with db_transaction.atomic():
-                # Create credit transaction
-                credit = CreditorTransaction.objects.create(
-                    transaction_type='CREDIT_STOCK',
-                    supplier=rfc.supplier,
-                    transaction_date=request.data.get('credit_date'),
-                    invoice_number=request.data.get('credit_document_number'),
-                    amount_exclusive=rfc.total_exclusive,
-                    vat_amount=rfc.total_vat,
-                    amount_inclusive=rfc.total_inclusive,
-                )
-                
-                # Update RFC status
-                rfc.status = 'CREDIT_RECEIVED'
-                rfc.credit_date = request.data.get('credit_date')
-                rfc.credit_document_number = request.data.get('credit_document_number')
-                rfc.credit_transaction = credit
-                rfc.save()
-                
-                # Update supplier RFC outstanding
-                rfc.supplier.rfc_outstanding_amount -= rfc.total_inclusive
-                rfc.supplier.save()
-                
-                return Response(RFCSerializer(rfc).data)
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        rfc.status = 'credited'
+        rfc.credited_date = request.data.get('credited_date', datetime.now().date())
+        rfc.save()
+        
+        return Response(self.get_serializer(rfc).data)
     
     @action(detail=True, methods=['post'])
-    def stock_replaced(self, request, pk=None):
-        """Process RFC stock replacement"""
+    def mark_replaced(self, request, pk=None):
+        """Mark RFC as replaced"""
         rfc = self.get_object()
         
-        if rfc.status != 'PENDING':
+        if rfc.status != 'pending':
             return Response(
-                {'error': 'Only pending RFCs can be marked as stock replaced'},
+                {'error': 'Only pending RFCs can be marked as replaced'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        try:
-            rfc.status = 'STOCK_REPLACED'
-            rfc.replacement_date = request.data.get('replacement_date')
-            rfc.replacement_document_number = request.data.get('replacement_document_number')
-            rfc.save()
-            
-            return Response(RFCSerializer(rfc).data)
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        rfc.status = 'replaced'
+        rfc.replaced_date = request.data.get('replaced_date', datetime.now().date())
+        rfc.save()
+        
+        return Response(self.get_serializer(rfc).data)
 
 
-class OutstandingBalanceView(APIView):
-    """
-    API endpoint for getting outstanding balance items.
-    GET /api/creditors/outstanding-balance/ - List all outstanding items
-    GET /api/creditors/outstanding-balance/?supplier_id=1 - Filter by supplier
-    """
+
+
+# ============================================================================
+# SUMMARY ENDPOINT
+# ============================================================================
+
+class CreditorsSummaryView(APIView):
+    """Summary statistics for creditors module"""
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        """Get outstanding balance items"""
-        # Get outstanding items
-        outstanding_items = CreditorOpenItem.objects.filter(
-            balance_due__gt=0,
-            is_fully_allocated=False
-        ).select_related('creditor')
+        """Get creditors summary"""
+        today = datetime.now().date()
         
-        # Filter by supplier if provided
-        supplier_id = request.query_params.get('supplier_id')
-        if supplier_id:
-            outstanding_items = outstanding_items.filter(creditor_id=supplier_id)
+        summary = {
+            'total_creditors': Creditor.objects.count(),
+            'active_creditors': Creditor.objects.filter(is_active=True).count(),
+            'total_outstanding': CreditorOpenItem.objects.filter(
+                balance_due__gt=0
+            ).aggregate(Sum('balance_due'))['balance_due__sum'] or Decimal('0'),
+            'overdue_items': CreditorOpenItem.objects.filter(
+                due_date__lt=today,
+                balance_due__gt=0
+            ).count(),
+            'pending_rfcs': RFC.objects.filter(status='pending').count(),
+            'unposted_invoices': CreditorInvoice.objects.filter(is_posted=False).count(),
+        }
         
-        # Order by transaction date (oldest first)
-        outstanding_items = outstanding_items.order_by('transaction_date')
-        
-        # Serialize
-        serializer = CreditorOpenItemSerializer(outstanding_items, many=True)
-        
-        # Calculate totals
-        total_outstanding = sum(item['balance_due'] for item in serializer.data if isinstance(item['balance_due'], (int, float, Decimal)))
-        
-        return Response({
-            'count': len(serializer.data),
-            'total_outstanding': str(total_outstanding),
-            'items': serializer.data
-        })
-
+        return Response(summary)

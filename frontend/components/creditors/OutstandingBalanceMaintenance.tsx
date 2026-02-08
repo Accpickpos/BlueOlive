@@ -46,12 +46,14 @@ export default function OutstandingBalanceMaintenance() {
         end_date: endDate || undefined,
       });
       console.log('Outstanding balances response:', data);
-      setBalances(data.items || []);
-      setTotalOutstanding(data.total_outstanding || '0.00');
+      
+      const balanceItems = Array.isArray(data) ? data : (data?.items || []);
+      setBalances(balanceItems);
+      setTotalOutstanding(data?.total_outstanding || '0.00');
       
       // If no data, check if endpoint is available
-      if (data.items.length === 0 && data.count === 0) {
-        console.warn('No outstanding balance data returned - endpoint may not be fully implemented');
+      if (balanceItems.length === 0) {
+        console.warn('No outstanding balance data returned');
       }
     } catch (err: any) {
       console.error('Failed to load balances:', err);
