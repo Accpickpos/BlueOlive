@@ -104,7 +104,7 @@ export default function StockItemMaintenance({ onBack }: StockItemMaintenancePro
         setDepsError('');
         
         const [suppliersRes, taxRes, deptRes] = await Promise.all([
-          api.get('/api/creditors/suppliers/'),
+          api.get('/api/v1/creditors/creditors/'),
           api.get('/api/settings/tax-codes/'),
           api.get('/api/settings/departments/')
         ]);
@@ -493,7 +493,7 @@ export default function StockItemMaintenance({ onBack }: StockItemMaintenancePro
                         <input
                           type="number"
                           step="0.01"
-                          value={formData[markupKey] || ''}
+                          value={(formData[markupKey] as number) || ''}
                           onChange={(e) => handleMarkupChange(level as 1 | 2 | 3, parseFloat(e.target.value) || 0)}
                           placeholder="Enter markup percentage"
                           className="w-full px-3 py-2 border border-blue-300 rounded-lg bg-white font-semibold text-lg text-center"
@@ -506,7 +506,7 @@ export default function StockItemMaintenance({ onBack }: StockItemMaintenancePro
                         <input
                           type="number"
                           step="0.01"
-                          value={formData[priceKey] || ''}
+                          value={(formData[priceKey] as number) || ''}
                           disabled
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-700 font-semibold text-lg"
                         />

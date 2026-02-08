@@ -3,102 +3,84 @@ Django admin configuration for debtors app.
 """
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import Debtor, DebtorTransaction, Invoice, InvoiceLine, PostDatedCheque, AuditLog
+from .models import Debtor, DebtorTransaction, Debtopen, Dpdc, DebtorAudit, Darea
 
 
 @admin.register(Debtor)
 class DebtorAdmin(admin.ModelAdmin):
-    """Admin interface for Debtor model."""
+    """Admin interface for Debtor model (DMAST table)."""
     
     list_display = [
-        'account_number', 'name', 'status_display', 'total_balance',
-        'credit_limit', 'last_payment_date', 'is_active'
+        'dno', 'dname', 'status_display', 'dcrnt', 'dclimit',
+        'ddatlpd', 'blockflag'
     ]
     list_filter = [
-        'is_active', 'is_blocked', 'account_category', 'sales_area',
-        'charge_interest', 'created_at'
+        'blockflag', 'dintflag', 'acctype', 'darea', 'created_at'
     ]
-    search_fields = ['account_number', 'name', 'email', 'telephone1']
+    search_fields = ['dno', 'dname', 'dsname', 'dtel', 'dtaxno']
     readonly_fields = [
-        'current_balance', 'balance_30_days', 'balance_60_days',
-        'balance_90_days', 'balance_120_days', 'balance_150_days',
-        'balance_180_days', 'total_balance', 'sales_mtd', 'sales_ytd',
-        'last_payment_date', 'last_payment_amount', 'created_at', 'updated_at',
-        'blocked_by', 'blocked_date', 'unblocked_date'
+        'dcrnt', 'd30', 'd60', 'd90', 'd120', 'd150', 'd180',
+        'dsalesm', 'dsalesy', 'dprofitm', 'dprofity',
+        'ddatlpd', 'damtlpd', 'created_at', 'updated_at',
+        'get_total_balance', 'get_overdue_balance'
     ]
     
     fieldsets = (
-        ('Basic Information', {
-            'fields': ('account_number', 'name', 'search_name', 'contact_person')
+        ('Account Identification', {
+            'fields': ('dno', 'dname', 'dsname', 'dcontact', 'dtaxno')
         }),
         ('Contact Details', {
-            'fields': (
-                'telephone1', 'telephone2', 'fax', 'email', 'additional_info'
-            ),
-            'classes': ('collapse',)
+            'fields': ('dtel', 'dfax')
         }),
         ('Postal Address', {
-            'fields': (
-                'postal_address_line1', 'postal_address_line2',
-                'postal_address_line3', 'postal_code'
-            ),
+            'fields': ('dadd1', 'dadd2', 'dadd3', 'dadd4', 'dpcode'),
             'classes': ('collapse',)
         }),
         ('Delivery Address', {
-            'fields': (
-                'delivery_address_line1', 'delivery_address_line2',
-                'delivery_address_line3', 'delivery_code'
-            ),
+            'fields': ('delad1', 'delad2', 'delad3', 'delad4'),
             'classes': ('collapse',)
         }),
         ('Business Details', {
-            'fields': ('vat_number', 'sales_area')
+            'fields': ('darea', 'acctype', 'price', 'terms')
         }),
-        ('Account Settings', {
+        ('Discount & Credit', {
             'fields': (
-                'account_category', 'trade_discount', 'credit_limit',
-                'price_level', 'terms', 'prompt_discount_percentage',
-                'print_discount_on_invoice', 'charge_interest',
-                'print_balance_on_documents'
+                'ddiscper', 'pdisc', 'discprn',
+                'dclimit'
             )
         }),
-        ('Block Status', {
+        ('Account Control Flags', {
             'fields': (
-                'is_blocked', 'block_reason', 'block_invoicing',
-                'block_receipts', 'blocked_by', 'blocked_date', 'unblocked_date'
-            ),
-            'classes': ('collapse',)
+                'blockflag', 'dintflag', 'dposbal'
+            )
         }),
-        ('Balances & Aging', {
+        ('Balance & Aging', {
             'fields': (
-                'current_balance', 'balance_30_days', 'balance_60_days',
-                'balance_90_days', 'balance_120_days', 'balance_150_days',
-                'balance_180_days', 'total_balance'
+                'dcrnt', 'd30', 'd60', 'd90', 'd120', 'd150', 'd180',
+                'get_total_balance', 'get_overdue_balance'
             ),
             'classes': ('collapse',)
         }),
         ('Statistics', {
             'fields': (
-                'last_payment_date', 'last_payment_amount',
-                'sales_mtd', 'sales_ytd'
+                'dsalesm', 'dsalesy', 'dprofitm', 'dprofity',
+                'ddatlpd', 'damtlpd'
             ),
             'classes': ('collapse',)
         }),
-        ('Status & Audit', {
-            'fields': ('is_active', 'created_at', 'updated_at')
+        ('Audit', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
         }),
     )
     
-    actions = ['block_accounts', 'unblock_accounts', 'mark_inactive']
+    actions = ['block_accounts', 'unblock_accounts']
     
     def status_display(self, obj):
-        """Display color-coded status."""
-        if obj.is_blocked:
+        """Display color-coded block status."""
+        if obj.blockflag == 'Y':
             color = 'red'
             status = 'BLOCKED'
-        elif not obj.is_active:
-            color = 'orange'
-            status = 'INACTIVE'
         else:
             color = 'green'
             status = 'ACTIVE'
@@ -110,72 +92,92 @@ class DebtorAdmin(admin.ModelAdmin):
     
     def block_accounts(self, request, queryset):
         """Admin action to block accounts."""
-        count = queryset.update(is_blocked=True)
+        count = 0
+        for debtor in queryset:
+            debtor.set_blocked(True)
+            count += 1
         self.message_user(request, f'{count} account(s) blocked.')
     block_accounts.short_description = "Block selected accounts"
     
     def unblock_accounts(self, request, queryset):
         """Admin action to unblock accounts."""
-        count = queryset.update(is_blocked=False, block_reason='')
+        count = 0
+        for debtor in queryset:
+            debtor.set_blocked(False)
+            count += 1
         self.message_user(request, f'{count} account(s) unblocked.')
     unblock_accounts.short_description = "Unblock selected accounts"
+
+
+@admin.register(DebtorTransaction)
+class DebtorTransactionAdmin(admin.ModelAdmin):
+    """Admin interface for DebtorTransaction (DEBTRAN table)."""
     
-    def mark_inactive(self, request, queryset):
-        """Admin action to mark as inactive."""
-        count = queryset.update(is_active=False)
-        self.message_user(request, f'{count} account(s) marked inactive.')
-    mark_inactive.short_description = "Mark selected as inactive"
-
-
-class InvoiceLineInline(admin.TabularInline):
-    """Inline admin for invoice lines."""
-    model = InvoiceLine
-    extra = 0
-    fields = ['line_number', 'description', 'quantity', 'unit_price', 'line_total']
-    readonly_fields = ['line_total']
-
-
-@admin.register(Invoice)
-class InvoiceAdmin(admin.ModelAdmin):
-    """Admin interface for Invoice model."""
-    
-    list_display = [
-        'invoice_number', 'debtor', 'invoice_date', 'total_amount',
-        'status_display', 'is_posted'
-    ]
-    list_filter = ['status', 'is_posted', 'invoice_date', 'sales_area']
-    search_fields = ['invoice_number', 'debtor__name', 'order_number']
-    readonly_fields = [
-        'subtotal', 'vat_amount', 'total_amount', 'gross_profit',
-        'created_at', 'updated_at', 'amount_paid', 'paid_date'
-    ]
-    inlines = [InvoiceLineInline]
+    list_display = ['dno', 'dtrano', 'dtype', 'dtdate', 'dttot', 'created_at']
+    list_filter = ['dtype', 'dtdate', 'dtaxstat', 'created_at']
+    search_fields = ['dtrano', 'dno__dname', 'ordno']
+    readonly_fields = ['dno', 'dtdate', 'dttot', 'created_at', 'updated_at']
     
     fieldsets = (
-        ('Invoice Header', {
-            'fields': ('invoice_number', 'debtor', 'invoice_date', 'sales_area')
-        }),
-        ('Delivery Information', {
-            'fields': (
-                'delivery_name', 'delivery_address_line1',
-                'delivery_address_line2', 'delivery_telephone'
-            ),
-            'classes': ('collapse',)
-        }),
-        ('References', {
-            'fields': ('order_number', 'customer_reference', 'job_card_number')
+        ('Transaction Header', {
+            'fields': ('dno', 'dtrano', 'dtype', 'dtdate')
         }),
         ('Financial Details', {
-            'fields': (
-                'subtotal', 'discount_amount', 'vat_amount', 'total_amount',
-                'total_cost', 'gross_profit'
-            )
+            'fields': ('dtsub', 'dtgst', 'dttot', 'dtaxstat')
         }),
-        ('Payment', {
-            'fields': ('amount_paid', 'paid_date')
+        ('References', {
+            'fields': ('source', 'ordno', 'custref'),
+            'classes': ('collapse',)
+        }),
+        ('Delivery Information', {
+            'fields': ('del1', 'del2', 'del3', 'del4'),
+            'classes': ('collapse',)
+        }),
+        ('Audit', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+
+@admin.register(Debtopen)
+class DebtOpenAdmin(admin.ModelAdmin):
+    """Admin interface for Debtopen (DEBTOPEN table - Open Item Accounting)."""
+    
+    list_display = ['dno', 'dtrano', 'type', 'date', 'total', 'balancedue', 'ageflag']
+    list_filter = ['type', 'date', 'ageflag', 'posted']
+    search_fields = ['dtrano', 'dno__dname']
+    readonly_fields = ['dno', 'date', 'total', 'created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Open Item Details', {
+            'fields': ('dno', 'dtrano', 'type', 'date')
+        }),
+        ('Amounts', {
+            'fields': ('total', 'balancedue', 'ageflag')
         }),
         ('Status', {
-            'fields': ('status', 'is_posted', 'is_cancelled')
+            'fields': ('posted',)
+        }),
+        ('Audit', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+
+@admin.register(Dpdc)
+class DpdcAdmin(admin.ModelAdmin):
+    """Admin interface for Dpdc (DPDC table - Post Dated Cheques)."""
+    
+    list_display = ['dno', 'date', 'amount', 'status_display', 'created_at']
+    list_filter = ['status', 'date', 'created_at']
+    search_fields = ['dno__dname']
+    readonly_fields = ['dno', 'date', 'created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Cheque Details', {
+            'fields': ('dno', 'date', 'amount', 'status')
         }),
         ('Audit', {
             'fields': ('created_at', 'updated_at'),
@@ -185,101 +187,61 @@ class InvoiceAdmin(admin.ModelAdmin):
     
     def status_display(self, obj):
         """Display color-coded status."""
-        colors = {
-            'DRAFT': 'blue',
-            'POSTED': 'orange',
-            'PAID': 'green',
-            'PARTIAL_PAID': 'yellow',
-            'OVERDUE': 'red',
-            'CANCELLED': 'gray'
-        }
+        colors = {'A': 'blue', 'I': 'orange', 'P': 'green', 'C': 'red'}
+        status_text = {'A': 'Active', 'I': 'Inactive', 'P': 'Processed', 'C': 'Cancelled'}
         color = colors.get(obj.status, 'black')
+        text = status_text.get(obj.status, obj.status)
         return format_html(
             '<span style="color: {}; font-weight: bold;">{}</span>',
-            color, obj.status
+            color, text
         )
     status_display.short_description = 'Status'
 
 
-@admin.register(DebtorTransaction)
-class DebtorTransactionAdmin(admin.ModelAdmin):
-    """Admin interface for DebtorTransaction model."""
+@admin.register(DebtorAudit)
+class DebtorAuditAdmin(admin.ModelAdmin):
+    """Admin interface for DebtorAudit (DEBTORAUD table)."""
     
-    list_display = [
-        'transaction_number', 'debtor', 'transaction_type',
-        'transaction_date', 'total_amount', 'is_allocated'
-    ]
-    list_filter = [
-        'transaction_type', 'transaction_date', 'is_allocated'
-    ]
-    search_fields = [
-        'transaction_number', 'debtor__name', 'reference'
-    ]
-    readonly_fields = [
-        'debtor', 'transaction_type', 'transaction_number',
-        'transaction_date', 'amount', 'vat_amount', 'total_amount',
-        'created_at', 'updated_at'
-    ]
-    
-    def has_add_permission(self, request):
-        """Prevent manual creation - transactions created through services."""
-        return False
-    
-    def has_delete_permission(self, request, obj=None):
-        """Prevent deletion - transactions are immutable."""
-        return False
-    
-    def has_change_permission(self, request, obj=None):
-        """Allow viewing but not editing."""
-        return request.method in ['GET', 'HEAD', 'OPTIONS']
-
-
-@admin.register(PostDatedCheque)
-class PostDatedChequeAdmin(admin.ModelAdmin):
-    """Admin interface for PostDatedCheque model."""
-    
-    list_display = [
-        'debtor', 'cheque_date', 'amount', 'is_processed', 'processed_date'
-    ]
-    list_filter = ['is_processed', 'cheque_date']
-    search_fields = ['debtor__name', 'reference']
-    readonly_fields = ['created_at', 'updated_at']
+    list_display = ['dno', 'dtrano', 'type', 'date', 'amount']
+    list_filter = ['type', 'date']
+    search_fields = ['dtrano', 'dno__dname']
+    readonly_fields = ['dno', 'dtrano', 'type', 'thistype', 'thistran', 'date', 'amount']
     
     fieldsets = (
-        ('Cheque Details', {
-            'fields': ('debtor', 'cheque_date', 'amount', 'reference')
+        ('Audit Record', {
+            'fields': ('dno', 'dtrano', 'type', 'date', 'amount')
         }),
-        ('Processing', {
-            'fields': ('is_processed', 'processed_date')
-        }),
-        ('Audit', {
-            'fields': ('created_at', 'updated_at')
+        ('Details', {
+            'fields': ('thistype', 'thistran'),
+            'classes': ('collapse',)
         }),
     )
 
 
-@admin.register(AuditLog)
-class AuditLogAdmin(admin.ModelAdmin):
-    """Admin interface for AuditLog model - read-only."""
+@admin.register(Darea)
+class DareaAdmin(admin.ModelAdmin):
+    """Admin interface for Darea (DAREA table - Sales Areas)."""
     
-    list_display = [
-        'debtor', 'change_type', 'changed_by', 'created_at'
-    ]
-    list_filter = ['change_type', 'created_at']
-    search_fields = ['debtor__name', 'changed_by', 'description']
-    readonly_fields = [
-        'debtor', 'change_type', 'old_value', 'new_value',
-        'changed_by', 'description', 'created_at', 'updated_at'
-    ]
+    list_display = ['darea', 'dareaname', 'get_total_sales_display']
+    search_fields = ['darea', 'dareaname']
+    readonly_fields = ['get_total_sales_display']
     
-    def has_add_permission(self, request):
-        """Prevent manual creation - created by system."""
-        return False
+    fieldsets = (
+        ('Area Information', {
+            'fields': ('darea', 'dareaname')
+        }),
+        ('Monthly Sales', {
+            'fields': ('arsls1', 'arsls2', 'arsls3', 'arsls4', 'arsls5', 'arsls6',
+                      'arsls7', 'arsls8', 'arsls9', 'arsls10', 'arsls11', 'arsls12',
+                      'get_total_sales_display'),
+            'classes': ('collapse',)
+        }),
+    )
     
-    def has_change_permission(self, request, obj=None):
-        """Read-only."""
-        return True
-    
-    def has_delete_permission(self, request, obj=None):
-        """Prevent deletion - audit trail."""
-        return False
+    def get_total_sales_display(self, obj):
+        """Display total sales."""
+        return f"{obj.get_total_sales():.2f}"
+    get_total_sales_display.short_description = 'Total Sales'
+
+
+

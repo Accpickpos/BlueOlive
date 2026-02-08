@@ -79,7 +79,7 @@ export default function IncomingStock({ onBack }: IncomingStockProps) {
   const { data: taxData } = useQuery({
     queryKey: ['tax-codes'],
     queryFn: async () => {
-      const response = await api.get('/api/settings/tax-codes/');
+      const response = await api.get('/api/v1/settings/tax-codes/');
       return response.data.results || response.data;
     },
   });

@@ -1,274 +1,255 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { apiRequest } from '@/lib/api';
-
-interface Debtor {
-  id: number;
-  account_number: string;
-  name: string;
-  contact_person: string;
-  email: string;
-  telephone1: string;
-  sales_area_name: string | null;
-  account_category: string;
-  credit_limit: number;
-  current_balance: number;
-  is_active: boolean;
-  is_blocked: boolean;
-}
+import { debtorsApi } from '@/lib/debtorsApi';
+import type { DebtorAccount } from '@/lib/types/debtors';
+import { Edit2, Trash2, Plus } from 'lucide-react';
+import DebtorAccountForm from '@/components/debtors/forms/DebtorAccountForm';
 
 interface DebtorsListProps {
-  onSelectDebtor?: (debtorId: number) => void;
   onRefresh?: number;
 }
 
-export default function DebtorsList({ onSelectDebtor, onRefresh }: DebtorsListProps) {
-  const [debtors, setDebtors] = useState<Debtor[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function DebtorsList({ onRefresh }: DebtorsListProps) {
+  const [debtors, setDebtors] = useState<DebtorAccount[]>([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(10);
-  const [totalCount, setTotalCount] = useState(0);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [selectedDebtor, setSelectedDebtor] = useState<DebtorAccount | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    fetchDebtors();
-  }, [searchTerm, currentPage, onRefresh]);
-
-  const fetchDebtors = async () => {
+  // Load debtors
+  const loadDebtors = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      const params = new URLSearchParams({
-        page: currentPage.toString(),
-        page_size: pageSize.toString(),
-      });
-
-      if (searchTerm) {
-        params.append('search', searchTerm);
+      console.log('Loading debtors...');
+      const params = searchQuery ? { search: searchQuery } : undefined;
+      const data = await debtorsApi.accounts.list(params);
+      console.log('Debtors API response:', data);
+      
+      // Handle both direct array and paginated response
+      const debtorsList = Array.isArray(data) ? data : (data?.results || []);
+      setDebtors(debtorsList);
+    } catch (err: any) {
+      console.error('Error loading debtors:', err);
+      
+      // Provide more helpful error messages
+      let errorMessage = 'Failed to load debtors';
+      if (err?.response?.status === 404) {
+        errorMessage = 'Debtors endpoint not found. Please check the backend API configuration.';
+      } else if (err?.response?.status === 500) {
+        errorMessage = 'Server error while loading debtors. Please check the backend logs.';
+      } else if (err?.message?.includes('Network')) {
+        errorMessage = 'Network error. Is the backend running at ' + (process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000') + '?';
       }
-
-      const response = await apiRequest(`/api/debtors/?${params}`);
-
-      // Handle both paginated and direct array responses
-      if (response.data.results && Array.isArray(response.data.results)) {
-        setDebtors(response.data.results);
-        setTotalCount(response.data.count || 0);
-      } else if (Array.isArray(response.data)) {
-        setDebtors(response.data);
-        setTotalCount(response.data.length);
-      } else {
-        setDebtors([]);
-        setTotalCount(0);
-      }
-      setError(null);
-    } catch (err) {
-      setError('Failed to load debtors');
-      console.error(err);
+      
+      setError(errorMessage);
       setDebtors([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (debtorId: number) => {
-    if (!window.confirm('Are you sure you want to delete this debtor?')) {
-      return;
+  useEffect(() => {
+    loadDebtors();
+  }, []);
+
+  // Refresh when onRefresh prop changes
+  useEffect(() => {
+    if (onRefresh !== undefined) {
+      loadDebtors();
     }
+  }, [onRefresh]);
+
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+  };
+
+  const handleFormSuccess = () => {
+    setShowForm(false);
+    setSelectedDebtor(null);
+    loadDebtors();
+  };
+
+  const handleEdit = (debtor: DebtorAccount) => {
+    setSelectedDebtor(debtor);
+    setShowForm(true);
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this debtor?')) return;
 
     try {
-      setDeleting(true);
-      await apiRequest(`/api/debtors/${debtorId}/`, {
-        method: 'DELETE',
-      });
-      setDeleteId(null);
-      fetchDebtors();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to delete debtor');
-      console.error(err);
-    } finally {
-      setDeleting(false);
+      await debtorsApi.accounts.delete(id);
+      loadDebtors();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete debtor');
     }
   };
 
-  const totalPages = Math.ceil(totalCount / pageSize);
-
-  const getCategoryLabel = (category: string) => {
-    const labels: { [key: string]: string } = {
-      '': 'Balance Forward',
-      'O': 'Open Item',
-      'C': 'Cash Customer',
-    };
-    return labels[category] || category;
+  const handleNewDebtor = () => {
+    setSelectedDebtor(null);
+    setShowForm(true);
   };
 
-  if (loading) {
-    return <div className="text-center py-8">Loading debtors...</div>;
-  }
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-          {error}
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-800 font-semibold">Error</p>
+          <p className="text-red-700 text-sm mt-1">{error}</p>
+          <button
+            onClick={() => setError(null)}
+            className="mt-3 text-sm text-red-600 hover:text-red-800 underline"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
-      {/* Search Bar */}
-      <div className="flex gap-2">
-        <input
-          type="text"
-          placeholder="Search by account number, name, or contact..."
-          value={searchTerm}
-          onChange={(e) => {
-            setSearchTerm(e.target.value);
-            setCurrentPage(1);
-          }}
-          className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500"
-        />
-        <Link
-          href="/dashboard/admin/debtors/maintenance/create"
-          className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-        >
-          Add Debtor
-        </Link>
-      </div>
-
-      {/* Table */}
-      <div className="overflow-x-auto bg-white rounded-lg shadow">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-100 border-b">
-            <tr>
-              <th className="px-4 py-3 text-left font-semibold">Account #</th>
-              <th className="px-4 py-3 text-left font-semibold">Name</th>
-              <th className="px-4 py-3 text-left font-semibold">Contact</th>
-              <th className="px-4 py-3 text-left font-semibold">Email</th>
-              <th className="px-4 py-3 text-left font-semibold">Category</th>
-              <th className="px-4 py-3 text-right font-semibold">Credit Limit</th>
-              <th className="px-4 py-3 text-right font-semibold">Balance</th>
-              <th className="px-4 py-3 text-left font-semibold">Status</th>
-              <th className="px-4 py-3 text-center font-semibold">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {debtors.length === 0 ? (
-              <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
-                  No debtors found
-                </td>
-              </tr>
-            ) : (
-              debtors.map((debtor) => (
-                <tr key={debtor.id} className="border-b hover:bg-gray-50">
-                  <td className="px-4 py-3 font-mono font-semibold">{debtor.account_number}</td>
-                  <td className="px-4 py-3">{debtor.name}</td>
-                  <td className="px-4 py-3">{debtor.contact_person || '-'}</td>
-                  <td className="px-4 py-3 text-sm">{debtor.email || '-'}</td>
-                  <td className="px-4 py-3 text-sm">
-                    {getCategoryLabel(debtor.account_category)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    R {parseFloat(String(debtor.credit_limit)).toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-semibold">
-                    <span
-                      className={parseFloat(String(debtor.current_balance)) > 0 ? 'text-red-600' : 'text-green-600'}
-                    >
-                      R {parseFloat(String(debtor.current_balance)).toFixed(2)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1">
-                      {debtor.is_blocked && (
-                        <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded">
-                          Blocked
-                        </span>
-                      )}
-                      {!debtor.is_active && (
-                        <span className="px-2 py-1 bg-gray-100 text-gray-800 text-xs rounded">
-                          Inactive
-                        </span>
-                      )}
-                      {!debtor.is_blocked && debtor.is_active && (
-                        <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded">
-                          Active
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2 justify-center">
-                      <Link
-                        href={`/dashboard/admin/debtors/maintenance/${debtor.id}/balance`}
-                        className="text-green-600 hover:text-green-800 font-medium text-sm"
-                        title="View Account Balance"
-                      >
-                        Balance
-                      </Link>
-                      <Link
-                        href={`/dashboard/admin/debtors/maintenance/${debtor.id}`}
-                        className="text-blue-600 hover:text-blue-800 font-medium text-sm"
-                      >
-                        Edit
-                      </Link>
-                      <button
-                        onClick={() => handleDelete(debtor.id)}
-                        disabled={deleting}
-                        className="text-red-600 hover:text-red-800 font-medium text-sm disabled:opacity-50"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex justify-between items-center">
-          <div className="text-sm text-gray-600">
-            Showing {(currentPage - 1) * pageSize + 1} to{' '}
-            {Math.min(currentPage * pageSize, totalCount)} of {totalCount} debtors
-          </div>
-          <div className="flex gap-2">
+      {/* Form Section */}
+      {showForm ? (
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold">
+              {selectedDebtor ? `Edit Debtor: ${selectedDebtor.dname}` : 'New Debtor'}
+            </h2>
             <button
-              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-              disabled={currentPage === 1}
-              className="px-3 py-1 border rounded hover:bg-gray-100 disabled:opacity-50"
+              onClick={() => {
+                setShowForm(false);
+                setSelectedDebtor(null);
+              }}
+              className="text-gray-500 hover:text-gray-700 text-2xl"
             >
-              Previous
-            </button>
-            <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  className={`px-3 py-1 border rounded ${
-                    currentPage === page
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'hover:bg-gray-100'
-                  }`}
-                >
-                  {page}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-              disabled={currentPage === totalPages}
-              className="px-3 py-1 border rounded hover:bg-gray-100 disabled:opacity-50"
-            >
-              Next
+              ×
             </button>
           </div>
+          <DebtorAccountForm
+            initialData={selectedDebtor || undefined}
+            isEdit={selectedDebtor !== null}
+            onSuccess={handleFormSuccess}
+          />
         </div>
+      ) : (
+        <>
+          {/* Search and Controls */}
+          <div className="bg-white rounded-lg shadow p-6 space-y-4">
+            <div className="flex gap-4 flex-wrap items-end">
+              <div className="flex-1 min-w-[250px]">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Search Debtors
+                </label>
+                <input
+                  type="text"
+                  placeholder="Search by name or account number..."
+                  value={searchQuery}
+                  onChange={handleSearch}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <button
+                onClick={handleNewDebtor}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+              >
+                <Plus size={20} />
+                New Debtor
+              </button>
+
+              <button
+                onClick={loadDebtors}
+                disabled={loading}
+                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg disabled:opacity-50"
+              >
+                {loading ? 'Loading...' : 'Refresh'}
+              </button>
+            </div>
+          </div>
+
+          {/* Debtors List */}
+          <div className="bg-white rounded-lg shadow overflow-x-auto">
+            {loading ? (
+              <div className="p-8 text-center text-gray-500">Loading debtors...</div>
+            ) : debtors.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">
+                No debtors found. {searchQuery && 'Try a different search.'}
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Account #
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Contact
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Balance
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {debtors.map((debtor) => (
+                    <tr key={debtor.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {debtor.dno}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                        {debtor.dname}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                        {debtor.email || 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                        {typeof debtor.total_balance === 'number'
+                          ? debtor.total_balance.toFixed(2)
+                          : 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                            debtor.is_active
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}
+                        >
+                          {debtor.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                        <button
+                          onClick={() => handleEdit(debtor)}
+                          className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-900"
+                        >
+                          <Edit2 size={16} />
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(debtor.id)}
+                          className="inline-flex items-center gap-1 text-red-600 hover:text-red-900"
+                        >
+                          <Trash2 size={16} />
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

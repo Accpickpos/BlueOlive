@@ -659,17 +659,11 @@ class SystemConfigurationSerializer(serializers.ModelSerializer):
         source='default_tax_code',
         read_only=True
     )
-    tenant_name = serializers.CharField(source='tenant.name', read_only=True)
-    shop_name = serializers.CharField(source='shop.name', read_only=True)
     
     class Meta:
         model = SystemConfiguration
         fields = [
             'id',
-            'tenant',
-            'tenant_name',
-            'shop',
-            'shop_name',
             'shop_address',
             'shop_phone',
             'shop_email',
@@ -694,8 +688,6 @@ class SystemConfigurationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id',
-            'tenant_name',
-            'shop_name',
             'default_tax_code_details',
             'created_at',
             'updated_at',

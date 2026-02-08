@@ -62,7 +62,7 @@ export default function StockReturns({ onBack }: StockReturnsProps) {
     queryKey: ['suppliers'],
     queryFn: async () => {
       try {
-        const response = await api.get('/api/creditors/suppliers/');
+        const response = await api.get('/api/v1/creditors/creditors/');
         console.log('Suppliers response:', response);
         return response.data.results || response.data;
       } catch (error) {
@@ -76,7 +76,7 @@ export default function StockReturns({ onBack }: StockReturnsProps) {
   const { data: taxData } = useQuery({
     queryKey: ['tax-codes'],
     queryFn: async () => {
-      const response = await api.get('/api/settings/tax-codes/');
+      const response = await api.get('/api/v1/settings/tax-codes/');
       return response.data.results || response.data;
     },
   });

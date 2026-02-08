@@ -59,6 +59,7 @@ class IsTenantMember(BasePermission):
     
     def has_permission(self, request, view):
         from tenancy.tenant_context import get_current_tenant
+        from tenancy.audit import TenantAuditLog
         
         if not request.user or not request.user.is_authenticated:
             return False
@@ -73,7 +74,20 @@ class IsTenantMember(BasePermission):
             return True
         
         # Regular users must belong to the tenant
-        return request.user.tenant_id == tenant.id
+        if request.user.tenant_id != tenant.id:
+            # Log the cross-tenant access attempt
+            try:
+                TenantAuditLog.log_cross_tenant_access_attempt(
+                    request,
+                    request.user,
+                    tenant.id,
+                    request.user.tenant_id
+                )
+            except Exception:
+                pass  # Don't fail the permission check if logging fails
+            return False
+        
+        return True
 
 
 class CanCreateTenant(BasePermission):

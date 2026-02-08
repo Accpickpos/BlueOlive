@@ -11,13 +11,18 @@ def register_tenant_connection(tenant):
     Register tenant database connection using credentials from Django settings.
     This ensures all tenants use the same PostgreSQL credentials as the main database.
     
-    CRITICAL: We set search_path=public at the connection level so that ALL queries
-    (including migrations) default to the public schema, not the dangerous pg_temp schema.
+    CRITICAL: We set search_path to the shop's schema at the connection level so that
+    ALL queries (including migrations) default to the shop's schema, not public.
     """
     alias = tenant.db_alias
     # Use credentials from settings, not from tenant object
     # This allows old tenants with incorrect db_password to still work
     default_db = settings.DATABASES['default']
+    
+    # Get the shop's schema name from the first shop associated with this tenant
+    # This determines which schema migrations will create tables in
+    shop = tenant.shops.first()
+    search_path = shop.schema_name if shop else "public"  # Fallback to public if no shop
     
     db_config = {
         "ENGINE": "django.db.backends.postgresql",
@@ -29,8 +34,9 @@ def register_tenant_connection(tenant):
         "CONN_MAX_AGE": 60,  # tune as needed
         # CRITICAL: Set options so PostgreSQL sets search_path BEFORE running any queries
         # This is applied at the connection level by psycopg2 before Django uses the connection
+        # Use the shop's schema as primary, with public as fallback for system tables
         "OPTIONS": {
-            'options': '-c search_path=public -c statement_timeout=0'
+            'options': f'-c search_path="{search_path}",public -c statement_timeout=0'
         },
         "TIME_ZONE": settings.TIME_ZONE,
         "AUTOCOMMIT": True,

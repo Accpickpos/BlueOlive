@@ -1,6 +1,7 @@
 """
 Debtors views.
 API viewsets for all debtor-related operations.
+Based on DMAST, DEBTRAN, DEBTOPEN, DPDC, DEBTORAUD tables.
 """
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
@@ -9,42 +10,38 @@ from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, Sum, Count
 from datetime import date, timedelta
+from decimal import Decimal
 from django.db import transaction as db_transaction
-from django.core.exceptions import ValidationError as DjangoValidationError
 
-from .models import Debtor, DebtorTransaction, Invoice, PostDatedCheque, AuditLog
+from .models import (
+    Debtor, DebtorTransaction, Debtopen, Dpdc, DebtorAudit, Darea
+)
 from .serializers import (
     DebtorListSerializer, DebtorDetailSerializer,
     DebtorCreateUpdateSerializer, DebtorTransactionSerializer,
-    InvoiceListSerializer, InvoiceDetailSerializer,
-    InvoiceCreateSerializer, InvoiceUpdateSerializer,
-    PostDatedChequeSerializer, AgeAnalysisSerializer,
-    DebtorStatementSerializer, DebtorSummarySerializer
+    DebteopenSerializer, DpdcSerializer, DebtorAuditSerializer,
+    DareaSerializer, AgeAnalysisSerializer, DebtorSummarySerializer,
+    DebtranListSerializer, DebtOpenListSerializer
 )
-from .services import DebtorService, InvoiceService
-from .filters import DebtorFilter, InvoiceFilter, DebtorTransactionFilter
-from .permissions import HasDebtorPermission, CanModifyDebtor, CanPostInvoice
 
 
 class DebtorViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for managing debtors (customers).
+    ViewSet for managing debtors (customers) - DMAST table.
     
-    Provides CRUD operations plus additional actions:
-    - age_analysis: Get age analysis for a debtor
-    - transactions: Get all transactions for a debtor
-    - statement: Generate debtor statement
-    - check_credit: Check credit limit status
-    - summary: Get summary statistics for all debtors
-    - top_customers: Get top customers by sales
+    Provides CRUD operations plus actions:
+    - age_analysis: Age analysis for debtor
+    - transactions: Get debtor transactions
+    - summary: Get all debtors summary
+    - block: Block debtor account
+    - unblock: Unblock debtor account
     """
     queryset = Debtor.objects.all()
-    permission_classes = [IsAuthenticated, HasDebtorPermission]
+    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_class = DebtorFilter
-    search_fields = ['account_number', 'name', 'search_name', 'contact_person']
-    ordering_fields = ['account_number', 'name', 'current_balance', 'created_at']
-    ordering = ['account_number']
+    search_fields = ['dno', 'dname', 'dsname', 'dcontact']
+    ordering_fields = ['dno', 'dname', 'dcrnt', 'created_at']
+    ordering = ['dno']
     
     def get_serializer_class(self):
         """Return appropriate serializer based on action."""
@@ -54,91 +51,30 @@ class DebtorViewSet(viewsets.ModelViewSet):
             return DebtorCreateUpdateSerializer
         return DebtorDetailSerializer
     
-    def get_queryset(self):
-        """Optimize queryset with select_related."""
-        queryset = super().get_queryset()
-        if self.action == 'list':
-            queryset = queryset.select_related('sales_area')
-        return queryset
-    
     @action(detail=True, methods=['get'])
     def age_analysis(self, request, pk=None):
-        """Get age analysis for a specific debtor."""
-        debtor = self.get_object()
-        data = DebtorService.calculate_age_analysis(debtor)
-        serializer = AgeAnalysisSerializer(data)
-        return Response(serializer.data)
-    
-    @action(detail=True, methods=['get'])
-    def transactions(self, request, pk=None):
-        """Get all transactions for a debtor."""
-        debtor = self.get_object()
-        
-        # Get filter parameters
-        start_date = request.query_params.get('start_date')
-        end_date = request.query_params.get('end_date')
-        transaction_type = request.query_params.get('transaction_type')
-        
-        # Base query
-        transactions = DebtorTransaction.objects.filter(debtor=debtor)
-        
-        # Apply filters
-        if start_date:
-            transactions = transactions.filter(transaction_date__gte=start_date)
-        if end_date:
-            transactions = transactions.filter(transaction_date__lte=end_date)
-        if transaction_type:
-            transactions = transactions.filter(transaction_type=transaction_type)
-        
-        transactions = transactions.order_by('-transaction_date')
-        
-        # Check if no transactions exist
-        if not transactions.exists():
-            return Response({
-                'status': 'no_data',
-                'message': f'No transactions found for debtor {debtor.account_number}',
-                'data': []
-            })
-        
-        # Paginate
-        page = self.paginate_queryset(transactions)
-        if page is not None:
-            serializer = DebtorTransactionSerializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-        
-        serializer = DebtorTransactionSerializer(transactions, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=True, methods=['get'])
-    def statement(self, request, pk=None):
-        """Generate debtor statement for a period."""
-        debtor = self.get_object()
-        
-        start_date = request.query_params.get('start_date')
-        end_date = request.query_params.get('end_date')
-        
-        # Parse dates if provided
-        if start_date:
-            from datetime import datetime
-            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-        if end_date:
-            from datetime import datetime
-            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-        
+        """Get age analysis for a debtor."""
         try:
-            statement_data = DebtorService.get_debtor_statement(
-                debtor, start_date, end_date
-            )
-            
-            # Check if statement has any transactions
-            if not statement_data['transactions']:
-                return Response({
-                    'status': 'no_data',
-                    'message': f'No statement data found for debtor {debtor.account_number} for the specified period',
-                    'data': statement_data
-                })
-            
-            serializer = DebtorStatementSerializer(statement_data)
+            debtor = self.get_object()
+            data = {
+                'dno': debtor.dno,
+                'dname': debtor.dname,
+                'dcontact': debtor.dcontact,
+                'dtel': debtor.dtel,
+                'dclimit': debtor.dclimit,
+                'current': debtor.dcrnt,
+                'days_30': debtor.d30,
+                'days_60': debtor.d60,
+                'days_90': debtor.d90,
+                'days_120': debtor.d120,
+                'days_150': debtor.d150,
+                'days_180': debtor.d180,
+                'total_balance': debtor.get_total_balance(),
+                'overdue_balance': debtor.get_overdue_balance(),
+                'ddatlpd': debtor.ddatlpd,
+                'damtlpd': debtor.damtlpd,
+            }
+            serializer = AgeAnalysisSerializer(data)
             return Response(serializer.data)
         except Exception as e:
             return Response(
@@ -147,139 +83,75 @@ class DebtorViewSet(viewsets.ModelViewSet):
             )
     
     @action(detail=True, methods=['get'])
-    def check_credit(self, request, pk=None):
-        """Check credit limit status for a debtor."""
-        debtor = self.get_object()
-        credit_status = DebtorService.check_credit_limit(debtor)
-        return Response(credit_status)
-    
-    @action(detail=True, methods=['get'], url_path='balance-details', name='Balance Details')
-    def balance_details(self, request, pk=None):
-        """Get detailed balance breakdown for a debtor."""
-        debtor = self.get_object()
-        
-        if not debtor:
-            return Response(
-                {'status': 'error', 'message': 'Debtor not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
+    def transactions(self, request, pk=None):
+        """Get all transactions for a debtor (DEBTRAN)."""
         try:
-            balance_data = {
-                'account_number': debtor.account_number,
-                'name': debtor.name,
-                'contact_person': debtor.contact_person,
-                'telephone1': debtor.telephone1,
-                'email': debtor.email if hasattr(debtor, 'email') else '',
-                'credit_limit': float(debtor.credit_limit),
-                'balance_breakdown': {
-                    'current': float(debtor.current_balance),
-                    'days_30': float(debtor.balance_30_days),
-                    'days_60': float(debtor.balance_60_days),
-                    'days_90': float(debtor.balance_90_days),
-                    'days_120': float(debtor.balance_120_days),
-                    'days_150': float(debtor.balance_150_days),
-                    'days_180': float(debtor.balance_180_days),
-                },
-                'total_balance': float(debtor.total_balance),
-                'available_credit': float(debtor.credit_limit - debtor.total_balance),
-                'credit_used_percentage': float((debtor.total_balance / debtor.credit_limit * 100) if debtor.credit_limit > 0 else 0),
-                'is_over_credit_limit': debtor.total_balance > debtor.credit_limit,
-                'is_blocked': debtor.is_blocked,
-                'block_reason': debtor.block_reason if debtor.is_blocked else '',
-                'is_active': debtor.is_active,
-                'last_payment_date': debtor.last_payment_date,
-                'last_payment_amount': float(debtor.last_payment_amount) if debtor.last_payment_amount else 0,
-                'sales_mtd': float(debtor.sales_mtd),
-                'sales_ytd': float(debtor.sales_ytd),
-                'charge_interest': debtor.charge_interest,
-            }
-            return Response(balance_data)
+            debtor = self.get_object()
+            
+            start_date = request.query_params.get('start_date')
+            end_date = request.query_params.get('end_date')
+            dtype = request.query_params.get('dtype')
+            
+            transactions = DebtorTransaction.objects.filter(dno=debtor)
+            
+            if start_date:
+                transactions = transactions.filter(dtdate__gte=start_date)
+            if end_date:
+                transactions = transactions.filter(dtdate__lte=end_date)
+            if dtype:
+                transactions = transactions.filter(dtype=dtype)
+            
+            transactions = transactions.order_by('-dtdate')
+            
+            page = self.paginate_queryset(transactions)
+            if page is not None:
+                serializer = DebtorTransactionSerializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
+            
+            serializer = DebtorTransactionSerializer(transactions, many=True)
+            return Response(serializer.data)
         except Exception as e:
             return Response(
-                {'status': 'error', 'message': f'Failed to retrieve balance details: {str(e)}'},
+                {'status': 'error', 'message': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
     
     @action(detail=False, methods=['get'])
     def summary(self, request):
         """Get summary statistics for all debtors."""
-        summary_data = DebtorService.get_debtors_summary()
-        serializer = DebtorSummarySerializer(summary_data)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'])
-    def top_customers(self, request):
-        """Get top customers by sales value."""
-        limit = int(request.query_params.get('limit', 10))
-        period = request.query_params.get('period', 'month')  # month, year, all
-        
         try:
-            top_debtors = InvoiceService.get_top_customers(limit, period)
+            debtors = self.get_queryset()
             
-            if not top_debtors:
-                return Response({
-                    'status': 'no_data',
-                    'message': f'No top customers found for period: {period}',
-                    'data': []
-                })
+            total_debtors = debtors.count()
+            active_debtors = debtors.filter(is_active=True).count()
+            blocked_debtors = debtors.filter(blockflag='Y').count()
             
-            serializer = DebtorListSerializer(top_debtors, many=True)
+            aggregates = debtors.aggregate(
+                total_balance=Sum('dcrnt'),
+                current_balance=Sum('dcrnt'),
+                d30_total=Sum('d30'),
+                d60_total=Sum('d60'),
+                d90_total=Sum('d90'),
+            )
+            
+            data = {
+                'total_debtors': total_debtors,
+                'active_debtors': active_debtors,
+                'blocked_debtors': blocked_debtors,
+                'total_balance': aggregates['total_balance'] or Decimal('0.00'),
+                'current_balance': aggregates['current_balance'] or Decimal('0.00'),
+                'overdue_30': aggregates['d30_total'] or Decimal('0.00'),
+                'overdue_60': aggregates['d60_total'] or Decimal('0.00'),
+                'overdue_90': aggregates['d90_total'] or Decimal('0.00'),
+                'overdue_120_plus': sum([
+                    debtors.aggregate(Sum('d120'))['d120__sum'] or Decimal('0.00'),
+                    debtors.aggregate(Sum('d150'))['d150__sum'] or Decimal('0.00'),
+                    debtors.aggregate(Sum('d180'))['d180__sum'] or Decimal('0.00'),
+                ]),
+            }
+            
+            serializer = DebtorSummarySerializer(data)
             return Response(serializer.data)
-        except Exception as e:
-            return Response(
-                {'status': 'error', 'message': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    
-    @action(detail=False, methods=['post'])
-    @db_transaction.atomic
-    def charge_interest(self, request):
-        """Charge interest on all eligible debtors."""
-        try:
-            rate = float(request.data.get('rate', 0.01))
-            start_period = int(request.data.get('start_period', 2))
-            
-            result = DebtorService.charge_interest_batch(rate, start_period)
-            
-            if result['debtors_charged'] == 0:
-                return Response({
-                    'status': 'no_data',
-                    'message': 'No eligible debtors found to charge interest',
-                    'data': result
-                })
-            
-            return Response(result)
-        except (ValueError, TypeError) as e:
-            return Response(
-                {'status': 'error', 'message': f'Invalid parameters: {str(e)}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        except Exception as e:
-            return Response(
-                {'status': 'error', 'message': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    
-    @action(detail=False, methods=['post'])
-    @db_transaction.atomic
-    def age_balances(self, request):
-        """Age all debtor balances (month-end process)."""
-        try:
-            count = DebtorService.age_balances()
-            
-            if count == 0:
-                return Response({
-                    'status': 'no_data',
-                    'message': 'No active debtors found to age',
-                    'debtors_aged': count
-                })
-            
-            return Response({
-                'status': 'success',
-                'debtors_aged': count,
-                'message': f'Aged balances for {count} debtors'
-            })
         except Exception as e:
             return Response(
                 {'status': 'error', 'message': str(e)},
@@ -289,363 +161,246 @@ class DebtorViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def block(self, request, pk=None):
         """Block a debtor account."""
-        debtor = self.get_object()
-        reason = request.data.get('reason', '')
-        
-        if not reason:
+        try:
+            debtor = self.get_object()
+            debtor.set_blocked(True)
+            
+            return Response({
+                'status': 'success',
+                'message': f'Debtor {debtor.dno} blocked successfully'
+            })
+        except Exception as e:
             return Response(
-                {'error': 'Block reason is required'},
+                {'status': 'error', 'message': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # Store old value for audit
-        old_value = f"is_blocked={debtor.is_blocked}"
-        
-        debtor.is_blocked = True
-        debtor.block_reason = reason
-        debtor.blocked_by = str(request.user)
-        debtor.blocked_date = date.today()
-        debtor.save()
-        
-        # Create audit log
-        AuditLog.objects.create(
-            debtor=debtor,
-            change_type='BLOCK',
-            old_value=old_value,
-            new_value=f"is_blocked=True, reason={reason}",
-            changed_by=str(request.user),
-            description=f"Account blocked: {reason}"
-        )
-        
-        return Response({
-            'status': 'success',
-            'message': f'Debtor {debtor.account_number} blocked'
-        })
     
     @action(detail=True, methods=['post'])
     def unblock(self, request, pk=None):
         """Unblock a debtor account."""
-        debtor = self.get_object()
-        
-        # Store old value for audit
-        old_value = f"is_blocked={debtor.is_blocked}"
-        
-        debtor.is_blocked = False
-        debtor.block_reason = ''
-        debtor.unblocked_date = date.today()
-        debtor.save()
-        
-        # Create audit log
-        AuditLog.objects.create(
-            debtor=debtor,
-            change_type='UNBLOCK',
-            old_value=old_value,
-            new_value="is_blocked=False",
-            changed_by=str(request.user),
-            description="Account unblocked"
-        )
-        
-        return Response({
-            'status': 'success',
-            'message': f'Debtor {debtor.account_number} unblocked'
-        })
+        try:
+            debtor = self.get_object()
+            debtor.set_blocked(False)
+            
+            return Response({
+                'status': 'success',
+                'message': f'Debtor {debtor.dno} unblocked successfully'
+            })
+        except Exception as e:
+            return Response(
+                {'status': 'error', 'message': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=True, methods=['get'])
+    def balance_details(self, request, pk=None):
+        """Get detailed balance breakdown for debtor."""
+        try:
+            debtor = self.get_object()
+            
+            balance_data = {
+                'dno': debtor.dno,
+                'dname': debtor.dname,
+                'dclimit': float(debtor.dclimit),
+                'balance_breakdown': {
+                    'current': float(debtor.dcrnt),
+                    '30_days': float(debtor.d30),
+                    '60_days': float(debtor.d60),
+                    '90_days': float(debtor.d90),
+                    '120_days': float(debtor.d120),
+                    '150_days': float(debtor.d150),
+                    '180_days': float(debtor.d180),
+                },
+                'total_balance': float(debtor.get_total_balance()),
+                'available_credit': float(debtor.dclimit - debtor.get_total_balance()),
+                'credit_utilization_pct': float(
+                    (debtor.get_total_balance() / debtor.dclimit * 100) 
+                    if debtor.dclimit > 0 else 0
+                ),
+                'is_blocked': debtor.is_blocked(),
+                'is_active': debtor.is_active,
+                'last_payment': {
+                    'date': debtor.ddatlpd,
+                    'amount': float(debtor.damtlpd),
+                },
+                'sales': {
+                    'mtd': float(debtor.dsalesm),
+                    'ytd': float(debtor.dsalesy),
+                },
+            }
+            return Response(balance_data)
+        except Exception as e:
+            return Response(
+                {'status': 'error', 'message': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class DebtorTransactionViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    ViewSet for viewing debtor transactions.
-    Read-only as transactions are created through other processes.
+    ViewSet for debtor transactions (DEBTRAN).
+    Read-only as transactions are created through posting processes.
     """
     queryset = DebtorTransaction.objects.all()
     serializer_class = DebtorTransactionSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_class = DebtorTransactionFilter
-    ordering_fields = ['transaction_date', 'total_amount']
-    ordering = ['-transaction_date']
+    filterset_fields = ['dno', 'dtype', 'dtdate']
+    ordering_fields = ['dtdate', 'dttot']
+    ordering = ['-dtdate']
     
     def get_queryset(self):
         """Optimize queryset."""
-        return super().get_queryset().select_related('debtor')
+        return super().get_queryset().select_related('dno')
 
 
-class InvoiceViewSet(viewsets.ModelViewSet):
+class DebteopenViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for managing invoices.
-    
-    Provides CRUD operations plus:
-    - post_invoice: Post invoice to debtor account
-    - cancel_invoice: Cancel an invoice
-    - reprint: Mark invoice for reprinting
+    ViewSet for open item transactions (DEBTOPEN).
+    Tracks individual open item postings for debtor accounts.
     """
-    queryset = Invoice.objects.all()
+    queryset = Debtopen.objects.all()
+    serializer_class = DebteopenSerializer
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_class = InvoiceFilter
-    search_fields = ['invoice_number', 'debtor__name', 'debtor__account_number', 'order_number']
-    ordering_fields = ['invoice_date', 'invoice_number', 'total_amount']
-    ordering = ['-invoice_date']
-    
-    def get_serializer_class(self):
-        """Return appropriate serializer based on action."""
-        if self.action == 'list':
-            return InvoiceListSerializer
-        elif self.action == 'create':
-            return InvoiceCreateSerializer
-        elif self.action in ['update', 'partial_update']:
-            return InvoiceUpdateSerializer
-        return InvoiceDetailSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['dno', 'type', 'posted', 'ageflag']
+    ordering_fields = ['date', 'total']
+    ordering = ['-date']
     
     def get_queryset(self):
         """Optimize queryset."""
-        queryset = super().get_queryset()
-        if self.action == 'list':
-            queryset = queryset.select_related('debtor', 'sales_area')
-        elif self.action == 'retrieve':
-            queryset = queryset.select_related('debtor', 'sales_area').prefetch_related('lines')
-        return queryset
+        return super().get_queryset().select_related('dno')
     
-    def perform_create(self, serializer):
-        """Create invoice."""
-        invoice = serializer.save()
-        return Response(
-            InvoiceDetailSerializer(invoice).data,
-            status=status.HTTP_201_CREATED
-        )
-    
-    @action(detail=True, methods=['post'])
-    @db_transaction.atomic
-    def post_invoice(self, request, pk=None):
-        """Post invoice to debtor account."""
-        invoice = self.get_object()
-        
+    @action(detail=False, methods=['get'])
+    def outstanding(self, request):
+        """Get all outstanding open items."""
         try:
-            # Validate invoice can be posted
-            if not invoice.can_be_posted():
-                return Response(
-                    {'status': 'error', 'message': f'Invoice cannot be posted (status: {invoice.status})'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            outstanding = self.get_queryset().filter(
+                balancedue__gt=0,
+                posted='Y'
+            )
             
-            # Use service to post invoice
-            DebtorService.post_invoice(invoice)
-            invoice.mark_as_posted()
+            page = self.paginate_queryset(outstanding)
+            if page is not None:
+                serializer = DebteopenSerializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
             
-            return Response({
-                'status': 'success',
-                'message': f'Invoice {invoice.invoice_number} posted successfully',
-                'invoice': InvoiceDetailSerializer(invoice).data
-            })
-        except (ValueError, DjangoValidationError) as e:
-            return Response(
-                {'status': 'error', 'message': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        except Exception as e:
-            return Response(
-                {'status': 'error', 'message': f'Failed to post invoice: {str(e)}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    
-    @action(detail=True, methods=['post'])
-    @db_transaction.atomic
-    def cancel_invoice(self, request, pk=None):
-        """Cancel an invoice."""
-        invoice = self.get_object()
-        reason = request.data.get('reason', '')
-        
-        try:
-            # Validate cancellation
-            if invoice.status == 'PAID':
-                return Response(
-                    {'status': 'error', 'message': 'Cannot cancel a paid invoice'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            DebtorService.cancel_invoice(invoice, reason)
-            invoice.mark_as_cancelled(reason)
-            
-            return Response({
-                'status': 'success',
-                'message': f'Invoice {invoice.invoice_number} cancelled',
-                'invoice': InvoiceDetailSerializer(invoice).data
-            })
-        except (ValueError, DjangoValidationError) as e:
-            return Response(
-                {'status': 'error', 'message': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        except Exception as e:
-            return Response(
-                {'status': 'error', 'message': f'Failed to cancel invoice: {str(e)}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    
-    @action(detail=True, methods=['get'])
-    def recalculate(self, request, pk=None):
-        """Recalculate invoice totals from lines."""
-        invoice = self.get_object()
-        
-        if invoice.is_posted:
-            return Response(
-                {'status': 'error', 'message': 'Cannot recalculate posted invoice'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            invoice = InvoiceService.calculate_totals(invoice)
-            serializer = InvoiceDetailSerializer(invoice)
+            serializer = DebteopenSerializer(outstanding, many=True)
             return Response(serializer.data)
         except Exception as e:
             return Response(
-                {'status': 'error', 'message': f'Failed to recalculate invoice: {str(e)}'},
+                {'status': 'error', 'message': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
     
-    @action(detail=False, methods=['get'])
-    def unposted(self, request):
-        """Get all unposted invoices."""
-        invoices = self.get_queryset().filter(
-            is_posted=False,
-            is_cancelled=False
-        )
-        
-        if not invoices.exists():
+    @action(detail=True, methods=['post'])
+    def allocate(self, request, pk=None):
+        """Allocate payment against open item."""
+        try:
+            debtor = self.get_object()
+            allocation_amount = Decimal(str(request.data.get('amount', 0)))
+            
+            if allocation_amount <= 0:
+                return Response(
+                    {'status': 'error', 'message': 'Allocation amount must be greater than zero'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if allocation_amount > debtor.balancedue:
+                return Response(
+                    {'status': 'error', 'message': 'Allocation cannot exceed balance due'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            debtor.balancedue -= allocation_amount
+            debtor.save(update_fields=['balancedue'])
+            
             return Response({
-                'status': 'no_data',
-                'message': 'No unposted invoices found',
-                'data': []
+                'status': 'success',
+                'message': 'Payment allocated successfully',
+                'new_balance': float(debtor.balancedue)
             })
-        
-        page = self.paginate_queryset(invoices)
-        if page is not None:
-            serializer = InvoiceListSerializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-        
-        serializer = InvoiceListSerializer(invoices, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'])
-    def by_date_range(self, request):
-        """Get invoices within a date range."""
-        start_date = request.query_params.get('start_date')
-        end_date = request.query_params.get('end_date')
-        
-        if not start_date or not end_date:
+        except Exception as e:
             return Response(
-                {'status': 'error', 'message': 'start_date and end_date required'},
+                {'status': 'error', 'message': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        invoices = self.get_queryset().filter(
-            invoice_date__gte=start_date,
-            invoice_date__lte=end_date
-        )
-        
-        if not invoices.exists():
-            return Response({
-                'status': 'no_data',
-                'message': f'No invoices found between {start_date} and {end_date}',
-                'invoices': [],
-                'totals': {
-                    'total_amount': 0,
-                    'total_vat': 0,
-                    'total_profit': 0,
-                    'count': 0
-                }
-            })
-        
-        # Calculate totals
-        totals = invoices.aggregate(
-            total_amount=Sum('total_amount'),
-            total_vat=Sum('vat_amount'),
-            total_profit=Sum('gross_profit'),
-            count=Count('id')
-        )
-        
-        page = self.paginate_queryset(invoices)
-        if page is not None:
-            serializer = InvoiceListSerializer(page, many=True)
-            response_data = self.get_paginated_response(serializer.data).data
-            response_data['totals'] = totals
-            return Response(response_data)
-        
-        serializer = InvoiceListSerializer(invoices, many=True)
-        return Response({
-            'invoices': serializer.data,
-            'totals': totals
-        })
 
 
-class PostDatedChequeViewSet(viewsets.ModelViewSet):
+class DpdcViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for managing post-dated cheques.
+    ViewSet for post-dated cheques (DPDC).
     """
-    queryset = PostDatedCheque.objects.all()
-    serializer_class = PostDatedChequeSerializer
+    queryset = Dpdc.objects.all()
+    serializer_class = DpdcSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['debtor', 'is_processed', 'cheque_date']
-    ordering_fields = ['cheque_date', 'amount']
-    ordering = ['cheque_date']
+    filterset_fields = ['dno', 'status', 'date']
+    ordering_fields = ['date', 'amount']
+    ordering = ['date']
     
     def get_queryset(self):
         """Optimize queryset."""
-        return super().get_queryset().select_related('debtor')
+        return super().get_queryset().select_related('dno')
+    
+    @action(detail=False, methods=['get'])
+    def active(self, request):
+        """Get all active post-dated cheques."""
+        try:
+            active = self.get_queryset().filter(status='A')
+            
+            page = self.paginate_queryset(active)
+            if page is not None:
+                serializer = DpdcSerializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
+            
+            serializer = DpdcSerializer(active, many=True)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response(
+                {'status': 'error', 'message': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
     
     @action(detail=False, methods=['get'])
     def due_today(self, request):
         """Get PDCs due today."""
-        today = date.today()
-        pdcs = self.get_queryset().filter(
-            cheque_date=today,
-            is_processed=False
-        )
-        
-        if not pdcs.exists():
-            return Response({
-                'status': 'no_data',
-                'message': f'No post-dated cheques due today ({today})',
-                'data': []
-            })
-        
-        serializer = self.get_serializer(pdcs, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'])
-    def overdue(self, request):
-        """Get overdue PDCs."""
-        today = date.today()
-        pdcs = self.get_queryset().filter(
-            cheque_date__lt=today,
-            is_processed=False
-        )
-        
-        if not pdcs.exists():
-            return Response({
-                'status': 'no_data',
-                'message': 'No overdue post-dated cheques',
-                'data': []
-            })
-        
-        serializer = self.get_serializer(pdcs, many=True)
-        return Response(serializer.data)
+        try:
+            today = date.today()
+            pdcs = self.get_queryset().filter(
+                date=today,
+                status='A'
+            )
+            
+            if not pdcs.exists():
+                return Response({
+                    'status': 'no_data',
+                    'message': f'No post-dated cheques due today',
+                    'data': []
+                })
+            
+            serializer = DpdcSerializer(pdcs, many=True)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response(
+                {'status': 'error', 'message': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
     
     @action(detail=True, methods=['post'])
     def process(self, request, pk=None):
-        """Mark PDC as processed."""
-        pdc = self.get_object()
-        
-        if pdc.is_processed:
-            return Response(
-                {'status': 'error', 'message': 'PDC already processed'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
+        """Mark cheque as processed."""
         try:
-            pdc.is_processed = True
-            pdc.processed_date = date.today()
-            pdc.save()
+            pdc = self.get_object()
+            
+            if pdc.status == 'P':
+                return Response(
+                    {'status': 'error', 'message': 'PDC already processed'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            pdc.status = 'P'
+            pdc.save(update_fields=['status'])
             
             return Response({
                 'status': 'success',
@@ -653,26 +408,35 @@ class PostDatedChequeViewSet(viewsets.ModelViewSet):
             })
         except Exception as e:
             return Response(
-                {'status': 'error', 'message': f'Failed to process PDC: {str(e)}'},
+                {'status': 'error', 'message': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+
+class DebtorAuditViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for debtor audit records (DEBTORAUD).
+    Read-only for audit trail purposes.
+    """
+    queryset = DebtorAudit.objects.all()
+    serializer_class = DebtorAuditSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['dno', 'type', 'date']
+    ordering_fields = ['date']
+    ordering = ['-date']
     
-    @action(detail=False, methods=['get'])
-    def summary(self, request):
-        """Get PDC summary."""
-        queryset = self.get_queryset()
-        
-        total_pdcs = queryset.count()
-        processed = queryset.filter(is_processed=True).count()
-        outstanding = queryset.filter(is_processed=False).count()
-        
-        total_amount = queryset.filter(is_processed=False).aggregate(
-            total=Sum('amount')
-        )['total'] or 0
-        
-        return Response({
-            'total_pdcs': total_pdcs,
-            'processed': processed,
-            'outstanding': outstanding,
-            'total_amount_outstanding': total_amount,
-        })
+    def get_queryset(self):
+        """Optimize queryset."""
+        return super().get_queryset().select_related('dno')
+
+
+class DareaViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for sales area/salesman data (DAREA).
+    """
+    queryset = Darea.objects.all()
+    serializer_class = DareaSerializer
+    permission_classes = [IsAuthenticated]
+    ordering_fields = ['darea', 'dareaname']
+    ordering = ['darea']

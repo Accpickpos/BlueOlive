@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
+import { ENDPOINTS } from './api-config';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 const POS_API_BASE = process.env.NEXT_PUBLIC_POS_API_BASE || 'http://localhost:8001';
@@ -9,12 +10,12 @@ const POS_API_BASE = process.env.NEXT_PUBLIC_POS_API_BASE || 'http://localhost:8
  * No Authorization header needed - cookies are sent automatically with withCredentials: true
  * CSRF tokens are fetched from backend for mutating requests (POST, PUT, PATCH, DELETE)
  * 
- * To check if user is authenticated, make a request to /api/auth/profile/ that returns 401 if not authenticated.
+ * To check if user is authenticated, make a request to /api/v1/users/auth/profile/ that returns 401 if not authenticated.
  */
 
 export async function isAuthenticated(): Promise<boolean> {
   try {
-    const response = await api.get('/api/auth/profile/');
+    const response = await api.get(ENDPOINTS.AUTH.PROFILE);
     return response.status === 200;
   } catch {
     return false;
@@ -25,7 +26,7 @@ export async function isAuthenticated(): Promise<boolean> {
 let isLoggingOut = false;
 
 export function clearAuthData(): void {
-  // Reset CSRF token cache on logout
+  // Reset all auth-related state on logout
   // Cookies are cleared by backend on logout endpoint
   csrfToken = null;
   isLoggingOut = true;
@@ -33,6 +34,27 @@ export function clearAuthData(): void {
 
 // Store CSRF token globally
 let csrfToken: string | null = null;
+
+// Track rate limits per endpoint to avoid global blocking
+const rateLimitedEndpoints = new Map<string, number>();
+
+function isEndpointRateLimited(endpoint: string): boolean {
+  const resetTime = rateLimitedEndpoints.get(endpoint);
+  if (!resetTime) return false;
+  
+  if (Date.now() < resetTime) {
+    return true;
+  }
+  
+  // Reset time has passed, clear the entry
+  rateLimitedEndpoints.delete(endpoint);
+  return false;
+}
+
+function markEndpointRateLimited(endpoint: string, resetSeconds: number = 60): void {
+  const resetTime = Date.now() + (resetSeconds * 1000);
+  rateLimitedEndpoints.set(endpoint, resetTime);
+}
 
 // Helper to extract CSRF token from cookies
 function getCsrfTokenFromCookie(): string | null {
@@ -59,9 +81,20 @@ export async function fetchCSRFToken(): Promise<string> {
     return csrfToken;
   }
   
+  const csrfEndpoint = ENDPOINTS.AUTH.CSRF;
+  
+  // Check if this endpoint is rate-limited
+  if (isEndpointRateLimited(csrfEndpoint)) {
+    const resetTime = rateLimitedEndpoints.get(csrfEndpoint) || Date.now();
+    const waitTime = Math.ceil((resetTime - Date.now()) / 1000);
+    console.warn(`CSRF endpoint rate limited, will retry in ${waitTime}s`);
+    // Return empty string - don't make the request
+    return '';
+  }
+  
   try {
     // GET request to CSRF endpoint to get token in cookie
-    const response = await axios.get(`${API_BASE}/api/auth/csrf/`, {
+    const response = await axios.get(`${API_BASE}${csrfEndpoint}`, {
       withCredentials: true,
     });
     
@@ -71,7 +104,14 @@ export async function fetchCSRFToken(): Promise<string> {
       csrfToken = cookieToken;
       return cookieToken;
     }
-  } catch (error) {
+  } catch (error: any) {
+    // Check for rate limiting
+    if (error?.response?.status === 429) {
+      markEndpointRateLimited(csrfEndpoint, 30); // Wait 30 seconds before retrying CSRF
+      console.warn('CSRF endpoint rate limited (429) - stale tokens detected');
+      return '';
+    }
+    
     // Try to get from cookies even on error
     const cookieToken = getCsrfTokenFromCookie();
     if (cookieToken) {
@@ -107,7 +147,16 @@ const processQueue = (error: any, token: string | null = null) => {
 };
 
 // Endpoints that don't require JWT authentication (public endpoints)
-const PUBLIC_ENDPOINTS = ['/api/auth/login/', '/api/auth/signup/', '/api/auth/csrf/'];
+const PUBLIC_ENDPOINTS = [
+  '/api/v1/users/auth/login/',
+  '/api/v1/users/auth/signup/',
+  '/api/v1/users/auth/csrf/',
+  '/api/v1/users/auth/token/refresh/',
+  '/api/users/auth/login/',
+  '/api/users/auth/signup/',
+  '/api/users/auth/csrf/',
+  '/api/users/auth/token/refresh/',
+];
 
 function isPublicEndpoint(url: string | undefined): boolean {
   if (!url) return false;
@@ -153,11 +202,45 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
     const requestUrl = originalRequest?.url || '';
+    const endpoint = requestUrl.replace(API_BASE, '').split('?')[0];
+    
+    // Handle 429 Too Many Requests
+    if (error.response?.status === 429) {
+      // If skipRateLimitRetry is set (e.g., on initial load), don't retry - just reject
+      if (originalRequest?.skipRateLimitRetry) {
+        console.debug(`Skipping retry on ${endpoint} due to initial load flag`);
+        return Promise.reject(error);
+      }
+      
+      // For auth endpoints, retry once after a short delay to handle rate limiting from stale sessions
+      if (endpoint.includes('/auth/') && (!originalRequest._rateLimitRetry)) {
+        originalRequest._rateLimitRetry = true;
+        
+        // Wait 2 seconds before retrying (allows backend to reset)
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        try {
+          console.log(`Retrying rate-limited auth endpoint: ${endpoint}`);
+          return api(originalRequest);
+        } catch (retryError) {
+          // If retry still fails with 429, mark endpoint as rate limited and give up
+          markEndpointRateLimited(endpoint, 15);
+          console.warn(`Auth endpoint ${endpoint} still rate limited after retry`);
+          return Promise.reject(retryError);
+        }
+      }
+      
+      // Mark endpoint as rate limited for non-auth endpoints or if we already retried
+      markEndpointRateLimited(endpoint, 15); // Wait 15 seconds before retrying
+      
+      console.warn(`Rate limited (429) on ${endpoint}`);
+      return Promise.reject(error);
+    }
     
     // These endpoints return 401 as valid state (checking auth status)
     // Don't attempt token refresh for these
-    const statusCheckEndpoints = ['/api/auth/profile/'];
-    const isStatusCheck = statusCheckEndpoints.some(endpoint => requestUrl.includes(endpoint));
+    const statusCheckEndpoints = ['/api/v1/users/auth/profile/'];
+    const isStatusCheck = statusCheckEndpoints.some(ep => requestUrl.includes(ep));
     
     // Handle 401 Unauthorized - attempt to refresh token via httpOnly cookies
     // Skip refresh if:
@@ -180,7 +263,7 @@ api.interceptors.response.use(
       
       try {
         // Call refresh endpoint to refresh httpOnly cookies
-        await axios.post(`${API_BASE}/api/auth/token/refresh/`, {}, {
+        await axios.post(`${API_BASE}/api/users/auth/token/refresh/`, {}, {
           withCredentials: true,
         });
         
@@ -204,12 +287,13 @@ api.interceptors.response.use(
 );
 
 export async function apiRequest(endpoint: string, options: any = {}): Promise<AxiosResponse> {
-  const { method = 'GET', headers = {}, body, ...rest } = options;
+  const { method = 'GET', headers = {}, body, skipRateLimitRetry, ...rest } = options;
   
   return api({
     url: endpoint,
     method,
     data: body || undefined,
+    skipRateLimitRetry, // Pass through to request config for interceptor
     headers: {
       'Content-Type': 'application/json',
       ...headers,
@@ -219,7 +303,7 @@ export async function apiRequest(endpoint: string, options: any = {}): Promise<A
 }
 
 export async function login(tenant_slug: string, username: string, password: string): Promise<AxiosResponse> {
-  const response = await api.post('/api/auth/login/', {
+  const response = await api.post('/api/v1/users/auth/login/', {
     username,
     password,
     tenant_slug,
@@ -228,6 +312,9 @@ export async function login(tenant_slug: string, username: string, password: str
   // Backend returns user object, tokens are in httpOnly cookies set by the server
   // Reset CSRF token cache after successful login
   csrfToken = null;
+  // Clear rate limiting for auth endpoints since we have fresh tokens
+  rateLimitedEndpoints.delete('/api/v1/users/auth/csrf/');
+  rateLimitedEndpoints.delete('/api/v1/users/auth/profile/');
   
   return response;
 }
@@ -242,7 +329,7 @@ export async function signup(signupData: {
   company_name: string;
   subdomain: string;
 }): Promise<AxiosResponse> {
-  const response = await api.post('/api/auth/signup/', signupData);
+  const response = await api.post('/api/v1/users/auth/signup/', signupData);
   
   // Backend returns user object, tokens are in httpOnly cookies set by the server
   // Reset CSRF token cache after successful signup
@@ -253,7 +340,7 @@ export async function signup(signupData: {
 
 export async function logout(): Promise<AxiosResponse> {
   try {
-    const response = await api.post('/api/auth/logout/');
+    const response = await api.post('/api/v1/users/auth/logout/');
     // Clear CSRF token cache and other auth data
     clearAuthData();
     return response;
@@ -273,7 +360,7 @@ export async function refreshToken(): Promise<AxiosResponse> {
   // With httpOnly cookies, token refresh is handled automatically by the interceptor
   // This function is kept for API compatibility but is rarely needed
   try {
-    const response = await axios.post(`${API_BASE}/api/auth/token/refresh/`, {}, {
+    const response = await axios.post(`${API_BASE}/api/v1/users/auth/token/refresh/`, {}, {
       withCredentials: true,
     });
     return response;
@@ -284,17 +371,17 @@ export async function refreshToken(): Promise<AxiosResponse> {
 }
 
 export async function getCurrentUser(): Promise<any> {
-  const res = await apiRequest('/api/auth/profile/');
+  const res = await apiRequest('/api/v1/users/auth/profile/');
   return res.data;
 }
 
 export async function getCurrentTenant(): Promise<any> {
-  const res = await apiRequest('/api/current_tenant/');
+  const res = await apiRequest('/api/v1/tenants/current/');
   return res.data;
 }
 
 export async function getUsers(): Promise<any[]> {
-  const res = await apiRequest('/api/users/');
+  const res = await apiRequest('/api/v1/users/');
   // Handle both array and paginated responses
   if (Array.isArray(res.data)) {
     return res.data;
@@ -303,7 +390,7 @@ export async function getUsers(): Promise<any[]> {
 }
 
 export async function getShops(): Promise<any[]> {
-  const res = await apiRequest('/api/shops/');
+  const res = await apiRequest('/api/v1/shops/');
   // Handle both array and paginated responses
   if (Array.isArray(res.data)) {
     return res.data;
@@ -312,7 +399,7 @@ export async function getShops(): Promise<any[]> {
 }
 
 export async function createUser(userData: any): Promise<any> {
-  const res = await apiRequest('/api/users/', {
+  const res = await apiRequest('/api/v1/users/', {
     method: 'POST',
     data: userData,
   });
@@ -320,7 +407,7 @@ export async function createUser(userData: any): Promise<any> {
 }
 
 export async function updateUser(id: number, userData: any): Promise<any> {
-  const res = await apiRequest(`/api/users/${id}/`, {
+  const res = await apiRequest(`/api/v1/users/${id}/`, {
     method: 'PATCH',
     data: userData,
   });
@@ -328,13 +415,13 @@ export async function updateUser(id: number, userData: any): Promise<any> {
 }
 
 export async function deleteUser(id: number): Promise<void> {
-  await apiRequest(`/api/users/${id}/`, {
+  await apiRequest(`/api/v1/users/${id}/`, {
     method: 'DELETE',
   });
 }
 
 export async function createShop(shopData: any): Promise<any> {
-  const res = await apiRequest('/api/shops/', {
+  const res = await apiRequest('/api/v1/shops/', {
     method: 'POST',
     data: shopData,
   });
@@ -342,7 +429,7 @@ export async function createShop(shopData: any): Promise<any> {
 }
 
 export async function updateShop(id: number, shopData: any): Promise<any> {
-  const res = await apiRequest(`/api/shops/${id}/`, {
+  const res = await apiRequest(`/api/v1/shops/${id}/`, {
     method: 'PUT',
     data: shopData,
   });
@@ -350,24 +437,24 @@ export async function updateShop(id: number, shopData: any): Promise<any> {
 }
 
 export async function deleteShop(id: number): Promise<void> {
-  await apiRequest(`/api/shops/${id}/`, {
+  await apiRequest(`/api/v1/shops/${id}/`, {
     method: 'DELETE',
   });
 }
 
 export async function getTenants(): Promise<any[]> {
-  const res = await apiRequest('/api/tenants/');
+  const res = await apiRequest('/api/v1/tenants/');
   return res.data;
 }
 
 export async function getTenantShops(tenantSlug?: string): Promise<any[]> {
-  const url = tenantSlug ? `/api/tenant_shops/?tenant=${tenantSlug}` : '/api/tenant_shops/';
+  const url = tenantSlug ? `/api/v1/tenant_shops/?tenant=${tenantSlug}` : '/api/v1/tenant_shops/';
   const res = await apiRequest(url);
   return res.data;
 }
 
 export async function createTenant(tenantData: any): Promise<AxiosResponse> {
-  return apiRequest('/api/tenants/', {
+  return apiRequest('/api/v1/tenants/', {
     method: 'POST',
     data: tenantData,
   });
@@ -378,7 +465,7 @@ export async function createTenant(tenantData: any): Promise<AxiosResponse> {
 // ========================================
 
 export async function getSuppliers(): Promise<any[]> {
-  const res = await apiRequest('/api/creditors/suppliers/');
+  const res = await apiRequest('/api/v1/creditors/suppliers/');
   if (Array.isArray(res.data)) {
     return res.data;
   }
@@ -386,12 +473,12 @@ export async function getSuppliers(): Promise<any[]> {
 }
 
 export async function getSupplier(id: number): Promise<any> {
-  const res = await apiRequest(`/api/creditors/suppliers/${id}/`);
+  const res = await apiRequest(`/api/v1/creditors/suppliers/${id}/`);
   return res.data;
 }
 
 export async function createSupplier(supplierData: any): Promise<any> {
-  const res = await apiRequest('/api/creditors/suppliers/', {
+  const res = await apiRequest('/api/v1/creditors/suppliers/', {
     method: 'POST',
     data: supplierData,
   });
@@ -399,7 +486,7 @@ export async function createSupplier(supplierData: any): Promise<any> {
 }
 
 export async function updateSupplier(id: number, supplierData: any): Promise<any> {
-  const res = await apiRequest(`/api/creditors/suppliers/${id}/`, {
+  const res = await apiRequest(`/api/v1/creditors/suppliers/${id}/`, {
     method: 'PATCH',
     data: supplierData,
   });
@@ -407,7 +494,7 @@ export async function updateSupplier(id: number, supplierData: any): Promise<any
 }
 
 export async function deleteSupplier(id: number): Promise<void> {
-  await apiRequest(`/api/creditors/suppliers/${id}/`, {
+  await apiRequest(`/api/v1/creditors/suppliers/${id}/`, {
     method: 'DELETE',
   });
 }
@@ -436,7 +523,7 @@ posApi.interceptors.response.use(
       
       try {
         // Refresh token via httpOnly cookies
-        await axios.post(`${API_BASE}/api/auth/token/refresh/`, {}, {
+        await axios.post(`${API_BASE}/api/users/auth/token/refresh/`, {}, {
           withCredentials: true,
         });
         return posApi(originalRequest);

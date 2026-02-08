@@ -1,40 +1,37 @@
 """
 Seed Debtors (Customers) data for development/testing
-Usage: python manage.py seed_debtors
+Usage: 
+    python manage.py seed_debtors                       # Seeds first tenant
+    python manage.py seed_debtors --tenant-id 1         # Seeds specific tenant
+    python manage.py seed_debtors --tenant-slug slug    # Seeds specific tenant by slug
+    python manage.py seed_debtors --dry-run              # Show what would be seeded
 """
-from django.core.management.base import BaseCommand
-from django.contrib.auth import get_user_model
+from apps.settings.management.commands.base_seed_command import BaseSeedCommand
 from apps.debtors.models import Debtor
 from apps.settings.models import SalesArea
 from decimal import Decimal
 
-User = get_user_model()
 
-
-class Command(BaseCommand):
+class Command(BaseSeedCommand):
+    COMMAND_TITLE = "Seeding Debtors Data"
+    COMMAND_DESCRIPTION = "Debtors (customers)"
+    STEP_NUMBER = "2/4"
     help = 'Seed debtors (customers) data for development/testing'
 
-    def handle(self, *args, **options):
-        self.stdout.write(self.style.SUCCESS('Starting Debtors Data Seeding...'))
+    def seed(self, user, tenant, shop, dry_run=False, **options):
+        """Seed debtors data."""
         
-        try:
-            user = User.objects.filter(is_staff=True).first()
-            if not user:
-                self.stdout.write(self.style.ERROR('No admin user found. Create one first.'))
-                return
-            
-            # Ensure sales areas exist
-            sales_areas = SalesArea.objects.all()
-            if not sales_areas.exists():
-                self.stdout.write(self.style.ERROR('No Sales Areas found. Run seed_settings first.'))
-                return
-            
-            self._create_debtors(user, sales_areas)
-            self.stdout.write(self.style.SUCCESS('✓ Debtors data seeded successfully!'))
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f'✗ Error: {str(e)}'))
+        # Validate dependencies
+        sales_areas = SalesArea.objects.all()
+        if not sales_areas.exists():
+            self.error("No Sales Areas found. Run 'seed_settings' first.")
+            return
+        
+        self.print_section("Creating Debtors (Customers)")
+        self._create_debtors(user, sales_areas, dry_run)
 
-    def _create_debtors(self, user, sales_areas):
+    def _create_debtors(self, user, sales_areas, dry_run=False):
+        """Create debtor records."""
         debtors_data = [
             {
                 'account_number': 'C001',
@@ -110,6 +107,8 @@ class Command(BaseCommand):
         ]
         
         sales_area_list = list(sales_areas)
+        created = 0
+        skipped = 0
         
         for i, debtor_data in enumerate(debtors_data):
             # Assign sales area in round-robin fashion
@@ -117,12 +116,14 @@ class Command(BaseCommand):
             debtor_data['sales_area'] = sales_area
             debtor_data['created_by'] = user
             
-            obj, created = Debtor.objects.get_or_create(
-                account_number=debtor_data['account_number'],
-                defaults=debtor_data
-            )
-            
-            if created:
-                self.stdout.write(f'  ✓ Created Debtor: {debtor_data["account_number"]} - {debtor_data["name"]}')
+            if Debtor.objects.filter(account_number=debtor_data['account_number']).exists():
+                self.skip(f"Debtor {debtor_data['account_number']}: {debtor_data['name']} (already exists)")
+                skipped += 1
             else:
-                self.stdout.write(f'  - Debtor already exists: {debtor_data["account_number"]}')
+                if not dry_run:
+                    Debtor.objects.create(**debtor_data)
+                self.success(f"Debtor {debtor_data['account_number']}: {debtor_data['name']}")
+                created += 1
+        
+        if dry_run:
+            self.info(f"DRY RUN: Would create {created} debtors")

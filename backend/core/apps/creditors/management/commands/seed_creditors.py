@@ -1,46 +1,42 @@
 """
 Seed Creditors (Suppliers) data for development/testing
-Usage: python manage.py seed_creditors
+Usage: 
+    python manage.py seed_creditors                     # Seeds first tenant
+    python manage.py seed_creditors --tenant-id 1       # Seeds specific tenant
+    python manage.py seed_creditors --tenant-slug slug  # Seeds specific tenant by slug
+    python manage.py seed_creditors --dry-run            # Show what would be seeded
 """
-from django.core.management.base import BaseCommand
-from django.contrib.auth import get_user_model
+from apps.settings.management.commands.base_seed_command import BaseSeedCommand
 from apps.creditors.models import Creditor
 from apps.settings.models import SalesArea, CreditTerms
 from decimal import Decimal
 
-User = get_user_model()
 
-
-class Command(BaseCommand):
+class Command(BaseSeedCommand):
+    COMMAND_TITLE = "Seeding Creditors Data"
+    COMMAND_DESCRIPTION = "Creditors (suppliers)"
+    STEP_NUMBER = "3/4"
     help = 'Seed creditors (suppliers) data for development/testing'
 
-    def handle(self, *args, **options):
-        self.stdout.write(self.style.SUCCESS('Starting Creditors Data Seeding...'))
+    def seed(self, user, tenant, shop, dry_run=False, **options):
+        """Seed creditors data."""
         
-        try:
-            user = User.objects.filter(is_staff=True).first()
-            if not user:
-                self.stdout.write(self.style.ERROR('No admin user found. Create one first.'))
-                return
-            
-            # Ensure credit terms exist
-            credit_terms = CreditTerms.objects.first()
-            if not credit_terms:
-                self.stdout.write(self.style.ERROR('No Credit Terms found. Run seed_settings first.'))
-                return
-            
-            # Get sales areas
-            sales_areas = list(SalesArea.objects.all())
-            if not sales_areas:
-                self.stdout.write(self.style.ERROR('No Sales Areas found. Run seed_settings first.'))
-                return
-            
-            self._create_creditors(user, credit_terms, sales_areas)
-            self.stdout.write(self.style.SUCCESS('✓ Creditors data seeded successfully!'))
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f'✗ Error: {str(e)}'))
+        # Validate dependencies
+        credit_terms = CreditTerms.objects.first()
+        if not credit_terms:
+            self.error("No Credit Terms found. Run 'seed_settings' first.")
+            return
+        
+        sales_areas = list(SalesArea.objects.all())
+        if not sales_areas:
+            self.error("No Sales Areas found. Run 'seed_settings' first.")
+            return
+        
+        self.print_section("Creating Creditors (Suppliers)")
+        self._create_creditors(user, credit_terms, sales_areas, dry_run)
 
-    def _create_creditors(self, user, credit_terms, sales_areas):
+    def _create_creditors(self, user, credit_terms, sales_areas, dry_run=False):
+        """Create creditor records."""
         creditors_data = [
             {
                 'supplier_number': 'S001',
@@ -114,22 +110,25 @@ class Command(BaseCommand):
             },
         ]
         
-        sales_area_list = sales_areas
+        created = 0
+        skipped = 0
         
         for i, creditor_data in enumerate(creditors_data):
             # Assign sales area in round-robin fashion
-            sales_area = sales_area_list[i % len(sales_area_list)]
+            sales_area = sales_areas[i % len(sales_areas)]
             creditor_data['sales_area'] = sales_area
             creditor_data['credit_terms'] = credit_terms
             creditor_data['created_by'] = user
             creditor_data['is_active'] = True
             
-            obj, created = Creditor.objects.get_or_create(
-                supplier_number=creditor_data['supplier_number'],
-                defaults=creditor_data
-            )
-            
-            if created:
-                self.stdout.write(f'  ✓ Created Creditor: {creditor_data["supplier_number"]} - {creditor_data["name"]}')
+            if Creditor.objects.filter(supplier_number=creditor_data['supplier_number']).exists():
+                self.skip(f"Creditor {creditor_data['supplier_number']}: {creditor_data['name']} (already exists)")
+                skipped += 1
             else:
-                self.stdout.write(f'  - Creditor already exists: {creditor_data["supplier_number"]}')
+                if not dry_run:
+                    Creditor.objects.create(**creditor_data)
+                self.success(f"Creditor {creditor_data['supplier_number']}: {creditor_data['name']}")
+                created += 1
+        
+        if dry_run:
+            self.info(f"DRY RUN: Would create {created} creditors")

@@ -157,7 +157,7 @@ export default function CreditorsSummaryEnquiry({ onBack }: { onBack: () => void
           <div className="flex gap-4 items-end">
             <div>
               <label className="text-sm font-medium block mb-2">Select Enquiry Type</label>
-              <Select value={enquiryType} onValueChange={(value) => setEnquiryType(value as any)}>
+              <Select value={enquiryType} onValueChange={(value:string) => setEnquiryType(value as any)}>
                 <SelectTrigger className="w-48">
                   <SelectValue />
                 </SelectTrigger>

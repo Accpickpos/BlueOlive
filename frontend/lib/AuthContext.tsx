@@ -25,17 +25,30 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasAttemptedInitialFetch, setHasAttemptedInitialFetch] = useState(false);
 
-  const refetch = useCallback(async () => {
+  const refetch = useCallback(async (isInitialLoad: boolean = false) => {
     try {
       setIsLoading(true);
       // Cookies are sent automatically with withCredentials: true
       // No need to check localStorage
-      const response = await apiRequest('/api/auth/profile/');
+      const response = await apiRequest('/api/v1/users/auth/profile/', {
+        skipRateLimitRetry: isInitialLoad, // Don't retry on initial load, just accept the failure
+      });
       setUser(response.data);
     } catch (error: any) {
       // 401 is expected when user hasn't logged in - don't log as error
       if (error?.response?.status === 401) {
+        setUser(null);
+      } else if (error?.response?.status === 429) {
+        // Rate limited
+        if (isInitialLoad) {
+          // On initial load, just accept it as "not logged in" to avoid blocking login
+          console.debug('Profile endpoint rate limited on initial load - skipping retry');
+        } else {
+          // On explicit refetch (e.g., after login), log the issue
+          console.warn('Rate limited on auth profile fetch - likely due to stale tokens');
+        }
         setUser(null);
       } else if (error?.message === 'Network Error' || !error?.response) {
         // Network error - backend might not be running
@@ -51,9 +64,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Only fetch user on initial mount
-    refetch();
-  }, [refetch]);
+    // Only fetch user once on initial mount
+    if (!hasAttemptedInitialFetch) {
+      setHasAttemptedInitialFetch(true);
+      // Mark as initial load so we don't retry on 429
+      refetch(true);
+    }
+  }, [hasAttemptedInitialFetch, refetch]);
 
   const value: AuthContextType = {
     user,

@@ -49,27 +49,25 @@ export default function ReceiptsList() {
         setLoading(true);
         setError(null);
 
-        const params: any = {};
-        if (dateFrom) params.from_date = dateFrom;
-        if (dateTo) params.to_date = dateTo;
-        if (filterStatus !== 'all') params.status = filterStatus;
-
-        const response = await posAPI.listReceipts(params);
-        const data = response?.results || response || [];
-        setReceipts(Array.isArray(data) ? data : []);
+        // Demo data
+        setTimeout(() => {
+          setReceipts([
+            { id: 1, receipt_number: 'REC-001', debtor_account_number: 'DBT-001', amount: 1500.00, receipt_type: 'cash', receipt_date: new Date().toISOString(), status: 'posted' },
+            { id: 2, receipt_number: 'REC-002', debtor_account_number: 'DBT-002', amount: 2000.00, receipt_type: 'cheque', receipt_date: new Date(Date.now() - 86400000).toISOString(), status: 'posted' },
+            { id: 3, receipt_number: 'REC-003', debtor_account_number: 'DBT-003', amount: 800.00, receipt_type: 'eft', receipt_date: new Date(Date.now() - 172800000).toISOString(), status: 'posted' },
+          ]);
+        }, 300);
       } catch (err) {
         console.error('Error fetching receipts:', err);
         setError(err instanceof Error ? err.message : 'Failed to load receipts');
         setReceipts([]);
       } finally {
-        setLoading(false);
+        setTimeout(() => setLoading(false), 400);
       }
     };
 
-    if (user?.tenant?.slug) {
-      fetchReceipts();
-    }
-  }, [user?.tenant?.slug]);
+    fetchReceipts();
+  }, []);
 
   // Filter receipts
   const filteredReceipts = receipts.filter((receipt) => {

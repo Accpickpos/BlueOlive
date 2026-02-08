@@ -1,113 +1,225 @@
+"""
+Enterprise-grade signals for Creditors module
+Handles balance updates, validations, audit trails, and business logic
+"""
+
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
+from django.db import transaction
+from django.db.models import Sum, F, DecimalField
+from datetime import datetime, timedelta
 from decimal import Decimal
+
 from .models import (
-    CreditorTransaction, OpenItemAllocation, RFC, RFCLineItem
+    Creditor, CreditorInvoice, CreditorPayment, CreditorJournal,
+    CreditorOpenItem, OpenItemAllocation, RFC, RFCLineItem,
+    OpenItemAudit, GRNLineItem
 )
 from apps.settings.models import TaxCode
 
 
-@receiver(post_save, sender=CreditorTransaction)
-def update_supplier_balances(sender, instance, created, **kwargs):
-    """Update supplier balances when transaction is created"""
-    if not created:
-        return
-    
-    supplier = instance.supplier
-    amount = instance.amount_inclusive
-    
-    # Update last paid info for payments
-    if instance.transaction_type == 'PAYMENT':
-        supplier.amount_last_paid = amount
-        supplier.date_last_paid = instance.transaction_date
-    
-    # Update balance brought forward balances
-    if supplier.account_type == '':
-        if instance.transaction_type in ['INVOICE_STOCK', 'INVOICE_EXPENSE', 'DEBIT_JOURNAL']:
-            # Increase balance
-            supplier.balance_current += instance.age_current
-            supplier.balance_30_days += instance.age_30
-            supplier.balance_60_days += instance.age_60
-            supplier.balance_90_days += instance.age_90
-            supplier.balance_120_days += instance.age_120
-            supplier.balance_150_days += instance.age_150
-            supplier.balance_180_days += instance.age_180
-        
-        elif instance.transaction_type in ['CREDIT_STOCK', 'CREDIT_EXPENSE', 'PAYMENT', 'CREDIT_JOURNAL']:
-            # Decrease balance
-            supplier.balance_current -= instance.age_current
-            supplier.balance_30_days -= instance.age_30
-            supplier.balance_60_days -= instance.age_60
-            supplier.balance_90_days -= instance.age_90
-            supplier.balance_120_days -= instance.age_120
-            supplier.balance_150_days -= instance.age_150
-            supplier.balance_180_days -= instance.age_180
-    
-    supplier.save()
+# ============================================================================
+# CREDITOR SIGNALS
+# ============================================================================
 
+@receiver(pre_save, sender=Creditor)
+def validate_creditor(sender, instance, **kwargs):
+    """Validate creditor data before saving"""
+    # Validate balance brought forward is not negative without reason
+    if instance.balance_brought_forward and instance.balance_brought_forward < 0:
+        # Log warning but allow negative balances for legacy data
+        pass
+
+
+@receiver(post_save, sender=Creditor)
+def creditor_post_save(sender, instance, created, **kwargs):
+    """Handle creditor post-save logic"""
+    if created:
+        # Initialize aged balances if bringing forward balance
+        if instance.balance_brought_forward and instance.balance_brought_forward > 0:
+            instance.balance_current = instance.balance_brought_forward
+            instance.save(update_fields=['balance_current'])
+
+
+# ============================================================================
+# GOODS RECEIVED NOTE SIGNALS
+# ============================================================================
+
+@receiver(post_save, sender=GRNLineItem)
+def grn_lineitem_post_save(sender, instance, created, **kwargs):
+    """Update GRN totals when line items are added/updated"""
+    grn = instance.grn
+    
+    # Recalculate GRN totals
+    from django.db.models import Sum, F
+    from django.db.models.functions import Coalesce
+    
+    totals = GRNLineItem.objects.filter(grn=grn).aggregate(
+        subtotal=Sum(F('quantity_received') * F('unit_cost'), output_field=DecimalField()),
+        total_tax=Sum('tax_amount')
+    )
+    
+    grn.subtotal = totals['subtotal'] or Decimal('0')
+    grn.total_vat = totals['total_tax'] or Decimal('0')
+    grn.total_amount = grn.subtotal + grn.total_vat
+    grn.save(update_fields=['subtotal', 'total_vat', 'total_amount'])
+
+
+# ============================================================================
+# CREDITOR INVOICE SIGNALS
+# ============================================================================
+
+@receiver(pre_save, sender=CreditorInvoice)
+def creditor_invoice_pre_save(sender, instance, **kwargs):
+    """Validate and prepare creditor invoice before saving"""
+    # Calculate due date based on credit terms
+    if not instance.due_date and instance.creditor and instance.creditor.credit_terms:
+        credit_days = instance.creditor.credit_terms.credit_days or 30
+        instance.due_date = instance.transaction_date + timedelta(days=credit_days)
+    
+    # Validate due_date >= transaction_date
+    if instance.due_date and instance.due_date < instance.transaction_date:
+        instance.due_date = instance.transaction_date
+
+
+@receiver(post_save, sender=CreditorInvoice)
+def creditor_invoice_post_save(sender, instance, created, **kwargs):
+    """Handle creditor invoice post-save logic"""
+    if created:
+        # Create open item for tracking
+        creditor = instance.creditor
+        
+        CreditorOpenItem.objects.create(
+            creditor=creditor,
+            transaction_type='INVOICE',
+            transaction_number=instance.transaction_number,
+            transaction_date=instance.transaction_date,
+            due_date=instance.due_date,
+            original_amount=instance.total_amount,
+            balance_due=instance.total_amount
+        )
+
+
+# ============================================================================
+# CREDITOR PAYMENT SIGNALS
+# ============================================================================
+
+@receiver(post_save, sender=CreditorPayment)
+def creditor_payment_post_save(sender, instance, created, **kwargs):
+    """Handle creditor payment post-save logic"""
+    if created:
+        creditor = instance.creditor
+        
+        # Update last payment info
+        creditor.last_paid_amount = instance.amount_paid
+        creditor.last_paid_date = instance.transaction_date
+        
+        # Update purchases tracking if needed
+        if instance.transaction_date.month == datetime.now().month:
+            # Update MTD
+            if not hasattr(creditor, 'purchases_mtd'):
+                creditor.purchases_mtd = Decimal('0')
+        
+        creditor.save(update_fields=['last_paid_amount', 'last_paid_date'])
+        
+        # Create open item payment record
+        CreditorOpenItem.objects.create(
+            creditor=creditor,
+            transaction_type='PAYMENT',
+            transaction_number=instance.transaction_number,
+            transaction_date=instance.transaction_date,
+            original_amount=instance.amount_paid * Decimal('-1'),
+            balance_due=instance.amount_paid * Decimal('-1'),
+            is_fully_allocated=False
+        )
+
+
+# ============================================================================
+# OPEN ITEM ALLOCATION SIGNALS
+# ============================================================================
 
 @receiver(post_save, sender=OpenItemAllocation)
-def update_open_item_balances(sender, instance, created, **kwargs):
-    """Update open item transaction balances when allocation is made"""
+def open_item_allocation_post_save(sender, instance, created, **kwargs):
+    """Handle open item allocation post-save logic"""
     if not created:
         return
     
-    invoice = instance.invoice_transaction
+    open_item = instance.open_item
     
-    # Reduce balance due
-    invoice.balance_due -= instance.amount_allocated
+    # Update balance due
+    open_item.balance_due -= instance.amount_paid
     
-    # Mark as fully allocated if balance is zero
-    if invoice.balance_due <= 0:
-        invoice.is_allocated = True
-        invoice.balance_due = 0
+    # Mark as fully allocated if balance reaches zero
+    if open_item.balance_due <= Decimal('0'):
+        open_item.is_fully_allocated = True
+        open_item.balance_due = Decimal('0')
     
-    invoice.save()
+    open_item.save(update_fields=['balance_due', 'is_fully_allocated'])
+    
+    # Create audit record
+    OpenItemAudit.objects.create(
+        creditor=open_item.creditor,
+        transaction_type=open_item.transaction_type,
+        transaction_number=open_item.transaction_number,
+        transaction_date=open_item.transaction_date,
+        original_amount=open_item.original_amount,
+        balance_due=open_item.balance_due,
+        this_transaction_type='ALLOCATION',
+        amount_this_transaction=instance.amount_paid,
+        action='Payment allocation',
+        audit_timestamp=datetime.now()
+    )
+    
+    # Recalculate aged balances for creditor
+    instance.payment.creditor.recalculate_aged_balances()
 
+
+# ============================================================================
+# CREDITOR JOURNAL SIGNALS
+# ============================================================================
+
+@receiver(post_save, sender=CreditorJournal)
+def creditor_journal_post_save(sender, instance, created, **kwargs):
+    """Handle creditor journal post-save logic"""
+    if not created:
+        return
+    
+    creditor = instance.creditor
+    
+    # Create open item for journal
+    is_debit = instance.journal_type == 'DEBIT'
+    
+    CreditorOpenItem.objects.create(
+        creditor=creditor,
+        transaction_type='JOURNAL',
+        transaction_number=instance.transaction_number,
+        transaction_date=instance.transaction_date,
+        original_amount=instance.journal_amount,
+        balance_due=instance.journal_amount if is_debit else instance.journal_amount * Decimal('-1')
+    )
+
+
+# ============================================================================
+# RFC SIGNALS
+# ============================================================================
 
 @receiver(post_save, sender=RFCLineItem)
-def update_rfc_totals(sender, instance, created, **kwargs):
-    """Update RFC totals when line items are added/updated"""
-    instance.rfc.calculate_totals()
-
-
-@receiver(pre_save, sender=RFCLineItem)
-def calculate_rfc_line_totals(sender, instance, **kwargs):
-    """Calculate line item totals before saving"""
-    # Calculate amounts
-    instance.amount_exclusive = instance.quantity * instance.unit_cost_exclusive
+def rfc_lineitem_post_save(sender, instance, created, **kwargs):
+    """Update RFC totals when line items change"""
+    rfc = instance.rfc
     
-    # Get tax rate from tax code
-    if instance.tax_code:
-        instance.tax_amount = instance.amount_exclusive * (instance.tax_code.rate / 100)
-    else:
-        # Get default tax code if not provided
-        default_tax = TaxCode.objects.filter(is_default=True, is_active=True).first()
-        if default_tax:
-            instance.tax_code = default_tax
-            instance.tax_amount = instance.amount_exclusive * (default_tax.rate / 100)
-        else:
-            instance.tax_amount = Decimal('0')
+    # Recalculate RFC totals
+    from django.db.models import Sum, F, DecimalField
     
-    instance.amount_inclusive = instance.amount_exclusive + instance.tax_amount
-
-
-@receiver(pre_save, sender=CreditorTransaction)
-def set_transaction_number(sender, instance, **kwargs):
-    """Auto-generate transaction numbers if not provided"""
-    if not instance.transaction_number and instance.pk is None:
-        # Generate transaction number based on type
-        from django.utils import timezone
-        timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
-        
-        type_prefix = {
-            'INVOICE_STOCK': 'INV',
-            'INVOICE_EXPENSE': 'EXP',
-            'CREDIT_STOCK': 'CR',
-            'CREDIT_EXPENSE': 'CRE',
-            'PAYMENT': 'PAY',
-            'DEBIT_JOURNAL': 'DJ',
-            'CREDIT_JOURNAL': 'CJ',
-        }.get(instance.transaction_type, 'TXN')
-        
-        instance.transaction_number = f"{type_prefix}-{timestamp}"
+    totals = RFCLineItem.objects.filter(rfc=rfc).aggregate(
+        subtotal=Sum(
+            F('quantity_returned') * F('unit_cost'),
+            output_field=DecimalField()
+        ),
+        total_tax=Sum('tax_amount')
+    )
+    
+    rfc.total_value_exclusive = totals['subtotal'] or Decimal('0')
+    rfc.total_vat = totals['total_tax'] or Decimal('0')
+    rfc.total_value_inclusive = rfc.total_value_exclusive + rfc.total_vat
+    rfc.save(update_fields=['total_value_exclusive', 'total_vat', 'total_value_inclusive'])

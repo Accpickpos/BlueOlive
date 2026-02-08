@@ -144,22 +144,23 @@ class Tender(TimeStampedModel):
 
 
 class Laybye(TimeStampedModel):
-    """Laybye (layaway) transaction."""
+    """Laybye (layaway) transaction (LBMAST equivalent)."""
     
     STATUS_CHOICES = [
-        ('ACTIVE', 'Active'),
-        ('COMPLETED', 'Completed'),
-        ('CANCELLED', 'Cancelled'),
-        ('EXPIRED', 'Expired'),
+        ('A', 'Active'),
+        ('C', 'Completed'),
+        ('X', 'Cancelled'),
+        ('E', 'Expired'),
     ]
     
     laybye_number = models.CharField(max_length=20, unique=True, db_index=True)
     
     # Customer details
-    customer_name = models.CharField(max_length=200)
-    address = models.TextField(blank=True)
-    telephone = models.CharField(max_length=50)
-    comments = models.TextField(blank=True)
+    customer_name = models.CharField(max_length=40)
+    address_line1 = models.CharField(max_length=25, blank=True)
+    address_line2 = models.CharField(max_length=25, blank=True)
+    address_line3 = models.CharField(max_length=25, blank=True)
+    telephone = models.CharField(max_length=15, blank=True)
     
     sales_area = models.ForeignKey(
         SalesArea,
@@ -171,6 +172,7 @@ class Laybye(TimeStampedModel):
     # Dates
     laybye_date = models.DateField()
     expiry_date = models.DateField()
+    date_last_paid = models.DateField(null=True, blank=True)
     
     # Totals
     total_amount = models.DecimalField(max_digits=12, decimal_places=2)
@@ -178,8 +180,12 @@ class Laybye(TimeStampedModel):
     amount_paid = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     balance_due = models.DecimalField(max_digits=12, decimal_places=2)
     
+    # Comments
+    comment1 = models.CharField(max_length=30, blank=True)
+    comment2 = models.CharField(max_length=30, blank=True)
+    
     # Status
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='ACTIVE')
+    status = models.CharField(max_length=1, choices=STATUS_CHOICES, default='A')
     
     # Cancellation
     retention_percentage = models.DecimalField(
@@ -206,32 +212,47 @@ class Laybye(TimeStampedModel):
 
 
 class LaybyeLine(TimeStampedModel):
-    """Laybye line item."""
+    """Laybye transaction (LBTRAN equivalent)."""
+    
+    TRANSACTION_TYPE_CHOICES = [
+        ('SP', 'Sale'),
+        ('PM', 'Payment'),
+        ('AD', 'Adjustment'),
+        ('RT', 'Return'),
+        ('OT', 'Other'),
+    ]
+    
     laybye = models.ForeignKey(
         Laybye,
         on_delete=models.CASCADE,
-        related_name='lines'
+        related_name='transactions'
     )
-    line_number = models.PositiveIntegerField()
     
-    stock_item = models.ForeignKey(
-        StockItem,
-        on_delete=models.PROTECT
-    )
+    # Stock details
+    stock_code = models.CharField(max_length=13, blank=True)
+    
+    # Prices and quantity
+    cost_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    selling_price = models.DecimalField(max_digits=14, decimal_places=4)
     quantity = models.DecimalField(max_digits=10, decimal_places=2)
-    unit_price = models.DecimalField(max_digits=12, decimal_places=4)
-    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0)
-    tax_code = models.PositiveIntegerField(default=1)
     
-    line_total = models.DecimalField(max_digits=12, decimal_places=2)
-    vat_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    # Transaction info
+    transaction_date = models.DateField()
+    transaction_time = models.TimeField()
+    transaction_type = models.CharField(max_length=2, choices=TRANSACTION_TYPE_CHOICES)
+    
+    # Operational
+    station_number = models.PositiveIntegerField(null=True, blank=True)
+    salesman_number = models.PositiveIntegerField(null=True, blank=True)
+    
+    # Calculated
+    line_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     
     class Meta:
-        ordering = ['line_number']
-        unique_together = ['laybye', 'line_number']
+        ordering = ['transaction_date', 'transaction_time']
     
     def __str__(self):
-        return f"{self.laybye.laybye_number} - Line {self.line_number}"
+        return f"{self.laybye.laybye_number} - {self.transaction_type}"
 
 
 class LaybyelPayment(TimeStampedModel):
@@ -284,8 +305,19 @@ class Quotation(TimeStampedModel):
     
     # Customer details
     customer_name = models.CharField(max_length=200)
-    address = models.TextField(blank=True)
-    telephone = models.CharField(max_length=50, blank=True)
+    address_line1 = models.CharField(max_length=25, blank=True)
+    address_line2 = models.CharField(max_length=25, blank=True)
+    address_line3 = models.CharField(max_length=25, blank=True)
+    telephone = models.CharField(max_length=15, blank=True)
+    
+    # Debtor relationship
+    debtor_account = models.ForeignKey(
+        Debtor,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='quotations'
+    )
     
     sales_area = models.ForeignKey(
         SalesArea,
@@ -294,7 +326,11 @@ class Quotation(TimeStampedModel):
         blank=True
     )
     
-    comments = models.TextField(blank=True)
+    station_number = models.PositiveIntegerField(default=1)
+    
+    # Comments
+    comment1 = models.CharField(max_length=30, blank=True)
+    comment2 = models.CharField(max_length=30, blank=True)
     
     # Pricing basis
     price_level = models.CharField(max_length=10, choices=PRICE_LEVEL_CHOICES, default=1)
@@ -319,7 +355,7 @@ class Quotation(TimeStampedModel):
 
 
 class QuotationLine(TimeStampedModel):
-    """Quotation line item."""
+    """Quotation line item (QTRAN equivalent)."""
     quotation = models.ForeignKey(
         Quotation,
         on_delete=models.CASCADE,
@@ -327,17 +363,26 @@ class QuotationLine(TimeStampedModel):
     )
     line_number = models.PositiveIntegerField()
     
+    # Stock details
     stock_code = models.CharField(max_length=13, blank=True)
     description = models.CharField(max_length=200)
-    quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    quantity = models.DecimalField(max_digits=12, decimal_places=4)
     
+    # Pricing
     unit_price = models.DecimalField(max_digits=12, decimal_places=4)
-    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0)
-    tax_code = models.PositiveIntegerField(default=1)
+    discount_amount = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
-    line_total = models.DecimalField(max_digits=12, decimal_places=2)
-    vat_amount = models.DecimalField(max_digits=12, decimal_places=2)
-    cost_price = models.DecimalField(max_digits=12, decimal_places=4, default=0)
+    # Tax and department
+    tax_code = models.CharField(max_length=1, default='1')
+    department = models.CharField(max_length=3, blank=True)
+    
+    # Comments
+    comments = models.CharField(max_length=30, blank=True)
+    
+    # Calculated fields
+    line_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    vat_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     
     class Meta:
         ordering = ['line_number']
@@ -371,24 +416,29 @@ class Payout(TimeStampedModel):
 
 
 class Repair(TimeStampedModel):
-    """Repair voucher."""
+    """Repair voucher (REPMAST equivalent)."""
     
     STATUS_CHOICES = [
-        ('CREATED', 'Created'),
-        ('ISSUED', 'Issued to Supplier'),
-        ('RECEIVED', 'Received from Supplier'),
-        ('INVOICED', 'Invoiced'),
-        ('CANCELLED', 'Cancelled'),
+        ('C', 'Created'),
+        ('I', 'Issued to Supplier'),
+        ('R', 'Received from Supplier'),
+        ('V', 'Invoiced'),
+        ('X', 'Cancelled'),
     ]
     
     repair_number = models.CharField(max_length=20, unique=True, db_index=True)
     
     # Customer details
-    customer_name = models.CharField(max_length=200)
-    address = models.TextField(blank=True)
-    telephone = models.CharField(max_length=50)
+    customer_name = models.CharField(max_length=40)
+    address_line1 = models.CharField(max_length=25, blank=True)
+    address_line2 = models.CharField(max_length=25, blank=True)
+    telephone = models.CharField(max_length=15, blank=True)
+    contact_person = models.CharField(max_length=20, blank=True)
+    customer_reference = models.CharField(max_length=10, blank=True)
     
-    order_number = models.CharField(max_length=50, blank=True)
+    # Order details
+    order_number = models.CharField(max_length=10, blank=True)
+    date_received = models.DateField(null=True, blank=True)
     date_required = models.DateField()
     quoted_value = models.DecimalField(
         max_digits=12,
@@ -396,29 +446,38 @@ class Repair(TimeStampedModel):
         null=True,
         blank=True
     )
-    contact_person = models.CharField(max_length=100, blank=True)
-    repair_details = models.TextField(help_text="Description, serial number, fault")
     
-    # Supplier details (when issued)
-    supplier_account = models.CharField(max_length=20, blank=True)
+    # Repair details (REP table equivalent)
+    repair_details = models.TextField(blank=True)
+    
+    # Supplier details
+    supplier_number = models.PositiveIntegerField(null=True, blank=True)
     date_sent = models.DateField(null=True, blank=True)
-    transport_mode = models.CharField(max_length=100, blank=True)
-    issue_comments = models.TextField(blank=True)
-    company_contact = models.CharField(max_length=100, blank=True)
-    supplier_contact = models.CharField(max_length=100, blank=True)
+    date_returned = models.DateField(null=True, blank=True)
     
-    # Repair costs (when received)
-    date_repaired = models.DateField(null=True, blank=True)
-    supplier_invoice_number = models.CharField(max_length=50, blank=True)
+    # Repair costs
     repair_cost = models.DecimalField(
         max_digits=12,
         decimal_places=2,
         null=True,
         blank=True
     )
-    supplier_comments = models.TextField(blank=True)
+    selling_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True
+    )
     
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='CREATED')
+    # Comments
+    comment1 = models.CharField(max_length=30, blank=True)
+    comment2 = models.CharField(max_length=30, blank=True)
+    comment3 = models.CharField(max_length=30, blank=True)
+    comment4 = models.CharField(max_length=30, blank=True)
+    supplier_comment = models.CharField(max_length=25, blank=True)
+    
+    # Status
+    status = models.CharField(max_length=1, choices=STATUS_CHOICES, default='C')
     
     class Meta:
         ordering = ['-created_at']
@@ -428,6 +487,47 @@ class Repair(TimeStampedModel):
     
     def __str__(self):
         return f"Repair {self.repair_number}"
+
+
+class RepairLine(TimeStampedModel):
+    """Repair transaction details (REPTRAN equivalent)."""
+    
+    TRANSACTION_TYPE_CHOICES = [
+        ('IS', 'Issue'),
+        ('RC', 'Receipt'),
+        ('AD', 'Adjustment'),
+        ('RT', 'Return'),
+        ('OT', 'Other'),
+    ]
+    
+    repair = models.ForeignKey(
+        Repair,
+        on_delete=models.CASCADE,
+        related_name='transactions'
+    )
+    
+    # Transaction details
+    transaction_type = models.CharField(max_length=2, choices=TRANSACTION_TYPE_CHOICES)
+    transaction_date = models.DateField()
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    
+    # Supplier reference
+    supplier_number = models.PositiveIntegerField(null=True, blank=True)
+    
+    # Additional info
+    comment = models.CharField(max_length=25, blank=True)
+    transport_mode = models.CharField(max_length=15, blank=True)
+    station_number = models.PositiveIntegerField(null=True, blank=True)
+    
+    # Captured info
+    date_captured = models.DateField(auto_now_add=True)
+    time_captured = models.TimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['transaction_date']
+    
+    def __str__(self):
+        return f"{self.repair.repair_number} - {self.transaction_type}"
 
 
 class JobCard(TimeStampedModel):

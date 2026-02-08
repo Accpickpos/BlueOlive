@@ -43,17 +43,16 @@ class ShopUser(AbstractUser):
         help_text='List of shop IDs this user is assigned to'
     )
     
-    # Role field
+    # Role field - simplified to 3 core roles matching API specification
     ROLE_CHOICES = [
-        ('ADMIN', 'Admin'),
-        ('MANAGER', 'Manager'),
-        ('CASHIER', 'Cashier'),
-        ('STAFF', 'Staff'),
+        ('ADMIN', 'Admin - Full tenant access'),
+        ('MANAGER', 'Manager - Can manage shop users'),
+        ('USER', 'User - Basic access'),
     ]
     role = models.CharField(
         max_length=20,
         choices=ROLE_CHOICES,
-        default='STAFF'
+        default='USER'
     )
     
     # Additional fields

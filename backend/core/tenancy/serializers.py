@@ -16,7 +16,13 @@ class TenantSerializer(serializers.ModelSerializer):
     Serializer for Tenant model with automatic database setup.
     Uses default PostgreSQL credentials from Django settings for all tenants.
     """
-    password = serializers.CharField(write_only=True)
+    password = serializers.CharField(
+        write_only=True,
+        min_length=8,
+        error_messages={
+            'min_length': 'Password must be at least 8 characters long.'
+        }
+    )
 
     class Meta:
         model = Tenant
@@ -33,6 +39,22 @@ class TenantSerializer(serializers.ModelSerializer):
             'db_port': {'required': False, 'default': 5432},
             'created_at': {'read_only': True},
         }
+
+    def validate_password(self, value):
+        """Validate password strength requirements"""
+        if len(value) < 8:
+            raise serializers.ValidationError(
+                "Password must be at least 8 characters long."
+            )
+        if not any(char.isdigit() for char in value):
+            raise serializers.ValidationError(
+                "Password must contain at least one digit."
+            )
+        if not any(char.isalpha() for char in value):
+            raise serializers.ValidationError(
+                "Password must contain at least one letter."
+            )
+        return value
 
     def create(self, validated_data):
         """
@@ -202,8 +224,8 @@ class ShopSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Shop
-        fields = ['id', 'name', 'description', 'schema_name', 'subdomain', 
-                  'is_head_office', 'created_at']
+        fields = ['id', 'name', 'code', 'address', 'phone', 'description', 
+                  'schema_name', 'subdomain', 'is_head_office', 'is_active', 'created_at']
         read_only_fields = ['id', 'schema_name', 'created_at']
 
     def create(self, validated_data):

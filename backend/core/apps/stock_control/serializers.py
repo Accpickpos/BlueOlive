@@ -31,17 +31,22 @@ class StockItemListSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.department_name', read_only=True)
     supplier_name = serializers.CharField(source='supplier.name', read_only=True, allow_null=True)
     stock_value = serializers.SerializerMethodField()
+    available_quantity = serializers.SerializerMethodField()
     
     class Meta:
         model = StockItem
         fields = [
             'stock_code', 'description', 'department', 'department_name',
             'supplier', 'supplier_name', 'cost_price', 'selling_price_1',
-            'quantity_on_hand', 'stock_value', 'is_active'
+            'quantity_on_hand', 'quantity_allocated', 'quantity_sale_order',
+            'available_quantity', 'stock_value', 'is_active'
         ]
     
     def get_stock_value(self, obj):
         return obj.quantity_on_hand * obj.cost_price
+    
+    def get_available_quantity(self, obj):
+        return obj.available_quantity
 
 
 class StockItemDetailSerializer(serializers.ModelSerializer):
@@ -57,6 +62,8 @@ class StockItemDetailSerializer(serializers.ModelSerializer):
     gross_profit_2 = serializers.SerializerMethodField()
     gross_profit_3 = serializers.SerializerMethodField()
     stock_value = serializers.SerializerMethodField()
+    available_quantity = serializers.SerializerMethodField()
+    needs_reordering = serializers.SerializerMethodField()
     
     class Meta:
         model = StockItem
@@ -86,6 +93,12 @@ class StockItemDetailSerializer(serializers.ModelSerializer):
     
     def get_stock_value(self, obj):
         return obj.quantity_on_hand * obj.cost_price
+    
+    def get_available_quantity(self, obj):
+        return obj.available_quantity
+    
+    def get_needs_reordering(self, obj):
+        return obj.needs_reordering()
 
 
 class StockItemCreateUpdateSerializer(serializers.ModelSerializer):
@@ -97,6 +110,7 @@ class StockItemCreateUpdateSerializer(serializers.ModelSerializer):
             'stock_code', 'description', 'department', 'supplier', 'supplier_code',
             'tax_code', 'cost_price', 'selling_price_1', 'selling_price_2', 'selling_price_3',
             'markup_1', 'markup_2', 'markup_3', 'reorder_quantity', 'default_selling_quantity',
+            'quantity_allocated', 'quantity_sale_order',
             'allow_negative_quantities', 'maximum_discount_percent', 'bin_number', 'is_active'
         ]
     
@@ -105,6 +119,22 @@ class StockItemCreateUpdateSerializer(serializers.ModelSerializer):
         # Ensure at least one selling price is set
         if not any([data.get('selling_price_1'), data.get('selling_price_2'), data.get('selling_price_3')]):
             raise serializers.ValidationError("At least one selling price must be set")
+        
+        # Validate that allocated + sale_order don't exceed QOH
+        stock_code = data.get('stock_code')
+        if stock_code:
+            try:
+                item = StockItem.objects.get(stock_code=stock_code)
+                qty_allocated = data.get('quantity_allocated', item.quantity_allocated)
+                qty_sale_order = data.get('quantity_sale_order', item.quantity_sale_order)
+                qty_on_hand = item.quantity_on_hand
+                
+                if (qty_allocated + qty_sale_order) > qty_on_hand:
+                    raise serializers.ValidationError(
+                        "Allocated + Sale Order quantities cannot exceed Quantity on Hand"
+                    )
+            except StockItem.DoesNotExist:
+                pass
         
         return data
 

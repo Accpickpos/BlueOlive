@@ -1,17 +1,60 @@
 /**
  * Creditors API Client
+ * RESTful API wrapper for creditor management endpoints
  * 
- * Handles all communication with Django backend for:
- * - Supplier/Creditor management
- * - Expense categories
- * - Creditor transactions
+ * Base URL: /api/v1/creditors/
  */
 
-import { api } from './api';
+'use client';
 
-export interface SupplierCreateData {
-  supplier_number: string | number; // Unique supplier account number
-  account_number: string | number; // Account number (same as supplier_number)
+import { useCallback } from 'react';
+import { api } from './api';
+import { ENDPOINTS } from './api-config';
+import settingsApi from './settingsApi';
+import {
+  CreditorAccount,
+  CreditorCreateData,
+  CreditorEditData,
+  ExpenseCategory,
+  ExpenseCategoryCreateData,
+  Transaction,
+  TransactionCreateData,
+  TransactionFilters,
+  CreditorFilters,
+  ExpenseCategoryFilters,
+  CreditorsSummary,
+  PaginatedResponse,
+} from './types/creditors';
+
+/**
+ * Supplier type - represents a creditor/supplier account
+ */
+export interface Supplier extends CreditorAccount {
+  supplier_number: string;
+  short_name?: string;
+  physical_address_line1?: string;
+  physical_address_line2?: string;
+  physical_address_line3?: string;
+  physical_city?: string;
+  physical_postal_code?: string;
+  postal_address_line1?: string;
+  postal_address_line2?: string;
+  postal_address_line3?: string;
+  postal_city?: string;
+  postal_postal_code?: string;
+  telephone1?: string;
+  telephone2?: string;
+  vat_number?: string;
+  update_selling_price_on_receipt?: boolean;
+  prompt_payment_discount_percent?: number;
+}
+
+/**
+ * Supplier create/edit data
+ */
+export interface SupplierCreateData extends Partial<Supplier> {
+  supplier_number: string;
+  account_number: string;
   name: string;
   short_name?: string;
   physical_address_line1?: string;
@@ -29,95 +72,50 @@ export interface SupplierCreateData {
   fax?: string;
   email?: string;
   contact_person?: string;
-  account_type?: string;
+  account_type?: 'BBF' | 'OPEN_ITEM';
   our_account_number?: string;
-  update_selling_price_on_receipt?: boolean;
   credit_terms?: number | null;
   prompt_payment_discount_percent?: number;
   bank_name?: string;
   bank_branch_code?: string;
   bank_account_number?: string;
   vat_number?: string;
+  update_selling_price_on_receipt?: boolean;
   is_active?: boolean;
 }
 
-export interface Supplier extends SupplierCreateData {
-  id?: number;
-  total_balance?: number;
-  total_balance_with_rfc?: number;
-  balance_current?: number;
-  balance_30_days?: number;
-  balance_60_days?: number;
-  balance_90_days?: number;
-  balance_120_days?: number;
-  balance_150_days?: number;
-  balance_180_days?: number;
-  amount_last_paid?: number;
-  date_last_paid?: string;
-  purchases_mtd?: number;
-  purchases_ytd?: number;
-  rfc_outstanding_amount?: number;
-  account_type_display?: string;
-  credit_terms_display?: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
+/**
+ * Credit terms option
+ */
 export interface CreditTermsOption {
   id: number;
+  name: string;
   days?: number;
-  description?: string;
-  name?: string; // For compatibility with form
-  is_active?: boolean;
 }
 
-export interface ExpenseCategory {
-  id?: number;
-  number: number;
-  name: string;
-  category_type?: 'BOTH' | 'CASHBOOK' | 'CREDITORS';
-  is_active?: boolean;
-  total_mtd?: number;
-  total_ytd?: number;
-  created_at?: string;
-  updated_at?: string;
-  created_by_username?: string;
-}
-
-export interface ExpenseCategoryCreateData {
-  number: number;
-  name: string;
-  category_type?: 'BOTH' | 'CASHBOOK' | 'CREDITORS';
-  is_active?: boolean;
-}
-
+/**
+ * Outstanding balance capture
+ */
 export interface OutstandingBalance {
   id: number;
-  creditor: number; // Supplier/Creditor ID
-  creditor_name: string; // Supplier name
-  transaction_date: string; // Transaction date
-  transaction_number: string; // Invoice number, etc.
-  original_amount: string | number; // Original transaction amount
-  balance_due: string | number; // Current balance owed
-  age_period: number; // Days overdue (0 = current, 1 = 30 days, etc.)
-  // Legacy fields for backward compatibility
-  supplier_id?: number;
-  supplier?: Supplier;
-  capture_date?: string;
-  balance_current?: number;
-  balance_30_days?: number;
-  balance_60_days?: number;
-  balance_90_days?: number;
-  balance_120_days?: number;
-  balance_150_days?: number;
-  balance_180_days?: number;
-  total_balance?: number;
+  supplier_id: number;
+  capture_date: string;
+  balance_current: number;
+  balance_30_days: number;
+  balance_60_days: number;
+  balance_90_days: number;
+  balance_120_days: number;
+  balance_150_days: number;
+  balance_180_days: number;
   created_at?: string;
   updated_at?: string;
 }
 
+/**
+ * Outstanding balance capture data for form
+ */
 export interface OutstandingBalanceCaptureData {
-  supplier_account_number: number;
+  supplier_account_number: number | string;
   capture_date: string;
   balance_current: number;
   balance_30_days: number;
@@ -128,363 +126,417 @@ export interface OutstandingBalanceCaptureData {
   balance_180_days: number;
 }
 
-class CreditorsAPI {
-  /**
-   * Make HTTP request using axios with error handling
-   */
-  private async request<T>(
-    method: string,
-    endpoint: string,
-    data?: any
-  ): Promise<T> {
-    try {
-      console.log(`\n=== CREDITORS API REQUEST ===`);
-      console.log(`Method: ${method}`);
-      console.log(`Endpoint: ${endpoint}`);
-      console.log(`Has data: ${!!data}`);
-      
-      let response;
-      switch (method.toUpperCase()) {
-        case 'GET':
-          console.log('Making GET request...');
-          response = await api.get(endpoint);
-          break;
-        case 'POST':
-          console.log('Making POST request...');
-          console.log('Data:', data);
-          response = await api.post(endpoint, data);
-          break;
-        case 'PUT':
-          console.log('Making PUT request...');
-          response = await api.put(endpoint, data);
-          break;
-        case 'PATCH':
-          console.log('Making PATCH request...');
-          response = await api.patch(endpoint, data);
-          break;
-        case 'DELETE':
-          console.log('Making DELETE request...');
-          response = await api.delete(endpoint);
-          break;
-        default:
-          throw new Error(`Unsupported HTTP method: ${method}`);
-      }
-      console.log('Response status:', response.status);
-      console.log('Response data:', response.data);
-      return response.data;
-    } catch (error: any) {
-      console.error('=== CREDITORS API ERROR ===');
-      console.error('Error:', error);
-      console.error('Error response:', error.response?.data);
-      
-      if (error.response?.data?.detail) {
-        throw new Error(error.response.data.detail);
-      }
-      if (error.response?.data) {
-        throw new Error(JSON.stringify(error.response.data));
-      }
-      throw error;
-    }
-  }
-
-  // ============================================================
-  // SUPPLIER/CREDITOR ENDPOINTS
-  // ============================================================
-
-  /**
-   * List all suppliers
-   */
-  async listSuppliers(filters?: {
-    is_active?: boolean;
-    account_type?: string;
-    search?: string;
-    page?: number;
-  }): Promise<{ results: Supplier[]; count: number; next?: string; previous?: string }> {
-    let endpoint = '/api/creditors/suppliers/';
-    if (filters) {
-      const params = new URLSearchParams();
-      if (filters.is_active !== undefined) params.append('is_active', String(filters.is_active));
-      if (filters.account_type) params.append('account_type', filters.account_type);
-      if (filters.search) params.append('search', filters.search);
-      if (filters.page) params.append('page', String(filters.page));
-      if (params.toString()) {
-        endpoint += `?${params.toString()}`;
-      }
-    }
-    const data = await this.request('GET', endpoint);
-    
-    // Handle both paginated response { results: [...], count: ... } and direct array response
-    if (Array.isArray(data)) {
-      console.log('Handle array response from backend');
-      return { results: data, count: data.length };
-    }
-    
-    if (data.results) {
-      return data;
-    }
-    
-    // If data is an object but not the expected format, log warning
-    console.warn('Unexpected response format from listSuppliers:', data);
-    return { results: [], count: 0 };
-  }
-
-  /**
-   * Get supplier by account number
-   */
-  async getSupplier(accountNumber: number): Promise<Supplier> {
-    return this.request('GET', `/api/creditors/suppliers/${accountNumber}/`);
-  }
-
-  /**
-   * Create new supplier
-   */
-  async createSupplier(data: SupplierCreateData): Promise<Supplier> {
-    return this.request('POST', '/api/creditors/suppliers/', data);
-  }
-
-  /**
-   * Update supplier
-   */
-  async updateSupplier(accountNumber: number, data: Partial<SupplierCreateData>): Promise<Supplier> {
-    return this.request('PUT', `/api/creditors/suppliers/${accountNumber}/`, data);
-  }
-
-  /**
-   * Partially update supplier
-   */
-  async partialUpdateSupplier(accountNumber: number, data: Partial<SupplierCreateData>): Promise<Supplier> {
-    return this.request('PATCH', `/api/creditors/suppliers/${accountNumber}/`, data);
-  }
-
-  /**
-   * Delete supplier
-   */
-  async deleteSupplier(accountNumber: number): Promise<void> {
-    await this.request('DELETE', `/api/creditors/suppliers/${accountNumber}/`);
-  }
-
-  // ============================================================
-  // EXPENSE CATEGORY ENDPOINTS
-  // ============================================================
-
-  /**
-   * List all credit terms from settings app
-   * Falls back to default terms if endpoint fails
-   */
-  async listCreditTerms(): Promise<CreditTermsOption[]> {
-    try {
-      const data = await this.request<CreditTermsOption[]>('GET', '/api/settings/credit-terms/');
-      // Map backend fields to frontend format for compatibility
-      return data.map((term: any) => ({
-        id: term.id,
-        name: term.days ? `Net ${term.days} Days` : term.description,
-        description: term.description,
-        days: term.days,
-        is_active: term.is_active,
-      }));
-    } catch (error) {
-      console.warn('Failed to fetch credit terms from settings, using defaults:', error);
-      // Return default credit terms
-      return [
-        { id: 1, name: 'Net 30 Days', description: '30 days', days: 30 },
-        { id: 2, name: 'Net 60 Days', description: '60 days', days: 60 },
-        { id: 3, name: 'Net 90 Days', description: '90 days', days: 90 },
-        { id: 4, name: 'Cash on Delivery', description: 'COD', days: 0 },
-      ];
-    }
-  }
-
-  // ============================================================
-  // SEARCH ENDPOINTS
-  // ============================================================
-
-  /**
-   * Search suppliers by name or account number
-   */
-  async searchSuppliers(query: string, limit: number = 20): Promise<Supplier[]> {
-    const params = new URLSearchParams({
-      search: query,
-      limit: String(limit),
-    });
-    const data = await this.request('GET', `/api/creditors/suppliers/?${params}`);
-    
-    // Handle both paginated response and direct array response
-    if (Array.isArray(data)) {
-      return data;
-    }
-    
-    if (data.results && Array.isArray(data.results)) {
-      return data.results;
-    }
-    
-    return [];
-  }
-
-  // ============================================================
-  // EXPENSE CATEGORY ENDPOINTS (Settings App)
-  // ============================================================
-
-  /**
-   * List all expense categories
-   */
-  async listExpenseCategories(): Promise<ExpenseCategory[]> {
-    try {
-      return await this.request('GET', '/api/settings/expense-categories/');
-    } catch (error) {
-      console.error('Failed to fetch expense categories:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Get expense category by ID
-   */
-  async getExpenseCategory(id: number): Promise<ExpenseCategory> {
-    return this.request('GET', `/api/settings/expense-categories/${id}/`);
-  }
-
-  /**
-   * Create new expense category
-   */
-  async createExpenseCategory(data: ExpenseCategoryCreateData): Promise<ExpenseCategory> {
-    return this.request('POST', '/api/settings/expense-categories/', data);
-  }
-
-  /**
-   * Update expense category
-   */
-  async updateExpenseCategory(id: number, data: Partial<ExpenseCategoryCreateData>): Promise<ExpenseCategory> {
-    return this.request('PUT', `/api/settings/expense-categories/${id}/`, data);
-  }
-
-  /**
-   * Partially update expense category
-   */
-  async partialUpdateExpenseCategory(id: number, data: Partial<ExpenseCategoryCreateData>): Promise<ExpenseCategory> {
-    return this.request('PATCH', `/api/settings/expense-categories/${id}/`, data);
-  }
-
-  /**
-   * Delete expense category
-   */
-  async deleteExpenseCategory(id: number): Promise<void> {
-    await this.request('DELETE', `/api/settings/expense-categories/${id}/`);
-  }
-
-  /**
-   * Search expense categories
-   */
-  async searchExpenseCategories(query: string, limit: number = 20): Promise<ExpenseCategory[]> {
-    const params = new URLSearchParams({
-      search: query,
-      limit: String(limit),
-    });
-    return this.request('GET', `/api/settings/expense-categories/?${params}`);
-  }
-
-  // ============================================================
-  // OUTSTANDING BALANCE CAPTURE ENDPOINTS
-  // ============================================================
-
-  /**
-   * Capture outstanding balance for a supplier
-   */
-  async captureOutstandingBalance(data: OutstandingBalanceCaptureData): Promise<OutstandingBalance> {
-    return this.request('POST', '/api/creditors/outstanding-balance/', data);
-  }
-
-  /**
-   * Get outstanding balance history for a supplier
-   */
-  async getOutstandingBalanceHistory(supplierAccountNumber: number): Promise<OutstandingBalance[]> {
-    return this.request('GET', `/api/creditors/outstanding-balance/?supplier_account_number=${supplierAccountNumber}`);
-  }
-
-  /**
-   * List all outstanding balance captures with pagination
-   * Response format: { count, total_outstanding, items: [...] }
-   */
-  async listOutstandingBalances(filters?: {
-    supplier_account_number?: number;
-    start_date?: string;
-    end_date?: string;
-    limit?: number;
-  }): Promise<{ items: OutstandingBalance[]; count: number; total_outstanding: string | number }> {
-    const params = new URLSearchParams();
-    if (filters?.supplier_account_number) {
-      params.append('supplier_account_number', String(filters.supplier_account_number));
-    }
-    if (filters?.start_date) {
-      params.append('capture_date__gte', filters.start_date);
-    }
-    if (filters?.end_date) {
-      params.append('capture_date__lte', filters.end_date);
-    }
-    if (filters?.limit) {
-      params.append('limit', String(filters.limit));
-    }
-    
-    const endpoint = `/api/creditors/outstanding-balance/${params.toString() ? '?' + params.toString() : ''}`;
-    
-    try {
-      const data = await this.request('GET', endpoint);
-      
-      // Handle backend response format: { count, total_outstanding, items: [...] }
-      if (data.items !== undefined) {
-        return {
-          items: data.items,
-          count: data.count || data.items.length,
-          total_outstanding: data.total_outstanding || '0.00'
-        };
-      }
-      
-      // Fallback for legacy response formats
-      if (Array.isArray(data)) {
-        return { items: data, count: data.length, total_outstanding: '0.00' };
-      }
-      
-      if (data.results !== undefined) {
-        return { items: data.results, count: data.count || data.results.length, total_outstanding: '0.00' };
-      }
-      
-      return { items: [], count: 0, total_outstanding: '0.00' };
-    } catch (error: any) {
-      // Handle 404 gracefully - endpoint may not be implemented yet
-      if (error.response?.status === 404) {
-        console.warn('Outstanding Balance endpoint not yet available on backend');
-        return { items: [], count: 0, total_outstanding: '0.00' };
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Get specific outstanding balance record
-   */
-  async getOutstandingBalance(id: number): Promise<OutstandingBalance> {
-    return this.request('GET', `/api/creditors/outstanding-balance/${id}/`);
-  }
-
-  /**
-   * Update outstanding balance record
-   */
-  async updateOutstandingBalance(id: number, data: Partial<OutstandingBalanceCaptureData>): Promise<OutstandingBalance> {
-    return this.request('PUT', `/api/creditors/outstanding-balance/${id}/`, data);
-  }
-
-  /**
-   * Delete outstanding balance record
-   */
-  async deleteOutstandingBalance(id: number): Promise<void> {
-    await this.request('DELETE', `/api/creditors/outstanding-balance/${id}/`);
-  }
+/**
+ * Outstanding balance filters
+ */
+export interface OutstandingBalanceFilters {
+  supplier_id?: number;
+  start_date?: string;
+  end_date?: string;
+  page?: number;
+  page_size?: number;
 }
 
-// Export singleton with simpler initialization
-const creditorsAPI = new CreditorsAPI();
+// ============ RE-EXPORT TYPES FROM types/creditors ============
+export type { ExpenseCategory, ExpenseCategoryCreateData };
 
-export const useCreditorsAPI = () => {
-  return creditorsAPI;
+export const creditorsApi = {
+  // ============ ACCOUNTS ============
+  accounts: {
+    list: async (filters?: CreditorFilters) => {
+      const response = await api.get<PaginatedResponse<CreditorAccount>>(
+        ENDPOINTS.CREDITORS.ACCOUNTS,
+        { params: filters }
+      );
+      return response.data;
+    },
+
+    get: async (id: string | number) => {
+      const response = await api.get<CreditorAccount>(
+        `${ENDPOINTS.CREDITORS.ACCOUNTS}${id}/`
+      );
+      return response.data;
+    },
+
+    create: async (data: CreditorCreateData) => {
+      const response = await api.post<CreditorAccount>(
+        ENDPOINTS.CREDITORS.ACCOUNTS,
+        data
+      );
+      return response.data;
+    },
+
+    update: async (id: string | number, data: CreditorEditData) => {
+      const response = await api.patch<CreditorAccount>(
+        `${ENDPOINTS.CREDITORS.ACCOUNTS}${id}/`,
+        data
+      );
+      return response.data;
+    },
+
+    updateBalance: async (
+      id: string | number,
+      data: { balance: number; transaction_type: string }
+    ) => {
+      const response = await api.patch<CreditorAccount>(
+        `${ENDPOINTS.CREDITORS.ACCOUNTS}${id}/`,
+        data
+      );
+      return response.data;
+    },
+
+    delete: async (id: string | number) => {
+      await api.delete(`${ENDPOINTS.CREDITORS.ACCOUNTS}${id}/`);
+    },
+  },
+
+  // ============ TRANSACTIONS ============
+  transactions: {
+    list: async (filters?: TransactionFilters) => {
+      const response = await api.get<PaginatedResponse<Transaction>>(
+        ENDPOINTS.CREDITORS.TRANSACTIONS,
+        { params: filters }
+      );
+      return response.data;
+    },
+
+    get: async (id: string | number) => {
+      const response = await api.get<Transaction>(
+        `${ENDPOINTS.CREDITORS.TRANSACTIONS}${id}/`
+      );
+      return response.data;
+    },
+
+    create: async (data: TransactionCreateData) => {
+      const response = await api.post<Transaction>(
+        ENDPOINTS.CREDITORS.TRANSACTIONS,
+        data
+      );
+      return response.data;
+    },
+
+    update: async (id: string | number, data: Partial<TransactionCreateData>) => {
+      const response = await api.patch<Transaction>(
+        `${ENDPOINTS.CREDITORS.TRANSACTIONS}${id}/`,
+        data
+      );
+      return response.data;
+    },
+
+    delete: async (id: string | number) => {
+      await api.delete(`${ENDPOINTS.CREDITORS.TRANSACTIONS}${id}/`);
+    },
+  },
+
+  // ============ EXPENSE CATEGORIES ============
+  // Now handled by Settings API - see settingsApi.ts
+  // This avoids duplication and centralizes category management in the settings app
+
+  // ============ GOODS RECEIVED NOTES (GRN) ============
+  grn: {
+    list: async (filters?: any) => {
+      const response = await api.get(
+        ENDPOINTS.CREDITORS.GRN,
+        { params: filters }
+      );
+      return response.data;
+    },
+
+    get: async (id: string | number) => {
+      const response = await api.get(`${ENDPOINTS.CREDITORS.GRN}${id}/`);
+      return response.data;
+    },
+
+    create: async (data: any) => {
+      const response = await api.post(ENDPOINTS.CREDITORS.GRN, data);
+      return response.data;
+    },
+
+    update: async (id: string | number, data: any) => {
+      const response = await api.patch(`${ENDPOINTS.CREDITORS.GRN}${id}/`, data);
+      return response.data;
+    },
+
+    delete: async (id: string | number) => {
+      await api.delete(`${ENDPOINTS.CREDITORS.GRN}${id}/`);
+    },
+  },
+
+  // ============ INVOICES ============
+  invoices: {
+    list: async (filters?: any) => {
+      const response = await api.get(
+        ENDPOINTS.CREDITORS.INVOICES,
+        { params: filters }
+      );
+      return response.data;
+    },
+
+    get: async (id: string | number) => {
+      const response = await api.get(`${ENDPOINTS.CREDITORS.INVOICES}${id}/`);
+      return response.data;
+    },
+
+    create: async (data: any) => {
+      const response = await api.post(ENDPOINTS.CREDITORS.INVOICES, data);
+      return response.data;
+    },
+
+    update: async (id: string | number, data: any) => {
+      const response = await api.patch(`${ENDPOINTS.CREDITORS.INVOICES}${id}/`, data);
+      return response.data;
+    },
+
+    delete: async (id: string | number) => {
+      await api.delete(`${ENDPOINTS.CREDITORS.INVOICES}${id}/`);
+    },
+  },
+
+  // ============ PAYMENTS ============
+  payments: {
+    list: async (filters?: any) => {
+      const response = await api.get(
+        ENDPOINTS.CREDITORS.PAYMENTS,
+        { params: filters }
+      );
+      return response.data;
+    },
+
+    get: async (id: string | number) => {
+      const response = await api.get(`${ENDPOINTS.CREDITORS.PAYMENTS}${id}/`);
+      return response.data;
+    },
+
+    create: async (data: any) => {
+      const response = await api.post(ENDPOINTS.CREDITORS.PAYMENTS, data);
+      return response.data;
+    },
+
+    update: async (id: string | number, data: any) => {
+      const response = await api.patch(`${ENDPOINTS.CREDITORS.PAYMENTS}${id}/`, data);
+      return response.data;
+    },
+
+    delete: async (id: string | number) => {
+      await api.delete(`${ENDPOINTS.CREDITORS.PAYMENTS}${id}/`);
+    },
+  },
+
+  // ============ JOURNALS ============
+  journals: {
+    list: async (filters?: any) => {
+      const response = await api.get(
+        ENDPOINTS.CREDITORS.JOURNALS,
+        { params: filters }
+      );
+      return response.data;
+    },
+
+    get: async (id: string | number) => {
+      const response = await api.get(`${ENDPOINTS.CREDITORS.JOURNALS}${id}/`);
+      return response.data;
+    },
+
+    create: async (data: any) => {
+      const response = await api.post(ENDPOINTS.CREDITORS.JOURNALS, data);
+      return response.data;
+    },
+
+    update: async (id: string | number, data: any) => {
+      const response = await api.patch(`${ENDPOINTS.CREDITORS.JOURNALS}${id}/`, data);
+      return response.data;
+    },
+
+    delete: async (id: string | number) => {
+      await api.delete(`${ENDPOINTS.CREDITORS.JOURNALS}${id}/`);
+    },
+  },
+
+  // ============ OPEN ITEMS ============
+  openItems: {
+    list: async (filters?: any) => {
+      const response = await api.get(
+        ENDPOINTS.CREDITORS.OPEN_ITEMS,
+        { params: filters }
+      );
+      return response.data;
+    },
+
+    get: async (id: string | number) => {
+      const response = await api.get(`${ENDPOINTS.CREDITORS.OPEN_ITEMS}${id}/`);
+      return response.data;
+    },
+  },
+
+  // ============ RFC (REQUEST FOR CREDIT) ============
+  rfc: {
+    list: async (filters?: any) => {
+      const response = await api.get(
+        ENDPOINTS.CREDITORS.RFC,
+        { params: filters }
+      );
+      return response.data;
+    },
+
+    get: async (id: string | number) => {
+      const response = await api.get(`${ENDPOINTS.CREDITORS.RFC}${id}/`);
+      return response.data;
+    },
+
+    create: async (data: any) => {
+      const response = await api.post(ENDPOINTS.CREDITORS.RFC, data);
+      return response.data;
+    },
+
+    update: async (id: string | number, data: any) => {
+      const response = await api.patch(`${ENDPOINTS.CREDITORS.RFC}${id}/`, data);
+      return response.data;
+    },
+
+    delete: async (id: string | number) => {
+      await api.delete(`${ENDPOINTS.CREDITORS.RFC}${id}/`);
+    },
+  },
+
+  // ============ SUMMARY/DASHBOARD ============
+  summary: {
+    get: async (params?: { cutoff_date?: string }) => {
+      const response = await api.get<CreditorsSummary>(
+        ENDPOINTS.CREDITORS.SUMMARY,
+        { params }
+      );
+      return response.data;
+    },
+  },
 };
 
-export default CreditorsAPI;
+/**
+ * React hook for using the Creditors API
+ * Provides convenient methods for supplier, expense category, and outstanding balance management
+ */
+export function useCreditorsAPI() {
+  // ============ SUPPLIER OPERATIONS ============
+  const listSuppliers = useCallback(async (filters?: CreditorFilters) => {
+    const response = await creditorsApi.accounts.list(filters);
+    return response.results as Supplier[];
+  }, []);
+
+  const createSupplier = useCallback(async (data: SupplierCreateData): Promise<Supplier> => {
+    return creditorsApi.accounts.create(data as CreditorCreateData) as Promise<Supplier>;
+  }, []);
+
+  const updateSupplier = useCallback(async (supplierNumber: string | number, data: Partial<SupplierCreateData>): Promise<Supplier> => {
+    return creditorsApi.accounts.update(supplierNumber, data as CreditorEditData) as Promise<Supplier>;
+  }, []);
+
+  const deleteSupplier = useCallback(async (supplierNumber: string | number) => {
+    return creditorsApi.accounts.delete(supplierNumber);
+  }, []);
+
+  // ============ CREDIT TERMS OPERATIONS ============
+  const listCreditTerms = useCallback(async (): Promise<CreditTermsOption[]> => {
+    try {
+      // Try to fetch from API endpoint if available
+      const response = await api.get<PaginatedResponse<CreditTermsOption>>(
+        ENDPOINTS.CREDITORS.CREDIT_TERMS || '/api/v1/creditors/credit-terms/',
+        {}
+      );
+      return response.data.results || [];
+    } catch (error) {
+      console.warn('Failed to fetch credit terms from API:', error);
+      // Return default/empty list if endpoint doesn't exist
+      return [];
+    }
+  }, []);
+
+  // ============ EXPENSE CATEGORY OPERATIONS ============
+  // Delegated to Settings API to avoid duplication
+  const listExpenseCategories = useCallback(async (filters?: ExpenseCategoryFilters) => {
+    const response = await settingsApi.expenseCategories.list(filters);
+    return response.results as ExpenseCategory[];
+  }, []);
+
+  const createExpenseCategory = useCallback(async (data: any): Promise<ExpenseCategory> => {
+    return settingsApi.expenseCategories.create(data);
+  }, []);
+
+  const updateExpenseCategory = useCallback(async (id: number | string, data: Partial<ExpenseCategoryCreateData>): Promise<ExpenseCategory> => {
+    return settingsApi.expenseCategories.update(id, data);
+  }, []);
+
+  const deleteExpenseCategory = useCallback(async (id: number | string) => {
+    return settingsApi.expenseCategories.delete(id);
+  }, []);
+
+  // ============ OUTSTANDING BALANCE OPERATIONS ============
+  const listOutstandingBalances = useCallback(async (filters?: OutstandingBalanceFilters) => {
+    try {
+      const response = await api.get<PaginatedResponse<OutstandingBalance>>(
+        ENDPOINTS.CREDITORS.OUTSTANDING_BALANCE || '/api/v1/creditors/creditors/outstanding-balance/',
+        { params: filters }
+      );
+      
+      // Calculate total outstanding balance
+      const items = response.data.results || [];
+      const totalOutstanding = items.reduce((sum: number, item: OutstandingBalance) => {
+        return sum + (item.balance_current || 0);
+      }, 0);
+      
+      return {
+        items,
+        count: response.data.count || items.length,
+        total_outstanding: totalOutstanding,
+        next: response.data.next,
+        previous: response.data.previous
+      };
+    } catch (error) {
+      console.error('Failed to fetch outstanding balances:', error);
+      return {
+        items: [],
+        count: 0,
+        total_outstanding: 0,
+        next: null,
+        previous: null
+      };
+    }
+  }, []);
+
+  const captureOutstandingBalance = useCallback(async (data: OutstandingBalanceCaptureData): Promise<OutstandingBalance> => {
+    const response = await api.post<OutstandingBalance>(
+      ENDPOINTS.CREDITORS.OUTSTANDING_BALANCE || '/api/v1/creditors/creditors/outstanding-balance/',
+      data
+    );
+    return response.data;
+  }, []);
+
+  const updateOutstandingBalance = useCallback(async (id: number | string, data: Partial<OutstandingBalanceCaptureData>): Promise<OutstandingBalance> => {
+    const response = await api.patch<OutstandingBalance>(
+      `${ENDPOINTS.CREDITORS.OUTSTANDING_BALANCE || '/api/v1/creditors/creditors/outstanding-balance/'}${id}/`,
+      data
+    );
+    return response.data;
+  }, []);
+
+  const deleteOutstandingBalance = useCallback(async (id: number | string) => {
+    return api.delete(`${ENDPOINTS.CREDITORS.OUTSTANDING_BALANCE || '/api/v1/creditors/creditors/outstanding-balance/'}${id}/`);
+  }, []);
+
+  // Return the API object with all methods
+  return {
+    listSuppliers,
+    createSupplier,
+    updateSupplier,
+    deleteSupplier,
+    listCreditTerms,
+    listExpenseCategories,
+    createExpenseCategory,
+    updateExpenseCategory,
+    deleteExpenseCategory,
+    listOutstandingBalances,
+    captureOutstandingBalance,
+    updateOutstandingBalance,
+    deleteOutstandingBalance,
+  };
+}
+
+export default creditorsApi;

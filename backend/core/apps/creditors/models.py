@@ -19,8 +19,6 @@ Models in this file:
 - RFC (Return For Credit to supplier)
 - RFCLineItem
 - CreditorTransactionLine (generic line item for transactions)
-- SupplierMonthlyPurchase (monthly purchase statistics)
-- ExpenseMonthlyTotal (monthly expense totals)
 """
 
 from django.db import models
@@ -38,7 +36,9 @@ from apps.settings.models import (
     PaymentMethod,
     TimeStampedModel,
     ActiveModel,
-    SalesArea
+    SalesArea,
+    PostingStatusMixin,
+    VATMixin
 )
 
 User = get_user_model()
@@ -65,51 +65,33 @@ class Creditor(TimeStampedModel, ActiveModel):
         unique=True,
         help_text="Supplier account number"
     )
-    account_number = models.CharField(
-        max_length=20,
-        unique=True,
-        help_text="Account number (alias for supplier_number)"
-    )
     name = models.CharField(max_length=200)
-    short_name = models.CharField(max_length=50, blank=True, help_text="Short name for display")
     
     # Contact
     contact_person = models.CharField(max_length=100, blank=True)
     telephone = models.CharField(max_length=20, blank=True)
-    telephone1 = models.CharField(max_length=20, blank=True, help_text="Primary telephone")
-    telephone2 = models.CharField(max_length=20, blank=True, help_text="Secondary telephone")
     fax = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
     
     # Physical address
     physical_address_line1 = models.CharField(max_length=100, blank=True)
     physical_address_line2 = models.CharField(max_length=100, blank=True)
-    physical_address_line3 = models.CharField(max_length=100, blank=True)
     physical_city = models.CharField(max_length=50, blank=True)
     physical_province = models.CharField(max_length=50, blank=True)
     physical_code = models.CharField(max_length=10, blank=True)
-    physical_postal_code = models.CharField(max_length=10, blank=True, help_text="Physical postal code")
     
     # Postal address
     postal_address_line1 = models.CharField(max_length=100, blank=True)
     postal_address_line2 = models.CharField(max_length=100, blank=True)
-    postal_address_line3 = models.CharField(max_length=100, blank=True)
     postal_city = models.CharField(max_length=50, blank=True)
     postal_province = models.CharField(max_length=50, blank=True)
     postal_code = models.CharField(max_length=10, blank=True)
-    postal_postal_code = models.CharField(max_length=10, blank=True, help_text="Postal postal code")
     
     # Account settings
     our_account_number = models.CharField(
         max_length=50,
         blank=True,
         help_text="Our account number with this supplier"
-    )
-    account_type = models.CharField(
-        max_length=10,
-        choices=ACCOUNT_CATEGORY_CHOICES,
-        default='BBF',
-        help_text="Account type (alias for account_category)"
     )
     credit_terms = models.ForeignKey(
         CreditTerms,
@@ -121,9 +103,6 @@ class Creditor(TimeStampedModel, ActiveModel):
         choices=ACCOUNT_CATEGORY_CHOICES,
         default='BBF'
     )
-    
-    # VAT details
-    vat_number = models.CharField(max_length=50, blank=True, help_text="VAT registration number")
     
     # Sales area tracking
     sales_area = models.ForeignKey(
@@ -150,11 +129,18 @@ class Creditor(TimeStampedModel, ActiveModel):
     # Banking details
     bank_name = models.CharField(max_length=100, blank=True)
     branch_code = models.CharField(max_length=20, blank=True)
-    bank_branch_code = models.CharField(max_length=20, blank=True, help_text="Bank branch code")
     account_number = models.CharField(max_length=50, blank=True)
-    bank_account_number = models.CharField(max_length=50, blank=True, help_text="Bank account number")
     
     # === SYSTEM GENERATED FIELDS ===
+    
+    # CRITICAL: Balance Brought Forward (opening balance from previous period)
+    balance_brought_forward = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        editable=False,
+        help_text="Opening balance from previous period (SUPBALBFWD from legacy)"
+    )
     
     current_balance = models.DecimalField(
         max_digits=15,
@@ -171,14 +157,10 @@ class Creditor(TimeStampedModel, ActiveModel):
     balance_180_days = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False)
     
     last_paid_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False)
-    amount_last_paid = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False, help_text="Amount last paid (alias)")
     last_paid_date = models.DateField(null=True, blank=True, editable=False)
-    date_last_paid = models.DateField(null=True, blank=True, editable=False, help_text="Date last paid (alias)")
     
     purchases_mtd = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False)
     purchases_ytd = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False)
-    
-    rfc_outstanding_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False)
     
     class Meta:
         db_table = 'creditors'
@@ -195,26 +177,6 @@ class Creditor(TimeStampedModel, ActiveModel):
     def __str__(self):
         return f"{self.supplier_number} - {self.name}"
     
-    def get_total_balance(self):
-        """Calculate total balance across all aging periods"""
-        return (
-            self.balance_current + self.balance_30_days + self.balance_60_days +
-            self.balance_90_days + self.balance_120_days + self.balance_150_days +
-            self.balance_180_days
-        )
-    
-    def get_total_balance_with_rfc(self):
-        """Calculate total balance including RFC outstanding amount"""
-        return self.get_total_balance() + self.rfc_outstanding_amount
-    
-    def get_account_type_display(self):
-        """Return readable account type (alias for account_category display)"""
-        return self.get_account_category_display()
-    
-    def get_credit_terms_display(self):
-        """Return credit terms display"""
-        return str(self.credit_terms) if self.credit_terms else ""
-    
     def clean(self):
         """Validate creditor data"""
         super().clean()
@@ -230,13 +192,73 @@ class Creditor(TimeStampedModel, ActiveModel):
             self.balance_180_days
         )
         super().save(*args, **kwargs)
+    
+    def recalculate_aged_balances(self):
+        """
+        Recalculate aged balances from all open items based on due dates.
+        This should be called after transactions are posted or as part of period closing.
+        
+        BUSINESS LOGIC:
+        - Current: Due date <= today - 0 days
+        - 30 Days: Due date > today - 30 days AND <= today - 0 days
+        - 60 Days: Due date > today - 60 days AND <= today - 30 days
+        - etc.
+        """
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        today = timezone.now().date()
+        
+        # Reset all aging buckets
+        self.balance_current = 0
+        self.balance_30_days = 0
+        self.balance_60_days = 0
+        self.balance_90_days = 0
+        self.balance_120_days = 0
+        self.balance_150_days = 0
+        self.balance_180_days = 0
+        
+        # Get all unpaid open items for this creditor
+        open_items = self.open_items.filter(is_fully_allocated=False)
+        
+        for item in open_items:
+            if not item.due_date:
+                # If no due date, classify as current
+                self.balance_current += item.balance_due
+                continue
+            
+            days_overdue = (today - item.due_date).days
+            
+            if days_overdue <= 0:
+                self.balance_current += item.balance_due
+            elif days_overdue <= 30:
+                self.balance_30_days += item.balance_due
+            elif days_overdue <= 60:
+                self.balance_60_days += item.balance_due
+            elif days_overdue <= 90:
+                self.balance_90_days += item.balance_due
+            elif days_overdue <= 120:
+                self.balance_120_days += item.balance_due
+            elif days_overdue <= 150:
+                self.balance_150_days += item.balance_due
+            else:
+                self.balance_180_days += item.balance_due
+        
+        # Recalculate total
+        self.current_balance = (
+            self.balance_current + self.balance_30_days + self.balance_60_days +
+            self.balance_90_days + self.balance_120_days + self.balance_150_days +
+            self.balance_180_days
+        )
+        
+        self.save()
 
 
 # ============================================================================
 # CREDITOR TRANSACTION BASE
 # ============================================================================
 
-class CreditorTransaction(TimeStampedModel):
+class CreditorTransaction(PostingStatusMixin, TimeStampedModel):
     """Base for all creditor transactions (abstract)"""
     
     TRANSACTION_TYPE_CHOICES = [
@@ -258,27 +280,56 @@ class CreditorTransaction(TimeStampedModel):
     transaction_number = models.CharField(max_length=20, unique=True)
     transaction_date = models.DateField()
     
+    # CRITICAL: Due date for aged balance calculations (from legacy SDUEDATE)
+    due_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date invoice/GRN is due; used for aged balance calculations"
+    )
+    
     transaction_reference = models.CharField(max_length=50, blank=True)
     additional_reference = models.CharField(max_length=200, blank=True)
     
     total_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     
-    is_posted = models.BooleanField(default=False)
-    posted_at = models.DateTimeField(null=True, blank=True, editable=False)
-    posted_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='%(class)s_posted'
-    )
-    
     class Meta:
         abstract = True
         ordering = ['-transaction_date', '-transaction_number']
     
-    def __str__(self):
-        return f"{self.transaction_number} - {self.creditor.name}"
+    def clean(self):
+        """Validate transaction data"""
+        super().clean()
+        # Validate due_date >= transaction_date
+        if self.due_date and self.transaction_date:
+            if self.due_date < self.transaction_date:
+                raise ValidationError(
+                    {'due_date': 'Due date must be on or after transaction date'}
+                )
+    
+    def get_age_in_days(self):
+        """Calculate number of days from due date to today"""
+        if not self.due_date:
+            return None
+        from django.utils import timezone
+        return (timezone.now().date() - self.due_date).days
+    
+    def get_age_bucket(self):
+        """Determine which aging bucket this transaction falls into"""
+        age = self.get_age_in_days()
+        if age is None:
+            return None
+        if age <= 30:
+            return 'current'
+        elif age <= 60:
+            return '30'
+        elif age <= 90:
+            return '60'
+        elif age <= 120:
+            return '90'
+        elif age <= 150:
+            return '120'
+        else:
+            return '150'
 
 
 # ============================================================================
@@ -335,6 +386,10 @@ class GoodsReceivedNote(CreditorTransaction):
         self.transaction_type = 'GRN'
         if not self.transaction_number:
             self.transaction_number = self._generate_number()
+        # Set due_date based on credit terms if not already set
+        if not self.due_date and self.creditor.credit_terms:
+            from datetime import timedelta
+            self.due_date = self.transaction_date + timedelta(days=self.creditor.credit_terms.days)
         super().save(*args, **kwargs)
     
     def _generate_number(self):
@@ -403,6 +458,7 @@ class CreditorInvoice(CreditorTransaction):
     """
     Invoice for expenses (not stock)
     E.g., electricity, telephone, rent
+    Maps to SUPEXPT in legacy system
     """
     
     supplier_invoice_number = models.CharField(max_length=50)
@@ -415,6 +471,23 @@ class CreditorInvoice(CreditorTransaction):
         max_length=3,
         choices=INCLUSIVE_EXCLUSIVE_CHOICES,
         default='INC'
+    )
+    
+    # Station/Area reference (SOURCE field)
+    station_no_area = models.CharField(
+        max_length=2,
+        blank=True,
+        help_text="Station No. / Area reference"
+    )
+    
+    # Related GRN if applicable
+    related_grn = models.ForeignKey(
+        GoodsReceivedNote,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='related_expense_invoices',
+        help_text="Goods Received Note number if applicable"
     )
     
     subtotal = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False)
@@ -446,6 +519,10 @@ class CreditorInvoice(CreditorTransaction):
                     self.transaction_number = "SUPINV-000001"
             else:
                 self.transaction_number = "SUPINV-000001"
+        # Set due_date based on credit terms if not already set
+        if not self.due_date and self.creditor.credit_terms:
+            from datetime import timedelta
+            self.due_date = self.transaction_date + timedelta(days=self.creditor.credit_terms.days)
         super().save(*args, **kwargs)
 
 
@@ -539,6 +616,10 @@ class CreditorCreditNote(CreditorTransaction):
                     self.transaction_number = "SUPCN-000001"
             else:
                 self.transaction_number = "SUPCN-000001"
+        # Set due_date based on credit terms if not already set
+        if not self.due_date and self.creditor.credit_terms:
+            from datetime import timedelta
+            self.due_date = self.transaction_date + timedelta(days=self.creditor.credit_terms.days)
         super().save(*args, **kwargs)
 
 
@@ -700,7 +781,7 @@ class CreditorJournal(CreditorTransaction):
 # ============================================================================
 
 class CreditorOpenItem(models.Model):
-    """Open items for open item accounting"""
+    """Open items for open item accounting. Maps to SUPOPEN in legacy system"""
     
     creditor = models.ForeignKey(Creditor, on_delete=models.CASCADE, related_name='open_items')
     
@@ -710,6 +791,14 @@ class CreditorOpenItem(models.Model):
     journal = models.ForeignKey(CreditorJournal, on_delete=models.CASCADE, null=True, blank=True, related_name='open_items')
     
     transaction_date = models.DateField()
+    
+    # ADDED: Due date for aging (from transaction)
+    due_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Due date for aged balance calculation"
+    )
+    
     transaction_type = models.CharField(max_length=10)
     transaction_number = models.CharField(max_length=20)
     
@@ -717,13 +806,70 @@ class CreditorOpenItem(models.Model):
     balance_due = models.DecimalField(max_digits=15, decimal_places=2)
     
     age_period = models.PositiveSmallIntegerField(default=0)
+    ageing_flag = models.CharField(
+        max_length=1,
+        blank=True,
+        help_text="Ageing flag (AGEGLAG field from legacy system)"
+    )
     is_fully_allocated = models.BooleanField(default=False)
+    
+    # ADDED: Tracking and validation
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
         db_table = 'creditor_open_items'
         ordering = ['transaction_date']
         verbose_name = 'Creditor Open Item'
         verbose_name_plural = 'Creditor Open Items'
+        # ADDED: Unique constraint  to prevent duplicate open items
+        unique_together = [['creditor', 'transaction_number', 'transaction_type']]
+        indexes = [
+            models.Index(fields=['creditor', '-transaction_date']),
+            models.Index(fields=['is_fully_allocated']),
+        ]
+    
+    def clean(self):
+        """Validate open item data"""
+        super().clean()
+        # Validate that only one transaction type is linked
+        transaction_links = [self.grn, self.invoice, self.credit_note, self.journal]
+        if sum(1 for x in transaction_links if x is not None) != 1:
+            raise ValidationError(
+                'Exactly one transaction type (GRN, Invoice, Credit Note, or Journal) must be linked'
+            )
+        # Validate balance_due <= original_amount
+        if self.balance_due > self.original_amount:
+            raise ValidationError(
+                {'balance_due': 'Balance due cannot exceed original amount'}
+            )
+    
+    def get_age_in_days(self):
+        """Get number of days overdue"""
+        if not self.due_date:
+            return None
+        from django.utils import timezone
+        return (timezone.now().date() - self.due_date).days
+    
+    def get_age_bucket(self):
+        """Get aging bucket for this item"""
+        age = self.get_age_in_days()
+        if age is None:
+            return 'current'
+        if age <= 0:
+            return 'current'
+        elif age <= 30:
+            return '30'
+        elif age <= 60:
+            return '60'
+        elif age <= 90:
+            return '90'
+        elif age <= 120:
+            return '120'
+        elif age <= 150:
+            return '150'
+        else:
+            return '180'
 
 
 class OpenItemAllocation(models.Model):
@@ -741,6 +887,27 @@ class OpenItemAllocation(models.Model):
         db_table = 'creditor_open_item_allocations'
         verbose_name = 'Open Item Allocation'
         verbose_name_plural = 'Open Item Allocations'
+        indexes = [
+            models.Index(fields=['payment']),
+            models.Index(fields=['open_item']),
+        ]
+    
+    def clean(self):
+        """Validate allocation does not exceed balance due"""
+        super().clean()
+        # Check if total allocations would exceed balance_due
+        total_allocated = self.open_item.allocations.exclude(
+            pk=self.pk
+        ).aggregate(
+            total=models.Sum('amount_paid') + models.Sum('settlement_discount')
+        )['total'] or Decimal('0')
+        
+        total_with_new = total_allocated + self.amount_paid + self.settlement_discount
+        
+        if total_with_new > self.open_item.balance_due:
+            raise ValidationError(
+                f'Total allocation ({total_with_new}) exceeds balance due ({self.open_item.balance_due})'
+            )
 
 
 # ============================================================================
@@ -753,6 +920,18 @@ class RFC(TimeStampedModel):
     creditor = models.ForeignKey(Creditor, on_delete=models.PROTECT, related_name='rfcs')
     rfc_number = models.CharField(max_length=20, unique=True)
     return_date = models.DateField()
+    
+    # ADDED: Date tracking for RFC lifecycle (from legacy SUPMAST)
+    date_sent = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date RFC was sent to supplier (DATESENT)"
+    )
+    date_returned = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date credit note was received from supplier (DATERETN)"
+    )
     
     STATUS_CHOICES = [
         ('PENDING', 'Pending with Supplier'),
@@ -781,8 +960,42 @@ class RFCLineItem(TimeStampedModel):
     
     stock_item = models.ForeignKey('stock_control.StockItem', on_delete=models.PROTECT, related_name='rfc_lines')
     quantity_returned = models.DecimalField(max_digits=15, decimal_places=2)
+    
+    # ADDED: Quantity for credit (may differ from returned qty - from legacy QTYCRED)
+    quantity_credited = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Quantity approved for credit (QTYCRED) - may differ from returned"
+    )
+    
     unit_cost = models.DecimalField(max_digits=15, decimal_places=2, editable=False)
     tax_code = models.ForeignKey(TaxCode, on_delete=models.PROTECT)
+    
+    # ADDED: Original transaction tracking (from legacy SUPCRTRN)
+    original_transaction_type = models.CharField(
+        max_length=2,
+        blank=True,
+        help_text="Type of original purchase transaction (TYPE)"
+    )
+    original_transaction_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date of original purchase (PURCHDATE)"
+    )
+    original_transaction_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Time of original purchase (TIME)"
+    )
+    
+    # ADDED: Supplier reference tracking
+    supplier_reference_number = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="Supplier's reference number (SUPREFNO)"
+    )
     
     reason = models.TextField(blank=True)
     
@@ -897,94 +1110,144 @@ class CreditorTransactionLine(TimeStampedModel):
 
 
 # ============================================================================
-# MONTHLY STATISTICS MODELS
+# EXPENSE CATEGORY MONTHLY BALANCE
 # ============================================================================
 
-class SupplierMonthlyPurchase(TimeStampedModel):
-    """Monthly purchase statistics by supplier"""
-    
-    supplier = models.ForeignKey(
-        Creditor,
-        on_delete=models.CASCADE,
-        related_name='monthly_purchases'
-    )
-    
-    year = models.PositiveSmallIntegerField()
-    month = models.PositiveSmallIntegerField(
-        validators=[MinValueValidator(1), MaxValueValidator(12)]
-    )
-    
-    total_purchases = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False
-    )
-    
-    quantity_purchased = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        editable=False
-    )
-    
-    number_of_transactions = models.PositiveIntegerField(default=0, editable=False)
-    
-    class Meta:
-        db_table = 'supplier_monthly_purchases'
-        ordering = ['-year', '-month']
-        unique_together = [['supplier', 'year', 'month']]
-        verbose_name = 'Supplier Monthly Purchase'
-        verbose_name_plural = 'Supplier Monthly Purchases'
-        indexes = [
-            models.Index(fields=['supplier', 'year', 'month']),
-            models.Index(fields=['-year', '-month']),
-        ]
-    
-    def __str__(self):
-        return f"{self.supplier.name} - {self.month:02d}/{self.year}"
-
-
-class ExpenseMonthlyTotal(TimeStampedModel):
-    """Monthly expense totals by category"""
+class ExpenseCategoryMonthlyBalance(TimeStampedModel):
+    """
+    Expense Category balances per month
+    Maps to SUPEXP in legacy system
+    Tracks monthly expenses by category with month-to-date and monthly history
+    """
     
     expense_category = models.ForeignKey(
         ExpenseCategory,
         on_delete=models.CASCADE,
-        related_name='monthly_totals'
+        related_name='monthly_balances'
     )
     
-    year = models.PositiveSmallIntegerField()
-    month = models.PositiveSmallIntegerField(
-        validators=[MinValueValidator(1), MaxValueValidator(12)]
-    )
+    year = models.PositiveIntegerField()
+    month = models.PositiveSmallIntegerField(choices=[(i, i) for i in range(1, 13)])
     
-    total_amount = models.DecimalField(
+    # Month-to-date balances
+    expense_mtd = models.DecimalField(
         max_digits=15,
         decimal_places=2,
         default=0,
-        editable=False
+        help_text="Expense balance month to date (EXPMTD)"
     )
     
-    total_vat = models.DecimalField(
+    input_vat_mtd = models.DecimalField(
         max_digits=15,
         decimal_places=2,
         default=0,
-        editable=False
+        help_text="Input VAT month to date (EXPINVAT)"
     )
     
-    number_of_invoices = models.PositiveIntegerField(default=0, editable=False)
+    # Monthly purchase history (EXP1 through EXP12)
+    exp_month_1 = models.DecimalField(max_digits=15, decimal_places=2, default=0, help_text="January purchases")
+    exp_month_2 = models.DecimalField(max_digits=15, decimal_places=2, default=0, help_text="February purchases")
+    exp_month_3 = models.DecimalField(max_digits=15, decimal_places=2, default=0, help_text="March purchases")
+    exp_month_4 = models.DecimalField(max_digits=15, decimal_places=2, default=0, help_text="April purchases")
+    exp_month_5 = models.DecimalField(max_digits=15, decimal_places=2, default=0, help_text="May purchases")
+    exp_month_6 = models.DecimalField(max_digits=15, decimal_places=2, default=0, help_text="June purchases")
+    exp_month_7 = models.DecimalField(max_digits=15, decimal_places=2, default=0, help_text="July purchases")
+    exp_month_8 = models.DecimalField(max_digits=15, decimal_places=2, default=0, help_text="August purchases")
+    exp_month_9 = models.DecimalField(max_digits=15, decimal_places=2, default=0, help_text="September purchases")
+    exp_month_10 = models.DecimalField(max_digits=15, decimal_places=2, default=0, help_text="October purchases")
+    exp_month_11 = models.DecimalField(max_digits=15, decimal_places=2, default=0, help_text="November purchases")
+    exp_month_12 = models.DecimalField(max_digits=15, decimal_places=2, default=0, help_text="December purchases")
     
     class Meta:
-        db_table = 'expense_monthly_totals'
+        db_table = 'expense_category_monthly_balances'
         ordering = ['-year', '-month']
         unique_together = [['expense_category', 'year', 'month']]
-        verbose_name = 'Expense Monthly Total'
-        verbose_name_plural = 'Expense Monthly Totals'
+        verbose_name = 'Expense Category Monthly Balance'
+        verbose_name_plural = 'Expense Category Monthly Balances'
         indexes = [
             models.Index(fields=['expense_category', 'year', 'month']),
-            models.Index(fields=['-year', '-month']),
+            models.Index(fields=['year', 'month']),
         ]
     
     def __str__(self):
-        return f"{self.expense_category.category_name} - {self.month:02d}/{self.year}"
+        return f"{self.expense_category.category_name} - {self.year}-{self.month:02d}"
+    
+    def get_monthly_values(self):
+        """Return all 12 months as list for iteration"""
+        return [
+            self.exp_month_1, self.exp_month_2, self.exp_month_3, self.exp_month_4,
+            self.exp_month_5, self.exp_month_6, self.exp_month_7, self.exp_month_8,
+            self.exp_month_9, self.exp_month_10, self.exp_month_11, self.exp_month_12
+        ]
+
+
+# ============================================================================
+# OPEN ITEM AUDIT
+# ============================================================================
+
+class OpenItemAudit(TimeStampedModel):
+    """
+    Open item audit file for tracking changes to open items
+    Maps to SUPOAUD in legacy system
+    """
+    
+    creditor = models.ForeignKey(
+        Creditor,
+        on_delete=models.CASCADE,
+        related_name='open_item_audits'
+    )
+    
+    # Original transaction reference
+    transaction_number = models.CharField(
+        max_length=20,
+        help_text="Original transaction number (TRANO)"
+    )
+    transaction_type = models.CharField(
+        max_length=10,
+        help_text="Original transaction type (TYPE)"
+    )
+    
+    # Current transaction being processed
+    this_transaction_type = models.CharField(
+        max_length=10,
+        help_text="This transaction type (THISTYPE)"
+    )
+    this_transaction_number = models.DecimalField(
+        max_digits=10,
+        decimal_places=0,
+        help_text="This transaction number (THISTRAN)"
+    )
+    
+    transaction_date = models.DateField(
+        help_text="Transaction date (DATE)"
+    )
+    
+    amount = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        help_text="Amount (AMOUNT)"
+    )
+    
+    audit_timestamp = models.DateTimeField(
+        auto_now_add=True,
+        editable=False,
+        help_text="When this audit record was created"
+    )
+    
+    audit_notes = models.TextField(
+        blank=True,
+        help_text="Additional audit notes"
+    )
+    
+    class Meta:
+        db_table = 'open_item_audits'
+        ordering = ['-audit_timestamp']
+        verbose_name = 'Open Item Audit'
+        verbose_name_plural = 'Open Item Audits'
+        indexes = [
+            models.Index(fields=['creditor', '-audit_timestamp']),
+            models.Index(fields=['transaction_number']),
+        ]
+    
+    def __str__(self):
+        return f"{self.creditor.supplier_number} - {self.transaction_number} ({self.transaction_date})"

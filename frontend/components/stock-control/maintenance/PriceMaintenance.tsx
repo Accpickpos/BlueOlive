@@ -63,7 +63,7 @@ export default function PriceMaintenance({ onBack }: PriceMaintenanceProps) {
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: async () => {
-      const response = await api.get('/api/settings/departments/');
+      const response = await api.get('/api/v1/settings/departments/');
       return response.data.results || response.data;
     }
   });
@@ -72,7 +72,7 @@ export default function PriceMaintenance({ onBack }: PriceMaintenanceProps) {
   const { data: suppliers = [] } = useQuery({
     queryKey: ['suppliers'],
     queryFn: async () => {
-      const response = await api.get('/api/creditors/suppliers/');
+      const response = await api.get('/api/v1/creditors/creditors/');
       return response.data.results || response.data;
     }
   });

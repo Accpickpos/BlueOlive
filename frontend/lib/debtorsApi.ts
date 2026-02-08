@@ -1,472 +1,449 @@
 /**
- * Debtors API Client
+ * Enhanced Debtors API Client
+ * Complete API integration with all debtors endpoints
  * 
- * Handles all communication with Django backend for:
- * - Debtor/Customer management
- * - Debtor transactions
- * - Debtor invoices
- * - Debtor enquiries and reporting
+ * Base URL: /api/v1/debtors/
  */
 
 import { api } from './api';
+import { ENDPOINTS } from './api-config';
+import type {
+  DebtorAccount,
+  DebtorCreateData,
+  DebtorEditData,
+  DebtorFilters,
+  Transaction,
+  TransactionCreateData,
+  TransactionFilters,
+  OpenItem,
+  PostDatedCheque,
+  PostDatedChequeCreateData,
+  SalesArea,
+  DebtorsSummary,
+  AgeAnalysis,
+  AgeAnalysisFilters,
+  PaginatedResponse,
+  AuditLog,
+} from './types/debtors';
 
-export interface DebtorCreateData {
-  account_number?: number;
-  name: string;
-  short_name?: string;
-  physical_address_line1?: string;
-  physical_address_line2?: string;
-  physical_address_line3?: string;
-  physical_city?: string;
-  physical_postal_code?: string;
-  postal_address_line1?: string;
-  postal_address_line2?: string;
-  postal_address_line3?: string;
-  postal_city?: string;
-  postal_postal_code?: string;
-  telephone1?: string;
-  telephone2?: string;
-  fax?: string;
-  email?: string;
-  contact_person?: string;
-  credit_limit?: number;
-  credit_terms?: number | null;
-  is_active?: boolean;
-}
-
-export interface Debtor extends DebtorCreateData {
-  id?: number;
-  total_balance?: number;
-  total_receivable?: number;
-  balance_current?: number;
-  balance_30_days?: number;
-  balance_60_days?: number;
-  balance_90_days?: number;
-  balance_120_days?: number;
-  balance_150_days?: number;
-  balance_180_days?: number;
-  days_sales_outstanding?: number;
-  last_transaction_date?: string;
-  sales_mtd?: number;
-  sales_ytd?: number;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface DebtorBalanceDetails {
-  debtor_id: number;
-  account_number?: number;
-  debtor_name?: string;
-  balance_current: number;
-  balance_30_days: number;
-  balance_60_days: number;
-  balance_90_days: number;
-  balance_120_days: number;
-  balance_150_days: number;
-  balance_180_days: number;
-  total_balance: number;
-  credit_limit?: number;
-  days_sales_outstanding?: number;
-}
-
-export interface DebtorTransaction {
-  id?: number;
-  debtor_id: number;
-  transaction_date: string;
-  transaction_type: 'INVOICE' | 'PAYMENT' | 'CREDIT_NOTE' | 'DEBIT_NOTE' | 'INTEREST';
-  reference_number?: string;
-  description?: string;
-  amount: number;
-  balance?: number;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface DebtorInvoice {
-  id?: number;
-  debtor_id: number;
-  invoice_number: string;
-  invoice_date: string;
-  due_date?: string;
-  amount: number;
-  paid_amount?: number;
-  outstanding_amount?: number;
-  status?: 'DRAFT' | 'ISSUED' | 'PAID' | 'OVERDUE' | 'CANCELLED';
-  description?: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface PostDatedCheque {
-  id?: number;
-  debtor_id: number;
-  cheque_number: string;
-  bank_name?: string;
-  cheque_date: string;
-  amount: number;
-  status?: 'PENDING' | 'CLEARED' | 'BOUNCED' | 'CANCELLED';
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface TopAccount {
-  debtor_id: number;
-  account_number?: number;
-  debtor_name: string;
-  total_balance: number;
-  rank?: number;
-}
-
-class DebtorsAPI {
-  /**
-   * Make HTTP request using axios with error handling
-   */
-  private async request<T>(
-    method: string,
-    endpoint: string,
-    data?: any
-  ): Promise<T> {
-    try {
-      console.log(`\n=== DEBTORS API REQUEST ===`);
-      console.log(`Method: ${method}`);
-      console.log(`Endpoint: ${endpoint}`);
-      console.log(`Has data: ${!!data}`);
-      
-      let response;
-      switch (method.toUpperCase()) {
-        case 'GET':
-          console.log('Making GET request...');
-          response = await api.get(endpoint);
-          break;
-        case 'POST':
-          console.log('Making POST request...');
-          console.log('Data:', data);
-          response = await api.post(endpoint, data);
-          break;
-        case 'PUT':
-          console.log('Making PUT request...');
-          response = await api.put(endpoint, data);
-          break;
-        case 'PATCH':
-          console.log('Making PATCH request...');
-          response = await api.patch(endpoint, data);
-          break;
-        case 'DELETE':
-          console.log('Making DELETE request...');
-          response = await api.delete(endpoint);
-          break;
-        default:
-          throw new Error(`Unsupported HTTP method: ${method}`);
-      }
-      console.log('Response status:', response.status);
-      console.log('Response data:', response.data);
+export const debtorsApi = {
+  // ============ DEBTOR ACCOUNTS ============
+  accounts: {
+    /**
+     * List all debtor accounts with filters
+     */
+    list: async (filters?: DebtorFilters) => {
+      const response = await api.get<PaginatedResponse<DebtorAccount>>(
+        ENDPOINTS.DEBTORS.ACCOUNTS,
+        { params: filters }
+      );
       return response.data;
-    } catch (error: any) {
-      console.error('=== DEBTORS API ERROR ===');
-      console.error('Error:', error);
-      console.error('Error response:', error.response?.data);
-      
-      if (error.response?.data?.detail) {
-        throw new Error(error.response.data.detail);
-      }
-      if (error.response?.data) {
-        throw new Error(JSON.stringify(error.response.data));
-      }
-      throw error;
-    }
-  }
+    },
 
-  // ============================================================
-  // DEBTOR ENDPOINTS
-  // ============================================================
+    /**
+     * Get single debtor account with full details
+     */
+    get: async (id: number) => {
+      const response = await api.get<DebtorAccount>(`${ENDPOINTS.DEBTORS.ACCOUNTS}${id}/`);
+      return response.data;
+    },
 
-  /**
-   * List all debtors
-   */
-  async listDebtors(filters?: {
-    is_active?: boolean;
-    search?: string;
-    page?: number;
-  }): Promise<{ results: Debtor[]; count: number; next?: string; previous?: string }> {
-    let endpoint = '/api/debtors/';
-    if (filters) {
-      const params = new URLSearchParams();
-      if (filters.is_active !== undefined) params.append('is_active', String(filters.is_active));
-      if (filters.search) params.append('search', filters.search);
-      if (filters.page) params.append('page', String(filters.page));
-      if (params.toString()) {
-        endpoint += `?${params.toString()}`;
-      }
-    }
-    return this.request('GET', endpoint);
-  }
+    /**
+     * Create new debtor account
+     */
+    create: async (data: DebtorCreateData) => {
+      const response = await api.post<DebtorAccount>(ENDPOINTS.DEBTORS.ACCOUNTS, data);
+      return response.data;
+    },
 
-  /**
-   * Get debtor by ID
-   */
-  async getDebtor(debtorId: number): Promise<Debtor> {
-    return this.request('GET', `/api/debtors/${debtorId}/`);
-  }
+    /**
+     * Update debtor account
+     */
+    update: async (id: number, data: DebtorEditData) => {
+      const response = await api.patch<DebtorAccount>(
+        `${ENDPOINTS.DEBTORS.ACCOUNTS}${id}/`,
+        data
+      );
+      return response.data;
+    },
 
-  /**
-   * Create new debtor
-   */
-  async createDebtor(data: DebtorCreateData): Promise<Debtor> {
-    return this.request('POST', '/api/debtors/', data);
-  }
+    /**
+     * Delete debtor account
+     */
+    delete: async (id: number) => {
+      await api.delete(`${ENDPOINTS.DEBTORS.ACCOUNTS}${id}/`);
+    },
 
-  /**
-   * Update debtor
-   */
-  async updateDebtor(debtorId: number, data: Partial<DebtorCreateData>): Promise<Debtor> {
-    return this.request('PUT', `/api/debtors/${debtorId}/`, data);
-  }
+    /**
+     * Search debtors by name, number, or contact
+     */
+    search: async (searchTerm: string) => {
+      const response = await api.get<DebtorAccount[]>(
+        ENDPOINTS.DEBTORS.ACCOUNTS,
+        { params: { search: searchTerm } }
+      );
+      return response.data;
+    },
 
-  /**
-   * Partially update debtor
-   */
-  async partialUpdateDebtor(debtorId: number, data: Partial<DebtorCreateData>): Promise<Debtor> {
-    return this.request('PATCH', `/api/debtors/${debtorId}/`, data);
-  }
+    /**
+     * Get age analysis for a specific debtor
+     */
+    getAgeAnalysis: async (id: number, filters?: AgeAnalysisFilters) => {
+      const response = await api.get<AgeAnalysis>(
+        `${ENDPOINTS.DEBTORS.ACCOUNTS}${id}/age_analysis/`,
+        { params: filters }
+      );
+      return response.data;
+    },
 
-  /**
-   * Delete debtor
-   */
-  async deleteDebtor(debtorId: number): Promise<void> {
-    await this.request('DELETE', `/api/debtors/${debtorId}/`);
-  }
+    /**
+     * Get transaction history for a debtor
+     */
+    getTransactions: async (id: number, filters?: TransactionFilters) => {
+      const response = await api.get<PaginatedResponse<Transaction>>(
+        `${ENDPOINTS.DEBTORS.ACCOUNTS}${id}/transactions/`,
+        { params: filters }
+      );
+      return response.data;
+    },
 
-  // ============================================================
-  // DEBTOR BALANCE ENDPOINTS
-  // ============================================================
+    /**
+     * Change debtor status (active/blocked)
+     */
+    updateStatus: async (id: number, is_active: boolean, blockflag?: boolean) => {
+      const response = await api.patch<DebtorAccount>(
+        `${ENDPOINTS.DEBTORS.ACCOUNTS}${id}/`,
+        { is_active, blockflag }
+      );
+      return response.data;
+    },
+  },
 
-  /**
-   * Get balance details for a debtor
-   */
-  async getDebtorBalanceDetails(debtorId: number): Promise<DebtorBalanceDetails> {
-    return this.request('GET', `/api/debtors/${debtorId}/balance-details/`);
-  }
+  // ============ SUMMARY & ANALYTICS ============
+  summary: {
+    /**
+     * Get overall debtors summary and analytics
+     */
+    get: async (filters?: AgeAnalysisFilters) => {
+      const response = await api.get<DebtorsSummary>(
+        ENDPOINTS.DEBTORS.ACCOUNTS,
+        { params: filters }
+      );
+      return response.data;
+    },
 
-  // ============================================================
-  // DEBTOR TRANSACTION ENDPOINTS
-  // ============================================================
+    /**
+     * Get top debtors by balance
+     */
+    getTopDebtors: async (limit: number = 10) => {
+      const response = await api.get<DebtorAccount[]>(
+        ENDPOINTS.DEBTORS.ACCOUNTS,
+        { params: { top_debtors_limit: limit } }
+      );
+      return response.data;
+    },
+  },
 
-  /**
-   * List transactions for a debtor
-   */
-  async listTransactions(filters?: {
-    debtor?: number;
-    transaction_type?: string;
-    start_date?: string;
-    end_date?: string;
-    page?: number;
-  }): Promise<{ results: DebtorTransaction[]; count: number }> {
-    let endpoint = '/api/debtors/transactions/';
-    if (filters) {
-      const params = new URLSearchParams();
-      if (filters.debtor) params.append('debtor', String(filters.debtor));
-      if (filters.transaction_type) params.append('transaction_type', filters.transaction_type);
-      if (filters.start_date) params.append('transaction_date__gte', filters.start_date);
-      if (filters.end_date) params.append('transaction_date__lte', filters.end_date);
-      if (filters.page) params.append('page', String(filters.page));
-      if (params.toString()) {
-        endpoint += `?${params.toString()}`;
-      }
-    }
-    return this.request('GET', endpoint);
-  }
+  // ============ TRANSACTIONS ============
+  transactions: {
+    /**
+     * List all transactions
+     */
+    list: async (filters?: TransactionFilters) => {
+      const response = await api.get<PaginatedResponse<Transaction>>(
+        ENDPOINTS.DEBTORS.TRANSACTIONS,
+        { params: filters }
+      );
+      return response.data;
+    },
 
-  /**
-   * Get transaction by ID
-   */
-  async getTransaction(transactionId: number): Promise<DebtorTransaction> {
-    return this.request('GET', `/api/debtors/transactions/${transactionId}/`);
-  }
+    /**
+     * Get single transaction
+     */
+    get: async (id: number) => {
+      const response = await api.get<Transaction>(
+        `${ENDPOINTS.DEBTORS.TRANSACTIONS}${id}/`
+      );
+      return response.data;
+    },
 
-  /**
-   * Create new transaction
-   */
-  async createTransaction(data: DebtorTransaction): Promise<DebtorTransaction> {
-    return this.request('POST', '/api/debtors/transactions/', data);
-  }
+    /**
+     * Create transaction (invoice, credit note, etc.)
+     */
+    create: async (data: TransactionCreateData) => {
+      const response = await api.post<Transaction>(
+        ENDPOINTS.DEBTORS.TRANSACTIONS,
+        data
+      );
+      return response.data;
+    },
 
-  /**
-   * Update transaction
-   */
-  async updateTransaction(transactionId: number, data: Partial<DebtorTransaction>): Promise<DebtorTransaction> {
-    return this.request('PUT', `/api/debtors/transactions/${transactionId}/`, data);
-  }
+    /**
+     * Update transaction
+     */
+    update: async (id: number, data: Partial<TransactionCreateData>) => {
+      const response = await api.patch<Transaction>(
+        `${ENDPOINTS.DEBTORS.TRANSACTIONS}${id}/`,
+        data
+      );
+      return response.data;
+    },
 
-  /**
-   * Delete transaction
-   */
-  async deleteTransaction(transactionId: number): Promise<void> {
-    await this.request('DELETE', `/api/debtors/transactions/${transactionId}/`);
-  }
+    /**
+     * Delete transaction
+     */
+    delete: async (id: number) => {
+      await api.delete(`${ENDPOINTS.DEBTORS.TRANSACTIONS}${id}/`);
+    },
 
-  // ============================================================
-  // DEBTOR INVOICE ENDPOINTS
-  // ============================================================
+    /**
+     * Post debit journal entry
+     */
+    postDebit: async (data: {
+      debtor_id: number;
+      amount: number;
+      description: string;
+      transaction_date: string;
+    }) => {
+      const response = await api.post<Transaction>(
+        `${ENDPOINTS.DEBTORS.TRANSACTIONS}post_debit/`,
+        data
+      );
+      return response.data;
+    },
 
-  /**
-   * List invoices
-   */
-  async listInvoices(filters?: {
-    debtor_id?: number;
-    status?: string;
-    start_date?: string;
-    end_date?: string;
-    page?: number;
-  }): Promise<{ results: DebtorInvoice[]; count: number }> {
-    let endpoint = '/api/debtors/invoices/';
-    if (filters) {
-      const params = new URLSearchParams();
-      if (filters.debtor_id) params.append('debtor', String(filters.debtor_id));
-      if (filters.status) params.append('status', filters.status);
-      if (filters.start_date) params.append('invoice_date__gte', filters.start_date);
-      if (filters.end_date) params.append('invoice_date__lte', filters.end_date);
-      if (filters.page) params.append('page', String(filters.page));
-      if (params.toString()) {
-        endpoint += `?${params.toString()}`;
-      }
-    }
-    return this.request('GET', endpoint);
-  }
+    /**
+     * Post credit journal entry
+     */
+    postCredit: async (data: {
+      debtor_id: number;
+      amount: number;
+      description: string;
+      transaction_date: string;
+    }) => {
+      const response = await api.post<Transaction>(
+        `${ENDPOINTS.DEBTORS.TRANSACTIONS}post_credit/`,
+        data
+      );
+      return response.data;
+    },
 
-  /**
-   * Get invoice by ID
-   */
-  async getInvoice(invoiceId: number): Promise<DebtorInvoice> {
-    return this.request('GET', `/api/debtors/invoices/${invoiceId}/`);
-  }
+    /**
+     * Record receipt payment
+     */
+    postReceipt: async (data: {
+      debtor_id: number;
+      amount: number;
+      reference_number?: string;
+      transaction_date: string;
+    }) => {
+      const response = await api.post<Transaction>(
+        `${ENDPOINTS.DEBTORS.TRANSACTIONS}post_receipt/`,
+        data
+      );
+      return response.data;
+    },
 
-  /**
-   * Create new invoice
-   */
-  async createInvoice(data: DebtorInvoice): Promise<DebtorInvoice> {
-    return this.request('POST', '/api/debtors/invoices/', data);
-  }
+    /**
+     * Charge interest on debtor account
+     */
+    chargeInterest: async (data: {
+      debtor_id: number;
+      amount: number;
+      transaction_date: string;
+    }) => {
+      const response = await api.post<Transaction>(
+        `${ENDPOINTS.DEBTORS.TRANSACTIONS}charge_interest/`,
+        data
+      );
+      return response.data;
+    },
+  },
 
-  /**
-   * Update invoice
-   */
-  async updateInvoice(invoiceId: number, data: Partial<DebtorInvoice>): Promise<DebtorInvoice> {
-    return this.request('PUT', `/api/debtors/invoices/${invoiceId}/`, data);
-  }
+  // ============ OPEN ITEMS ============
+  openItems: {
+    /**
+     * List open items for debtor
+     */
+    list: async (debtorId?: number) => {
+      const response = await api.get<PaginatedResponse<OpenItem>>(
+        ENDPOINTS.DEBTORS.OPEN_ITEMS,
+        { params: debtorId ? { debtor_id: debtorId } : {} }
+      );
+      return response.data;
+    },
 
-  /**
-   * Partially update invoice
-   */
-  async partialUpdateInvoice(invoiceId: number, data: Partial<DebtorInvoice>): Promise<DebtorInvoice> {
-    return this.request('PATCH', `/api/debtors/invoices/${invoiceId}/`, data);
-  }
+    /**
+     * Get single open item
+     */
+    get: async (id: number) => {
+      const response = await api.get<OpenItem>(
+        `${ENDPOINTS.DEBTORS.OPEN_ITEMS}${id}/`
+      );
+      return response.data;
+    },
 
-  /**
-   * Delete invoice
-   */
-  async deleteInvoice(invoiceId: number): Promise<void> {
-    await this.request('DELETE', `/api/debtors/invoices/${invoiceId}/`);
-  }
+    /**
+     * Allocate receipt to open items
+     */
+    allocate: async (data: {
+      debtor_id: number;
+      receipt_amount: number;
+      allocations: Array<{
+        open_item_id: number;
+        amount: number;
+      }>;
+    }) => {
+      const response = await api.post(
+        `${ENDPOINTS.DEBTORS.OPEN_ITEMS}allocate/`,
+        data
+      );
+      return response.data;
+    },
+  },
 
-  // ============================================================
-  // POST-DATED CHEQUE ENDPOINTS
-  // ============================================================
+  // ============ POST-DATED CHEQUES ============
+  pdcs: {
+    /**
+     * List post-dated cheques
+     */
+    list: async (debtorId?: number) => {
+      const response = await api.get<PaginatedResponse<PostDatedCheque>>(
+        ENDPOINTS.DEBTORS.POST_DATED_CHEQUES,
+        { params: debtorId ? { debtor_id: debtorId } : {} }
+      );
+      return response.data;
+    },
 
-  /**
-   * List post-dated cheques
-   */
-  async listPostDatedCheques(filters?: {
-    debtor?: number;
-    status?: string;
-    start_date?: string;
-    end_date?: string;
-    page?: number;
-  }): Promise<{ results: PostDatedCheque[]; count: number }> {
-    let endpoint = '/api/debtors/post-dated-cheques/';
-    if (filters) {
-      const params = new URLSearchParams();
-      if (filters.debtor) params.append('debtor', String(filters.debtor));
-      if (filters.status) params.append('status', filters.status);
-      if (filters.start_date) params.append('cheque_date__gte', filters.start_date);
-      if (filters.end_date) params.append('cheque_date__lte', filters.end_date);
-      if (filters.page) params.append('page', String(filters.page));
-      if (params.toString()) {
-        endpoint += `?${params.toString()}`;
-      }
-    }
-    return this.request('GET', endpoint);
-  }
+    /**
+     * Get single PDC
+     */
+    get: async (id: number) => {
+      const response = await api.get<PostDatedCheque>(
+        `${ENDPOINTS.DEBTORS.POST_DATED_CHEQUES}${id}/`
+      );
+      return response.data;
+    },
 
-  /**
-   * Get post-dated cheque by ID
-   */
-  async getPostDatedCheque(chequeId: number): Promise<PostDatedCheque> {
-    return this.request('GET', `/api/debtors/post-dated-cheques/${chequeId}/`);
-  }
+    /**
+     * Create PDC record
+     */
+    create: async (data: PostDatedChequeCreateData) => {
+      const response = await api.post<PostDatedCheque>(
+        ENDPOINTS.DEBTORS.POST_DATED_CHEQUES,
+        data
+      );
+      return response.data;
+    },
 
-  /**
-   * Create new post-dated cheque
-   */
-  async createPostDatedCheque(data: PostDatedCheque): Promise<PostDatedCheque> {
-    return this.request('POST', '/api/debtors/post-dated-cheques/', data);
-  }
+    /**
+     * Update PDC status or details
+     */
+    update: async (id: number, data: Partial<PostDatedChequeCreateData>) => {
+      const response = await api.patch<PostDatedCheque>(
+        `${ENDPOINTS.DEBTORS.POST_DATED_CHEQUES}${id}/`,
+        data
+      );
+      return response.data;
+    },
 
-  /**
-   * Update post-dated cheque
-   */
-  async updatePostDatedCheque(chequeId: number, data: Partial<PostDatedCheque>): Promise<PostDatedCheque> {
-    return this.request('PUT', `/api/debtors/post-dated-cheques/${chequeId}/`, data);
-  }
+    /**
+     * Update PDC status (received/cleared/dishonoured)
+     */
+    updateStatus: async (
+      id: number,
+      status: 'OUTSTANDING' | 'RECEIVED' | 'CLEARED' | 'DISHONOURED',
+      statusDate?: string
+    ) => {
+      const response = await api.patch<PostDatedCheque>(
+        `${ENDPOINTS.DEBTORS.POST_DATED_CHEQUES}${id}/`,
+        { status, status_date: statusDate }
+      );
+      return response.data;
+    },
 
-  /**
-   * Delete post-dated cheque
-   */
-  async deletePostDatedCheque(chequeId: number): Promise<void> {
-    await this.request('DELETE', `/api/debtors/post-dated-cheques/${chequeId}/`);
-  }
+    /**
+     * Delete PDC
+     */
+    delete: async (id: number) => {
+      await api.delete(`${ENDPOINTS.DEBTORS.POST_DATED_CHEQUES}${id}/`);
+    },
+  },
 
-  // ============================================================
-  // REPORTING/ENQUIRY ENDPOINTS
-  // ============================================================
+  // ============ SALES AREAS ============
+  areas: {
+    /**
+     * List all sales areas
+     */
+    list: async () => {
+      const response = await api.get<SalesArea[]>(ENDPOINTS.DEBTORS.SALES_AREAS);
+      return response.data;
+    },
 
-  /**
-   * Get top accounts by outstanding balance
-   */
-  async getTopAccounts(filters?: {
-    limit?: number;
-    start_date?: string;
-    end_date?: string;
-  }): Promise<TopAccount[]> {
-    let endpoint = '/api/debtors/top-accounts/';
-    if (filters) {
-      const params = new URLSearchParams();
-      if (filters.limit) params.append('limit', String(filters.limit));
-      if (filters.start_date) params.append('date__gte', filters.start_date);
-      if (filters.end_date) params.append('date__lte', filters.end_date);
-      if (params.toString()) {
-        endpoint += `?${params.toString()}`;
-      }
-    }
-    return this.request('GET', endpoint);
-  }
+    /**
+     * Get single sales area
+     */
+    get: async (id: number) => {
+      const response = await api.get<SalesArea>(
+        `${ENDPOINTS.DEBTORS.SALES_AREAS}${id}/`
+      );
+      return response.data;
+    },
 
-  /**
-   * Search debtors by name or account number
-   */
-  async searchDebtors(query: string, limit: number = 20): Promise<Debtor[]> {
-    const params = new URLSearchParams({
-      search: query,
-      limit: String(limit),
-    });
-    return this.request('GET', `/api/debtors/?${params}`);
-  }
-}
+    /**
+     * Create sales area
+     */
+    create: async (data: Omit<SalesArea, 'id' | 'created_at'>) => {
+      const response = await api.post<SalesArea>(
+        ENDPOINTS.DEBTORS.SALES_AREAS,
+        data
+      );
+      return response.data;
+    },
 
-// Export singleton with simpler initialization
-const debtorsAPI = new DebtorsAPI();
+    /**
+     * Update sales area
+     */
+    update: async (id: number, data: Partial<Omit<SalesArea, 'id' | 'created_at'>>) => {
+      const response = await api.patch<SalesArea>(
+        `${ENDPOINTS.DEBTORS.SALES_AREAS}${id}/`,
+        data
+      );
+      return response.data;
+    },
 
-export const useDebtorsAPI = () => {
-  return debtorsAPI;
+    /**
+     * Delete sales area
+     */
+    delete: async (id: number) => {
+      await api.delete(`${ENDPOINTS.DEBTORS.SALES_AREAS}${id}/`);
+    },
+  },
+
+  // ============ AUDIT TRAIL ============
+  audit: {
+    /**
+     * Get audit trail for debtor
+     */
+    getDebtorAudit: async (debtorId: number) => {
+      const response = await api.get<PaginatedResponse<AuditLog>>(
+        ENDPOINTS.DEBTORS.AUDIT,
+        { params: { debtor_id: debtorId } }
+      );
+      return response.data;
+    },
+
+    /**
+     * Get all audit logs
+     */
+    list: async (filters?: { date_from?: string; date_to?: string }) => {
+      const response = await api.get<PaginatedResponse<AuditLog>>(
+        ENDPOINTS.DEBTORS.AUDIT,
+        { params: filters }
+      );
+      return response.data;
+    },
+  },
 };
 
-export default DebtorsAPI;
+export default debtorsApi;

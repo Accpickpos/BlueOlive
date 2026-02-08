@@ -11,7 +11,8 @@ from django.db import transaction as db_transaction
 from .models import (
     IncomeCategory, CashBookTransaction, OtherIncome, OtherExpense,
     BankDeposit, CashWithdrawal, BankTransfer, BankCharge, InterestReceived,
-    BankReconciliation, BankReconciliationItem, CashFloat
+    BankReconciliation, BankReconciliationItem, CashFloat,
+    ExpenseCategoryBalance, IncomeCategoryBalance, UnpresentedCheque
 )
 from .services import (
     BalanceCalculationService, ReconciliationService
@@ -27,19 +28,29 @@ class IncomeCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(CashBookTransaction)
 class CashBookTransactionAdmin(admin.ModelAdmin):
-    list_display = ('transaction_number', 'transaction_type', 'transaction_date',
-                   'amount', 'account_type', 'is_reconciled', 'description')
-    list_filter = ('transaction_type', 'account_type', 'is_reconciled', 'transaction_date')
+    list_display = ('transaction_number', 'transaction_date', 'transaction_type',
+                   'value_excl_vat', 'tax_amount', 'total_incl_vat',
+                   'audit_type', 'bank_recon_tag', 'is_reconciled', 'description')
+    list_filter = ('transaction_type', 'account_type', 'is_reconciled', 'transaction_date',
+                  'audit_type', 'bank_recon_tag')
     search_fields = ('transaction_number', 'description', 'reference')
     readonly_fields = ('running_balance_cash', 'running_balance_bank', 'is_reconciled',
-                      'reconciliation', 'is_archived', 'archive_month', 'created_at', 'updated_at')
+                      'reconciliation', 'is_archived', 'archive_month', 'created_at', 'updated_at',
+                      'transaction_number')
     date_hierarchy = 'transaction_date'
     actions = ['archive_transactions', 'verify_balances', 'mark_as_reconciled']
     
     fieldsets = (
         ('Transaction Details', {
-            'fields': ('transaction_type', 'transaction_number', 'transaction_date',
-                      'amount', 'description', 'reference')
+            'fields': ('transaction_number', 'transaction_type', 'transaction_date',
+                      'reference', 'description')
+        }),
+        ('Amount & VAT (per spec CBTRAN)', {
+            'fields': ('value_excl_vat', 'tax_amount', 'total_incl_vat',
+                      'amount')  # legacy field
+        }),
+        ('Audit & Classification', {
+            'fields': ('audit_type', 'category_id', 'bank_recon_tag')
         }),
         ('Account Information', {
             'fields': ('account_type', 'bank_account_number')
@@ -384,3 +395,132 @@ class CashFloatAdmin(admin.ModelAdmin):
                       'variance', 'is_balanced', 'variance_notes', 'counted_by')
         }),
     )
+
+
+@admin.register(ExpenseCategoryBalance)
+class ExpenseCategoryBalanceAdmin(admin.ModelAdmin):
+    """Admin for expense category balances (per spec CBEXP)"""
+    list_display = ('expense_category', 'balance_month_to_date', 'input_vat_month_to_date',
+                   'year_to_date_balance', 'updated_at')
+    list_filter = ('expense_category', 'updated_at')
+    search_fields = ('expense_category__name',)
+    readonly_fields = ('year_to_date_balance', 'created_at', 'updated_at')
+    
+    fieldsets = (
+        ('Category Information', {
+            'fields': ('expense_category',)
+        }),
+        ('Month-to-Date (per spec CBEXP)', {
+            'fields': ('balance_month_to_date', 'input_vat_month_to_date')
+        }),
+        ('Monthly Balances (EXP1-EXP12 per spec)', {
+            'fields': (('balance_month_01', 'balance_month_02', 'balance_month_03'),
+                      ('balance_month_04', 'balance_month_05', 'balance_month_06'),
+                      ('balance_month_07', 'balance_month_08', 'balance_month_09'),
+                      ('balance_month_10', 'balance_month_11', 'balance_month_12'))
+        }),
+        ('Summary', {
+            'fields': ('year_to_date_balance',),
+            'classes': ('collapse',)
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+
+@admin.register(IncomeCategoryBalance)
+class IncomeCategoryBalanceAdmin(admin.ModelAdmin):
+    """Admin for income category balances (per spec CBINC)"""
+    list_display = ('income_category', 'balance_month_to_date', 'output_vat_month_to_date',
+                   'year_to_date_balance', 'updated_at')
+    list_filter = ('income_category', 'updated_at')
+    search_fields = ('income_category__name',)
+    readonly_fields = ('year_to_date_balance', 'created_at', 'updated_at')
+    
+    fieldsets = (
+        ('Category Information', {
+            'fields': ('income_category',)
+        }),
+        ('Month-to-Date (per spec CBINC)', {
+            'fields': ('balance_month_to_date', 'output_vat_month_to_date')
+        }),
+        ('Monthly Balances (INC1-INC12 per spec)', {
+            'fields': (('balance_month_01', 'balance_month_02', 'balance_month_03'),
+                      ('balance_month_04', 'balance_month_05', 'balance_month_06'),
+                      ('balance_month_07', 'balance_month_08', 'balance_month_09'),
+                      ('balance_month_10', 'balance_month_11', 'balance_month_12'))
+        }),
+        ('Summary', {
+            'fields': ('year_to_date_balance',),
+            'classes': ('collapse',)
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+
+@admin.register(UnpresentedCheque)
+class UnpresentedChequeAdmin(admin.ModelAdmin):
+    """Admin for unpresented cheques (per spec CBCHEQ)"""
+    list_display = ('cheque_number', 'cheque_date', 'value', 'total', 'tag',
+                   'is_presented', 'days_outstanding', 'is_stale', 'requires_follow_up')
+    list_filter = ('tag', 'is_presented', 'is_stale', 'requires_follow_up', 'cheque_date')
+    search_fields = ('cheque_number', 'reference')
+    readonly_fields = ('days_outstanding', 'is_stale', 'requires_follow_up', 
+                      'created_at', 'updated_at')
+    date_hierarchy = 'cheque_date'
+    actions = ['mark_as_presented', 'flag_for_follow_up']
+    
+    fieldsets = (
+        ('Cheque Details (per spec CBCHEQ)', {
+            'fields': ('cheque_number', 'cheque_date', 'reference')
+        }),
+        ('Amounts (per spec)', {
+            'fields': ('value', 'tax_code', 'total')
+        }),
+        ('Reconciliation (per spec CBTAG)', {
+            'fields': ('tag', 'month_end_date')
+        }),
+        ('Bank Status', {
+            'fields': ('is_presented', 'presented_date')
+        }),
+        ('Aging Analysis', {
+            'fields': ('days_outstanding', 'is_stale', 'requires_follow_up')
+        }),
+        ('Notes', {
+            'fields': ('notes',),
+            'classes': ('collapse',)
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def mark_as_presented(self, request, queryset):
+        """Mark selected cheques as presented"""
+        count = 0
+        for cheque in queryset.filter(is_presented=False):
+            cheque.mark_as_presented()
+            count += 1
+        
+        self.message_user(
+            request,
+            f'{count} cheques marked as presented',
+            messages.SUCCESS
+        )
+    mark_as_presented.short_description = 'Mark selected as presented'
+    
+    def flag_for_follow_up(self, request, queryset):
+        """Manually flag cheques for follow-up"""
+        count = queryset.filter(requires_follow_up=False).update(requires_follow_up=True)
+        self.message_user(
+            request,
+            f'{count} cheques flagged for follow-up',
+            messages.SUCCESS
+        )
+    flag_for_follow_up.short_description = 'Flag for follow-up'

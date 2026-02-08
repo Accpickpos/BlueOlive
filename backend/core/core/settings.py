@@ -55,6 +55,7 @@ SHARED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
+    'drf_spectacular',
 
     # Platform management (blue_olive database only)
     'tenancy',  # Tenant and Shop models
@@ -69,6 +70,7 @@ TENANT_APPS = [
     'apps.cash_book',                            # Shop-specific business apps
     'apps.creditors',
     'apps.debtors',
+    'apps.general_ledger',
     'apps.stock_control',
     'apps.purchase_orders',
     'apps.settings',
@@ -85,6 +87,7 @@ SHOP_APP_LABELS = [
     'cash_book',
     'creditors',
     'debtors',
+    'general_ledger',
     'stock_control',
     'purchase_orders',
     'settings',
@@ -181,7 +184,8 @@ REST_FRAMEWORK = {
         'anon': '100/hour',
         'user': '1000/hour',
         'login': '5/minute',
-    }
+    },
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 
@@ -197,6 +201,8 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'tenancy.middleware.TenantMiddleware',  # Tenant middleware should be after auth
     'tenancy.schema_middleware.SchemaMiddleware',  # Set PostgreSQL search_path for shop schema
+    'core.logging_config.RequestLoggingMiddleware',  # Add request logging context
+    'core.versioning.APIVersioningMiddleware',  # API versioning middleware
 ]
 
 DEFAULT_TENANT_SLUG = 'dev'
@@ -337,42 +343,154 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Logging - Environment-configurable
+# Supports both text and JSON output based on LOG_FORMAT setting
+# Use 'json' for production (integrates with ELK, Splunk, CloudWatch)
+# Use 'text' for development/debugging
 DEFAULT_LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO' if not DEBUG else 'DEBUG')
 TENANCY_LOG_LEVEL = os.environ.get('TENANCY_LOG_LEVEL', 'DEBUG' if not DEBUG else 'DEBUG')
+LOG_FORMAT = os.environ.get('LOG_FORMAT', 'json' if not DEBUG else 'text')
 
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {message}',
-            'style': '{',
+if LOG_FORMAT == 'json':
+    # Structured JSON logging for production
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'formatters': {
+            'json': {
+                '()': 'core.logging_config.CustomJsonFormatter',
+                'format': '%(timestamp)s %(level)s %(name)s %(message)s'
+            },
         },
-        'simple': {
-            'format': '{levelname} {message}',
-            'style': '{',
+        'handlers': {
+            'console': {
+                'class': 'logging.StreamHandler',
+                'formatter': 'json',
+            },
+            'file': {
+                'class': 'logging.handlers.RotatingFileHandler',
+                'filename': os.path.join(BASE_DIR, 'logs', 'blueolive.log'),
+                'formatter': 'json',
+                'maxBytes': 10485760,  # 10MB
+                'backupCount': 10,
+            },
         },
-    },
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'formatter': 'verbose',
+        'root': {
+            'handlers': ['console', 'file'],
+            'level': DEFAULT_LOG_LEVEL,
         },
-    },
-    'root': {
-        'handlers': ['console'],
-        'level': DEFAULT_LOG_LEVEL,
-    },
-    'loggers': {
-        'django': {
+        'loggers': {
+            'django': {
+                'handlers': ['console', 'file'],
+                'level': DEFAULT_LOG_LEVEL,
+                'propagate': False,
+            },
+            'django.request': {
+                'handlers': ['console', 'file'],
+                'level': DEFAULT_LOG_LEVEL,
+                'propagate': False,
+            },
+            'tenancy': {
+                'handlers': ['console', 'file'],
+                'level': TENANCY_LOG_LEVEL,
+                'propagate': False,
+            },
+            'apps': {
+                'handlers': ['console', 'file'],
+                'level': DEFAULT_LOG_LEVEL,
+                'propagate': False,
+            },
+        },
+    }
+else:
+    # Text logging for development
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'formatters': {
+            'verbose': {
+                'format': '{levelname} {asctime} {module} {funcName}:{lineno} {message}',
+                'style': '{',
+            },
+            'simple': {
+                'format': '{levelname} {message}',
+                'style': '{',
+            },
+        },
+        'handlers': {
+            'console': {
+                'class': 'logging.StreamHandler',
+                'formatter': 'verbose',
+            },
+        },
+        'root': {
             'handlers': ['console'],
             'level': DEFAULT_LOG_LEVEL,
-            'propagate': False,
         },
-        'tenancy': {
-            'handlers': ['console'],
-            'level': TENANCY_LOG_LEVEL,
-            'propagate': False,
+        'loggers': {
+            'django': {
+                'handlers': ['console'],
+                'level': DEFAULT_LOG_LEVEL,
+                'propagate': False,
+            },
+            'tenancy': {
+                'handlers': ['console'],
+                'level': TENANCY_LOG_LEVEL,
+                'propagate': False,
+            },
         },
+    }
+
+
+# drf-spectacular configuration for API documentation
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'BlueOlive API',
+    'DESCRIPTION': 'Enterprise Management System API',
+    'VERSION': '1.0.0',
+    'SERVE_PERMISSIONS': ['rest_framework.permissions.IsAuthenticated'],
+    'SCHEMA_PATH_PREFIX': '/api/',
+}
+
+
+# Celery Configuration (Priority: HIGH - async tasks)
+# Handles: stock transactions, report generation, email notifications, bulk operations
+CELERY_BROKER_URL = os.environ.get(
+    'CELERY_BROKER_URL',
+    'redis://127.0.0.1:6379/0' if not DEBUG else 'memory://'
+)
+CELERY_RESULT_BACKEND = os.environ.get(
+    'CELERY_RESULT_BACKEND',
+    'redis://127.0.0.1:6379/0' if not DEBUG else 'cache+memory://'
+)
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = True
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes hard time limit
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 minutes soft time limit
+CELERY_RESULT_EXPIRES = 3600  # 1 hour
+CELERY_WORKER_PREFETCH_MULTIPLIER = 4
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+# Celery task routing (optional, for scaling specific task types)
+CELERY_TASK_ROUTING = {
+    'core.tasks.process_stock_transaction': {'queue': 'stock'},
+    'core.tasks.generate_report': {'queue': 'reports'},
+    'core.tasks.send_notification_email': {'queue': 'email'},
+}
+
+# Celery beat schedule (periodic tasks)
+CELERY_BEAT_SCHEDULE = {
+    'cleanup-old-tasks': {
+        'task': 'core.tasks.cleanup_old_tasks',
+        'schedule': 86400.0,  # Every 24 hours
     },
 }
+
+
+# API Versioning Configuration (Priority: HIGH)
+# Enables structured versioning at /api/v1/, /api/v2/, etc.
+API_VERSION = os.environ.get('API_VERSION', 'v1')
+API_VERSION_PATTERN = 'v[0-9]+'  # Regex for version matching

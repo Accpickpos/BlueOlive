@@ -1,50 +1,47 @@
 """
 Seed Stock Items data for development/testing
-Usage: python manage.py seed_stock_items
+Usage: 
+    python manage.py seed_stock_items                   # Seeds first tenant
+    python manage.py seed_stock_items --tenant-id 1     # Seeds specific tenant
+    python manage.py seed_stock_items --tenant-slug slug# Seeds specific tenant by slug
+    python manage.py seed_stock_items --dry-run          # Show what would be seeded
 """
-from django.core.management.base import BaseCommand
-from django.contrib.auth import get_user_model
+from apps.settings.management.commands.base_seed_command import BaseSeedCommand
 from apps.stock_control.models import StockItem
 from apps.settings.models import SalesDepartment, TaxCode
 from apps.creditors.models import Creditor
 from decimal import Decimal
 
-User = get_user_model()
 
+class Command(BaseSeedCommand):
+    COMMAND_TITLE = "Seeding Stock Items Data"
+    COMMAND_DESCRIPTION = "Stock items"
+    STEP_NUMBER = "4/4"
+    help = 'Seed stock items data for development/testing (uses bulk operations for performance)'
 
-class Command(BaseCommand):
-    help = 'Seed stock items data for development/testing'
-
-    def handle(self, *args, **options):
-        self.stdout.write(self.style.SUCCESS('Starting Stock Items Data Seeding...'))
+    def seed(self, user, tenant, shop, dry_run=False, **options):
+        """Seed stock items data."""
         
-        try:
-            user = User.objects.filter(is_staff=True).first()
-            if not user:
-                self.stdout.write(self.style.ERROR('No admin user found. Create one first.'))
-                return
-            
-            # Ensure departments exist
-            departments = SalesDepartment.objects.all()
-            if not departments.exists():
-                self.stdout.write(self.style.ERROR('No Sales Departments found. Run seed_settings first.'))
-                return
-            
-            # Get tax code (code=1 is default 14%)
-            tax_code = TaxCode.objects.filter(code=1).first()
-            if not tax_code:
-                self.stdout.write(self.style.ERROR('No Tax Code 1 (Standard) found. Run seed_settings first.'))
-                return
-            
-            # Get creditors (optional)
-            creditors = list(Creditor.objects.all())
-            
-            self._create_stock_items(user, departments, tax_code, creditors)
-            self.stdout.write(self.style.SUCCESS('✓ Stock Items data seeded successfully!'))
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f'✗ Error: {str(e)}'))
+        # Validate dependencies
+        departments = SalesDepartment.objects.all()
+        if not departments.exists():
+            self.error("No Sales Departments found. Run 'seed_settings' first.")
+            return
+        
+        # Get tax code (code=1 is default 14%)
+        tax_code = TaxCode.objects.filter(code=1).first()
+        if not tax_code:
+            self.error("No Tax Code 1 (Standard) found. Run 'seed_settings' first.")
+            return
+        
+        # Get creditors (optional)
+        creditors = list(Creditor.objects.all())
+        
+        self.print_section("Creating Stock Items (Bulk Operation)")
+        self._create_stock_items(user, departments, tax_code, creditors, dry_run)
 
-    def _create_stock_items(self, user, departments, tax_code, creditors):
+    def _create_stock_items(self, user, departments, tax_code, creditors, dry_run=False):
+        """Create stock items using bulk operations for better performance."""
         dept_list = list(departments)
         creditor_list = creditors if creditors else [None]
         
@@ -216,7 +213,22 @@ class Command(BaseCommand):
             },
         ]
         
+        # Check for existing items
+        existing_codes = set(StockItem.objects.values_list('stock_code', flat=True))
+        
+        # Prepare items for bulk creation and track what exists
+        items_to_create = []
+        created = 0
+        skipped = 0
+        
         for i, item_data in enumerate(stock_items_data):
+            stock_code = item_data['stock_code']
+            
+            if stock_code in existing_codes:
+                self.skip(f"Stock Item {stock_code}: {item_data['description']} (already exists)")
+                skipped += 1
+                continue
+            
             # Assign department and supplier
             dept_index = item_data['department']
             dept = dept_list[dept_index] if dept_index < len(dept_list) else dept_list[0]
@@ -228,12 +240,17 @@ class Command(BaseCommand):
             if tax_code:
                 item_data['tax_code'] = tax_code
             
-            obj, created = StockItem.objects.get_or_create(
-                stock_code=item_data['stock_code'],
-                defaults=item_data
-            )
-            
-            if created:
-                self.stdout.write(f'  ✓ Created Stock Item: {item_data["stock_code"]} - {item_data["description"]}')
-            else:
-                self.stdout.write(f'  - Stock Item already exists: {item_data["stock_code"]}')
+            items_to_create.append(StockItem(**item_data))
+            created += 1
+        
+        # Bulk create all new items
+        if not dry_run and items_to_create:
+            StockItem.objects.bulk_create(items_to_create, batch_size=100)
+            self.info(f"Bulk created {created} stock items")
+            for item in items_to_create:
+                self.success(f"Stock Item {item.stock_code}: {item.description}")
+        elif dry_run and items_to_create:
+            self.info(f"DRY RUN: Would bulk create {created} stock items")
+        
+        self.info(f"Total: {created} created, {skipped} skipped")
+

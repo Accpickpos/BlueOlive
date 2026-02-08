@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { AlertCircle, Plus, Trash2 } from 'lucide-react';
+import { useCreditorsAPI } from '@/lib/creditorsApi';
+import creditorsApi from '@/lib/creditorsApi';
 
 interface LineItem {
   id: string;
@@ -16,6 +18,8 @@ interface ExpenseInvoiceFormProps {
 }
 
 export default function ExpenseInvoiceForm({ onComplete }: ExpenseInvoiceFormProps) {
+  const { listSuppliers, listExpenseCategories } = useCreditorsAPI();
+  
   const [formData, setFormData] = useState({
     supplier: '',
     invoice_date: new Date().toISOString().split('T')[0],
@@ -41,11 +45,8 @@ export default function ExpenseInvoiceForm({ onComplete }: ExpenseInvoiceFormPro
 
   const fetchSuppliers = async () => {
     try {
-      const response = await fetch('/api/creditors/suppliers/');
-      if (response.ok) {
-        const data = await response.json();
-        setSuppliers(data.results || data);
-      }
+      const suppliers = await listSuppliers();
+      setSuppliers(suppliers);
     } catch (err) {
       console.error('Error fetching suppliers:', err);
     }
@@ -53,11 +54,8 @@ export default function ExpenseInvoiceForm({ onComplete }: ExpenseInvoiceFormPro
 
   const fetchExpenseCategories = async () => {
     try {
-      const response = await fetch('/api/creditors/expense-categories/');
-      if (response.ok) {
-        const data = await response.json();
-        setExpenseCategories(data.results || data);
-      }
+      const categories = await listExpenseCategories();
+      setExpenseCategories(categories);
     } catch (err) {
       console.error('Error fetching expense categories:', err);
     }
@@ -124,15 +122,10 @@ export default function ExpenseInvoiceForm({ onComplete }: ExpenseInvoiceFormPro
         })),
       };
 
-      const response = await fetch('/api/creditors/transactions/expense_invoice/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      const response = await creditorsApi.invoices.create(payload);
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || 'Failed to create transaction');
+      if (!response) {
+        throw new Error('Failed to create transaction');
       }
 
       setSuccess('Expense invoice recorded successfully!');

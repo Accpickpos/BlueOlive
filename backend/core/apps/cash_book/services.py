@@ -1,23 +1,41 @@
 """
-Cash Book Module Services
-Contains business logic for transactions, VAT calculations, reconciliation, and reporting
+Cash Book Module Services - Compatibility & Delegation Layer
+Acts as a facade to business_services.py for backward compatibility
+All business logic delegated to business_services.py for maintainability
+
+IMPORTANT: This is a compatibility layer. All new code should import from business_services.py directly.
 """
 from django.db import transaction as db_transaction
 from django.utils import timezone
 from django.conf import settings
 from decimal import Decimal
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Dict, List, Tuple, Optional
 
 from .models import (
     CashBookTransaction, OtherIncome, OtherExpense,
     BankDeposit, CashWithdrawal, BankTransfer, BankCharge, InterestReceived,
-    BankReconciliation, BankReconciliationItem
+    BankReconciliation, BankReconciliationItem, ExpenseCategoryBalance,
+    IncomeCategoryBalance, UnpresentedCheque
+)
+from .business_services import (
+    CashBookVATService, CashBookTransactionService, CategoryBalanceService,
+    UnpresentedChequeService, CashBookReportService
 )
 
 
+# ============================================================================
+# COMPATIBILITY EXPORTS - These delegate to business_services.py
+# ============================================================================
+
+
 class VATService:
-    """Service for VAT calculations"""
+    """
+    DEPRECATED: Use CashBookVATService from business_services.py
+    
+    This class provides backward compatibility only.
+    All new code should use CashBookVATService directly.
+    """
     
     @staticmethod
     def get_vat_rate():
@@ -29,6 +47,8 @@ class VATService:
         """
         Calculate VAT amount for a transaction.
         
+        DEPRECATED: Use CashBookVATService.calculate_tax_amount() instead
+        
         Args:
             amount: Transaction amount
             tax_code: 1 for VAT applicable (14%), 2 for no VAT (0%)
@@ -37,30 +57,24 @@ class VATService:
         Returns:
             VAT amount
         """
-        vat_rate = VATService.get_vat_rate()
-        
-        if tax_code != 1:  # No VAT
-            return Decimal('0')
-        
-        if is_inclusive:
-            # VAT is already included in amount
-            return amount - (amount / (1 + vat_rate))
-        else:
-            # VAT needs to be added to amount
-            return amount * vat_rate
+        return CashBookVATService.calculate_tax_amount(amount, tax_code, is_inclusive)
     
     @staticmethod
-    def get_net_amount(amount: Decimal, tax_code: int, is_inclusive: bool) -> Decimal:
-        """Get net amount before VAT"""
-        if tax_code != 1 or not is_inclusive:
-            return amount
-        
-        vat_rate = VATService.get_vat_rate()
-        return amount / (1 + vat_rate)
+    def get_net_amount(amount: Decimal, tax_code: int, is_inclusive: bool = True) -> Decimal:
+        """
+        DEPRECATED: Use CashBookVATService.get_net_amount() instead
+        Get net amount before VAT
+        """
+        return CashBookVATService.get_net_amount(amount, tax_code)
 
 
 class TransactionNumberGenerator:
-    """Service for generating unique transaction numbers"""
+    """
+    DEPRECATED: Use CashBookTransactionService._generate_transaction_number() instead
+    
+    Note: This class uses a different format than business_services.
+    New code should use the spec-compliant format from business_services.
+    """
     
     PREFIXES = {
         'RECEIPT': 'RCP',
@@ -77,16 +91,19 @@ class TransactionNumberGenerator:
     @staticmethod
     def generate(transaction_type: str, transaction_date: Optional[datetime] = None) -> str:
         """
-        Generate unique transaction number.
+        DEPRECATED: Use CashBookTransactionService methods instead
         
-        Format: PREFIX-YYYYMMDD-00001
+        Generate unique transaction number using legacy format: PREFIX-YYYYMMDD-00001
+        
+        Note: This format differs from spec. The spec requires YYYYMMDDNN format.
+        For new code, use CashBookTransactionService._generate_transaction_number()
         
         Args:
             transaction_type: Type of transaction
             transaction_date: Date for transaction (defaults to today)
             
         Returns:
-            Unique transaction number
+            Unique transaction number (legacy format)
         """
         if transaction_date is None:
             transaction_date = timezone.now().date()
@@ -105,15 +122,20 @@ class TransactionNumberGenerator:
 
 
 class BalanceCalculationService:
-    """Service for calculating running balances"""
+    """
+    Service for calculating and managing category balances.
+    
+    This class provides backward compatibility and integration with signals.
+    Business logic delegated to business_services.py
+    """
     
     @staticmethod
     def update_running_balances(from_transaction: Optional[CashBookTransaction] = None):
         """
         Recalculate running balances for all transactions.
         
-        If from_transaction is provided, only updates transactions from that point onward.
-        Otherwise, recalculates all balances from scratch.
+        This method handles cash/bank running balance calculations.
+        Category balance updates are handled by update_category_balances().
         
         Args:
             from_transaction: Starting transaction or None to recalculate all
@@ -174,6 +196,44 @@ class BalanceCalculationService:
         return {'cash': Decimal('0'), 'bank': Decimal('0'), 'total': Decimal('0')}
     
     @staticmethod
+    def update_category_balances(
+        transaction: CashBookTransaction,
+        value_excl_vat: Decimal = None,
+        tax_amount: Decimal = None
+    ):
+        """
+        Update category MTD balances when transaction is created/modified.
+        
+        This delegates to CategoryBalanceService in business_services.py
+        
+        Args:
+            transaction: The transaction being updated
+            value_excl_vat: Amount excluding VAT
+            tax_amount: VAT/Tax amount
+        """
+        if value_excl_vat is None:
+            value_excl_vat = transaction.value_excl_vat
+        if tax_amount is None:
+            tax_amount = transaction.tax_amount
+        
+        # Delegate to business_services for category-specific updates
+        if transaction.category_id:
+            if transaction.audit_type in [1, 2]:  # Income
+                CategoryBalanceService.update_income_category_balance(
+                    transaction.category_id,
+                    value_excl_vat,
+                    tax_amount,
+                    transaction.transaction_date
+                )
+            elif transaction.audit_type in [3, 4]:  # Expenses
+                CategoryBalanceService.update_expense_category_balance(
+                    transaction.category_id,
+                    value_excl_vat,
+                    tax_amount,
+                    transaction.transaction_date
+                )
+    
+    @staticmethod
     def get_account_balances() -> Dict[str, Dict[str, Decimal]]:
         """Get balances for each bank account"""
         accounts = CashBookTransaction.objects.filter(
@@ -199,7 +259,13 @@ class BalanceCalculationService:
 
 
 class TransactionService:
-    """Service for creating and managing transactions"""
+    """
+    DEPRECATED: Use CashBookTransactionService from business_services.py
+    
+    Provides backward compatibility for legacy transaction creation methods.
+    New code should use CashBookTransactionService.create_transaction() instead
+    which is spec-compliant with proper VAT separation.
+    """
     
     @staticmethod
     @db_transaction.atomic
@@ -216,7 +282,11 @@ class TransactionService:
         created_by: str = 'system'
     ) -> OtherIncome:
         """
-        Create an other income transaction.
+        Create an other income transaction (DEPRECATED).
+        
+        This method is maintained for backward compatibility.
+        For new code, use CashBookTransactionService.create_transaction()
+        with audit_type=1 or 2 (receivables/sundry income).
         
         Args:
             transaction_date: Date of transaction
@@ -234,7 +304,9 @@ class TransactionService:
             Created OtherIncome instance
         """
         # Calculate VAT
-        vat_amount = VATService.calculate_vat(amount, tax_code, is_vat_inclusive)
+        vat_amount = CashBookVATService.calculate_tax_amount(
+            amount, tax_code, is_vat_inclusive
+        )
         
         # Generate transaction number
         transaction_number = TransactionNumberGenerator.generate('OTHER_INCOME', transaction_date)
@@ -282,8 +354,15 @@ class TransactionService:
         petty_cash_slip_number: str = '',
         created_by: str = 'system'
     ) -> OtherExpense:
-        """Create an other expense transaction"""
-        vat_amount = VATService.calculate_vat(amount, tax_code, is_vat_inclusive)
+        """
+        Create an other expense transaction (DEPRECATED).
+        
+        For new code, use CashBookTransactionService.create_transaction()
+        with audit_type=3 or 4 (payables/expenses).
+        """
+        vat_amount = CashBookVATService.calculate_tax_amount(
+            amount, tax_code, is_vat_inclusive
+        )
         
         transaction_number = TransactionNumberGenerator.generate('OTHER_EXPENSE', transaction_date)
         
@@ -364,12 +443,14 @@ class TransactionService:
 
 
 class SummaryService:
-    """Service for generating financial summaries and reports"""
+    """DEPRECATED: Use CashBookReportService from business_services.py"""
     
     @staticmethod
     def get_period_summary(start_date, end_date) -> Dict:
         """
         Get summary of transactions for a period.
+        
+        Uses CashBookReportService.get_monthly_summary() for business logic.
         
         Args:
             start_date: Start date for period
@@ -513,3 +594,161 @@ class ReconciliationService:
             True if transaction cannot be modified (is reconciled), False otherwise
         """
         return transaction.is_reconciled
+
+
+class TransactionService:
+    """
+    DEPRECATED: Use CashBookTransactionService from business_services.py
+    
+    This class provides backward compatibility only.
+    All new code should use CashBookTransactionService directly.
+    """
+    
+    @staticmethod
+    def create_transaction_from_dict(data: dict) -> dict:
+        """
+        DEPRECATED: Use CashBookTransactionService.create_transaction() instead
+        
+        Create a transaction from a dictionary of data.
+        
+        Args:
+            data: Dictionary containing transaction data
+            
+        Returns:
+            Dictionary with success status and transaction data/error
+        """
+        try:
+            transaction = CashBookTransactionService.create_transaction(
+                transaction_date=data.get('transaction_date'),
+                account_type=data.get('account_type'),
+                is_debit=data.get('is_debit'),
+                amount=Decimal(str(data.get('amount', 0))),
+                transaction_type=data.get('transaction_type'),
+                description=data.get('description'),
+                reference=data.get('reference'),
+                bank_details=data.get('bank_details'),
+                category_id=data.get('category_id'),
+                value_excl_vat=Decimal(str(data.get('value_excl_vat', 0))),
+                tax_amount=Decimal(str(data.get('tax_amount', 0))),
+                tax_code=data.get('tax_code', 2),
+                created_by=data.get('created_by'),
+            )
+            return {'success': True, 'transaction': transaction}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    def get_transaction_with_details(transaction_id: int) -> dict:
+        """
+        DEPRECATED: Use ORM directly or CashBookTransactionService instead
+        
+        Get transaction with all related details.
+        """
+        try:
+            transaction = CashBookTransaction.objects.get(id=transaction_id)
+            return {
+                'success': True,
+                'transaction': transaction,
+            }
+        except CashBookTransaction.DoesNotExist:
+            return {'success': False, 'error': 'Transaction not found'}
+
+
+class SummaryService:
+    """
+    DEPRECATED: Use CashBookReportService from business_services.py
+    
+    This class provides backward compatibility only.
+    All new code should use CashBookReportService directly.
+    """
+    
+    @staticmethod
+    def get_summary_for_period(start_date: date, end_date: date) -> dict:
+        """
+        DEPRECATED: Use CashBookReportService.generate_period_summary() instead
+        
+        Get summary of transactions for a period.
+        
+        Args:
+            start_date: Start date for period
+            end_date: End date for period
+            
+        Returns:
+            Dictionary with summary data
+        """
+        return CashBookReportService.generate_period_summary(start_date, end_date)
+    
+    @staticmethod
+    def get_category_summary() -> list:
+        """
+        DEPRECATED: Use CashBookReportService.generate_category_summary() instead
+        
+        Get summary by category.
+        
+        Returns:
+            List of category summaries
+        """
+        return CashBookReportService.generate_category_summary()
+    
+    @staticmethod
+    def get_daily_summary(transaction_date: date) -> dict:
+        """
+        DEPRECATED: Use CashBookReportService methods instead
+        
+        Get summary for a specific day.
+        
+        Args:
+            transaction_date: Date to summarize
+            
+        Returns:
+            Dictionary with daily summary
+        """
+        transactions = CashBookTransaction.objects.filter(
+            transaction_date=transaction_date
+        ).order_by('transaction_number')
+        
+        total_debit = Decimal('0')
+        total_credit = Decimal('0')
+        total_vat = Decimal('0')
+        
+        for txn in transactions:
+            if txn.is_debit:
+                total_debit += txn.amount
+            else:
+                total_credit += txn.amount
+            total_vat += txn.tax_amount or Decimal('0')
+        
+        return {
+            'date': transaction_date,
+            'transaction_count': transactions.count(),
+            'total_debit': total_debit,
+            'total_credit': total_credit,
+            'net': total_debit - total_credit,
+            'total_vat': total_vat,
+        }
+
+
+# ============================================================================
+# EXPORT BUSINESS_SERVICES FOR DIRECT ACCESS
+# ============================================================================
+# New code should import directly from business_services.py:
+# from .business_services import CashBookVATService, CashBookTransactionService, etc
+# 
+# But these are exposed here for convenience:
+__all__ = [
+    # Main services (prefer importing from business_services.py)
+    'CashBookVATService',
+    'CashBookTransactionService',
+    'CategoryBalanceService',
+    'UnpresentedChequeService',
+    'CashBookReportService',
+    
+    # Compatibility services (deprecated, use above instead)
+    'VATService',
+    'TransactionNumberGenerator',
+    'BalanceCalculationService',
+    'TransactionService',
+    'SummaryService',
+    'ReconciliationService',
+]
+

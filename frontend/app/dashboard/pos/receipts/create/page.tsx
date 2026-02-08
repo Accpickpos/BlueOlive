@@ -478,8 +478,5 @@ export default function CreateReceipt() {
       </div>
     </div>
   );
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-right"
-                      min="0"
-                      step="0.01"
-                    />
+}
 

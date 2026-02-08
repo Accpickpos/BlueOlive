@@ -10,7 +10,7 @@ class PurchaseOrderLineInline(admin.TabularInline):
     model = PurchaseOrderLine
     extra = 0
     readonly_fields = (
-        'quantity_received', 'quantity_outstanding', 'total_exclusive',
+        'quantity_delivered', 'quantity_outstanding', 'total_exclusive',
         'total_vat', 'total_inclusive', 'outstanding_exclusive',
         'outstanding_vat', 'outstanding_inclusive', 'is_fully_received',
         'created_at', 'updated_at'
@@ -35,12 +35,12 @@ class PurchaseOrderTemplateLineInline(admin.TabularInline):
 class PurchaseOrderAdmin(admin.ModelAdmin):
     list_display = (
         'order_number', 'supplier', 'order_date', 'delivery_date',
-        'status', 'total_quantity_ordered', 'total_value_inclusive'
+        'status', 'quantity_ordered', 'total_value_inclusive'
     )
     list_filter = ('status', 'order_date', 'delivery_date', 'supplier')
     search_fields = ('order_number', 'supplier__name')
     readonly_fields = (
-        'order_number', 'status', 'total_quantity_ordered', 'total_quantity_received',
+        'order_number', 'status', 'quantity_ordered', 'total_quantity_received',
         'total_quantity_outstanding', 'total_value_exclusive', 'total_value_vat',
         'total_value_inclusive', 'outstanding_value_exclusive', 'outstanding_value_vat',
         'outstanding_value_inclusive', 'created_at', 'updated_at', 'cancelled_at'
@@ -73,13 +73,13 @@ class PurchaseOrderAdmin(admin.ModelAdmin):
 @admin.register(PurchaseOrderLine)
 class PurchaseOrderLineAdmin(admin.ModelAdmin):
     list_display = (
-        'purchase_order', 'line_number', 'stock_item', 'quantity_ordered',
-        'quantity_received', 'unit_cost', 'total_exclusive'
+        'purchase_order', 'line_number', 'stock_item', 'quantity',
+        'quantity_delivered', 'base_price', 'total_exclusive'
     )
     list_filter = ('purchase_order', 'is_fully_received', 'created_at')
     search_fields = ('purchase_order__order_number', 'stock_item__stock_code')
     readonly_fields = (
-        'quantity_received', 'quantity_outstanding', 'total_exclusive',
+        'quantity_delivered', 'quantity_outstanding', 'total_exclusive',
         'total_vat', 'total_inclusive', 'outstanding_exclusive',
         'outstanding_vat', 'outstanding_inclusive', 'is_fully_received',
         'created_at', 'updated_at'

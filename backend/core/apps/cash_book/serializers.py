@@ -5,7 +5,8 @@ from rest_framework import serializers
 from .models import (
     IncomeCategory, CashBookTransaction, OtherIncome, OtherExpense,
     BankDeposit, CashWithdrawal, BankTransfer, BankCharge, InterestReceived,
-    BankReconciliation, BankReconciliationItem, CashFloat
+    BankReconciliation, BankReconciliationItem, CashFloat, ExpenseCategoryBalance,
+    IncomeCategoryBalance, UnpresentedCheque
 )
 
 
@@ -16,26 +17,66 @@ class IncomeCategorySerializer(serializers.ModelSerializer):
 
 
 class CashBookTransactionSerializer(serializers.ModelSerializer):
-    is_debit = serializers.BooleanField(read_only=True)
-    is_credit = serializers.BooleanField(read_only=True)
-    
-    class Meta:
-        model = CashBookTransaction
-        fields = '__all__'
-        read_only_fields = ('running_balance_cash', 'running_balance_bank', 
-                           'is_reconciled', 'reconciliation', 'is_archived', 'archive_month')
-
-
-class CashBookTransactionListSerializer(serializers.ModelSerializer):
-    """Simplified serializer for transaction listings"""
-    is_debit = serializers.BooleanField(read_only=True)
-    is_credit = serializers.BooleanField(read_only=True)
+    is_receipt = serializers.BooleanField(read_only=True)
+    is_payment = serializers.BooleanField(read_only=True)
+    audit_type_name = serializers.SerializerMethodField(read_only=True)
+    recon_tag_name = serializers.SerializerMethodField(read_only=True)
+    gl_account = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = CashBookTransaction
         fields = ('id', 'transaction_type', 'transaction_number', 'transaction_date',
-                 'amount', 'description', 'reference', 'account_type', 
-                 'is_reconciled', 'is_debit', 'is_credit')
+                 'amount', 'value_excl_vat', 'tax_amount', 'total_incl_vat',
+                 'audit_type', 'audit_type_name', 'category_id', 'gl_account',
+                 'reference', 'description', 'account_type', 'bank_account_number',
+                 'bank_recon_tag', 'recon_tag_name', 'is_reconciled', 'reconciliation',
+                 'running_balance_cash', 'running_balance_bank', 'is_receipt', 'is_payment',
+                 'is_archived', 'archive_month', 'created_by', 'created_at', 'updated_at')
+        read_only_fields = ('running_balance_cash', 'running_balance_bank', 
+                           'is_reconciled', 'reconciliation', 'is_archived', 'archive_month',
+                           'transaction_number', 'created_at', 'updated_at')
+    
+    def get_audit_type_name(self, obj):
+        """Return human-readable audit type name"""
+        audit_names = {
+            1: 'Accounts Receivable Receipts',
+            2: 'Sundry Income',
+            3: 'Accounts Payable Payments',
+            4: 'Expenses'
+        }
+        return audit_names.get(obj.audit_type, 'Unknown')
+    
+    def get_recon_tag_name(self, obj):
+        """Return human-readable reconciliation tag"""
+        tag_names = {
+            'R': 'Reconciled',
+            'P': 'Pending',
+            'D': 'Disputed',
+            'U': 'Unreconciled'
+        }
+        return tag_names.get(obj.bank_recon_tag, 'Unknown')
+    
+    def get_gl_account(self, obj):
+        """Return GL account code based on audit type"""
+        gl_accounts = {
+            1: '1100',
+            2: '2000',
+            3: '2100',
+            4: '4000'
+        }
+        return gl_accounts.get(obj.audit_type, '9999')
+
+
+class CashBookTransactionListSerializer(serializers.ModelSerializer):
+    """Simplified serializer for transaction listings"""
+    is_receipt = serializers.BooleanField(read_only=True)
+    is_payment = serializers.BooleanField(read_only=True)
+    
+    class Meta:
+        model = CashBookTransaction
+        fields = ('id', 'transaction_type', 'transaction_number', 'transaction_date',
+                 'value_excl_vat', 'total_incl_vat', 'description', 'reference', 'account_type', 
+                 'audit_type', 'bank_recon_tag', 'is_reconciled', 'is_receipt', 'is_payment')
 
 
 # Other Income Serializers
@@ -52,13 +93,19 @@ class OtherIncomeSerializer(serializers.ModelSerializer):
 class CreateOtherIncomeSerializer(serializers.Serializer):
     transaction_date = serializers.DateField()
     income_category_id = serializers.IntegerField()
-    amount = serializers.DecimalField(max_digits=15, decimal_places=2)
-    is_vat_inclusive = serializers.BooleanField(default=True)
-    tax_code = serializers.IntegerField(default=1)
+    value_excl_vat = serializers.DecimalField(max_digits=12, decimal_places=2)
+    tax_amount = serializers.DecimalField(max_digits=12, decimal_places=2, 
+                                         required=False, allow_null=True)
+    total_incl_vat = serializers.DecimalField(max_digits=12, decimal_places=2)
+    tax_code = serializers.IntegerField(default=1, help_text="1=14%, 2=0%, 3=Exempt, 4=Foreign")
+    audit_type = serializers.IntegerField(default=2, help_text="2 = Sundry Income")
+    category_id = serializers.IntegerField(required=False, allow_null=True)
     description = serializers.CharField(max_length=200)
-    reference = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    reference = serializers.CharField(max_length=20, required=False, allow_blank=True)
     paid_into = serializers.ChoiceField(choices=['CASH', 'BANK'], default='CASH')
     bank_account_number = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    bank_recon_tag = serializers.ChoiceField(choices=['R', 'P', 'D', 'U'], 
+                                            default='U', required=False)
 
 
 # Other Expense Serializers
@@ -75,14 +122,20 @@ class OtherExpenseSerializer(serializers.ModelSerializer):
 class CreateOtherExpenseSerializer(serializers.Serializer):
     transaction_date = serializers.DateField()
     expense_category_id = serializers.IntegerField()
-    amount = serializers.DecimalField(max_digits=15, decimal_places=2)
-    is_vat_inclusive = serializers.BooleanField(default=True)
-    tax_code = serializers.IntegerField(default=1)
+    value_excl_vat = serializers.DecimalField(max_digits=12, decimal_places=2)
+    tax_amount = serializers.DecimalField(max_digits=12, decimal_places=2,
+                                        required=False, allow_null=True)
+    total_incl_vat = serializers.DecimalField(max_digits=12, decimal_places=2)
+    tax_code = serializers.IntegerField(default=1, help_text="1=14%, 2=0%, 3=Exempt, 4=Foreign")
+    audit_type = serializers.IntegerField(default=4, help_text="4 = Expenses")
+    category_id = serializers.IntegerField(required=False, allow_null=True)
     description = serializers.CharField(max_length=200)
-    reference = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    reference = serializers.CharField(max_length=20, required=False, allow_blank=True)
     paid_from = serializers.ChoiceField(choices=['CASH', 'BANK'], default='CASH')
     bank_account_number = serializers.CharField(max_length=50, required=False, allow_blank=True)
     petty_cash_slip_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    bank_recon_tag = serializers.ChoiceField(choices=['R', 'P', 'D', 'U'],
+                                            default='U', required=False)
 
 
 # Bank Deposit Serializers
@@ -105,6 +158,13 @@ class CreateBankDepositSerializer(serializers.Serializer):
     
     cash_amount = serializers.DecimalField(max_digits=15, decimal_places=2, default=0)
     cheque_amount = serializers.DecimalField(max_digits=15, decimal_places=2, default=0)
+    value_excl_vat = serializers.DecimalField(max_digits=12, decimal_places=2)
+    tax_amount = serializers.DecimalField(max_digits=12, decimal_places=2,
+                                         required=False, allow_null=True)
+    total_incl_vat = serializers.DecimalField(max_digits=12, decimal_places=2)
+    audit_type = serializers.IntegerField(default=1, help_text="1 = Accounts Receivable")
+    category_id = serializers.IntegerField(required=False, allow_null=True)
+    tax_code = serializers.IntegerField(default=1)
     
     # Notes/coins breakdown (optional)
     notes_200 = serializers.IntegerField(default=0, required=False)
@@ -120,8 +180,10 @@ class CreateBankDepositSerializer(serializers.Serializer):
     coins_010 = serializers.IntegerField(default=0, required=False)
     coins_005 = serializers.IntegerField(default=0, required=False)
     
-    reference = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    reference = serializers.CharField(max_length=20, required=False, allow_blank=True)
     description = serializers.CharField(max_length=200, default='Bank deposit')
+    bank_recon_tag = serializers.ChoiceField(choices=['R', 'P', 'D', 'U'],
+                                            default='U', required=False)
 
 
 # Cash Withdrawal Serializers
@@ -137,11 +199,16 @@ class CashWithdrawalSerializer(serializers.ModelSerializer):
 class CreateCashWithdrawalSerializer(serializers.Serializer):
     transaction_date = serializers.DateField()
     bank_account_number = serializers.CharField(max_length=50)
-    amount = serializers.DecimalField(max_digits=15, decimal_places=2)
+    value_excl_vat = serializers.DecimalField(max_digits=12, decimal_places=2)
+    vat_amount = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_incl_vat = serializers.DecimalField(max_digits=12, decimal_places=2)
     withdrawal_slip_number = serializers.CharField(max_length=50, required=False, allow_blank=True)
     withdrawn_by = serializers.CharField(max_length=100)
     purpose = serializers.CharField(max_length=200)
-    reference = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    reference = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    audit_type = serializers.IntegerField(default=3)
+    category_number = serializers.IntegerField(required=False, allow_null=True)
+    tax_code = serializers.IntegerField(default=1)
 
 
 # Bank Transfer Serializers
@@ -158,10 +225,16 @@ class CreateBankTransferSerializer(serializers.Serializer):
     transaction_date = serializers.DateField()
     from_account = serializers.CharField(max_length=50)
     to_account = serializers.CharField(max_length=50)
-    amount = serializers.DecimalField(max_digits=15, decimal_places=2)
+    value_excl_vat = serializers.DecimalField(max_digits=12, decimal_places=2)
+    vat_amount = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_incl_vat = serializers.DecimalField(max_digits=12, decimal_places=2)
     transfer_reference = serializers.CharField(max_length=100, required=False, allow_blank=True)
     transfer_fee = serializers.DecimalField(max_digits=15, decimal_places=2, default=0, required=False)
     description = serializers.CharField(max_length=200, default='Bank transfer')
+    reference = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    audit_type = serializers.IntegerField(default=3)
+    category_number = serializers.IntegerField(required=False, allow_null=True)
+    tax_code = serializers.IntegerField(default=1)
 
 
 # Bank Charge Serializers
@@ -177,12 +250,18 @@ class BankChargeSerializer(serializers.ModelSerializer):
 class CreateBankChargeSerializer(serializers.Serializer):
     transaction_date = serializers.DateField()
     bank_account_number = serializers.CharField(max_length=50)
-    amount = serializers.DecimalField(max_digits=15, decimal_places=2)
+    value_excl_vat = serializers.DecimalField(max_digits=12, decimal_places=2)
+    vat_amount = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_incl_vat = serializers.DecimalField(max_digits=12, decimal_places=2)
     charge_type = serializers.ChoiceField(choices=[
         'MONTHLY_FEE', 'TRANSACTION_FEE', 'ATM_FEE', 'OVERDRAFT', 'CARD_FEE', 'OTHER'
     ])
     statement_reference = serializers.CharField(max_length=100, required=False, allow_blank=True)
     description = serializers.CharField(max_length=200, required=False)
+    reference = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    audit_type = serializers.IntegerField(default=4)
+    category_number = serializers.IntegerField(required=False, allow_null=True)
+    tax_code = serializers.IntegerField(default=1)
 
 
 # Interest Received Serializers
@@ -198,12 +277,17 @@ class InterestReceivedSerializer(serializers.ModelSerializer):
 class CreateInterestReceivedSerializer(serializers.Serializer):
     transaction_date = serializers.DateField()
     bank_account_number = serializers.CharField(max_length=50)
-    amount = serializers.DecimalField(max_digits=15, decimal_places=2)
+    value_excl_vat = serializers.DecimalField(max_digits=12, decimal_places=2)
+    vat_amount = serializers.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_incl_vat = serializers.DecimalField(max_digits=12, decimal_places=2)
     interest_period_start = serializers.DateField()
     interest_period_end = serializers.DateField()
     interest_rate = serializers.DecimalField(max_digits=5, decimal_places=2, default=0)
-    reference = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    reference = serializers.CharField(max_length=20, required=False, allow_blank=True)
     description = serializers.CharField(max_length=200, default='Interest received')
+    audit_type = serializers.IntegerField(default=2)
+    category_number = serializers.IntegerField(required=False, allow_null=True)
+    tax_code = serializers.IntegerField(default=1)
 
 
 # Bank Reconciliation Serializers
@@ -330,3 +414,100 @@ class BankAccountBalanceSerializer(serializers.Serializer):
     current_balance = serializers.DecimalField(max_digits=15, decimal_places=2)
     unreconciled_items = serializers.IntegerField()
     last_reconciliation_date = serializers.DateField(allow_null=True)
+
+
+# Expense Category Balance Serializers
+class ExpenseCategoryBalanceSerializer(serializers.ModelSerializer):
+    get_monthly_balances = serializers.SerializerMethodField(read_only=True)
+    year_to_date_balance = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    
+    class Meta:
+        model = ExpenseCategoryBalance
+        fields = '__all__'
+        read_only_fields = ('created_at', 'updated_at')
+    
+    def get_monthly_balances(self, obj):
+        return obj.get_monthly_balances
+
+
+class UpdateExpenseCategoryBalanceSerializer(serializers.Serializer):
+    """Serializer for updating expense category balances"""
+    balance_month_to_date = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    input_vat_month_to_date = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    
+    balance_month_01 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_02 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_03 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_04 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_05 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_06 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_07 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_08 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_09 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_10 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_11 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_12 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+
+
+# Income Category Balance Serializers
+class IncomeCategoryBalanceSerializer(serializers.ModelSerializer):
+    get_monthly_balances = serializers.SerializerMethodField(read_only=True)
+    year_to_date_balance = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    
+    class Meta:
+        model = IncomeCategoryBalance
+        fields = '__all__'
+        read_only_fields = ('created_at', 'updated_at')
+    
+    def get_monthly_balances(self, obj):
+        return obj.get_monthly_balances
+
+
+class UpdateIncomeCategoryBalanceSerializer(serializers.Serializer):
+    """Serializer for updating income category balances"""
+    balance_month_to_date = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    output_vat_month_to_date = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    
+    balance_month_01 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_02 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_03 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_04 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_05 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_06 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_07 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_08 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_09 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_10 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_11 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    balance_month_12 = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+
+
+# Unpresented Cheque Serializers
+class UnpresentedChequeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UnpresentedCheque
+        fields = '__all__'
+        read_only_fields = ('created_at', 'updated_at')
+
+
+class UnpresentedChequeListSerializer(serializers.ModelSerializer):
+    """Simplified serializer for cheque listings"""
+    class Meta:
+        model = UnpresentedCheque
+        fields = ('id', 'cheque_number', 'cheque_date', 'value', 'total', 
+                 'tag', 'is_presented', 'presented_date', 'month_end_date')
+
+
+class CreateUnpresentedChequeSerializer(serializers.Serializer):
+    cheque_number = serializers.CharField(max_length=20)
+    cheque_date = serializers.DateField()
+    reference = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    value = serializers.DecimalField(max_digits=10, decimal_places=2)
+    tax_code = serializers.IntegerField(default=1)
+    total = serializers.DecimalField(max_digits=10, decimal_places=2)
+    month_end_date = serializers.DateField()
+    tag = serializers.ChoiceField(choices=['R', 'P', 'D', 'U'], default='U')
+
+
+class MarkChequeAsPresentedSerializer(serializers.Serializer):
+    presented_date = serializers.DateField(required=False, allow_null=True)

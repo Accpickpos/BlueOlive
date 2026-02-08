@@ -49,7 +49,7 @@ export default function SalesDepartmentsEnquiry() {
     setLoading(true);
     setError('');
     try {
-      const response = await apiRequest(`/api/settings/departments/${departmentId}/`);
+      const response = await apiRequest(`/api/v1/settings/departments/${departmentId}/`);
       const responseData = (response as any).data || (response as any);
       
       // Convert string numbers to actual numbers
@@ -78,7 +78,7 @@ export default function SalesDepartmentsEnquiry() {
     setError('');
     setDepartmentData(null);
     try {
-      const response = await apiRequest('/api/settings/departments/?is_active=true');
+      const response = await apiRequest('/api/v1/settings/departments/?is_active=true');
       const responseData = (response as any).data || (response as any);
       const departments: any[] = responseData.results || (Array.isArray(responseData) ? responseData : []);
       
