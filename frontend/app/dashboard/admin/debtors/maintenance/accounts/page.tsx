@@ -55,7 +55,7 @@ export default function AccountsPage() {
           <h1 className="text-3xl font-bold">Debtor Accounts</h1>
           <p className="text-gray-600 mt-1">Manage customer accounts and credit settings</p>
         </div>
-        <Link href="/dashboard/admin/debtors/maintenance/new">
+        <Link href="/dashboard/admin/debtors/maintenance/accounts/new">
           <Button className="bg-blue-600 hover:bg-blue-700">
             <Plus className="w-4 h-4 mr-2" />
             New Account
@@ -145,16 +145,16 @@ export default function AccountsPage() {
               <tbody>
                 {accounts.map((account: DebtorAccount) => (
                   <tr key={account.id} className="border-b hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 font-medium">{account.dno}</td>
-                    <td className="px-4 py-3">{account.dname}</td>
-                    <td className="px-4 py-3 text-gray-600">{account.dcontact || '-'}</td>
-                    <td className="px-4 py-3 text-gray-600">{account.darea_name || '-'}</td>
+                    <td className="px-4 py-3 font-medium">{account.customer_number}</td>
+                    <td className="px-4 py-3">{account.name}</td>
+                    <td className="px-4 py-3 text-gray-600">{account.contact_person || '-'}</td>
+                    <td className="px-4 py-3 text-gray-600">{account.area_code ?? '-'}</td>
                     <td className="px-4 py-3 text-right font-semibold text-blue-600">
-                      ${account.total_balance?.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                      {typeof account.total_balance === 'number' ? `$${account.total_balance.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '-'}
                     </td>
-                    <td className="px-4 py-3 text-right">${account.dclimit?.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right">{typeof account.credit_limit === 'number' ? `$${account.credit_limit.toLocaleString()}` : '-'}</td>
                     <td className="px-4 py-3 text-center">
-                      {account.blockflag ? (
+                      {account.block_flag ? (
                         <Badge className="bg-red-500">Blocked</Badge>
                       ) : account.is_active ? (
                         <Badge className="bg-green-500">Active</Badge>
@@ -164,15 +164,21 @@ export default function AccountsPage() {
                     </td>
                     <td className="px-4 py-3 text-center">
                       <div className="flex justify-center gap-2">
-                        <Link href={`/dashboard/admin/debtors/maintenance/${account.id}`}>
-                          <Button variant="outline" size="sm">
+                        <Link href={`/dashboard/admin/debtors/maintenance/accounts/${account.id}/view`}>
+                          <Button variant="outline" size="sm" title="View details">
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        </Link>
+                        <Link href={`/dashboard/admin/debtors/maintenance/accounts/${account.id}/edit`}>
+                          <Button variant="outline" size="sm" title="Edit account">
                             <Edit2 className="w-4 h-4" />
                           </Button>
                         </Link>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleDelete(account.id!, account.dname)}
+                          onClick={() => handleDelete(account.id!, account.name)}
+                          title="Delete account"
                         >
                           <Trash2 className="w-4 h-4 text-red-600" />
                         </Button>

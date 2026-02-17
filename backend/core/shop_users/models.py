@@ -43,16 +43,17 @@ class ShopUser(AbstractUser):
         help_text='List of shop IDs this user is assigned to'
     )
     
-    # Role field - simplified to 3 core roles matching API specification
+    # Role field - simplified to 4 core roles matching API specification
     ROLE_CHOICES = [
         ('ADMIN', 'Admin - Full tenant access'),
         ('MANAGER', 'Manager - Can manage shop users'),
-        ('USER', 'User - Basic access'),
+        ('STAFF', 'Staff - Staff member with limited access'),
+        ('CASHIER', 'Cashier - Basic access'),
     ]
     role = models.CharField(
         max_length=20,
         choices=ROLE_CHOICES,
-        default='USER'
+        default='CASHIER'
     )
     
     # Additional fields
@@ -122,9 +123,13 @@ class ShopUser(AbstractUser):
     
     def save(self, *args, **kwargs):
         """
-        Override save to ensure tenant_id is set.
+        Override save to ensure tenant_id is set and is_staff is synced with role.
         Superusers can have tenant_id = None.
         """
+        # Sync is_staff with role - staff members, managers, and admins have is_staff=True
+        role = getattr(self, 'role', 'CASHIER') or 'CASHIER'  # Default to CASHIER if not set
+        self.is_staff = role in ('ADMIN', 'MANAGER', 'STAFF')
+        
         if not self.tenant_id and not self.is_superuser:
             from tenancy.tenant_context import get_current_tenant
             tenant = get_current_tenant()

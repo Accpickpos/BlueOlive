@@ -6,52 +6,62 @@
 // ============ Debtor Account ============
 export interface DebtorAccount {
   id: number;
-  dno: string; // Account number
-  dname: string; // Debtor name
-  dsname?: string; // Short name
-  dcontact?: string; // Contact person
-  dtel?: string; // Telephone
-  dfax?: string; // Fax
+  customer_number: number; // Account number
+  name: string; // Debtor name
+  short_name?: string; // Short name
+  contact_person?: string; // Contact person
+  phone?: string; // Telephone
+  phone2?: string; // Alternative phone
+  fax?: string; // Fax
   email?: string; // Email address
-  dadd1?: string; // Postal address line 1
-  dadd2?: string; // Postal address line 2
-  dadd3?: string; // Postal address line 3
-  delad1?: string; // Delivery address line 1
-  delad2?: string; // Delivery address line 2
-  delad3?: string; // Delivery address line 3
-  delad4?: string; // Delivery address line 4
-  dtaxno?: string; // Tax/VAT number
-  darea?: number; // Sales area ID
-  darea_name?: string; // Sales area name
-  acctype?: 'BF' | 'OI' | 'CS'; // Account type (Balance Forward, Open Item, Cash)
-  price?: number; // Price list (1-3)
-  ddiscper?: number; // Trade discount %
-  pdisc?: number; // Prompt discount %
-  dclimit?: number; // Credit limit
-  dintflag?: boolean; // Charge interest flag
-  dcrnt?: number; // Current aging bucket
-  d30?: number; // 30 days aging bucket
-  d60?: number; // 60 days aging bucket
-  d90?: number; // 90 days aging bucket
-  d120?: number; // 120 days aging bucket
-  d150?: number; // 150 days aging bucket
-  d180?: number; // 180+ days aging bucket
-  dsalesm?: number; // Sales month-to-date
-  dsalesy?: number; // Sales year-to-date
-  dprofitm?: number; // Profit month-to-date
-  dprofity?: number; // Profit year-to-date
-  damtlpd?: number; // Amount last paid
-  ddatlpd?: string; // Date last paid
-  blockflag?: boolean; // Blocked flag
-  is_active: boolean; // Active status
+  address_line1?: string; // Postal address line 1
+  address_line2?: string; // Postal address line 2
+  address_line3?: string; // Postal address line 3
+  postal_code?: string; // Postal code
+  delivery_address1?: string; // Delivery address line 1
+  delivery_address2?: string; // Delivery address line 2
+  delivery_address3?: string; // Delivery address line 3
+  delivery_address4?: string; // Delivery address line 4
+  tax_number?: string; // Tax/VAT number
+  vat_reference?: string; // VAT registration number
+  area_code?: number; // Sales area ID
+  account_type?: '' | 'O' | 'C' | 'N' | 'B'; // Account type
+  price_level?: number; // Price list (1-3)
+  payment_terms?: number; // Payment terms (days)
+  discount_percentage?: number; // Standard discount %
+  prompt_payment_discount?: number; // Prompt discount %
+  discount_printable?: string | boolean; // Discount print flag
+  credit_limit?: number; // Credit limit
+  positive_balance_only?: string | boolean; // Positive balance flag
+  interest_flag?: string | boolean; // Charge interest flag
+  block_flag?: string | boolean; // Blocked flag
+  balance_brought_forward?: number; // Balance brought forward
+  balance_current?: number; // Current aging bucket
+  balance_30_days?: number; // 30 days aging bucket
+  balance_60_days?: number; // 60 days aging bucket
+  balance_90_days?: number; // 90 days aging bucket
+  balance_120_days?: number; // 120 days aging bucket
+  balance_150_days?: number; // 150 days aging bucket
+  balance_180_days?: number; // 180+ days aging bucket
+  sales_month?: number; // Sales month-to-date
+  sales_year?: number; // Sales year-to-date
+  profit_month?: number; // Profit month-to-date
+  profit_year?: number; // Profit year-to-date
+  last_payment_amount?: number; // Amount last paid
+  last_payment_date?: string; // Date last paid
+  date_opened?: string; // Date account opened
+  notes?: string; // Additional notes
   total_balance?: number; // Sum of all aging buckets
-  days_sales_outstanding?: number; // DSO metric
-  last_transaction_date?: string; // Last transaction date
+  overdue_balance?: number; // Sum of overdue amounts (30+ days)
+  available_credit?: number; // Available credit
+  credit_utilization_pct?: number; // Credit utilization percentage
+  is_blocked_flag?: boolean; // Is account blocked
+  is_active: boolean; // Active status
   created_at?: string;
   updated_at?: string;
 }
 
-export interface DebtorCreateData extends Omit<DebtorAccount, 'id' | 'total_balance' | 'days_sales_outstanding' | 'last_transaction_date' | 'created_at' | 'updated_at'> {}
+export interface DebtorCreateData extends Omit<DebtorAccount, 'id' | 'total_balance' | 'overdue_balance' | 'available_credit' | 'credit_utilization_pct' | 'is_blocked_flag' | 'created_at' | 'updated_at'> {}
 
 export interface DebtorEditData extends Partial<DebtorCreateData> {}
 

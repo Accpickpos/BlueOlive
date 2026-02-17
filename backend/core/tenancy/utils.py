@@ -22,7 +22,11 @@ def register_tenant_connection(tenant):
     # Get the shop's schema name from the first shop associated with this tenant
     # This determines which schema migrations will create tables in
     shop = tenant.shops.first()
-    search_path = shop.schema_name if shop else "public"  # Fallback to public if no shop
+    shop_schema = shop.schema_name if shop else "public"  # Fallback to public if no shop
+    
+    # CRITICAL: shop_users table is ALWAYS in public schema, not the shop schema
+    # So we must prioritize public in search_path for authentication to work
+    # The shop schema is used for shop-specific data (invoices, products, etc.)
     
     db_config = {
         "ENGINE": "django.db.backends.postgresql",
@@ -32,11 +36,10 @@ def register_tenant_connection(tenant):
         "HOST": tenant.db_host,
         "PORT": tenant.db_port,
         "CONN_MAX_AGE": 60,  # tune as needed
-        # CRITICAL: Set options so PostgreSQL sets search_path BEFORE running any queries
-        # This is applied at the connection level by psycopg2 before Django uses the connection
-        # Use the shop's schema as primary, with public as fallback for system tables
+        # CRITICAL: Set search_path to public FIRST (for shop_users), then shop schema
+        # This ensures shop_users queries hit public schema while shop data queries hit shop schema
         "OPTIONS": {
-            'options': f'-c search_path="{search_path}",public -c statement_timeout=0'
+            'options': f'-c search_path=public,"{shop_schema}" -c statement_timeout=0'
         },
         "TIME_ZONE": settings.TIME_ZONE,
         "AUTOCOMMIT": True,

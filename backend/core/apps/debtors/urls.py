@@ -14,6 +14,7 @@ router.register(r'open-items', views.DebteopenViewSet, basename='debtopen')
 router.register(r'post-dated-cheques', views.DpdcViewSet, basename='dpdc')
 router.register(r'audit', views.DebtorAuditViewSet, basename='debtor-audit')
 router.register(r'sales-areas', views.DareaViewSet, basename='darea')
+router.register(r'documents', views.DocumentSearchViewSet, basename='document-search')
 
 app_name = 'debtors'
 

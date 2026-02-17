@@ -36,6 +36,13 @@ export const ENDPOINTS = {
     ALL_SHOPS: `${API_V1_BASE}/tenants/all_shops/`,
   },
 
+  // ===== SAAS ADMIN =====
+  SAAS_ADMIN: {
+    IMPORT_TENANTS: `${API_V1_BASE}/saas-admin/import/tenants/`,
+    IMPORT_ANALYZE: `${API_V1_BASE}/saas-admin/import/analyze/`,
+    IMPORT_EXECUTE: `${API_V1_BASE}/saas-admin/import/execute/`,
+  },
+
   // ===== DEBTORS =====
   DEBTORS: {
     ACCOUNTS: `${API_V1_BASE}/debtors/debtors/`,
@@ -44,6 +51,7 @@ export const ENDPOINTS = {
     POST_DATED_CHEQUES: `${API_V1_BASE}/debtors/post-dated-cheques/`,
     AUDIT: `${API_V1_BASE}/debtors/audit/`,
     SALES_AREAS: `${API_V1_BASE}/debtors/sales-areas/`,
+
     // Special Actions (using template literals for dynamic IDs)
     AGE_ANALYSIS: (dno: string) => `${API_V1_BASE}/debtors/debtors/${dno}/age_analysis/`,
     DEBTOR_TRANSACTIONS: (dno: string) => `${API_V1_BASE}/debtors/debtors/${dno}/transactions/`,
@@ -152,6 +160,15 @@ export const ENDPOINTS = {
     DEPARTMENT_STATS: `${API_V1_BASE}/settings/department-stats/`,
     SALES_AREA_STATS: `${API_V1_BASE}/settings/sales-area-stats/`,
     IMPORT: `${API_V1_BASE}/settings/import/`,
+  },
+
+  // ===== MESSAGING =====
+  MESSAGING: {
+    CONVERSATIONS: `${API_V1_BASE}/messaging/conversations/`,
+    CONVERSATION_DETAIL: (id: number) => `${API_V1_BASE}/messaging/conversations/${id}/`,
+    MESSAGES: (conversationId: number) => `${API_V1_BASE}/messaging/conversations/${conversationId}/messages/`,
+    SEND: (conversationId: number) => `${API_V1_BASE}/messaging/conversations/${conversationId}/send/`,
+    MARK_READ: (conversationId: number) => `${API_V1_BASE}/messaging/conversations/${conversationId}/mark_read/`,
   },
 } as const;
 

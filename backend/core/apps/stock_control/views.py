@@ -13,7 +13,8 @@ from .models import (
     SalesDepartment, SalesArea, StockItem, SpecialDeal, FuturePricing,
     ShrinkWrap, PackBundle, PackBundleIngredient, StockTransaction,
     StockTake, StockTakeItem, ContractPricing, OneTouchLookupKey,
-    StockMonthlyStatistic
+    StockMonthlyStatistic, Branch, BranchStock, GroupOrder, GroupOrderItem,
+    BranchTransfer, BranchTransferItem, BranchTransferInvoice
 )
 from .serializers import (
     SalesDepartmentSerializer, SalesAreaSerializer, StockItemListSerializer,
@@ -23,7 +24,10 @@ from .serializers import (
     StockTransactionCreateSerializer, StockTakeSerializer, StockTakeItemSerializer,
     StockTakeCountSerializer, ContractPricingSerializer, OneTouchLookupKeySerializer,
     StockMonthlyStatisticSerializer, PriceAdjustmentSerializer, StockValuationSerializer,
-    ManufactureItemSerializer
+    ManufactureItemSerializer, BranchSerializer, BranchStockSerializer, BranchStockDetailSerializer,
+    GroupOrderSerializer, GroupOrderDetailSerializer, GroupOrderItemSerializer,
+    BranchTransferSerializer, BranchTransferDetailSerializer, BranchTransferItemSerializer,
+    BranchTransferInvoiceSerializer, BranchTransferInvoiceDetailSerializer
 )
 
 
@@ -960,6 +964,485 @@ class StockMonthlyStatisticViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = StockMonthlyStatistic.objects.select_related('stock_item').all()
     serializer_class = StockMonthlyStatisticSerializer
     permission_classes = [IsAuthenticated]
+
+
+# ============================================================================
+# Phase 1: Branch Management ViewSets
+# ============================================================================
+
+class BranchViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Branch Management
+    
+    list: Get all branches
+    create: Create new branch
+    retrieve: Get branch details
+    update: Update branch
+    partial_update: Partially update branch
+    destroy: Deactivate branch
+    """
+    queryset = Branch.objects.all()
+    serializer_class = BranchSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['is_active', 'is_default', 'branch_type']
+    search_fields = ['branch_code', 'branch_name', 'address']
+    ordering_fields = ['branch_code', 'branch_name', 'created_at']
+    ordering = ['branch_code']
+    lookup_field = 'branch_code'
+
+
+class BranchStockViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Branch Stock Management
+    
+    list: Get all branch stocks
+    create: Create new branch stock entry
+    retrieve: Get branch stock details
+    update: Update branch stock
+    partial_update: Partially update branch stock
+    destroy: Delete branch stock entry
+    
+    Custom Actions:
+    - adjust/: Adjust stock quantity
+    """
+    queryset = BranchStock.objects.select_related('branch', 'stock_item').all()
+    serializer_class = BranchStockSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['branch', 'stock_item']
+    search_fields = ['branch__branch_code', 'stock_item__stock_code', 'stock_item__description']
+    
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return BranchStockDetailSerializer
+        return BranchStockSerializer
+    
+    @action(detail=True, methods=['post'])
+    def adjust(self, request, pk=None):
+        """Adjust stock quantity at branch"""
+        branch_stock = self.get_object()
+        adjustment_type = request.data.get('adjustment_type')  # 'ADD' or 'SUBTRACT'
+        quantity = Decimal(str(request.data.get('quantity', 0)))
+        reason = request.data.get('reason', '')
+        
+        if adjustment_type == 'ADD':
+            branch_stock.quantity += quantity
+        elif adjustment_type == 'SUBTRACT':
+            branch_stock.quantity = max(Decimal('0'), branch_stock.quantity - quantity)
+        else:
+            return Response(
+                {'error': 'adjustment_type must be ADD or SUBTRACT'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        branch_stock.save()
+        
+        # Create transaction record
+        StockTransaction.objects.create(
+            transaction_type='ADJUSTMENT',
+            stock_item=branch_stock.stock_item,
+            quantity_in=quantity if adjustment_type == 'ADD' else 0,
+            quantity_out=quantity if adjustment_type == 'SUBTRACT' else 0,
+            reference=f"Branch {branch_stock.branch.branch_code}: {reason}",
+            comments=reason
+        )
+        
+        serializer = self.get_serializer(branch_stock)
+        return Response(serializer.data)
+
+
+# ============================================================================
+# Phase 3: Group Order ViewSets
+# ============================================================================
+
+class GroupOrderViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Group Orders
+    
+    list: Get all group orders
+    create: Create new group order
+    retrieve: Get group order details
+    update: Update group order
+    partial_update: Partially update group order
+    destroy: Delete group order
+    
+    Custom Actions:
+    - submit/: Submit group order for processing
+    - cancel/: Cancel group order
+    """
+    queryset = GroupOrder.objects.select_related('branch', 'created_by').prefetch_related('items').all()
+    serializer_class = GroupOrderSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'branch']
+    search_fields = ['group_order_number']
+    ordering_fields = ['order_date', 'group_order_number', 'created_at']
+    ordering = ['-order_date']
+    
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return GroupOrderDetailSerializer
+        return GroupOrderSerializer
+    
+    @action(detail=True, methods=['post'])
+    def submit(self, request, pk=None):
+        """Submit group order for processing"""
+        group_order = self.get_object()
+        
+        if group_order.status != 'DRAFT':
+            return Response(
+                {'error': 'Only draft orders can be submitted'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        group_order.status = 'ACTIVE'
+        group_order.save()
+        
+        serializer = self.get_serializer(group_order)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Cancel group order"""
+        group_order = self.get_object()
+        
+        if group_order.status not in ['DRAFT', 'ACTIVE']:
+            return Response(
+                {'error': 'Only draft or active orders can be cancelled'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        group_order.status = 'CANCELLED'
+        group_order.save()
+        
+        serializer = self.get_serializer(group_order)
+        return Response(serializer.data)
+
+
+# ============================================================================
+# Phase 4: IBT - Inter-Branch Transfer ViewSets
+# ============================================================================
+
+class BranchTransferViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Branch Transfers (IBT)
+    
+    list: Get all branch transfers
+    create: Create new transfer request
+    retrieve: Get transfer details
+    update: Update transfer
+    partial_update: Partially update transfer
+    destroy: Delete transfer (only draft)
+    
+    Custom Actions:
+    - submit/: Submit transfer for approval
+    - approve/: Approve transfer
+    - dispatch/: Dispatch transfer items
+    - receive/: Receive transfer items
+    - cancel/: Cancel transfer
+    - pending/: List pending approvals
+    - in_transit/: List currently in-transit transfers
+    """
+    queryset = BranchTransfer.objects.select_related(
+        'from_branch', 'to_branch', 'requested_by', 'approved_by',
+        'dispatched_by', 'received_by'
+    ).prefetch_related('items').all()
+    serializer_class = BranchTransferSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'from_branch', 'to_branch', 'transfer_type']
+    search_fields = ['transfer_number']
+    ordering_fields = ['requested_date', 'transfer_number', 'status']
+    ordering = ['-requested_date']
+    
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return BranchTransferDetailSerializer
+        return BranchTransferSerializer
+    
+    @action(detail=True, methods=['post'])
+    def submit(self, request, pk=None):
+        """Submit transfer for approval"""
+        transfer = self.get_object()
+        
+        if transfer.status != 'DRAFT':
+            return Response(
+                {'error': 'Can only submit draft transfers'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not transfer.items.exists():
+            return Response(
+                {'error': 'Transfer must have at least one item'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        transfer.status = 'PENDING'
+        transfer.save()
+        
+        serializer = self.get_serializer(transfer)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        """Approve transfer"""
+        transfer = self.get_object()
+        
+        if transfer.status != 'PENDING':
+            return Response(
+                {'error': 'Can only approve pending transfers'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check stock availability at source
+        for item in transfer.items.all():
+            branch_stock = BranchStock.objects.get(
+                branch=transfer.from_branch,
+                stock_item=item.stock_item
+            )
+            if branch_stock.quantity < item.quantity_requested:
+                return Response(
+                    {'error': f'Insufficient stock for {item.stock_item.stock_code}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        transfer.status = 'APPROVED'
+        transfer.approved_by = request.user
+        transfer.approved_date = timezone.now()
+        transfer.save()
+        
+        serializer = self.get_serializer(transfer)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def dispatch(self, request, pk=None):
+        """Dispatch transfer - reduce source stock"""
+        transfer = self.get_object()
+        
+        if transfer.status != 'APPROVED':
+            return Response(
+                {'error': 'Can only dispatch approved transfers'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        for item in transfer.items.all():
+            # Deduct from source branch
+            branch_stock = BranchStock.objects.get(
+                branch=transfer.from_branch,
+                stock_item=item.stock_item
+            )
+            branch_stock.quantity -= item.quantity_requested
+            branch_stock.save()
+            
+            item.quantity_dispatched = item.quantity_requested
+            item.save()
+            
+            # Create stock transaction
+            StockTransaction.objects.create(
+                transaction_type='IBT_OUT',
+                stock_item=item.stock_item,
+                quantity_out=item.quantity_requested,
+                reference=transfer.transfer_number,
+                comments=f"Dispatched from {transfer.from_branch.branch_code} to {transfer.to_branch.branch_code}"
+            )
+        
+        transfer.status = 'DISPATCHED'
+        transfer.dispatched_by = request.user
+        transfer.dispatched_date = timezone.now()
+        transfer.save()
+        
+        serializer = self.get_serializer(transfer)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def receive(self, request, pk=None):
+        """Receive transfer - add to destination stock"""
+        transfer = self.get_object()
+        
+        if transfer.status != 'DISPATCHED':
+            return Response(
+                {'error': 'Can only receive dispatched transfers'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        for item in transfer.items.all():
+            quantity_received = Decimal(str(request.data.get(f'quantity_received_{item.id}', item.quantity_dispatched)))
+            
+            # Add to destination branch
+            branch_stock, created = BranchStock.objects.get_or_create(
+                branch=transfer.to_branch,
+                stock_item=item.stock_item,
+                defaults={'quantity': 0}
+            )
+            branch_stock.quantity += quantity_received
+            branch_stock.save()
+            
+            item.quantity_received = quantity_received
+            item.save()
+            
+            # Create stock transaction
+            StockTransaction.objects.create(
+                transaction_type='IBT_IN',
+                stock_item=item.stock_item,
+                quantity_in=quantity_received,
+                reference=transfer.transfer_number,
+                comments=f"Received at {transfer.to_branch.branch_code} from {transfer.from_branch.branch_code}"
+            )
+        
+        transfer.status = 'RECEIVED'
+        transfer.received_by = request.user
+        transfer.received_date = timezone.now()
+        transfer.save()
+        
+        serializer = self.get_serializer(transfer)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Cancel transfer (only before dispatch)"""
+        transfer = self.get_object()
+        
+        if transfer.status in ['DISPATCHED', 'IN_TRANSIT', 'RECEIVED', 'COMPLETED', 'CANCELLED']:
+            return Response(
+                {'error': 'Cannot cancel transfer in current status'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        transfer.status = 'CANCELLED'
+        transfer.save()
+        
+        serializer = self.get_serializer(transfer)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def pending(self, request):
+        """Get all pending approvals"""
+        transfers = self.queryset.filter(status='PENDING')
+        serializer = self.get_serializer(transfers, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def in_transit(self, request):
+        """Get all currently in-transit transfers"""
+        transfers = self.queryset.filter(status__in=['DISPATCHED', 'IN_TRANSIT'])
+        serializer = self.get_serializer(transfers, many=True)
+        return Response(serializer.data)
+
+
+# ============================================================================
+# Phase 5: IBI - Inter-Branch Invoicing ViewSets
+# ============================================================================
+
+class BranchTransferInvoiceViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Branch Transfer Invoices (IBI)
+    
+    list: Get all IBI invoices
+    create: Create new IBI invoice
+    retrieve: Get invoice details
+    update: Update invoice
+    partial_update: Partially update invoice
+    destroy: Delete invoice (only draft)
+    
+    Custom Actions:
+    - issue/: Issue invoice
+    - mark_paid/: Mark invoice as paid
+    - generate_from_transfer/: Generate invoice from transfer
+    """
+    queryset = BranchTransferInvoice.objects.select_related('transfer').all()
+    serializer_class = BranchTransferInvoiceSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status']
+    search_fields = ['invoice_number', 'transfer__transfer_number']
+    ordering_fields = ['invoice_date', 'invoice_number']
+    ordering = ['-invoice_date']
+    
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return BranchTransferInvoiceDetailSerializer
+        return BranchTransferInvoiceSerializer
+    
+    @action(detail=True, methods=['post'])
+    def issue(self, request, pk=None):
+        """Issue invoice"""
+        invoice = self.get_object()
+        
+        if invoice.status != 'DRAFT':
+            return Response(
+                {'error': 'Only draft invoices can be issued'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        invoice.status = 'ISSUED'
+        invoice.save()
+        
+        serializer = self.get_serializer(invoice)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def mark_paid(self, request, pk=None):
+        """Mark invoice as paid"""
+        invoice = self.get_object()
+        
+        if invoice.status not in ['ISSUED']:
+            return Response(
+                {'error': 'Can only mark issued invoices as paid'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        invoice.status = 'PAID'
+        invoice.save()
+        
+        serializer = self.get_serializer(invoice)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['post'])
+    def generate_from_transfer(self, request):
+        """Generate invoice from transfer"""
+        transfer_id = request.data.get('transfer_id')
+        
+        try:
+            transfer = BranchTransfer.objects.get(id=transfer_id)
+        except BranchTransfer.DoesNotExist:
+            return Response(
+                {'error': 'Transfer not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check if invoice already exists
+        if hasattr(transfer, 'invoice'):
+            return Response(
+                {'error': 'Invoice already exists for this transfer'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Calculate totals from transfer items
+        subtotal = Decimal('0')
+        for item in transfer.items.all():
+            line_total = item.quantity_received * item.stock_item.cost_price
+            subtotal += line_total
+        
+        # Calculate VAT (assuming 15% VAT)
+        vat_amount = subtotal * Decimal('0.15')
+        total_amount = subtotal + vat_amount
+        
+        # Generate invoice number
+        invoice_count = BranchTransferInvoice.objects.count() + 1
+        invoice_number = f"IBI-{timezone.now().year}-{invoice_count:04d}"
+        
+        invoice = BranchTransferInvoice.objects.create(
+            transfer=transfer,
+            invoice_number=invoice_number,
+            subtotal=subtotal,
+            vat_amount=vat_amount,
+            total_amount=total_amount,
+            status='DRAFT'
+        )
+        
+        serializer = self.get_serializer(invoice)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['stock_item', 'year', 'month']
     ordering_fields = ['year', 'month']

@@ -23,6 +23,9 @@ import {
   Wrench,
   Banknote,
   Lock,
+  MessageSquare,
+  Package,
+  ArrowRight,
 } from "lucide-react";
 
 // ================== MENU CONFIG ==================
@@ -122,6 +125,11 @@ const menuConfig = [
       { type: "link", name: "Settings", href: "/dashboard/pos/settings", icon: Settings },
     ],
   },
+
+  { type: "link", name: "Messaging", href: "/dashboard/messaging", icon: MessageSquare },
+  { type: "link", name: "Inter-Branch Transfers", href: "/dashboard/ibt", icon: ArrowRight },
+  { type: "link", name: "Inter-Branch Items", href: "/dashboard/ibi", icon: Package },
+  { type: "link", name: "Stock Consolidation", href: "/dashboard/stock-consolidation", icon: Layers },
 
   { type: "link", name: "Expenses", href: "/dashboard/expenses", icon: DollarSign },
   { type: "link", name: "Reports", href: "/dashboard/reports", icon: BarChart },

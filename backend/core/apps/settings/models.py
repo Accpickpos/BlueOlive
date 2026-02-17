@@ -1005,3 +1005,153 @@ class SalesAreaMonthlyStats(models.Model):
     
     def __str__(self):
         return f"{self.sales_area.name} - {self.year}/{self.month:02d}"
+
+
+class APIKey(TimeStampedModel):
+    """
+    API Key authentication for external integrations (e.g., Stockfinder).
+    
+    Provides secure API key authentication for external services to access
+    the Accpick API without requiring user credentials.
+    
+    SECURITY: Each API key is bound to a specific tenant to prevent
+    cross-tenant access.
+    """
+    
+    STATUS_CHOICES = [
+        ('ACTIVE', 'Active'),
+        ('INACTIVE', 'Inactive'),
+        ('REVOKED', 'Revoked'),
+    ]
+    
+    # Tenant binding - CRITICAL for security
+    # Allow null for existing keys during migration, but enforce later
+    tenant = models.ForeignKey(
+        'tenancy.Tenant',
+        on_delete=models.CASCADE,
+        related_name='api_keys',
+        null=True,  # Temporary: allow null during migration
+        blank=True,
+        help_text="Tenant this API key belongs to"
+    )
+    
+    name = models.CharField(
+        max_length=255,
+        help_text="Descriptive name for this API key (e.g., 'Stockfinder Integration')"
+    )
+    key = models.CharField(
+        max_length=40,
+        unique=True,
+        db_index=True,
+        help_text="Secret API key"
+    )
+    external_service = models.CharField(
+        max_length=100,
+        help_text="Name of external service using this key (e.g., 'Stockfinder')"
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Description of the API key usage"
+    )
+    
+    # Access control
+    allowed_endpoints = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of allowed endpoints (empty = all endpoints)"
+    )
+    allowed_methods = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Allowed HTTP methods (e.g., ['GET', 'POST'])"
+    )
+    
+    # Rate limiting
+    rate_limit_requests = models.PositiveIntegerField(
+        default=1000,
+        help_text="Number of requests allowed per hour"
+    )
+    rate_limit_window = models.PositiveIntegerField(
+        default=3600,
+        help_text="Time window in seconds for rate limiting"
+    )
+    
+    # Status and tracking
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='ACTIVE'
+    )
+    last_used = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Last time this API key was used"
+    )
+    last_ip = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        help_text="Last IP address that used this key"
+    )
+    
+    # Expiration
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="API key expiration date (null = no expiration)"
+    )
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['key', 'status']),
+            models.Index(fields=['external_service']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['tenant', 'status']),
+        ]
+        verbose_name = 'API Key'
+        verbose_name_plural = 'API Keys'
+    
+    def __str__(self):
+        return f"{self.name} ({self.external_service})"
+    
+    def save(self, *args, **kwargs):
+        """Generate API key if not provided."""
+        if not self.key:
+            import secrets
+            self.key = secrets.token_urlsafe(32)
+        super().save(*args, **kwargs)
+    
+    @property
+    def is_valid(self):
+        """Check if API key is valid for use."""
+        if self.status != 'ACTIVE':
+            return False
+        
+        from django.utils import timezone
+        if self.expires_at and self.expires_at < timezone.now():
+            return False
+        
+        return True
+    
+    def check_endpoint_access(self, endpoint, method='GET'):
+        """Check if this key has access to an endpoint."""
+        if not self.is_valid:
+            return False
+        
+        # Check method access
+        if self.allowed_methods and method not in self.allowed_methods:
+            return False
+        
+        # Check endpoint access (empty list = all endpoints)
+        if self.allowed_endpoints and endpoint not in self.allowed_endpoints:
+            return False
+        
+        return True
+    
+    def record_usage(self, ip_address=None):
+        """Record API key usage for audit trail."""
+        from django.utils import timezone
+        self.last_used = timezone.now()
+        if ip_address:
+            self.last_ip = ip_address
+        self.save(update_fields=['last_used', 'last_ip'])

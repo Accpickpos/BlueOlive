@@ -101,7 +101,7 @@ class PurchaseOrderDetailSerializer(serializers.ModelSerializer):
 class PurchaseOrderCreateLineSerializer(serializers.Serializer):
     """Serializer for creating PO line items"""
     stock_item = serializers.CharField()
-    quantity_ordered = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0.01)
+    quantity_ordered = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal('0.01'))
     unit_cost = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
     tax_code = serializers.IntegerField(default=1)
 

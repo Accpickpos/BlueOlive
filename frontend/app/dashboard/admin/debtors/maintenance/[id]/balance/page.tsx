@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import DebtorAccountBalance from '@/components/DebtorAccountBalance';
 import { apiRequest } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { ArrowLeft } from 'lucide-react';
 
 interface DebtorInfo {
   id: number;
@@ -91,16 +92,15 @@ export default function DebtorBalancePage({ params }: { params: Promise<{ id: st
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">{debtor.name}</h1>
-          <p className="text-gray-600 mt-1">Account #{debtor.account_number}</p>
+        <div className="flex items-center gap-4">
+          <Button variant="outline" onClick={() => router.back()} size="sm">
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">{debtor.name}</h1>
+            <p className="text-gray-600 mt-1">Account #{debtor.account_number}</p>
+          </div>
         </div>
-        <Link
-          href="/dashboard/admin/debtors/maintenance"
-          className="text-blue-600 hover:text-blue-800"
-        >
-          ← Back to Debtors
-        </Link>
       </div>
 
       {/* Debtor Info Card */}
@@ -161,14 +161,6 @@ export default function DebtorBalancePage({ params }: { params: Promise<{ id: st
           </div>
         </div>
       </div>
-
-      {/* Balance Details Component */}
-      {debtorId && debtor && (
-        <DebtorAccountBalance
-          debtorId={parseInt(debtorId)}
-          accountCategory={debtor.account_category}
-        />
-      )}
     </div>
   );
 }

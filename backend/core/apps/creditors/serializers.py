@@ -364,7 +364,7 @@ class CreditorPaymentSerializer(serializers.ModelSerializer):
 class PaymentAllocationSerializer(serializers.Serializer):
     """Serializer for allocating payment to open items"""
     open_item_id = serializers.IntegerField()
-    amount_paid = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=0)
+    amount_paid = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal('0'))
     settlement_discount = serializers.DecimalField(
         max_digits=12, decimal_places=2, default=0, required=False
     )
@@ -555,7 +555,7 @@ class BulkPaymentSerializer(serializers.Serializer):
     """Serializer for bulk payment processing"""
     creditor = serializers.IntegerField()
     transaction_date = serializers.DateField()
-    amount_paid = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=0.01)
+    amount_paid = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal('0.01'))
     payment_method = serializers.IntegerField()
     allocations = serializers.ListField(
         child=PaymentAllocationSerializer(),

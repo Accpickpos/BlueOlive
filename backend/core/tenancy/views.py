@@ -1,6 +1,6 @@
 from django.shortcuts import render
 from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser
 from .models import Tenant, Shop
@@ -125,6 +125,25 @@ class ShopViewSet(viewsets.ModelViewSet):
             return [IsAdmin()]
         else:
             return [IsTenantMember()]
+
+    @action(detail=True, methods=['get'], permission_classes=[IsTenantMember])
+    def check_setup_status(self, request, pk=None):
+        """
+        Check the setup status of a shop.
+        Returns the current setup status: 'pending', 'ready', or 'failed'.
+        """
+        shop = self.get_object()
+        return Response({
+            'id': shop.id,
+            'name': shop.name,
+            'setup_status': shop.setup_status,
+            'is_ready': shop.setup_status == 'ready',
+            'message': {
+                'pending': 'Shop is being set up. This may take a few moments...',
+                'ready': 'Shop is ready for use!',
+                'failed': 'Shop setup failed. Please contact support.',
+            }.get(shop.setup_status, 'Unknown status')
+        })
 
     def get_serializer_class(self):
         """

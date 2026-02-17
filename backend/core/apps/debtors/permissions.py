@@ -39,6 +39,7 @@ class HasDebtorPermission(permissions.BasePermission):
 class CanModifyDebtor(permissions.BasePermission):
     """
     Permission to modify debtor (block/unblock, change credit limit, etc).
+    Allows MANAGER and ADMIN roles.
     """
     
     def has_permission(self, request, view):
@@ -46,18 +47,19 @@ class CanModifyDebtor(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
         
-        # Check if user is in debtors_admin group
-        # This prevents regular users from modifying critical debtor data
-        # You can adjust this to your role structure
+        # ADMIN and MANAGER roles can modify debtors
+        # Also check for legacy group-based permissions
         return (
             request.user.is_superuser or
-            request.user.groups.filter(name__in=['debtors_admin', 'admin']).exists()
+            (hasattr(request.user, 'role') and request.user.role in ['ADMIN', 'MANAGER']) or
+            request.user.groups.filter(name__in=['debtors_admin', 'admin', 'debtors_manager']).exists()
         )
 
 
 class CanPostInvoice(permissions.BasePermission):
     """
     Permission to post invoices (financial operation).
+    Allows ADMIN and MANAGER roles.
     """
     
     def has_permission(self, request, view):
@@ -65,17 +67,18 @@ class CanPostInvoice(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
         
-        # Only specific roles can post invoices
+        # ADMIN and MANAGER roles can post invoices
         return (
             request.user.is_superuser or
-            request.user.groups.filter(name__in=['invoicing', 'debtors_admin', 'admin']).exists()
+            (hasattr(request.user, 'role') and request.user.role in ['ADMIN', 'MANAGER']) or
+            request.user.groups.filter(name__in=['invoicing', 'debtors_admin', 'debtors_manager', 'admin']).exists()
         )
 
 
 class CanChargeInterest(permissions.BasePermission):
     """
     Permission to charge interest (finance operation).
-    Usually restricted to finance managers.
+    Usually restricted to MANAGER and ADMIN roles.
     """
     
     def has_permission(self, request, view):
@@ -83,9 +86,11 @@ class CanChargeInterest(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
         
+        # ADMIN and MANAGER can charge interest
         return (
             request.user.is_superuser or
-            request.user.groups.filter(name__in=['finance', 'debtors_admin', 'admin']).exists()
+            (hasattr(request.user, 'role') and request.user.role in ['ADMIN', 'MANAGER']) or
+            request.user.groups.filter(name__in=['finance', 'debtors_admin', 'debtors_manager', 'admin']).exists()
         )
 
 

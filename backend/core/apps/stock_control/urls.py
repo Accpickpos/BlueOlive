@@ -4,7 +4,9 @@ from .views import (
     SalesDepartmentViewSet, SalesAreaViewSet, StockItemViewSet,
     SpecialDealViewSet, FuturePricingViewSet, ShrinkWrapViewSet,
     PackBundleViewSet, StockTransactionViewSet, StockTakeViewSet,
-    ContractPricingViewSet, OneTouchLookupKeyViewSet, StockMonthlyStatisticViewSet
+    ContractPricingViewSet, OneTouchLookupKeyViewSet, StockMonthlyStatisticViewSet,
+    BranchViewSet, BranchStockViewSet, GroupOrderViewSet,
+    BranchTransferViewSet, BranchTransferInvoiceViewSet
 )
 
 router = DefaultRouter()
@@ -22,6 +24,13 @@ router.register(r'stock-takes', StockTakeViewSet, basename='stocktake')
 router.register(r'contract-pricing', ContractPricingViewSet, basename='contractpricing')
 router.register(r'lookup-keys', OneTouchLookupKeyViewSet, basename='oneTouchLookupKey')
 router.register(r'monthly-statistics', StockMonthlyStatisticViewSet, basename='stockmonthlystatistic')
+
+# Multi-branch feature routes
+router.register(r'branches', BranchViewSet, basename='branch')
+router.register(r'branch-stock', BranchStockViewSet, basename='branchstock')
+router.register(r'group-orders', GroupOrderViewSet, basename='grouporder')
+router.register(r'transfers', BranchTransferViewSet, basename='branchtransfer')
+router.register(r'ibi-invoices', BranchTransferInvoiceViewSet, basename='branchtransferinvoice')
 
 urlpatterns = [
     path('', include(router.urls)),

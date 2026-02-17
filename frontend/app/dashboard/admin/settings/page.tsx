@@ -441,7 +441,6 @@ export default function AdminSettingsPage() {
     try {
       setLoading(true);
       await api.post('/api/settings/income-categories/', {
-        shop_id: shopId,
         number: parseInt(newIncome.number),
         name: newIncome.name,
         is_active: true
@@ -507,7 +506,6 @@ export default function AdminSettingsPage() {
     try {
       setLoading(true);
       await api.post('/api/settings/expense-categories/', {
-        shop_id: shopId,
         number: parseInt(newExpense.number),
         name: newExpense.name,
         category_type: newExpense.category_type || 'BOTH',

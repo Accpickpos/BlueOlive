@@ -10,9 +10,10 @@ import logging
 
 from .models import (
     CashSale, CashSaleLine, Laybye, LaybyeLine, LaybyelPayment,
-    Quotation, QuotationLine, JobCard, JobCardLine, CashControl, Repair
+    Quotation, QuotationLine, JobCard, JobCardLine, CashControl, Repair, Invoice, InvoiceLine
 )
 from apps.stock_control.models import StockItem, StockTransaction
+from apps.debtors.models import Debtor
 from .exceptions import (
     InvalidDocumentState, InsufficientStock, POSValidationException
 )
@@ -454,6 +455,87 @@ class QuotationService:
         quotation.save()
         
         return job_card
+    
+    @staticmethod
+    @transaction.atomic
+    def convert_job_card_to_invoice(job_card, debtor):
+        """
+        Convert job card to customer invoice.
+        
+        Args:
+            job_card: JobCard instance to convert
+            debtor: Debtor instance (customer)
+        
+        Returns:
+            Invoice: Created invoice
+        
+        Raises:
+            ValueError: If job card cannot be converted
+        """
+        if job_card.status == 'INVOICED':
+            raise ValueError("Job card already converted to invoice")
+        
+        if job_card.status == 'CANCELLED':
+            raise ValueError("Cannot convert cancelled job card to invoice")
+        
+        if not debtor:
+            raise ValueError("Debtor is required to create invoice")
+        
+        # Generate invoice number (format: INV-YYYYMMDD-XXXXX)
+        from django.utils import timezone
+        today = timezone.now().date()
+        invoice_count = Invoice.objects.filter(
+            invoice_date=today
+        ).count() + 1
+        invoice_number = f"INV-{today.year}{today.month:02d}{today.day:02d}-{invoice_count:05d}"
+        
+        # Create invoice
+        invoice = Invoice.objects.create(
+            debtor=debtor,
+            invoice_number=invoice_number,
+            invoice_date=today,
+            delivery_name=job_card.customer_name,
+            delivery_address_line1=job_card.address,
+            delivery_telephone=job_card.telephone,
+            order_number=job_card.order_number,
+            job_card_number=job_card.job_number,
+            sales_area=job_card.sales_area,
+            subtotal=job_card.subtotal,
+            vat_amount=job_card.vat_amount,
+            total_amount=job_card.total_amount,
+            total_cost=job_card.total_cost,
+            gross_profit=job_card.gross_profit,
+            status='DRAFT',
+            is_posted=False
+        )
+        
+        # Copy job card lines to invoice lines
+        for job_line in job_card.lines.all():
+            InvoiceLine.objects.create(
+                invoice=invoice,
+                line_number=job_line.line_number,
+                stock_code=job_line.stock_code,
+                description=job_line.description,
+                quantity=job_line.quantity,
+                unit_price=job_line.unit_price,
+                discount_percentage=job_line.discount_percentage,
+                tax_code=job_line.tax_code,
+                line_total=job_line.line_total,
+                vat_amount=job_line.vat_amount,
+                cost_price=job_line.cost_price,
+                line_profit=job_line.line_profit
+            )
+        
+        # Update job card status
+        job_card.status = 'INVOICED'
+        job_card.save()
+        
+        logger.info(
+            f"Converted job card {job_card.job_number} to invoice {invoice.invoice_number} "
+            f"for debtor {debtor.dno}"
+        )
+        
+        return invoice
 
 
 class RepairService:

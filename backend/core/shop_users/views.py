@@ -3,12 +3,13 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework_simplejwt.views import TokenRefreshView
-from rest_framework import viewsets
+from rest_framework import viewsets, status
 from rest_framework.throttling import AnonRateThrottle
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie, csrf_exempt
+from django.conf import settings
 import logging
 
 from django.contrib.auth import authenticate
@@ -38,7 +39,8 @@ class GetCSRFTokenView(APIView):
 
     def get(self, request):
         try:
-            logger.debug(f"GetCSRFTokenView called for {request.method} {request.path}")
+            if settings.DEBUG:
+                logger.debug(f"GetCSRFTokenView called for {request.method} {request.path}")
             
             # Manually set CSRF cookie
             from django.middleware.csrf import get_token
@@ -56,10 +58,13 @@ class GetCSRFTokenView(APIView):
 
 
 class TenantTokenView(APIView):
+    """
+    Login view that authenticates users and sets JWT tokens in httpOnly cookies.
+    """
     permission_classes = [AllowAny]
     throttle_classes = [LoginThrottle]
 
-    @method_decorator(csrf_protect)
+    @method_decorator(csrf_exempt, name='dispatch')
     def post(self, request):
         try:
             # Always prioritize tenant_slug from request over context
@@ -71,7 +76,8 @@ class TenantTokenView(APIView):
                 try:
                     tenant = Tenant.objects.get(slug=tenant_slug)
                     set_current_tenant(tenant)
-                    logger.info(f"Login: Using tenant from request slug: {tenant.name} (slug={tenant_slug})")
+                    if settings.DEBUG:
+                        logger.debug(f"Login: Using tenant from request: {tenant.name}")
                     
                     # Register the tenant database connection
                     from tenancy.utils import register_tenant_connection
@@ -83,8 +89,8 @@ class TenantTokenView(APIView):
             else:
                 # Fall back to context tenant (for backward compatibility)
                 tenant = get_current_tenant()
-                if tenant:
-                    logger.info(f"Login: Using tenant from context: {tenant.name}")
+                if tenant and settings.DEBUG:
+                    logger.debug(f"Login: Using tenant from context: {tenant.name}")
             
             if not tenant:
                 LoginAuditLog.log_login_failed(request, username=request.data.get('username'))
@@ -97,27 +103,24 @@ class TenantTokenView(APIView):
                 LoginAuditLog.log_login_failed(request, username=username)
                 raise AuthenticationFailed("Missing credentials")
 
-            logger.info(f"About to authenticate user: {username}")
+            if settings.DEBUG:
+                logger.debug(f"Authenticating user: {username}")
+            
             user = authenticate(
                 request,
                 username=username,
                 password=password,
             )
-            logger.info(f"Authentication result: {user}")
 
             if not user:
                 LoginAuditLog.log_login_failed(request, username=username)
                 raise AuthenticationFailed("Invalid credentials")
 
-            # User object is already properly loaded from auth backend
-            # No need to reload
-
             if not user.is_superuser and user.tenant_id != tenant.id:
                 LoginAuditLog.log_login_failed(request, username=username)
                 raise AuthenticationFailed("User does not belong to tenant")
 
-            # Create tokens manually to avoid database queries
-            from rest_framework_simplejwt.tokens import RefreshToken
+            # Create tokens with tenant context
             refresh = RefreshToken()
             refresh['user_id'] = user.id
             refresh['username'] = user.username
@@ -134,27 +137,27 @@ class TenantTokenView(APIView):
                     "username": user.username,
                     "role": getattr(user, 'role', 'USER'),
                     "is_superuser": getattr(user, 'is_superuser', False),
+                    "is_admin": getattr(user, 'role', '') == 'ADMIN' or getattr(user, 'is_superuser', False),
                 }
             })
 
             # Set httpOnly cookies (secure, not accessible to JavaScript)
-            # In development (localhost), secure=False; in production (HTTPS), secure=True
-            is_secure = request.is_secure()
+            is_secure = not settings.DEBUG
             
             response.set_cookie(
                 key='access_token',
                 value=access_token,
-                max_age=3600,  # 1 hour
-                secure=is_secure,  # HTTPS only in production
-                httponly=True,  # Not accessible to JavaScript (XSS protection)
-                samesite='Lax',  # Allows same-site requests with safe methods
+                max_age=int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()),
+                secure=is_secure,
+                httponly=True,
+                samesite='Lax',
                 path='/',
             )
             
             response.set_cookie(
                 key='refresh_token',
                 value=refresh_token,
-                max_age=604800,  # 7 days
+                max_age=int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()),
                 secure=is_secure,
                 httponly=True,
                 samesite='Lax',
@@ -169,363 +172,245 @@ class TenantTokenView(APIView):
         except AuthenticationFailed:
             raise
         except Exception as e:
-            import traceback
-            logger.error(f"Login error: {str(e)}\n{traceback.format_exc()}")
+            logger.error(f"Login error: {str(e)}", exc_info=True)
             raise AuthenticationFailed(f"Login failed: {str(e)}")
-
-
-class LogoutView(APIView):
-    """Logout by clearing cookies"""
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        # Log logout
-        if request.user and request.user.is_authenticated:
-            LoginAuditLog.log_logout(request, request.user)
-        
-        response = Response({"message": "Logged out successfully"})
-        
-        # Clear authentication cookies with same settings as login
-        response.delete_cookie(
-            key='access_token',
-            path='/',
-            samesite='Lax',
-        )
-        response.delete_cookie(
-            key='refresh_token',
-            path='/',
-            samesite='Lax',
-        )
-        
-        return response
-
-
-class ProfileView(APIView):
-    """Get current user profile - used for authentication checks"""
-    authentication_classes = [TenantJWTAuthentication]
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        """Return current user profile if authenticated"""
-        try:
-            logger.debug(f"ProfileView.get called, user={request.user}, authenticated={request.user.is_authenticated if hasattr(request.user, 'is_authenticated') else 'N/A'}")
-            
-            if not request.user or not request.user.is_authenticated:
-                raise AuthenticationFailed('Not authenticated')
-            
-            user = request.user
-            is_admin = getattr(user, 'is_superuser', False) or (hasattr(user, 'role') and user.role == 'ADMIN')
-            
-            return Response({
-                "id": getattr(user, 'id', None),
-                "username": getattr(user, 'username', None),
-                "email": getattr(user, 'email', None),
-                "role": getattr(user, 'role', 'USER'),
-                "tenant_id": getattr(user, 'tenant_id', None),
-                "is_superuser": getattr(user, 'is_superuser', False),
-                "is_admin": is_admin,
-            })
-        except AuthenticationFailed:
-            raise
-        except Exception as e:
-            logger.error(f"ProfileView error: {str(e)}", exc_info=True)
-            raise
 
 
 class CookieTokenRefreshView(TokenRefreshView):
     """
     Custom token refresh view that reads refresh token from httpOnly cookie
-    and returns new access token in httpOnly cookie.
+    instead of request body.
     
-    Also supports JSON body refresh tokens for backward compatibility.
+    This is the KEY FIX for your "No refresh token provided" error.
     """
     permission_classes = [AllowAny]
+    authentication_classes = []  # No authentication needed for refresh
     
+    @method_decorator(csrf_exempt, name='dispatch')
     def post(self, request, *args, **kwargs):
+        """
+        Override to get refresh token from cookie instead of body.
+        """
+        # Try to get refresh token from cookie
+        refresh_token = request.COOKIES.get('refresh_token')
+        
+        if not refresh_token:
+            logger.warning("Token refresh attempted without refresh_token cookie")
+            return Response(
+                {'detail': 'No refresh token provided'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        if settings.DEBUG:
+            logger.debug("Attempting token refresh from cookie")
+        
+        # Add the token to request data for the parent class to process
+        # Make request.data mutable
+        if hasattr(request.data, '_mutable'):
+            request.data._mutable = True
+        request.data['refresh'] = refresh_token
+        
         try:
-            # First, check if refresh token is in request body (JSON)
-            refresh_token = request.data.get('refresh')
+            # Call parent's post method to handle token refresh
+            response = super().post(request, *args, **kwargs)
             
-            # If not in body, try to get from httpOnly cookie
-            if not refresh_token:
-                refresh_token = request.COOKIES.get('refresh_token')
-                if not refresh_token:
-                    logger.warning("No refresh token found in request body or cookies")
-                    raise AuthenticationFailed("No refresh token provided")
+            # If successful, set new tokens in cookies
+            if response.status_code == 200:
+                data = response.data
+                access_token = data.get('access')
+                new_refresh_token = data.get('refresh')  # New refresh token if rotation enabled
+                
+                is_secure = not settings.DEBUG
+                
+                # Set new access token cookie
+                response.set_cookie(
+                    key='access_token',
+                    value=access_token,
+                    max_age=int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()),
+                    secure=is_secure,
+                    httponly=True,
+                    samesite='Lax',
+                    path='/',
+                )
+                
+                # Set new refresh token cookie (if rotation is enabled)
+                if new_refresh_token:
+                    response.set_cookie(
+                        key='refresh_token',
+                        value=new_refresh_token,
+                        max_age=int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()),
+                        secure=is_secure,
+                        httponly=True,
+                        samesite='Lax',
+                        path='/',
+                    )
+                
+                # Don't send tokens in response body (they're in cookies)
+                response.data = {'detail': 'Token refreshed successfully'}
+                
+                if settings.DEBUG:
+                    logger.debug("Token refresh successful")
             
-            logger.info(f"Attempting to refresh token for user")
-            
-            # Use SimpleJWT's refresh token validation
-            try:
-                refresh = RefreshToken(refresh_token)
-                access_token = refresh.access_token
-            except TokenError as e:
-                logger.error(f"Token refresh failed: {str(e)}")
-                raise AuthenticationFailed(f"Invalid or expired refresh token: {str(e)}")
-            
-            # Return tokens
-            response = Response({
-                'access': str(access_token),
-                'refresh': str(refresh),
-            })
-            
-            # Set access token in httpOnly cookie
-            response.set_cookie(
-                'access_token',
-                str(access_token),
-                max_age=3600,  # 1 hour (same as login)
-                httponly=True,
-                secure=False,  # Set to True in production with HTTPS
-                samesite='Lax',
-                path='/',
-            )
-            
-            # Optionally set refresh token in cookie (depends on security preference)
-            # Some backends prefer to only refresh via cookie input and return access via cookie
-            response.set_cookie(
-                'refresh_token',
-                str(refresh),
-                max_age=604800,  # 7 days (same as login)
-                httponly=True,
-                secure=False,  # Set to True in production with HTTPS
-                samesite='Lax',
-                path='/',
-            )
-            
-            logger.info("✓ Token successfully refreshed")
             return response
             
-        except AuthenticationFailed:
-            raise
+        except (InvalidToken, TokenError) as e:
+            logger.warning(f"Token refresh failed: {type(e).__name__}")
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
         except Exception as e:
-            logger.error(f"Unexpected error during token refresh: {str(e)}")
-            raise AuthenticationFailed(f"Token refresh failed: {str(e)}")
+            logger.error(f"Unexpected token refresh error: {str(e)}", exc_info=True)
+            return Response(
+                {'detail': 'Token refresh failed'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
-class ShopUserViewSet(viewsets.ModelViewSet):
-    serializer_class = ShopUserSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_permissions(self):
-        """
-        Assign permissions based on action:
-        - list/retrieve: IsTenantMember (see own tenant users)
-        - create: IsManager (only managers can create users)
-        - update/partial_update: IsManager (only managers can modify users)
-        - destroy: IsAdmin (only admins can delete users)
-        """
-        from tenancy.permissions import IsAdmin, IsManager, IsTenantMember
-        
-        if self.action == 'create':
-            return [IsManager()]
-        elif self.action in ['update', 'partial_update']:
-            return [IsManager()]
-        elif self.action == 'destroy':
-            return [IsAdmin()]
-        else:  # list, retrieve
-            return [IsTenantMember()]
-
-    def get_serializer_class(self):
-        """Use ShopUserCreateSerializer for creation with stricter validation"""
-        from shop_users.serializers import ShopUserCreateSerializer
-        if self.action == 'create':
-            return ShopUserCreateSerializer
-        return ShopUserSerializer
-
-    def get_queryset(self):
-        from tenancy.permissions import IsTenantMember
-        tenant = get_current_tenant()
-        if tenant:
-            # Query from tenant database, not main database
-            # Check if user is superuser OR has ADMIN role
-            is_admin = self.request.user.is_superuser or (hasattr(self.request.user, 'role') and self.request.user.role == 'ADMIN')
-            if is_admin:
-                return ShopUser.objects.using(tenant.db_alias).filter(tenant_id=tenant.id)
-            # Regular users can only see their own data
-            return ShopUser.objects.using(tenant.db_alias).filter(tenant_id=tenant.id, id=self.request.user.id)
-        return ShopUser.objects.none()
-
-    def perform_create(self, serializer):
-        tenant = get_current_tenant()
-        if tenant:
-            serializer.save(tenant_id=tenant.id)
-        else:
-            raise AuthenticationFailed("Tenant context required")
-
-class UnifiedLoginView(APIView):
+class LogoutView(APIView):
     """
-    Unified login endpoint that searches across all tenants.
-    User provides email + password, backend finds their tenant.
-    Returns tenant slug and JWT token.
-    
-    No tenant_slug needed in request - works from any domain.
+    Logout by clearing cookies and blacklisting tokens.
     """
     permission_classes = [AllowAny]
-    throttle_classes = [LoginThrottle]
 
-    @method_decorator(csrf_protect)
+    @method_decorator(csrf_exempt, name='dispatch')
     def post(self, request):
         try:
-            email = request.data.get('email')
-            password = request.data.get('password')
-
-            if not email or not password:
-                LoginAuditLog.log_login_failed(request, username=email)
-                raise AuthenticationFailed("Email and password are required")
-
-            # Search through all tenants to find the user
-            user_found = None
-            user_tenant = None
+            # Get refresh token from cookie for blacklisting
+            refresh_token = request.COOKIES.get('refresh_token')
             
-            tenants = Tenant.objects.all()
-            logger.info(f"Searching for user '{email}' across {tenants.count()} tenants")
-            
-            for tenant in tenants:
+            if refresh_token:
                 try:
-                    # Register tenant connection
-                    from tenancy.utils import register_tenant_connection
-                    register_tenant_connection(tenant)
-                    set_current_tenant(tenant)
-                    
-                    # Try to find user in this tenant
-                    user = authenticate(
-                        request,
-                        username=email,
-                        password=password,
-                    )
-                    
-                    if user and user.is_active:
-                        user_found = user
-                        user_tenant = tenant
-                        logger.info(f"User '{email}' found in tenant: {tenant.name}")
-                        break
+                    # Blacklist the refresh token
+                    token = RefreshToken(refresh_token)
+                    token.blacklist()
+                    if settings.DEBUG:
+                        logger.debug("Refresh token blacklisted")
                 except Exception as e:
-                    logger.debug(f"Error checking tenant {tenant.slug}: {str(e)}")
-                    continue
-
-            if not user_found:
-                LoginAuditLog.log_login_failed(request, username=email)
-                raise AuthenticationFailed("Invalid credentials")
-
-            if not user_tenant:
-                LoginAuditLog.log_login_failed(request, username=email)
-                raise AuthenticationFailed("User tenant not found")
-
-            # Set the tenant context for token generation
-            set_current_tenant(user_tenant)
-            from tenancy.utils import register_tenant_connection
-            register_tenant_connection(user_tenant)
-
-            # Generate tokens with tenant info embedded
-            refresh = RefreshToken.for_user(user_found)
+                    # Log but don't fail - still clear cookies
+                    logger.warning(f"Failed to blacklist token: {str(e)}")
             
-            # Add tenant information to tokens so JWT auth can use it
-            # These custom claims will be included in both refresh and access tokens
-            refresh['tenant_id'] = user_tenant.id
-            refresh['tenant_slug'] = user_tenant.slug
+            # Log logout if user is authenticated
+            if request.user and request.user.is_authenticated:
+                LoginAuditLog.log_logout(request, request.user)
             
-            # Get the access token (it inherits the claims from refresh)
-            access_token = refresh.access_token
-
-            # Log successful login
-            LoginAuditLog.log_login(request, user_found)
-
-            response = Response({
-                'access': str(access_token),
-                'refresh': str(refresh),
-                'tenant_slug': user_tenant.slug,  # Important: tell frontend which subdomain to use
-                'user': {
-                    'id': user_found.id,
-                    'username': user_found.username,
-                    'email': user_found.email,
-                    'is_admin': user_found.is_superuser or (hasattr(user_found, 'role') and user_found.role == 'ADMIN'),
-                }
-            })
-
-            # Set JWT token in httpOnly cookie
-            response.set_cookie(
-                'access_token',
-                str(refresh.access_token),
-                max_age=86400,  # 24 hours
-                httponly=True,
-                secure=False,  # Set to True in production with HTTPS
-                samesite='Lax',
-                path='/',
+            # Create response
+            response = Response(
+                {'detail': 'Logout successful'},
+                status=status.HTTP_200_OK
             )
-
-            response.set_cookie(
-                'refresh_token',
-                str(refresh),
-                max_age=2592000,  # 30 days
-                httponly=True,
-                secure=False,  # Set to True in production with HTTPS
-                samesite='Lax',
-                path='/',
+            
+            # Clear cookies
+            response.delete_cookie('access_token', path='/')
+            response.delete_cookie('refresh_token', path='/')
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Logout error: {str(e)}", exc_info=True)
+            # Still clear cookies even if something fails
+            response = Response(
+                {'detail': 'Logout successful'},
+                status=status.HTTP_200_OK
             )
-
+            response.delete_cookie('access_token', path='/')
+            response.delete_cookie('refresh_token', path='/')
             return response
 
-        except AuthenticationFailed as e:
-            return Response({'detail': str(e)}, status=401)
+
+class CurrentUserView(APIView):
+    """Get current authenticated user information"""
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TenantJWTAuthentication]
+
+    def get(self, request):
+        try:
+            user = request.user
+            tenant = get_current_tenant()
+            
+            return Response({
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'role': getattr(user, 'role', 'USER'),
+                'is_superuser': user.is_superuser,
+                'is_admin': getattr(user, 'role', '') == 'ADMIN' or user.is_superuser,
+                'tenant': {
+                    'id': tenant.id if tenant else None,
+                    'name': tenant.name if tenant else None,
+                    'slug': tenant.slug if tenant else None,
+                } if tenant else None
+            })
         except Exception as e:
-            logger.error(f"Unified login error: {str(e)}", exc_info=True)
-            LoginAuditLog.log_login_failed(request, username=request.data.get('email'))
-            return Response({'detail': f'Login failed: {str(e)}'}, status=400)
+            logger.error(f"Current user error: {str(e)}", exc_info=True)
+            return Response(
+                {'detail': 'Failed to get user information'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class SignupView(APIView):
     """
-    User registration endpoint - allows users to create their own account and tenant.
+    Tenant signup - creates new tenant, database, and admin user.
     """
     permission_classes = [AllowAny]
+    throttle_classes = [LoginThrottle]
 
-    @method_decorator(csrf_protect)
+    @method_decorator(csrf_exempt, name='dispatch')
     def post(self, request):
-        """
-        Register a new user and create their tenant.
-        
-        Request body:
-        {
-            "email": "user@example.com",
-            "username": "username",
-            "password": "password123",
-            "confirm_password": "password123",
-            "first_name": "John",
-            "last_name": "Doe",
-            "company_name": "My Company",  # Used as tenant name
-            "subdomain": "mycompany"  # Tenant subdomain
-        }
-        """
         try:
-            email = request.data.get('email', '').strip()
-            username = request.data.get('username', '').strip()
-            password = request.data.get('password', '')
-            confirm_password = request.data.get('confirm_password', '')
-            first_name = request.data.get('first_name', '').strip()
-            last_name = request.data.get('last_name', '').strip()
-            company_name = request.data.get('company_name', '').strip()
-            subdomain = request.data.get('subdomain', '').strip().lower()
+            # Extract fields
+            company_name = request.data.get('company_name')
+            subdomain = request.data.get('subdomain')
+            username = request.data.get('username')
+            email = request.data.get('email')
+            password = request.data.get('password')
+            password_confirm = request.data.get('confirm_password')
+            first_name = request.data.get('first_name', '')
+            last_name = request.data.get('last_name', '')
 
-            # Validation
-            if not all([email, username, password, company_name, subdomain]):
-                return Response(
-                    {'detail': 'Missing required fields: email, username, password, company_name, subdomain'},
-                    status=400
-                )
+            # ADD THIS DEBUG LOGGING
+            if settings.DEBUG:
+                logger.debug(f"Signup request data: {request.data}")
+                logger.debug(f"company_name: {company_name}")
+                logger.debug(f"subdomain: {subdomain}")
+                logger.debug(f"username: {username}")
+                logger.debug(f"email: {email}")
+                logger.debug(f"password: {'***' if password else None}")
+                logger.debug(f"confirm_password: {'***' if password_confirm else None}")
 
-            if password != confirm_password:
+            # Validation - IMPROVED ERROR MESSAGE
+            required_fields = {
+                'company_name': company_name,
+                'subdomain': subdomain,
+                'username': username,
+                'email': email,
+                'password': password,
+                'confirm_password': password_confirm,
+            }
+            
+            missing_fields = [field for field, value in required_fields.items() if not value]
+            
+            if missing_fields:
+                error_msg = f'Missing required fields: {", ".join(missing_fields)}'
+                logger.warning(f"Signup validation failed: {error_msg}")
+                return Response({'detail': error_msg}, status=400)
+
+            # Rest of your validation...
+            if password != password_confirm:
                 return Response({'detail': 'Passwords do not match'}, status=400)
 
             if len(password) < 8:
                 return Response({'detail': 'Password must be at least 8 characters'}, status=400)
-
+            
             # Check if subdomain is available (main database check)
             if Tenant.objects.filter(subdomain=subdomain).exists():
                 return Response({'detail': 'Subdomain already taken'}, status=400)
 
             # Create tenant
             from django.utils.text import slugify
-            from django.conf import settings
             from tenancy.utils import create_tenant_database_postgres, register_tenant_connection
             
             tenant_slug = slugify(company_name)
@@ -603,7 +488,7 @@ class SignupView(APIView):
                     first_name=first_name,
                     last_name=last_name,
                     tenant_id=tenant.id,
-                    role='ADMIN',  # First user is admin
+                    role='ADMIN',
                     is_staff=True,
                     is_superuser=True,
                 )
@@ -612,7 +497,6 @@ class SignupView(APIView):
                 logger.info(f"Created user: {username} in tenant {tenant.name}")
             except Exception as e:
                 logger.error(f"Failed to create user: {str(e)}")
-                # Delete tenant if user creation fails
                 tenant.delete()
                 error_msg = str(e)
                 if 'unique constraint' in error_msg.lower():
@@ -620,35 +504,26 @@ class SignupView(APIView):
                 return Response({'detail': f'Failed to create user: {error_msg}'}, status=500)
 
             # Create tokens
-            # CRITICAL: Ensure current_tenant is set for token creation
-            # The database router uses get_current_tenant() to route OutstandingToken.objects.create()
-            # to the correct database
             if get_current_tenant() != tenant:
-                logger.warning(f"Current tenant context mismatch before token creation! Setting tenant context...")
+                logger.warning(f"Tenant context mismatch, resetting...")
                 set_current_tenant(tenant)
             
-            logger.info(f"Creating refresh token for user {user.id} in tenant {tenant.name}")
+            logger.info(f"Creating refresh token for user {user.id}")
             try:
-                # Create refresh token (this internally creates OutstandingToken)
-                # The database router will use the current tenant context to route OutstandingToken
-                # creation to the correct database (tenant.db_alias)
                 refresh = RefreshToken.for_user(user)
                 logger.info(f"✓ Refresh token created successfully")
             except Exception as e:
                 logger.error(f"Failed to create refresh token: {str(e)}")
-                logger.warning(f"This likely means token_blacklist tables weren't created. Attempting fallback creation...")
+                logger.warning(f"Attempting fallback table creation...")
                 
-                # Fallback: Try to create the token tables manually
                 try:
                     from tenancy.shop_manager import verify_and_create_missing_tables
                     verify_and_create_missing_tables(tenant, tenant.db_alias)
-                    logger.info(f"✓ Token tables created, retrying token creation...")
+                    logger.info(f"✓ Token tables created, retrying...")
                     refresh = RefreshToken.for_user(user)
-                    logger.info(f"✓ Refresh token created successfully after fallback")
+                    logger.info(f"✓ Token created after fallback")
                 except Exception as fallback_error:
-                    logger.error(f"✗ Fallback token creation failed: {str(fallback_error)}")
-                    import traceback
-                    logger.error(traceback.format_exc())
+                    logger.error(f"✗ Fallback failed: {str(fallback_error)}", exc_info=True)
                     tenant.delete()
                     return Response({'detail': f'Failed to create token: {str(fallback_error)}'}, status=500)
             
@@ -659,8 +534,6 @@ class SignupView(APIView):
 
             response = Response({
                 'message': 'Account created successfully',
-                'access': str(access_token),
-                'refresh': str(refresh),
                 'tenant_slug': tenant.slug,
                 'user': {
                     'id': user.id,
@@ -673,12 +546,14 @@ class SignupView(APIView):
             }, status=201)
 
             # Set JWT tokens in httpOnly cookies
+            is_secure = not settings.DEBUG
+            
             response.set_cookie(
                 'access_token',
                 str(access_token),
-                max_age=86400,
+                max_age=int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()),
                 httponly=True,
-                secure=False,
+                secure=is_secure,
                 samesite='Lax',
                 path='/',
             )
@@ -686,9 +561,9 @@ class SignupView(APIView):
             response.set_cookie(
                 'refresh_token',
                 str(refresh),
-                max_age=2592000,
+                max_age=int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()),
                 httponly=True,
-                secure=False,
+                secure=is_secure,
                 samesite='Lax',
                 path='/',
             )
@@ -698,3 +573,295 @@ class SignupView(APIView):
         except Exception as e:
             logger.error(f"Signup error: {str(e)}", exc_info=True)
             return Response({'detail': f'Signup failed: {str(e)}'}, status=500)
+
+
+# ViewSet for user management
+class ShopUserViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing shop users.
+    """
+    queryset = ShopUser.objects.all()
+    serializer_class = ShopUserSerializer
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TenantJWTAuthentication]
+    
+    def get_queryset(self):
+        """Filter users by current tenant"""
+        tenant = get_current_tenant()
+        if not tenant:
+            return ShopUser.objects.none()
+        
+        # Query from tenant database
+        return ShopUser.objects.using(tenant.db_alias).filter(tenant_id=tenant.id)
+    
+    def perform_create(self, serializer):
+        """
+        Automatically inherit role from creator if they are ADMIN.
+        This ensures new users get admin privileges when created by an admin.
+        """
+        # Get the current user (creator)
+        creator = self.request.user
+        
+        # Check if creator is ADMIN - inherit their role
+        if getattr(creator, 'role', None) == 'ADMIN' or getattr(creator, 'is_superuser', False):
+            # Admin users create other admins automatically
+            serializer.save(role='ADMIN', is_staff=True)
+        else:
+            # Non-admins create users with default role (CASHIER)
+            serializer.save()
+
+
+class ProfileView(APIView):
+    """
+    Get or update the current user's profile.
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TenantJWTAuthentication]
+
+    def get(self, request):
+        """Get current user's profile"""
+        try:
+            user = request.user
+            tenant = get_current_tenant()
+            
+            return Response({
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'role': getattr(user, 'role', 'USER'),
+                'is_superuser': user.is_superuser,
+                'is_staff': user.is_staff,
+                'is_admin': getattr(user, 'role', '') == 'ADMIN' or user.is_superuser,
+                'phone': getattr(user, 'phone', None),
+                'shop_ids': getattr(user, 'shop_ids', []),
+                'tenant': {
+                    'id': tenant.id if tenant else None,
+                    'name': tenant.name if tenant else None,
+                    'slug': tenant.slug if tenant else None,
+                } if tenant else None
+            })
+        except Exception as e:
+            logger.error(f"Profile get error: {str(e)}", exc_info=True)
+            return Response(
+                {'detail': 'Failed to get profile'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def patch(self, request):
+        """Update current user's profile"""
+        try:
+            user = request.user
+            tenant = get_current_tenant()
+            
+            # Fields that can be updated
+            updateable_fields = ['first_name', 'last_name', 'email', 'phone']
+            
+            # Update fields
+            for field in updateable_fields:
+                if field in request.data:
+                    setattr(user, field, request.data[field])
+            
+            # Save to tenant database
+            if tenant:
+                user.save(using=tenant.db_alias)
+            else:
+                user.save()
+            
+            # Log the update
+            UserAuditLog.log_user_updated(request, user)
+            
+            return Response({
+                'detail': 'Profile updated successfully',
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'phone': getattr(user, 'phone', None),
+                }
+            })
+        except Exception as e:
+            logger.error(f"Profile update error: {str(e)}", exc_info=True)
+            return Response(
+                {'detail': f'Failed to update profile: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def put(self, request):
+        """Change password"""
+        try:
+            user = request.user
+            tenant = get_current_tenant()
+            
+            current_password = request.data.get('current_password')
+            new_password = request.data.get('new_password')
+            new_password_confirm = request.data.get('new_password_confirm')
+            
+            if not all([current_password, new_password, new_password_confirm]):
+                return Response(
+                    {'detail': 'All password fields are required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check current password
+            if not user.check_password(current_password):
+                return Response(
+                    {'detail': 'Current password is incorrect'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check new passwords match
+            if new_password != new_password_confirm:
+                return Response(
+                    {'detail': 'New passwords do not match'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate password strength
+            if len(new_password) < 8:
+                return Response(
+                    {'detail': 'Password must be at least 8 characters'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Set new password
+            user.set_password(new_password)
+            
+            # Save to tenant database
+            if tenant:
+                user.save(using=tenant.db_alias)
+            else:
+                user.save()
+            
+            # Log the password change
+            UserAuditLog.log_user_updated(request, user, changes={'password': 'changed'})
+            
+            return Response({
+                'detail': 'Password changed successfully'
+            })
+        except Exception as e:
+            logger.error(f"Password change error: {str(e)}", exc_info=True)
+            return Response(
+                {'detail': f'Failed to change password: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+
+class UnifiedLoginView(APIView):
+    """
+    Unified login that works for both subdomain-based and explicit tenant_slug logins.
+    """
+    permission_classes = [AllowAny]
+    throttle_classes = [LoginThrottle]
+
+    @method_decorator(csrf_protect)
+    def post(self, request):
+        """
+        Unified login endpoint.
+        - For subdomain-based: tenant resolved from middleware
+        - For explicit tenant: tenant_slug provided in request body
+        """
+        try:
+            # Try to get tenant from request data first (explicit login)
+            tenant_slug = request.data.get('tenant_slug')
+            tenant = None
+            
+            if tenant_slug:
+                # Explicit tenant provided
+                try:
+                    tenant = Tenant.objects.get(slug=tenant_slug)
+                    set_current_tenant(tenant)
+                    from tenancy.utils import register_tenant_connection
+                    register_tenant_connection(tenant)
+                    if settings.DEBUG:
+                        logger.debug(f"Unified login: Using explicit tenant: {tenant.name}")
+                except Tenant.DoesNotExist:
+                    LoginAuditLog.log_login_failed(request, username=request.data.get('username'))
+                    raise AuthenticationFailed(f"Tenant '{tenant_slug}' not found")
+            else:
+                # Try to get from context (subdomain-based)
+                tenant = get_current_tenant()
+                if tenant and settings.DEBUG:
+                    logger.debug(f"Unified login: Using tenant from context: {tenant.name}")
+            
+            if not tenant:
+                LoginAuditLog.log_login_failed(request, username=request.data.get('username'))
+                raise AuthenticationFailed("Tenant not resolved. Provide tenant_slug or use subdomain.")
+
+            username = request.data.get("username")
+            password = request.data.get("password")
+
+            if not username or not password:
+                LoginAuditLog.log_login_failed(request, username=username)
+                raise AuthenticationFailed("Missing credentials")
+
+            user = authenticate(request, username=username, password=password)
+
+            if not user:
+                LoginAuditLog.log_login_failed(request, username=username)
+                raise AuthenticationFailed("Invalid credentials")
+
+            if not user.is_superuser and user.tenant_id != tenant.id:
+                LoginAuditLog.log_login_failed(request, username=username)
+                raise AuthenticationFailed("User does not belong to tenant")
+
+            # Create tokens
+            refresh = RefreshToken()
+            refresh['user_id'] = user.id
+            refresh['username'] = user.username
+            refresh['email'] = getattr(user, 'email', '')
+            refresh['tenant_id'] = tenant.id
+            refresh['tenant_slug'] = tenant.slug
+
+            access_token = str(refresh.access_token)
+            refresh_token = str(refresh)
+
+            response = Response({
+                "user": {
+                    "id": user.id,
+                    "username": user.username,
+                    "role": getattr(user, 'role', 'USER'),
+                    "is_superuser": user.is_superuser,
+                },
+                "tenant": {
+                    "id": tenant.id,
+                    "name": tenant.name,
+                    "slug": tenant.slug,
+                }
+            })
+
+            # Set cookies
+            is_secure = not settings.DEBUG
+            
+            response.set_cookie(
+                key='access_token',
+                value=access_token,
+                max_age=int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()),
+                secure=is_secure,
+                httponly=True,
+                samesite='Lax',
+                path='/',
+            )
+            
+            response.set_cookie(
+                key='refresh_token',
+                value=refresh_token,
+                max_age=int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()),
+                secure=is_secure,
+                httponly=True,
+                samesite='Lax',
+                path='/',
+            )
+
+            LoginAuditLog.log_login(request, user)
+
+            return response
+        
+        except AuthenticationFailed:
+            raise
+        except Exception as e:
+            logger.error(f"Unified login error: {str(e)}", exc_info=True)
+            raise AuthenticationFailed(f"Login failed: {str(e)}")

@@ -230,25 +230,67 @@ def user_profile(request):
     """
     Get current user profile
     """
-    user = request.user
-    tenant = get_current_tenant()
-    
-    return Response({
-        'user': {
+    try:
+        user = request.user
+        
+        # Check if user is authenticated
+        if not user or not user.is_authenticated:
+            return Response(
+                {'error': 'User not authenticated'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        tenant = None
+        tenant_data = None
+        
+        # Try to get current tenant
+        try:
+            tenant = get_current_tenant()
+        except Exception as e:
+            logger.warning(f"Failed to get current tenant: {str(e)}")
+            # Continue without tenant data if we can't get it
+        
+        # Build tenant response
+        if tenant:
+            try:
+                tenant_data = {
+                    'id': tenant.id,
+                    'name': tenant.name,
+                    'slug': tenant.slug,
+                    'subdomain': tenant.subdomain,
+                }
+            except Exception as e:
+                logger.warning(f"Failed to serialize tenant data: {str(e)}")
+                tenant_data = None
+        
+        # Build user response
+        user_data = {
             'id': user.id,
             'username': user.username,
             'email': user.email,
             'first_name': user.first_name,
             'last_name': user.last_name,
-            'role': user.role,
-        },
-        'tenant': {
-            'id': tenant.id,
-            'name': tenant.name,
-            'slug': tenant.slug,
-            'subdomain': tenant.subdomain,
-        } if tenant else None
-    })
+            'role': getattr(user, 'role', 'CASHIER'),  # Default to CASHIER if not set
+            'is_staff': user.is_staff,
+            'is_superuser': user.is_superuser,
+            'is_active': user.is_active,
+        }
+        
+        # Include tenant_id if user has one
+        if hasattr(user, 'tenant_id') and user.tenant_id:
+            user_data['tenant_id'] = user.tenant_id
+        
+        return Response({
+            'user': user_data,
+            'tenant': tenant_data,
+        })
+    
+    except Exception as e:
+        logger.error(f"Error fetching user profile: {str(e)}", exc_info=True)
+        return Response(
+            {'error': 'Failed to fetch user profile', 'detail': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @api_view(['POST'])

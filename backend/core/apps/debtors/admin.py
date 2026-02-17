@@ -11,60 +11,58 @@ class DebtorAdmin(admin.ModelAdmin):
     """Admin interface for Debtor model (DMAST table)."""
     
     list_display = [
-        'dno', 'dname', 'status_display', 'dcrnt', 'dclimit',
-        'ddatlpd', 'blockflag'
+        'customer_number', 'name', 'balance_current', 
+        'credit_limit', 'is_active'
     ]
     list_filter = [
-        'blockflag', 'dintflag', 'acctype', 'darea', 'created_at'
+        'block_flag', 'interest_flag', 'account_type', 'is_active', 'created_at'
     ]
-    search_fields = ['dno', 'dname', 'dsname', 'dtel', 'dtaxno']
+    search_fields = ['customer_number', 'name', 'short_name', 'phone', 'email']
     readonly_fields = [
-        'dcrnt', 'd30', 'd60', 'd90', 'd120', 'd150', 'd180',
-        'dsalesm', 'dsalesy', 'dprofitm', 'dprofity',
-        'ddatlpd', 'damtlpd', 'created_at', 'updated_at',
-        'get_total_balance', 'get_overdue_balance'
+        'balance_current', 'balance_30_days', 'balance_60_days', 
+        'balance_90_days', 'balance_120_days', 'balance_150_days', 
+        'balance_180_days', 'last_payment_date', 'last_payment_amount',
+        'created_at', 'updated_at'
     ]
     
     fieldsets = (
         ('Account Identification', {
-            'fields': ('dno', 'dname', 'dsname', 'dcontact', 'dtaxno')
+            'fields': ('customer_number', 'name', 'short_name', 'contact_person', 'email')
         }),
         ('Contact Details', {
-            'fields': ('dtel', 'dfax')
+            'fields': ('phone', 'phone2', 'fax')
         }),
         ('Postal Address', {
-            'fields': ('dadd1', 'dadd2', 'dadd3', 'dadd4', 'dpcode'),
-            'classes': ('collapse',)
-        }),
-        ('Delivery Address', {
-            'fields': ('delad1', 'delad2', 'delad3', 'delad4'),
+            'fields': ('address_line1', 'address_line2', 'address_line3', 'postal_code'),
             'classes': ('collapse',)
         }),
         ('Business Details', {
-            'fields': ('darea', 'acctype', 'price', 'terms')
+            'fields': ('area_code', 'account_type', 'price_level', 'payment_terms')
         }),
         ('Discount & Credit', {
             'fields': (
-                'ddiscper', 'pdisc', 'discprn',
-                'dclimit'
+                'discount_percentage', 'prompt_payment_discount',
+                'credit_limit'
             )
         }),
         ('Account Control Flags', {
             'fields': (
-                'blockflag', 'dintflag', 'dposbal'
+                'block_flag', 'interest_flag', 'positive_balance_only'
             )
         }),
         ('Balance & Aging', {
             'fields': (
-                'dcrnt', 'd30', 'd60', 'd90', 'd120', 'd150', 'd180',
-                'get_total_balance', 'get_overdue_balance'
+                'balance_current', 'balance_30_days', 'balance_60_days', 
+                'balance_90_days', 'balance_120_days', 'balance_150_days', 
+                'balance_180_days'
             ),
             'classes': ('collapse',)
         }),
         ('Statistics', {
             'fields': (
-                'dsalesm', 'dsalesy', 'dprofitm', 'dprofity',
-                'ddatlpd', 'damtlpd'
+                'sales_month', 'sales_year', 
+                'profit_month', 'profit_year',
+                'last_payment_date', 'last_payment_amount'
             ),
             'classes': ('collapse',)
         }),
@@ -78,7 +76,7 @@ class DebtorAdmin(admin.ModelAdmin):
     
     def status_display(self, obj):
         """Display color-coded block status."""
-        if obj.blockflag == 'Y':
+        if obj.is_blocked():
             color = 'red'
             status = 'BLOCKED'
         else:
@@ -113,25 +111,28 @@ class DebtorAdmin(admin.ModelAdmin):
 class DebtorTransactionAdmin(admin.ModelAdmin):
     """Admin interface for DebtorTransaction (DEBTRAN table)."""
     
-    list_display = ['dno', 'dtrano', 'dtype', 'dtdate', 'dttot', 'created_at']
-    list_filter = ['dtype', 'dtdate', 'dtaxstat', 'created_at']
-    search_fields = ['dtrano', 'dno__dname', 'ordno']
-    readonly_fields = ['dno', 'dtdate', 'dttot', 'created_at', 'updated_at']
+    list_display = ['debtor', 'transaction_number', 'transaction_type', 'transaction_date', 'total_amount', 'created_at']
+    list_filter = ['transaction_type', 'transaction_date', 'vat_status', 'status', 'is_allocated', 'created_at']
+    search_fields = ['transaction_number', 'debtor__name', 'order_number']
+    readonly_fields = ['debtor', 'transaction_date', 'total_amount', 'created_at', 'updated_at']
     
     fieldsets = (
         ('Transaction Header', {
-            'fields': ('dno', 'dtrano', 'dtype', 'dtdate')
+            'fields': ('debtor', 'transaction_number', 'transaction_type', 'transaction_date', 'transaction_time')
         }),
         ('Financial Details', {
-            'fields': ('dtsub', 'dtgst', 'dttot', 'dtaxstat')
+            'fields': ('subtotal', 'vat_amount', 'total_amount', 'vat_status')
         }),
         ('References', {
-            'fields': ('source', 'ordno', 'custref'),
+            'fields': ('source_type', 'source_reference', 'order_number', 'customer_reference'),
             'classes': ('collapse',)
         }),
         ('Delivery Information', {
-            'fields': ('del1', 'del2', 'del3', 'del4'),
+            'fields': ('description_line1', 'description_line2', 'description_line3', 'description_line4'),
             'classes': ('collapse',)
+        }),
+        ('Status & Metadata', {
+            'fields': ('status', 'is_allocated', 'created_by')
         }),
         ('Audit', {
             'fields': ('created_at', 'updated_at'),

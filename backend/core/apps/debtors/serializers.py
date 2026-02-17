@@ -15,6 +15,7 @@ from .models import (
 class DebtorListSerializer(serializers.ModelSerializer):
     """Serializer for debtor list view (DMAST)."""
     
+    id = serializers.IntegerField(source='customer_number', read_only=True)
     total_balance = serializers.SerializerMethodField()
     overdue_balance = serializers.SerializerMethodField()
     is_blocked_flag = serializers.SerializerMethodField()
@@ -22,15 +23,19 @@ class DebtorListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Debtor
         fields = [
-            'dno',
-            'dname',
-            'dsname',
-            'dcontact',
-            'dtel',
-            'darea',
-            'acctype',
-            'dclimit',
-            'dcrnt',
+            'id',
+            'customer_number',
+            'name',
+            'short_name',
+            'contact_person',
+            'phone',
+            'phone2',
+            'fax',
+            'email',
+            'area_code',
+            'account_type',
+            'credit_limit',
+            'balance_current',
             'total_balance',
             'overdue_balance',
             'is_blocked_flag',
@@ -41,7 +46,7 @@ class DebtorListSerializer(serializers.ModelSerializer):
     def get_total_balance(self, obj):
         """Calculate total balance."""
         try:
-            return obj.get_total_balance()
+            return obj.total_balance
         except (AttributeError, TypeError) as e:
             # Handle missing fields or calculation errors
             return Decimal(0)
@@ -49,7 +54,7 @@ class DebtorListSerializer(serializers.ModelSerializer):
     def get_overdue_balance(self, obj):
         """Calculate overdue balance (> 30 days)."""
         try:
-            return obj.get_overdue_balance()
+            return obj.overdue_balance
         except (AttributeError, TypeError) as e:
             # Handle missing fields or calculation errors
             return Decimal(0)
@@ -57,7 +62,7 @@ class DebtorListSerializer(serializers.ModelSerializer):
     def get_is_blocked_flag(self, obj):
         """Get block status."""
         try:
-            return obj.is_blocked()
+            return obj.is_blocked
         except (AttributeError, TypeError) as e:
             # Handle missing field or method error
             return False
@@ -66,6 +71,7 @@ class DebtorListSerializer(serializers.ModelSerializer):
 class DebtorDetailSerializer(serializers.ModelSerializer):
     """Detailed serializer for debtor (DMAST)."""
     
+    id = serializers.IntegerField(source='customer_number', read_only=True)
     total_balance = serializers.SerializerMethodField()
     overdue_balance = serializers.SerializerMethodField()
     is_blocked_flag = serializers.SerializerMethodField()
@@ -75,101 +81,107 @@ class DebtorDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Debtor
         fields = [
-            'dno',
-            'dname',
-            'dsname',
-            'dcontact',
-            'dtel',
-            'dfax',
-            'dadd1',
-            'dadd2',
-            'dadd3',
-            'dpcode',
-            'delad1',
-            'delad2',
-            'delad3',
-            'delad4',
-            'dtaxno',
-            'acctype',
-            'price',
-            'terms',
-            'ddiscper',
-            'pdisc',
-            'discprn',
-            'dclimit',
-            'darea',
-            'dintflag',
-            'blockflag',
-            'dposbal',
-            'dbalbfwd',
-            'dcrnt',
-            'd30',
-            'd60',
-            'd90',
-            'd120',
-            'd150',
-            'd180',
+            'id',
+            'customer_number',
+            'name',
+            'short_name',
+            'contact_person',
+            'phone',
+            'phone2',
+            'fax',
+            'email',
+            'address_line1',
+            'address_line2',
+            'address_line3',
+            'postal_code',
+            'delivery_address1',
+            'delivery_address2',
+            'delivery_address3',
+            'delivery_address4',
+            'tax_number',
+            'vat_reference',
+            'account_type',
+            'price_level',
+            'payment_terms',
+            'discount_percentage',
+            'prompt_payment_discount',
+            'discount_printable',
+            'credit_limit',
+            'area_code',
+            'interest_flag',
+            'block_flag',
+            'positive_balance_only',
+            'balance_brought_forward',
+            'balance_current',
+            'balance_30_days',
+            'balance_60_days',
+            'balance_90_days',
+            'balance_120_days',
+            'balance_150_days',
+            'balance_180_days',
             'total_balance',
             'overdue_balance',
             'available_credit',
             'credit_utilization_pct',
             'is_blocked_flag',
-            'dsalesm',
-            'dsalesy',
-            'dprofitm',
-            'dprofity',
-            'damtlpd',
-            'ddatlpd',
+            'sales_month',
+            'sales_year',
+            'profit_month',
+            'profit_year',
+            'last_payment_amount',
+            'last_payment_date',
+            'date_opened',
+            'notes',
             'is_active',
             'created_at',
             'updated_at',
         ]
         read_only_fields = [
-            'dcrnt',
-            'd30',
-            'd60',
-            'd90',
-            'd120',
-            'd150',
-            'd180',
-            'dsalesm',
-            'dsalesy',
-            'dprofitm',
-            'dprofity',
-            'damtlpd',
-            'ddatlpd',
+            'balance_current',
+            'balance_30_days',
+            'balance_60_days',
+            'balance_90_days',
+            'balance_120_days',
+            'balance_150_days',
+            'balance_180_days',
+            'sales_month',
+            'sales_year',
+            'profit_month',
+            'profit_year',
+            'last_payment_amount',
+            'last_payment_date',
         ]
     
     def get_total_balance(self, obj):
         try:
-            return obj.get_total_balance()
+            return obj.total_balance
         except (AttributeError, TypeError):
             return Decimal(0)
     
     def get_overdue_balance(self, obj):
         try:
-            return obj.get_overdue_balance()
+            return obj.overdue_balance
         except (AttributeError, TypeError):
             return Decimal(0)
     
     def get_available_credit(self, obj):
         try:
-            return obj.dclimit - obj.get_total_balance()
+            return obj.credit_available
         except (AttributeError, TypeError):
             return Decimal(0)
     
     def get_credit_utilization_pct(self, obj):
         try:
-            total = obj.get_total_balance()
-            if obj.dclimit > 0:
-                return round((total / obj.dclimit) * 100, 2)
+            total = obj.total_balance
+            if obj.credit_limit > 0:
+                return round((total / obj.credit_limit) * 100, 2)
             return 0
         except (AttributeError, TypeError, ZeroDivisionError):
             return 0
     
     def get_is_blocked_flag(self, obj):
         try:
-            return obj.is_blocked()
+            return obj.is_blocked
         except (AttributeError, TypeError):
             return False
 
@@ -177,71 +189,105 @@ class DebtorDetailSerializer(serializers.ModelSerializer):
 class DebtorCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer for creating/updating debtor (DMAST)."""
     
+    id = serializers.IntegerField(source='customer_number', read_only=True)
+    
     class Meta:
         model = Debtor
         fields = [
-            'dno',
-            'dname',
-            'dsname',
-            'dcontact',
-            'dtel',
-            'dfax',
-            'dadd1',
-            'dadd2',
-            'dadd3',
-            'dpcode',
-            'delad1',
-            'delad2',
-            'delad3',
-            'delad4',
-            'dtaxno',
-            'acctype',
-            'price',
-            'terms',
-            'ddiscper',
-            'pdisc',
-            'discprn',
-            'dclimit',
-            'darea',
-            'dintflag',
-            'blockflag',
-            'dposbal',
+            'id',
+            'customer_number',
+            'name',
+            'short_name',
+            'contact_person',
+            'phone',
+            'phone2',
+            'fax',
+            'email',
+            'address_line1',
+            'address_line2',
+            'address_line3',
+            'postal_code',
+            'delivery_address1',
+            'delivery_address2',
+            'delivery_address3',
+            'delivery_address4',
+            'tax_number',
+            'vat_reference',
+            'account_type',
+            'price_level',
+            'payment_terms',
+            'discount_percentage',
+            'prompt_payment_discount',
+            'discount_printable',
+            'credit_limit',
+            'area_code',
+            'interest_flag',
+            'block_flag',
+            'positive_balance_only',
+            'date_opened',
+            'notes',
             'is_active',
         ]
-        read_only_fields = []
+        read_only_fields = ['customer_number']
     
-    def validate_dno(self, value):
+    def to_internal_value(self, data):
+        """Convert boolean and numeric values to Y/N format for flag fields."""
+        # Create a mutable copy of data
+        data = dict(data)
+        
+        # Convert boolean/numeric values to Y/N for flag fields
+        flag_fields = ['discount_printable', 'interest_flag', 'block_flag', 'positive_balance_only']
+        for field in flag_fields:
+            if field in data:
+                value = data[field]
+                # Handle boolean values
+                if isinstance(value, bool):
+                    data[field] = 'Y' if value else 'N'
+                # Handle string representations of booleans
+                elif isinstance(value, str):
+                    if value.lower() in ['true', '1', 'y', 'yes']:
+                        data[field] = 'Y'
+                    elif value.lower() in ['false', '0', 'n', 'no', '']:
+                        data[field] = 'N'
+                    # Keep it as is if already Y or N
+                # Handle numeric values
+                elif isinstance(value, (int, float)):
+                    data[field] = 'Y' if value else 'N'
+        
+        return super().to_internal_value(data)
+    
+    def validate_customer_number(self, value):
         """Ensure account number is unique."""
         instance = self.instance
-        if instance and instance.dno == value:
+        if instance and instance.customer_number == value:
             return value
         
-        if Debtor.objects.filter(dno=value).exists():
+        if Debtor.objects.filter(customer_number=value).exists():
             raise serializers.ValidationError("Account number already exists.")
         return value
     
-    def validate_dsname(self, value):
+    def validate_short_name(self, value):
         """Ensure short name is populated."""
         if not value:
             raise serializers.ValidationError("Short name is required.")
-        return value[:5].upper()
+        return value[:20].upper()
     
     def validate(self, data):
         """Validate debtor data."""
         # Validate credit limit
-        if data.get('dclimit', 0) < 0:
-            raise serializers.ValidationError({'dclimit': 'Credit limit cannot be negative.'})
+        if data.get('credit_limit', 0) < 0:
+            raise serializers.ValidationError({'credit_limit': 'Credit limit cannot be negative.'})
         
         # Validate discounts
-        if not 0 <= data.get('ddiscper', 0) <= 100:
-            raise serializers.ValidationError({'ddiscper': 'Discount % must be 0-100.'})
+        if not 0 <= data.get('discount_percentage', 0) <= 100:
+            raise serializers.ValidationError({'discount_percentage': 'Discount % must be 0-100.'})
         
-        if not 0 <= data.get('pdisc', 0) <= 100:
-            raise serializers.ValidationError({'pdisc': 'Prompt discount must be 0-100.'})
+        if not 0 <= data.get('prompt_payment_discount', 0) <= 100:
+            raise serializers.ValidationError({'prompt_payment_discount': 'Prompt discount must be 0-100.'})
         
         # Cash customers should not have credit limit
-        if data.get('acctype') == 'C' and data.get('dclimit', 0) > 0:
-            raise serializers.ValidationError({'dclimit': 'Cash customers should not have credit limit.'})
+        if data.get('account_type') == 'C' and data.get('credit_limit', 0) > 0:
+            raise serializers.ValidationError({'credit_limit': 'Cash customers should not have credit limit.'})
         
         return data
 

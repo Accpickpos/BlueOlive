@@ -1,6 +1,7 @@
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.contrib.auth.models import User
+from django.conf import settings
 from decimal import Decimal
 from django.utils import timezone
 from apps.creditors.models import Creditor
@@ -565,3 +566,275 @@ class StockMonthlyStatistic(models.Model):
 
     def __str__(self):
         return f"{self.stock_item.stock_code} - {self.year}/{self.month}"
+
+
+# ============================================================================
+# Phase 1: Branch Management Models
+# ============================================================================
+
+class Branch(models.Model):
+    """Branch/Location model for multi-branch stock management"""
+    
+    BRANCH_TYPE_CHOICES = [
+        ('RETAIL', 'Retail Store'),
+        ('WAREHOUSE', 'Warehouse'),
+        ('HQ', 'Headquarters'),
+    ]
+    
+    branch_code = models.CharField(max_length=10, unique=True, primary_key=True, help_text="e.g., BR001, WH01")
+    branch_name = models.CharField(max_length=100)
+    branch_type = models.CharField(max_length=20, choices=BRANCH_TYPE_CHOICES)
+    address = models.TextField(blank=True, null=True)
+    contact_phone = models.CharField(max_length=20, blank=True, null=True)
+    is_active = models.BooleanField(default=True, help_text="Whether branch is operational")
+    is_default = models.BooleanField(default=False, help_text="Default branch for the tenant")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.CharField(max_length=255, null=True, blank=True)
+    updated_by = models.CharField(max_length=255, null=True, blank=True)
+
+    class Meta:
+        db_table = 'branches'
+        ordering = ['branch_code']
+        indexes = [
+            models.Index(fields=['is_active']),
+            models.Index(fields=['is_default']),
+            models.Index(fields=['branch_type']),
+        ]
+
+    def __str__(self):
+        return f"{self.branch_code} - {self.branch_name}"
+
+
+class BranchStock(models.Model):
+    """Stock quantity tracking per branch"""
+    
+    id = models.BigAutoField(primary_key=True)
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name='branch_stocks')
+    stock_item = models.ForeignKey(StockItem, on_delete=models.CASCADE, related_name='branch_stocks')
+    
+    quantity = models.DecimalField(max_digits=14, decimal_places=4, default=0, help_text="Current quantity at branch")
+    quantity_allocated = models.DecimalField(max_digits=14, decimal_places=4, default=0, help_text="Reserved for transfers/orders")
+    reorder_level = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Per-branch reorder level")
+    reorder_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Per-branch reorder quantity")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'branch_stocks'
+        unique_together = ['branch', 'stock_item']
+        ordering = ['branch', 'stock_item']
+        indexes = [
+            models.Index(fields=['branch', 'quantity']),
+            models.Index(fields=['stock_item', 'branch']),
+        ]
+
+    def __str__(self):
+        return f"{self.branch.branch_code} - {self.stock_item.stock_code} ({self.quantity})"
+
+    @property
+    def available_quantity(self):
+        """Calculate available quantity = quantity - allocated"""
+        return max(Decimal('0'), (self.quantity - self.quantity_allocated))
+
+
+# ============================================================================
+# Phase 3: Group Orders
+# ============================================================================
+
+class GroupOrder(models.Model):
+    """Group order model for consolidating multiple orders"""
+    
+    STATUS_CHOICES = [
+        ('DRAFT', 'Draft'),
+        ('ACTIVE', 'Active'),
+        ('COMPLETED', 'Completed'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+    
+    id = models.BigAutoField(primary_key=True)
+    group_order_number = models.CharField(max_length=20, unique=True, help_text="e.g., GRP-2024-0001")
+    order_date = models.DateField(default=timezone.now)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT')
+    branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name='group_orders')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_group_orders')
+    notes = models.TextField(blank=True, null=True)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'group_orders'
+        ordering = ['-order_date', '-group_order_number']
+        indexes = [
+            models.Index(fields=['status', 'branch']),
+            models.Index(fields=['order_date']),
+        ]
+
+    def __str__(self):
+        return f"{self.group_order_number} - {self.status}"
+
+    def calculate_total_amount(self):
+        """Calculate total from items"""
+        total = sum(item.line_total for item in self.items.all())
+        self.total_amount = total
+        self.save(update_fields=['total_amount'])
+        return total
+
+
+class GroupOrderItem(models.Model):
+    """Individual items in a group order"""
+    
+    id = models.BigAutoField(primary_key=True)
+    group_order = models.ForeignKey(GroupOrder, on_delete=models.CASCADE, related_name='items')
+    stock_item = models.ForeignKey(StockItem, on_delete=models.PROTECT, related_name='group_order_items')
+    quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=4)
+    line_total = models.DecimalField(max_digits=12, decimal_places=2)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'group_order_items'
+        unique_together = ['group_order', 'stock_item']
+        ordering = ['stock_item']
+
+    def __str__(self):
+        return f"{self.group_order.group_order_number} - {self.stock_item.stock_code}"
+
+    def save(self, *args, **kwargs):
+        """Recalculate line total on save"""
+        self.line_total = self.quantity * self.unit_price
+        super().save(*args, **kwargs)
+
+
+# ============================================================================
+# Phase 4: IBT - Inter-Branch Transfer
+# ============================================================================
+
+class BranchTransfer(models.Model):
+    """Inter-branch transfer request"""
+    
+    STATUS_CHOICES = [
+        ('DRAFT', 'Draft'),
+        ('PENDING', 'Pending Approval'),
+        ('APPROVED', 'Approved'),
+        ('DISPATCHED', 'Dispatched'),
+        ('IN_TRANSIT', 'In Transit'),
+        ('RECEIVED', 'Received'),
+        ('COMPLETED', 'Completed'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+    
+    TRANSFER_TYPE_CHOICES = [
+        ('STANDARD', 'Standard Transfer'),
+        ('URGENT', 'Urgent Transfer'),
+        ('RETURN', 'Return Transfer'),
+    ]
+    
+    id = models.BigAutoField(primary_key=True)
+    transfer_number = models.CharField(max_length=20, unique=True, help_text="e.g., IBT-2024-0001")
+    from_branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name='transfers_out')
+    to_branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name='transfers_in')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT')
+    transfer_type = models.CharField(max_length=20, choices=TRANSFER_TYPE_CHOICES, default='STANDARD')
+    
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='transfers_requested')
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='transfers_approved')
+    dispatched_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='transfers_dispatched')
+    received_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='transfers_received')
+    
+    requested_date = models.DateTimeField(default=timezone.now)
+    approved_date = models.DateTimeField(null=True, blank=True)
+    dispatched_date = models.DateTimeField(null=True, blank=True)
+    received_date = models.DateTimeField(null=True, blank=True)
+    
+    notes = models.TextField(blank=True, null=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'branch_transfers'
+        ordering = ['-requested_date', '-transfer_number']
+        indexes = [
+            models.Index(fields=['status', 'from_branch']),
+            models.Index(fields=['status', 'to_branch']),
+            models.Index(fields=['requested_date']),
+            models.Index(fields=['transfer_type']),
+        ]
+
+    def __str__(self):
+        return f"{self.transfer_number} - {self.from_branch.branch_code} → {self.to_branch.branch_code}: {self.status}"
+
+
+class BranchTransferItem(models.Model):
+    """Individual items in a branch transfer"""
+    
+    id = models.BigAutoField(primary_key=True)
+    transfer = models.ForeignKey(BranchTransfer, on_delete=models.CASCADE, related_name='items')
+    stock_item = models.ForeignKey(StockItem, on_delete=models.PROTECT, related_name='transfer_items')
+    
+    quantity_requested = models.DecimalField(max_digits=10, decimal_places=2)
+    quantity_dispatched = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    quantity_received = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    variance = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Calculated on receive")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'branch_transfer_items'
+        unique_together = ['transfer', 'stock_item']
+        ordering = ['stock_item']
+
+    def __str__(self):
+        return f"{self.transfer.transfer_number} - {self.stock_item.stock_code}"
+
+    def save(self, *args, **kwargs):
+        """Calculate variance on save"""
+        self.variance = self.quantity_received - self.quantity_requested
+        super().save(*args, **kwargs)
+
+
+# ============================================================================
+# Phase 5: IBI - Inter-Branch Invoicing
+# ============================================================================
+
+class BranchTransferInvoice(models.Model):
+    """Invoice for inter-branch transfers"""
+    
+    STATUS_CHOICES = [
+        ('DRAFT', 'Draft'),
+        ('ISSUED', 'Issued'),
+        ('PAID', 'Paid'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+    
+    id = models.BigAutoField(primary_key=True)
+    transfer = models.OneToOneField(BranchTransfer, on_delete=models.CASCADE, related_name='invoice')
+    invoice_number = models.CharField(max_length=20, unique=True, help_text="e.g., IBI-2024-0001")
+    invoice_date = models.DateField(default=timezone.now)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT')
+    
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    vat_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'branch_transfer_invoices'
+        ordering = ['-invoice_date', '-invoice_number']
+        indexes = [
+            models.Index(fields=['status']),
+            models.Index(fields=['invoice_date']),
+        ]
+
+    def __str__(self):
+        return f"{self.invoice_number} - {self.status}"

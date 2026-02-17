@@ -205,7 +205,7 @@ class ShopUserBackend(BaseBackend):
                     cur.execute('''
                         SELECT id, username, password, email, first_name, last_name,
                                is_active, is_staff, is_superuser, date_joined,
-                               tenant_id, role, phone
+                               tenant_id, shop_ids, role, phone
                         FROM shop_users_shopuser
                         WHERE username = %s
                     ''', [username])
@@ -224,8 +224,9 @@ class ShopUserBackend(BaseBackend):
                         user.is_superuser = row[8]
                         user.date_joined = row[9]
                         user.tenant_id = row[10]
-                        user.role = row[11]
-                        user.phone = row[12]
+                        user.shop_ids = row[11] or []  # Handle NULL as empty list
+                        user.role = row[12]
+                        user.phone = row[13]
                         logger.info(f"Found user in {tenant.db_alias}: {user.username}, checking password")
                     else:
                         logger.error(f"User not found in {tenant.db_alias}: {username}")

@@ -67,3 +67,34 @@ export function extractErrorMessage(error: any): string {
   // Generic fallback
   return 'An unexpected error occurred. Please try again.';
 }
+/**
+ * Format ISO timestamp to readable time string
+ * Examples: "2:30 PM", "Yesterday 3:45 PM", "Feb 10, 2:30 PM"
+ */
+export function formatTime(isoString: string): string {
+  const date = new Date(isoString);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const messageDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  
+  const diffTime = today.getTime() - messageDate.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+  const timeStr = date.toLocaleTimeString('en-US', { 
+    hour: 'numeric', 
+    minute: '2-digit',
+    hour12: true 
+  });
+
+  if (diffDays === 0) {
+    return timeStr; // Same day: "2:30 PM"
+  } else if (diffDays === 1) {
+    return `Yesterday ${timeStr}`; // Yesterday: "Yesterday 2:30 PM"
+  } else if (diffDays < 7) {
+    const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+    return `${dayName} ${timeStr}`; // Within a week: "Mon 2:30 PM"
+  } else {
+    const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return `${dateStr} ${timeStr}`; // Older: "Feb 10, 2:30 PM"
+  }
+}

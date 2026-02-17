@@ -3,7 +3,8 @@ from .models import (
     SalesDepartment, SalesArea, StockItem, SpecialDeal, FuturePricing,
     ShrinkWrap, PackBundle, PackBundleIngredient, StockTransaction,
     StockTake, StockTakeItem, ContractPricing, OneTouchLookupKey,
-    StockMonthlyStatistic
+    StockMonthlyStatistic, Branch, BranchStock, GroupOrder, GroupOrderItem,
+    BranchTransfer, BranchTransferItem, BranchTransferInvoice
 )
 from decimal import Decimal
 
@@ -445,6 +446,189 @@ class StockValuationSerializer(serializers.Serializer):
 class ManufactureItemSerializer(serializers.Serializer):
     """Serializer for manufacturing pack/bundle items"""
     pack_bundle = serializers.PrimaryKeyRelatedField(queryset=PackBundle.objects.all())
-    quantity = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0.01)
+    quantity = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal('0.01'))
     manufacture_date = serializers.DateField()
     warn_on_out_of_stock = serializers.BooleanField(default=True)
+
+
+# ============================================================================
+# Phase 1: Branch Management Serializers
+# ============================================================================
+
+class BranchSerializer(serializers.ModelSerializer):
+    """Serializer for Branch model"""
+    
+    class Meta:
+        model = Branch
+        fields = [
+            'branch_code', 'branch_name', 'branch_type', 'address', 
+            'contact_phone', 'is_active', 'is_default', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class BranchStockSerializer(serializers.ModelSerializer):
+    """Serializer for BranchStock model"""
+    branch_name = serializers.CharField(source='branch.branch_name', read_only=True)
+    stock_code = serializers.CharField(source='stock_item.stock_code', read_only=True)
+    stock_description = serializers.CharField(source='stock_item.description', read_only=True)
+    available_quantity = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = BranchStock
+        fields = [
+            'id', 'branch', 'branch_name', 'stock_item', 'stock_code', 'stock_description',
+            'quantity', 'quantity_allocated', 'available_quantity', 'reorder_level', 
+            'reorder_quantity', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_available_quantity(self, obj):
+        return float(obj.available_quantity)
+
+
+class BranchStockDetailSerializer(serializers.ModelSerializer):
+    """Detailed serializer for BranchStock"""
+    branch_details = BranchSerializer(source='branch', read_only=True)
+    stock_item_details = StockItemListSerializer(source='stock_item', read_only=True)
+    available_quantity = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = BranchStock
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_available_quantity(self, obj):
+        return float(obj.available_quantity)
+
+
+# ============================================================================
+# Phase 3: Group Order Serializers
+# ============================================================================
+
+class GroupOrderItemSerializer(serializers.ModelSerializer):
+    """Serializer for GroupOrderItem"""
+    stock_code = serializers.CharField(source='stock_item.stock_code', read_only=True)
+    stock_description = serializers.CharField(source='stock_item.description', read_only=True)
+    
+    class Meta:
+        model = GroupOrderItem
+        fields = [
+            'id', 'group_order', 'stock_item', 'stock_code', 'stock_description',
+            'quantity', 'unit_price', 'line_total', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class GroupOrderSerializer(serializers.ModelSerializer):
+    """Serializer for GroupOrder"""
+    branch_name = serializers.CharField(source='branch.branch_name', read_only=True)
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True, allow_null=True)
+    items = GroupOrderItemSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = GroupOrder
+        fields = [
+            'id', 'group_order_number', 'order_date', 'status', 'branch', 'branch_name',
+            'created_by', 'created_by_username', 'notes', 'total_amount', 'items',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'total_amount']
+
+
+class GroupOrderDetailSerializer(serializers.ModelSerializer):
+    """Detailed serializer for GroupOrder"""
+    branch_details = BranchSerializer(source='branch', read_only=True)
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True, allow_null=True)
+    items = GroupOrderItemSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = GroupOrder
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'updated_at', 'total_amount']
+
+
+# ============================================================================
+# Phase 4: IBT - Inter-Branch Transfer Serializers
+# ============================================================================
+
+class BranchTransferItemSerializer(serializers.ModelSerializer):
+    """Serializer for BranchTransferItem"""
+    stock_code = serializers.CharField(source='stock_item.stock_code', read_only=True)
+    stock_description = serializers.CharField(source='stock_item.description', read_only=True)
+    
+    class Meta:
+        model = BranchTransferItem
+        fields = [
+            'id', 'transfer', 'stock_item', 'stock_code', 'stock_description',
+            'quantity_requested', 'quantity_dispatched', 'quantity_received', 'variance',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'variance', 'created_at', 'updated_at']
+
+
+class BranchTransferSerializer(serializers.ModelSerializer):
+    """Serializer for BranchTransfer"""
+    from_branch_code = serializers.CharField(source='from_branch.branch_code', read_only=True)
+    from_branch_name = serializers.CharField(source='from_branch.branch_name', read_only=True)
+    to_branch_code = serializers.CharField(source='to_branch.branch_code', read_only=True)
+    to_branch_name = serializers.CharField(source='to_branch.branch_name', read_only=True)
+    requested_by_username = serializers.CharField(source='requested_by.username', read_only=True, allow_null=True)
+    approved_by_username = serializers.CharField(source='approved_by.username', read_only=True, allow_null=True)
+    dispatched_by_username = serializers.CharField(source='dispatched_by.username', read_only=True, allow_null=True)
+    received_by_username = serializers.CharField(source='received_by.username', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = BranchTransfer
+        fields = [
+            'id', 'transfer_number', 'from_branch', 'from_branch_code', 'from_branch_name',
+            'to_branch', 'to_branch_code', 'to_branch_name', 'status', 'transfer_type',
+            'requested_by', 'requested_by_username', 'approved_by', 'approved_by_username',
+            'dispatched_by', 'dispatched_by_username', 'received_by', 'received_by_username',
+            'requested_date', 'approved_date', 'dispatched_date', 'received_date',
+            'notes', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'approved_date', 'dispatched_date', 'received_date']
+
+
+class BranchTransferDetailSerializer(serializers.ModelSerializer):
+    """Detailed serializer for BranchTransfer with items"""
+    from_branch_details = BranchSerializer(source='from_branch', read_only=True)
+    to_branch_details = BranchSerializer(source='to_branch', read_only=True)
+    requested_by_username = serializers.CharField(source='requested_by.username', read_only=True, allow_null=True)
+    approved_by_username = serializers.CharField(source='approved_by.username', read_only=True, allow_null=True)
+    dispatched_by_username = serializers.CharField(source='dispatched_by.username', read_only=True, allow_null=True)
+    received_by_username = serializers.CharField(source='received_by.username', read_only=True, allow_null=True)
+    items = BranchTransferItemSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = BranchTransfer
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'updated_at', 'approved_date', 'dispatched_date', 'received_date']
+
+
+# ============================================================================
+# Phase 5: IBI - Inter-Branch Invoicing Serializers
+# ============================================================================
+
+class BranchTransferInvoiceSerializer(serializers.ModelSerializer):
+    """Serializer for BranchTransferInvoice"""
+    transfer_number = serializers.CharField(source='transfer.transfer_number', read_only=True)
+    
+    class Meta:
+        model = BranchTransferInvoice
+        fields = [
+            'id', 'transfer', 'transfer_number', 'invoice_number', 'invoice_date',
+            'status', 'subtotal', 'vat_amount', 'total_amount', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class BranchTransferInvoiceDetailSerializer(serializers.ModelSerializer):
+    """Detailed serializer for BranchTransferInvoice with transfer details"""
+    transfer_details = BranchTransferDetailSerializer(source='transfer', read_only=True)
+    
+    class Meta:
+        model = BranchTransferInvoice
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'updated_at']

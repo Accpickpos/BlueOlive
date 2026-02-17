@@ -31,6 +31,10 @@ from .serializers import (
     RFCSerializer, RFCLineItemSerializer,
     AgingAnalysisSerializer, BulkPaymentSerializer
 )
+from .permissions import (
+    HasCreditorPermission, CanModifyCreditor, CanReceiveGoods,
+    CanPostCreditorInvoice, CanPostCreditorPayment, CanReconcileCreditor
+)
 
 
 
@@ -69,20 +73,24 @@ class CreditorViewSet(viewsets.ModelViewSet):
     
     Endpoints:
     - GET /creditors/ - List creditors
-    - POST /creditors/ - Create creditor
+    - POST /creditors/ - Create creditor (ADMIN/MANAGER only)
     - GET /creditors/{id}/ - Get creditor details
-    - PUT /creditors/{id}/ - Update creditor
-    - PATCH /creditors/{id}/ - Partial update
-    - DELETE /creditors/{id}/ - Deactivate creditor
+    - PUT /creditors/{id}/ - Update creditor (ADMIN/MANAGER only)
+    - PATCH /creditors/{id}/ - Partial update (ADMIN/MANAGER only)
+    - DELETE /creditors/{id}/ - Deactivate creditor (ADMIN/MANAGER only)
     - GET /creditors/{id}/aging-analysis/ - Get balance aging
     - GET /creditors/{id}/outstanding-items/ - Get overdue items
     - GET /creditors/outstanding-balance/ - List all outstanding items
-    - POST /creditors/bulk-activate/ - Bulk activate
-    - POST /creditors/bulk-deactivate/ - Bulk deactivate
+    - POST /creditors/bulk-activate/ - Bulk activate (ADMIN/MANAGER only)
+    - POST /creditors/bulk-deactivate/ - Bulk deactivate (ADMIN/MANAGER only)
+    
+    Permissions:
+    - List/Retrieve: All authenticated users
+    - Create/Update/Delete: ADMIN and MANAGER roles only
     """
     
     queryset = Creditor.objects.all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasCreditorPermission]
     pagination_class = StandardResultsSetPagination
     filter_backends = [
         DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter
@@ -315,9 +323,12 @@ class CreditorViewSet(viewsets.ModelViewSet):
 # ============================================================================
 
 class GoodsReceivedNoteViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing Goods Received Notes"""
+    """
+    ViewSet for managing Goods Received Notes.
+    ADMIN and MANAGER roles can create/update GRNs.
+    """
     
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanReceiveGoods]
     pagination_class = StandardResultsSetPagination
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['creditor', 'is_posted', 'transaction_date']
@@ -349,9 +360,12 @@ class GoodsReceivedNoteViewSet(viewsets.ModelViewSet):
 # ============================================================================
 
 class CreditorInvoiceViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing Creditor Invoices"""
+    """
+    ViewSet for managing Creditor Invoices.
+    ADMIN and MANAGER roles can create/update invoices.
+    """
     
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanPostCreditorInvoice]
     pagination_class = StandardResultsSetPagination
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['creditor', 'is_posted', 'transaction_date']
@@ -388,9 +402,12 @@ class CreditorInvoiceViewSet(viewsets.ModelViewSet):
 # ============================================================================
 
 class CreditorPaymentViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing Creditor Payments"""
+    """
+    ViewSet for managing Creditor Payments.
+    ADMIN and MANAGER roles can create/update payments.
+    """
     
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanPostCreditorPayment]
     pagination_class = StandardResultsSetPagination
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['creditor', 'is_posted', 'payment_method']
@@ -440,9 +457,12 @@ class CreditorPaymentViewSet(viewsets.ModelViewSet):
 # ============================================================================
 
 class CreditorJournalViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing Creditor Journals"""
+    """
+    ViewSet for managing Creditor Journals.
+    ADMIN and MANAGER roles can create/update journals (reconciliation adjustments).
+    """
     
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanReconcileCreditor]
     pagination_class = StandardResultsSetPagination
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['creditor', 'journal_type', 'is_posted']
@@ -502,9 +522,12 @@ class OpenItemViewSet(viewsets.ReadOnlyModelViewSet):
 # ============================================================================
 
 class RFCViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing Returns for Credit"""
+    """
+    ViewSet for managing Returns for Credit.
+    ADMIN and MANAGER roles can create/update RFCs.
+    """
     
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasCreditorPermission]
     pagination_class = StandardResultsSetPagination
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['creditor', 'status']

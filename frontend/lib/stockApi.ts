@@ -105,7 +105,7 @@ export async function getTransactions(params?: Record<string, any>): Promise<any
  * Get stock takes
  */
 export async function getStockTakes(): Promise<any[]> {
-  const response = await api.get('/api/stock-control/stock-takes/');
+  const response = await api.get(ENDPOINTS.STOCK_CONTROL.STOCK_TAKES);
   return response.data.results || response.data || [];
 }
 
@@ -113,7 +113,7 @@ export async function getStockTakes(): Promise<any[]> {
  * Create a new stock take
  */
 export async function createStockTake(data: Record<string, any>): Promise<any> {
-  const response = await api.post('/api/stock-control/stock-takes/', data);
+  const response = await api.post(ENDPOINTS.STOCK_CONTROL.STOCK_TAKES, data);
   return response.data;
 }
 
@@ -121,7 +121,7 @@ export async function createStockTake(data: Record<string, any>): Promise<any> {
  * Get items for a specific stock take
  */
 export async function getStockTakeItems(stockTakeId: number | string): Promise<any[]> {
-  const response = await api.get(`/api/stock-control/stock-takes/${stockTakeId}/items/`);
+  const response = await api.get(`${ENDPOINTS.STOCK_CONTROL.STOCK_TAKES}${stockTakeId}/items/`);
   return response.data.results || response.data || [];
 }
 
@@ -129,7 +129,7 @@ export async function getStockTakeItems(stockTakeId: number | string): Promise<a
  * Add items to a stock take
  */
 export async function addStockTakeItems(stockTakeId: number | string, items: Record<string, any>[]): Promise<any> {
-  const response = await api.post(`/api/stock-control/stock-takes/${stockTakeId}/items/`, items);
+  const response = await api.post(`${ENDPOINTS.STOCK_CONTROL.STOCK_TAKES}${stockTakeId}/items/`, items);
   return response.data;
 }
 
@@ -137,7 +137,7 @@ export async function addStockTakeItems(stockTakeId: number | string, items: Rec
  * Get special deals
  */
 export async function getSpecialDeals(): Promise<any[]> {
-  const response = await api.get('/api/stock-control/special-deals/');
+  const response = await api.get(ENDPOINTS.STOCK_CONTROL.SPECIAL_DEALS);
   return response.data.results || response.data || [];
 }
 
@@ -145,7 +145,7 @@ export async function getSpecialDeals(): Promise<any[]> {
  * Create a special deal
  */
 export async function createSpecialDeal(data: Record<string, any>): Promise<any> {
-  const response = await api.post('/api/stock-control/special-deals/', data);
+  const response = await api.post(ENDPOINTS.STOCK_CONTROL.SPECIAL_DEALS, data);
   return response.data;
 }
 
@@ -153,7 +153,7 @@ export async function createSpecialDeal(data: Record<string, any>): Promise<any>
  * Update a special deal
  */
 export async function updateSpecialDeal(id: number, data: Record<string, any>): Promise<any> {
-  const response = await api.put(`/api/stock-control/special-deals/${id}/`, data);
+  const response = await api.put(`${ENDPOINTS.STOCK_CONTROL.SPECIAL_DEALS}${id}/`, data);
   return response.data;
 }
 
@@ -161,14 +161,14 @@ export async function updateSpecialDeal(id: number, data: Record<string, any>): 
  * Delete a special deal
  */
 export async function deleteSpecialDeal(id: number): Promise<void> {
-  await api.delete(`/api/stock-control/special-deals/${id}/`);
+  await api.delete(`${ENDPOINTS.STOCK_CONTROL.SPECIAL_DEALS}${id}/`);
 }
 
 /**
  * Get pack bundles for manufacture
  */
 export async function getPackBundles(): Promise<any[]> {
-  const response = await api.get('/api/stock-control/pack-bundles/');
+  const response = await api.get(ENDPOINTS.STOCK_CONTROL.PACK_BUNDLES);
   return response.data.results || response.data || [];
 }
 
@@ -176,7 +176,7 @@ export async function getPackBundles(): Promise<any[]> {
  * Get stock summary (total items, stock value, low stock counts, etc.)
  */
 export async function getStockSummary(): Promise<any> {
-  const response = await api.get('/api/stock-control/summary/');
+  const response = await api.get(`${ENDPOINTS.STOCK_CONTROL.STOCK_ITEMS}summary/`);
   return response.data;
 }
 
@@ -184,7 +184,7 @@ export async function getStockSummary(): Promise<any> {
  * Get all departments
  */
 export async function getDepartments(): Promise<any[]> {
-  const response = await api.get('/api/stock-control/departments/');
+  const response = await api.get(ENDPOINTS.STOCK_CONTROL.DEPARTMENTS);
   return response.data.results || response.data || [];
 }
 
@@ -192,7 +192,7 @@ export async function getDepartments(): Promise<any[]> {
  * Get all suppliers
  */
 export async function getSuppliers(): Promise<any[]> {
-  const response = await api.get('/api/stock-control/suppliers/');
+  const response = await api.get(`${ENDPOINTS.STOCK_CONTROL.STOCK_ITEMS}suppliers/`);
   return response.data.results || response.data || [];
 }
 
@@ -200,7 +200,7 @@ export async function getSuppliers(): Promise<any[]> {
  * Get special deals with filtering
  */
 export async function getSpecialDealsFiltered(params?: Record<string, any>): Promise<any> {
-  const response = await api.get('/api/stock-control/special-deals/', { params });
+  const response = await api.get(ENDPOINTS.STOCK_CONTROL.SPECIAL_DEALS, { params });
   return response.data;
 }
 
@@ -208,7 +208,7 @@ export async function getSpecialDealsFiltered(params?: Record<string, any>): Pro
  * Get stock valuation
  */
 export async function getStockValuation(params?: Record<string, any>): Promise<any> {
-  const response = await api.get('/api/stock-control/valuation/', { params });
+  const response = await api.get(`${ENDPOINTS.STOCK_CONTROL.STOCK_ITEMS}valuation/`, { params });
   return response.data;
 }
 
@@ -216,7 +216,7 @@ export async function getStockValuation(params?: Record<string, any>): Promise<a
  * Get stock movements/transactions
  */
 export async function getStockMovements(params?: Record<string, any>): Promise<any[]> {
-  const response = await api.get('/api/stock-control/movements/', { params });
+  const response = await api.get(ENDPOINTS.STOCK_CONTROL.TRANSACTIONS, { params });
   return response.data.results || response.data || [];
 }
 
@@ -224,6 +224,6 @@ export async function getStockMovements(params?: Record<string, any>): Promise<a
  * Get stock take list with filtering
  */
 export async function getStockTakeList(params?: Record<string, any>): Promise<any> {
-  const response = await api.get('/api/stock-control/stock-takes/', { params });
+  const response = await api.get(ENDPOINTS.STOCK_CONTROL.STOCK_TAKES, { params });
   return response.data;
 }
