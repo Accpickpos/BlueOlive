@@ -1,582 +1,636 @@
-"""
-Enterprise-grade serializers for Creditors module
-Features: Comprehensive validation, nested serialization, error handling
-"""
-
+# backend/core/apps/creditors/serializers.py
 from rest_framework import serializers
-from django.db import transaction
-from decimal import Decimal
-from datetime import datetime, timedelta
-
 from .models import (
-    Creditor, GoodsReceivedNote, GRNLineItem, CreditorInvoice, CreditorInvoiceLineItem,
-    CreditorPayment, CreditorJournal, CreditorOpenItem, OpenItemAllocation, RFC, RFCLineItem
+    Creditor,
+    GoodsReceivedNote, GRNLineItem,
+    CreditorInvoice, CreditorInvoiceLineItem,
+    CreditorCreditNote, CreditorCreditNoteLineItem,
+    CreditorPayment,
+    CreditorJournal,
+    SupplierLedgerEntry,
+    CreditorOpenItem, OpenItemAllocation,
+    OpenItemAudit,
+    RFC, RFCLineItem,
+    ExpenseCategoryMonthlyBalance,
+    ExpenseCategoryTransaction,
+    SupplierPaymentOrder,
+    CreditorTransactionLine,
 )
 
 
 # ============================================================================
-# UTILITY VALIDATION FUNCTIONS
-# ============================================================================
-
-def validate_transaction_date(date):
-    """Validate that transaction date is not in future"""
-    if date > datetime.now().date():
-        raise serializers.ValidationError(
-            f"Transaction date cannot be in the future. Provided: {date}"
-        )
-    return date
-
-
-def validate_amount(amount):
-    """Validate amount is positive"""
-    if amount <= 0:
-        raise serializers.ValidationError("Amount must be greater than zero.")
-    return amount
-
-
-def validate_due_date(due_date, transaction_date):
-    """Validate due_date is on or after transaction_date"""
-    if due_date < transaction_date:
-        raise serializers.ValidationError(
-            f"Due date ({due_date}) must be on or after transaction date ({transaction_date})"
-        )
-    return due_date
-
-
-# ============================================================================
-# CREDITOR SERIALIZERS
+# CREDITOR (SUPPLIER) MASTER
 # ============================================================================
 
 class CreditorListSerializer(serializers.ModelSerializer):
-    """Lightweight serializer for supplier lists with balance info"""
-    current_balance = serializers.DecimalField(
-        source='get_current_balance', read_only=True, max_digits=12, decimal_places=2
-    )
-    total_overdue = serializers.SerializerMethodField()
-    last_transaction_date = serializers.SerializerMethodField()
+    """Lightweight serializer for list/search views."""
 
     class Meta:
-        model = Creditor
+        model  = Creditor
         fields = [
-            'id', 'supplier_number', 'name', 'email', 'telephone',
-            'credit_terms', 'current_balance', 'total_overdue',
-            'is_active', 'last_transaction_date'
+            'id', 'supplier_number', 'name', 'telephone', 'email',
+            'account_category', 'total_outstanding_balance', 'is_active',
         ]
-
-    def get_total_overdue(self, obj):
-        """Sum of 30+ days overdue"""
-        return (obj.balance_30_days + obj.balance_60_days + 
-                obj.balance_90_days + obj.balance_120_days + 
-                obj.balance_150_days + obj.balance_180_days)
-
-    def get_last_transaction_date(self, obj):
-        """Get latest transaction date"""
-        latest = CreditorInvoice.objects.filter(
-            creditor=obj, is_posted=True
-        ).latest('transaction_date', default=None)
-        return latest.transaction_date if latest else None
+        read_only_fields = ['id', 'total_outstanding_balance']
 
 
-class CreditorDetailSerializer(serializers.ModelSerializer):
-    """Detailed serializer with all supplier information and balance details"""
-    current_balance = serializers.DecimalField(
-        source='get_current_balance', read_only=True, max_digits=12, decimal_places=2
-    )
-    credit_terms_display = serializers.CharField(
-        source='get_credit_terms_display', read_only=True
-    )
-    days_overdue = serializers.SerializerMethodField()
-    aging_summary = serializers.SerializerMethodField()
+class CreditorSerializer(serializers.ModelSerializer):
+    """
+    Full creditor serializer.
+    System-generated balance fields are read-only.
+    """
+
+    # Display-only nested label for FKs
+    credit_terms_display  = serializers.StringRelatedField(source='credit_terms',  read_only=True)
+    sales_area_display    = serializers.StringRelatedField(source='sales_area',    read_only=True)
+    effective_terms_days  = serializers.SerializerMethodField()
 
     class Meta:
-        model = Creditor
+        model  = Creditor
         fields = [
-            'id', 'supplier_number', 'name', 'contact_person', 'email', 'telephone',
-            'physical_address_line1', 'physical_address_line2', 'physical_city',
-            'postal_address_line1', 'postal_city',
-            'credit_terms', 'credit_terms_display', 'is_active',
-            'balance_brought_forward', 'current_balance',
+            # --- Identification ---
+            'id', 'supplier_number', 'name',
+            # --- Contact ---
+            'contact_person', 'telephone', 'fax', 'email',
+            # --- Physical address ---
+            'physical_address_line1', 'physical_address_line2', 'physical_address_line3',
+            # --- Postal address ---
+            'postal_address_line1', 'postal_address_line2', 'postal_address_line3',
+            # --- Account settings ---
+            'our_account_number', 'credit_terms', 'credit_terms_display',
+            'payment_terms_days', 'effective_terms_days',
+            'account_category', 'sales_area', 'sales_area_display',
+            'update_selling_price_on_receipt', 'prompt_payment_discount_percent',
+            # --- Banking ---
+            'bank_name', 'branch_code', 'account_number',
+            # --- System-generated balances (read-only) ---
+            'balance_brought_forward', 'total_outstanding_balance',
             'balance_current', 'balance_30_days', 'balance_60_days',
             'balance_90_days', 'balance_120_days', 'balance_150_days', 'balance_180_days',
-            'last_paid_date', 'last_paid_amount',
+            'last_paid_amount', 'last_paid_date',
             'purchases_mtd', 'purchases_ytd',
-            'days_overdue', 'aging_summary',
-            'created_at', 'updated_at'
+            # --- Timestamps ---
+            'is_active', 'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'current_balance', 'balance_current', 'balance_30_days', 'balance_60_days',
+            'id',
+            'balance_brought_forward', 'total_outstanding_balance',
+            'balance_current', 'balance_30_days', 'balance_60_days',
             'balance_90_days', 'balance_120_days', 'balance_150_days', 'balance_180_days',
-            'last_paid_date', 'last_paid_amount', 'purchases_mtd', 'purchases_ytd',
-            'created_at', 'updated_at'
+            'last_paid_amount', 'last_paid_date',
+            'purchases_mtd', 'purchases_ytd',
+            'created_at', 'updated_at',
         ]
 
-    def get_days_overdue(self, obj):
-        """Calculate days overdue from last transaction"""
-        if not obj.last_paid_date:
-            return None
-        due_date = obj.last_paid_date + timedelta(
-            days=obj.credit_terms.credit_days if obj.credit_terms else 0
-        )
-        days = (datetime.now().date() - due_date).days
-        return max(0, days)
-
-    def get_aging_summary(self, obj):
-        """Return aging analysis summary"""
-        return {
-            'current': float(obj.balance_current),
-            '30_days': float(obj.balance_30_days),
-            '60_days': float(obj.balance_60_days),
-            '90_days': float(obj.balance_90_days),
-            '120_days': float(obj.balance_120_days),
-            '150_days': float(obj.balance_150_days),
-            '180_days': float(obj.balance_180_days),
-            'total': float(obj.get_current_balance())
-        }
-
-
-class CreditorCreateUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for creating/updating creditors with validation"""
-
-    class Meta:
-        model = Creditor
-        fields = [
-            'supplier_number', 'name', 'contact_person', 'email', 'telephone',
-            'fax', 'physical_address_line1', 'physical_address_line2', 'physical_city',
-            'physical_province', 'physical_code',
-            'postal_address_line1', 'postal_address_line2', 'postal_city',
-            'postal_province', 'postal_code',
-            'our_account_number', 'credit_terms', 'account_category',
-            'prompt_payment_discount_percent', 'bank_name', 'branch_code', 'account_number',
-            'is_active'
-        ]
-
-    def validate_supplier_number(self, value):
-        """Validate supplier number is unique"""
-        instance = self.instance
-        exists = Creditor.objects.filter(supplier_number=value)
-        if instance:
-            exists = exists.exclude(pk=instance.pk)
-        if exists.exists():
-            raise serializers.ValidationError(
-                f"Supplier number '{value}' already exists."
-            )
-        return value
-
-    def validate_email(self, value):
-        """Validate email format"""
-        if value and '@' not in value:
-            raise serializers.ValidationError("Invalid email format.")
-        return value
-
-    def validate_prompt_payment_discount_percent(self, value):
-        """Validate discount is between 0-100"""
-        if value and (value < 0 or value > 100):
-            raise serializers.ValidationError("Discount must be between 0 and 100.")
-        return value
+    def get_effective_terms_days(self, obj):
+        return obj.get_effective_terms_days()
 
 
 # ============================================================================
-# GOODS RECEIVED NOTE SERIALIZERS
+# GOODS RECEIVED NOTE
 # ============================================================================
 
 class GRNLineItemSerializer(serializers.ModelSerializer):
-    """Serializer for GRN line items with validation"""
-    stock_code = serializers.CharField(source='stock_item.stock_code', read_only=True)
-    stock_description = serializers.CharField(source='stock_item.description', read_only=True)
-    tax_rate = serializers.DecimalField(
-        source='tax_code.tax_rate', read_only=True, max_digits=5, decimal_places=2
-    )
+    stock_code = serializers.StringRelatedField(source='stock_item', read_only=True)
+    tax_code_display = serializers.StringRelatedField(source='tax_code', read_only=True)
 
     class Meta:
-        model = GRNLineItem
+        model  = GRNLineItem
         fields = [
-            'id', 'line_number', 'stock_item', 'stock_code', 'stock_description',
-            'quantity_received', 'unit_cost', 'tax_code', 'tax_rate',
-            'line_subtotal', 'tax_amount', 'line_total'
+            'id', 'line_number', 'stock_item', 'stock_code',
+            'quantity_received', 'unit_cost', 'tax_code', 'tax_code_display',
+            # System-calculated
+            'previous_cost', 'line_subtotal', 'tax_amount', 'line_total',
         ]
-        read_only_fields = ['line_subtotal', 'tax_amount', 'line_total']
-
-    def validate_quantity_received(self, value):
-        """Validate quantity is positive"""
-        if value <= 0:
-            raise serializers.ValidationError("Quantity must be greater than zero.")
-        return value
-
-    def validate_unit_cost(self, value):
-        """Validate unit cost is non-negative"""
-        if value < 0:
-            raise serializers.ValidationError("Unit cost cannot be negative.")
-        return value
+        read_only_fields = ['id', 'previous_cost', 'line_subtotal', 'tax_amount', 'line_total']
 
 
 class GoodsReceivedNoteSerializer(serializers.ModelSerializer):
-    """Serializer for GRN with nested line items"""
-    creditor_name = serializers.CharField(source='creditor.name', read_only=True)
-    line_items = GRNLineItemSerializer(many=True, read_only=True)
-    total_amount = serializers.DecimalField(read_only=True, max_digits=12, decimal_places=2)
+    creditor_name     = serializers.StringRelatedField(source='creditor', read_only=True)
+    line_items        = GRNLineItemSerializer(many=True, read_only=True)
 
     class Meta:
-        model = GoodsReceivedNote
+        model  = GoodsReceivedNote
         fields = [
-            'id', 'transaction_number', 'creditor', 'creditor_name',
-            'transaction_date', 'supplier_invoice_number', 'supplier_reference',
-            'inclusive_exclusive', 'line_items',
-            'subtotal', 'total_vat', 'total_amount',
-            'is_posted', 'posted_date', 'posted_by',
-            'created_at', 'updated_at'
+            'id', 'creditor', 'creditor_name',
+            # System-set
+            'transaction_number', 'transaction_type', 'due_date',
+            'total_amount', 'grn_number', 'station', 'created_by_user',
+            # User-entered
+            'transaction_date', 'transaction_reference', 'additional_reference',
+            'supplier_invoice_number', 'inclusive_exclusive', 'surcharge_amount',
+            # System-calculated totals
+            'subtotal', 'total_vat', 'total_quantity',
+            # Aged balances
+            'age_current', 'age_30', 'age_60', 'age_90', 'age_120', 'age_150', 'age_180',
+            # Posting status
+            'is_posted', 'posted_at',
+            # Lines
+            'line_items',
         ]
         read_only_fields = [
-            'transaction_number', 'subtotal', 'total_vat', 'total_amount',
-            'posted_date', 'posted_by', 'created_at', 'updated_at'
+            'id', 'transaction_number', 'transaction_type', 'due_date',
+            'total_amount', 'grn_number', 'station', 'created_by_user',
+            'subtotal', 'total_vat', 'total_quantity',
+            'age_current', 'age_30', 'age_60', 'age_90', 'age_120', 'age_150', 'age_180',
+            'is_posted', 'posted_at',
         ]
 
-    def validate_transaction_date(self, value):
-        """Validate transaction date"""
-        return validate_transaction_date(value)
 
-    def validate_supplier_invoice_number(self, value):
-        """Validate supplier invoice number is unique per creditor"""
-        instance = self.instance
-        creditor = self.initial_data.get('creditor')
-        
-        exists = GoodsReceivedNote.objects.filter(
-            creditor_id=creditor,
-            supplier_invoice_number=value
-        )
-        if instance:
-            exists = exists.exclude(pk=instance.pk)
-        
-        if exists.exists():
-            raise serializers.ValidationError(
-                f"Invoice number '{value}' already exists for this creditor."
-            )
-        return value
+class GoodsReceivedNoteWriteSerializer(serializers.ModelSerializer):
+    """Write serializer — accepts line_items nested for creation."""
+    line_items = GRNLineItemSerializer(many=True)
 
+    class Meta:
+        model  = GoodsReceivedNote
+        fields = [
+            'creditor', 'transaction_date', 'transaction_reference', 'additional_reference',
+            'supplier_invoice_number', 'inclusive_exclusive', 'surcharge_amount',
+            'line_items',
+        ]
 
-class GoodsReceivedNoteCreateSerializer(serializers.Serializer):
-    """Serializer for creating GRN with line items"""
-    creditor = serializers.IntegerField()
-    transaction_date = serializers.DateField()
-    supplier_invoice_number = serializers.CharField(max_length=50)
-    supplier_reference = serializers.CharField(max_length=255, required=False, allow_blank=True)
-    inclusive_exclusive = serializers.ChoiceField(choices=['Inclusive', 'Exclusive'])
-    line_items = serializers.ListField(child=GRNLineItemSerializer())
-
-    @transaction.atomic
     def create(self, validated_data):
-        """Create GRN with line items"""
-        line_items_data = validated_data.pop('line_items')
-        
+        lines_data = validated_data.pop('line_items')
         grn = GoodsReceivedNote.objects.create(**validated_data)
-        
-        for item_data in line_items_data:
-            GRNLineItem.objects.create(grn=grn, **item_data)
-        
+        for i, line in enumerate(lines_data, start=1):
+            GRNLineItem.objects.create(grn=grn, line_number=i, **line)
         return grn
 
 
 # ============================================================================
-# CREDITOR INVOICE SERIALIZERS
+# CREDITOR INVOICE (expense)
 # ============================================================================
 
 class CreditorInvoiceLineItemSerializer(serializers.ModelSerializer):
-    """Serializer for invoice line items"""
-    category_name = serializers.CharField(source='expense_category.category_name', read_only=True)
-    tax_rate = serializers.DecimalField(
-        source='tax_code.tax_rate', read_only=True, max_digits=5, decimal_places=2
-    )
+    expense_category_name = serializers.StringRelatedField(source='expense_category', read_only=True)
+    tax_code_display      = serializers.StringRelatedField(source='tax_code',         read_only=True)
 
     class Meta:
-        model = CreditorInvoiceLineItem
+        model  = CreditorInvoiceLineItem
         fields = [
-            'id', 'line_number', 'expense_category', 'category_name',
-            'amount', 'tax_code', 'tax_rate', 'tax_amount', 'line_total'
+            'id', 'line_number', 'expense_category', 'expense_category_name',
+            'amount', 'tax_code', 'tax_code_display',
+            # System-calculated
+            'tax_amount', 'line_total',
         ]
-        read_only_fields = ['tax_amount', 'line_total']
-
-    def validate_amount(self, value):
-        """Validate amount is positive"""
-        return validate_amount(value)
+        read_only_fields = ['id', 'tax_amount', 'line_total']
 
 
 class CreditorInvoiceSerializer(serializers.ModelSerializer):
-    """Serializer for creditor invoices"""
-    creditor_name = serializers.CharField(source='creditor.name', read_only=True)
-    line_items = CreditorInvoiceLineItemSerializer(many=True, read_only=True)
-    due_date = serializers.DateField(read_only=True)
+    creditor_name = serializers.StringRelatedField(source='creditor', read_only=True)
+    line_items    = CreditorInvoiceLineItemSerializer(many=True, read_only=True)
 
     class Meta:
-        model = CreditorInvoice
+        model  = CreditorInvoice
         fields = [
-            'id', 'transaction_number', 'creditor', 'creditor_name',
-            'transaction_date', 'due_date', 'supplier_invoice_number', 'supplier_reference',
-            'inclusive_exclusive', 'line_items',
-            'subtotal', 'total_vat', 'total_amount',
-            'is_posted', 'posted_date', 'posted_by',
-            'created_at', 'updated_at'
+            'id', 'creditor', 'creditor_name',
+            # System-set
+            'transaction_number', 'transaction_type', 'due_date',
+            'total_amount', 'station', 'created_by_user',
+            # User-entered
+            'transaction_date', 'transaction_reference', 'additional_reference',
+            'supplier_invoice_number', 'inclusive_exclusive', 'station_no_area',
+            'tax_indicator', 'related_grn',
+            # System-calculated
+            'subtotal', 'total_vat',
+            # Aged balances
+            'age_current', 'age_30', 'age_60', 'age_90', 'age_120', 'age_150', 'age_180',
+            'is_posted', 'posted_at',
+            'line_items',
         ]
         read_only_fields = [
-            'transaction_number', 'due_date', 'subtotal', 'total_vat', 'total_amount',
-            'posted_date', 'posted_by', 'created_at', 'updated_at'
+            'id', 'transaction_number', 'transaction_type', 'due_date',
+            'total_amount', 'station', 'created_by_user',
+            'subtotal', 'total_vat',
+            'age_current', 'age_30', 'age_60', 'age_90', 'age_120', 'age_150', 'age_180',
+            'is_posted', 'posted_at',
         ]
 
-    def validate_transaction_date(self, value):
-        return validate_transaction_date(value)
+
+class CreditorInvoiceWriteSerializer(serializers.ModelSerializer):
+    line_items = CreditorInvoiceLineItemSerializer(many=True)
+
+    class Meta:
+        model  = CreditorInvoice
+        fields = [
+            'creditor', 'transaction_date', 'transaction_reference', 'additional_reference',
+            'supplier_invoice_number', 'inclusive_exclusive', 'station_no_area',
+            'tax_indicator', 'related_grn',
+            'line_items',
+        ]
+
+    def create(self, validated_data):
+        lines_data = validated_data.pop('line_items')
+        invoice = CreditorInvoice.objects.create(**validated_data)
+        for i, line in enumerate(lines_data, start=1):
+            CreditorInvoiceLineItem.objects.create(invoice=invoice, line_number=i, **line)
+        return invoice
 
 
 # ============================================================================
-# CREDITOR PAYMENT SERIALIZERS
+# CREDITOR CREDIT NOTE
+# ============================================================================
+
+class CreditorCreditNoteLineItemSerializer(serializers.ModelSerializer):
+    stock_code       = serializers.StringRelatedField(source='stock_item', read_only=True)
+    tax_code_display = serializers.StringRelatedField(source='tax_code',   read_only=True)
+
+    class Meta:
+        model  = CreditorCreditNoteLineItem
+        fields = [
+            'id', 'line_number', 'stock_item', 'stock_code',
+            'quantity_returned', 'unit_cost', 'tax_code', 'tax_code_display',
+            'line_subtotal', 'tax_amount', 'line_total',
+        ]
+        read_only_fields = ['id', 'line_subtotal', 'tax_amount', 'line_total']
+
+
+class CreditorCreditNoteSerializer(serializers.ModelSerializer):
+    creditor_name = serializers.StringRelatedField(source='creditor',     read_only=True)
+    line_items    = CreditorCreditNoteLineItemSerializer(many=True, read_only=True)
+
+    class Meta:
+        model  = CreditorCreditNote
+        fields = [
+            'id', 'creditor', 'creditor_name',
+            'transaction_number', 'transaction_type', 'due_date',
+            'total_amount', 'station', 'created_by_user',
+            'transaction_date', 'transaction_reference', 'additional_reference',
+            'supplier_credit_note_number', 'inclusive_exclusive', 'original_grn',
+            'subtotal', 'total_vat',
+            'age_current', 'age_30', 'age_60', 'age_90', 'age_120', 'age_150', 'age_180',
+            'is_posted', 'posted_at',
+            'line_items',
+        ]
+        read_only_fields = [
+            'id', 'transaction_number', 'transaction_type', 'due_date',
+            'total_amount', 'station', 'created_by_user',
+            'subtotal', 'total_vat',
+            'age_current', 'age_30', 'age_60', 'age_90', 'age_120', 'age_150', 'age_180',
+            'is_posted', 'posted_at',
+        ]
+
+
+class CreditorCreditNoteWriteSerializer(serializers.ModelSerializer):
+    line_items = CreditorCreditNoteLineItemSerializer(many=True)
+
+    class Meta:
+        model  = CreditorCreditNote
+        fields = [
+            'creditor', 'transaction_date', 'transaction_reference', 'additional_reference',
+            'supplier_credit_note_number', 'inclusive_exclusive', 'original_grn',
+            'line_items',
+        ]
+
+    def create(self, validated_data):
+        lines_data = validated_data.pop('line_items')
+        cn = CreditorCreditNote.objects.create(**validated_data)
+        for i, line in enumerate(lines_data, start=1):
+            CreditorCreditNoteLineItem.objects.create(credit_note=cn, line_number=i, **line)
+        return cn
+
+
+# ============================================================================
+# CREDITOR PAYMENT
 # ============================================================================
 
 class CreditorPaymentSerializer(serializers.ModelSerializer):
-    """Serializer for creditor payments"""
-    creditor_name = serializers.CharField(source='creditor.name', read_only=True)
-    payment_method_display = serializers.CharField(
-        source='get_payment_method_display', read_only=True
-    )
+    creditor_name          = serializers.StringRelatedField(source='creditor',        read_only=True)
+    payment_method_display = serializers.StringRelatedField(source='payment_method',  read_only=True)
 
     class Meta:
-        model = CreditorPayment
+        model  = CreditorPayment
         fields = [
-            'id', 'transaction_number', 'creditor', 'creditor_name',
-            'transaction_date', 'amount_paid', 'payment_method', 'payment_method_display',
-            'cheque_number', 'reference_number', 'remarks',
-            'settlement_discount_percent', 'settlement_discount_amount',
-            'is_posted', 'posted_date', 'posted_by',
-            'created_at', 'updated_at'
+            'id', 'creditor', 'creditor_name',
+            # System-set
+            'transaction_number', 'transaction_type', 'due_date',
+            'total_amount', 'station', 'created_by_user',
+            # User-entered
+            'transaction_date', 'transaction_reference', 'additional_reference',
+            'amount_due', 'amount_paid', 'payment_method', 'payment_method_display',
+            'is_unallocated',
+            # System-calculated
+            'settlement_discount_amount', 'settlement_discount_percent',
+            # Aged balances
+            'age_current', 'age_30', 'age_60', 'age_90', 'age_120', 'age_150', 'age_180',
+            'is_posted', 'posted_at',
         ]
         read_only_fields = [
-            'transaction_number', 'settlement_discount_amount',
-            'posted_date', 'posted_by', 'created_at', 'updated_at'
+            'id', 'transaction_number', 'transaction_type', 'due_date',
+            'total_amount', 'station', 'created_by_user',
+            'settlement_discount_amount', 'settlement_discount_percent',
+            'age_current', 'age_30', 'age_60', 'age_90', 'age_120', 'age_150', 'age_180',
+            'is_posted', 'posted_at',
         ]
 
-    def validate_amount_paid(self, value):
-        """Validate payment amount"""
-        return validate_amount(value)
-
-    def validate_settlement_discount_percent(self, value):
-        """Validate settlement discount"""
-        if value and (value < 0 or value > 100):
-            raise serializers.ValidationError("Settlement discount must be between 0 and 100.")
-        return value
-
-
-class PaymentAllocationSerializer(serializers.Serializer):
-    """Serializer for allocating payment to open items"""
-    open_item_id = serializers.IntegerField()
-    amount_paid = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal('0'))
-    settlement_discount = serializers.DecimalField(
-        max_digits=12, decimal_places=2, default=0, required=False
-    )
-
     def validate(self, data):
-        """Validate allocation amount"""
-        open_item_id = data['open_item_id']
-        amount_paid = data['amount_paid']
-        
-        try:
-            open_item = CreditorOpenItem.objects.get(id=open_item_id)
-        except CreditorOpenItem.DoesNotExist:
-            raise serializers.ValidationError("Open item does not exist.")
-        
-        if amount_paid > open_item.balance_due:
+        if data.get('amount_paid', 0) > data.get('amount_due', 0):
             raise serializers.ValidationError(
-                f"Allocation amount ({amount_paid}) exceeds balance due ({open_item.balance_due})"
+                {'amount_paid': 'Amount paid cannot exceed amount due.'}
             )
-        
         return data
 
 
 # ============================================================================
-# CREDITOR JOURNAL SERIALIZERS
+# CREDITOR JOURNAL
 # ============================================================================
 
 class CreditorJournalSerializer(serializers.ModelSerializer):
-    """Serializer for creditor journals"""
-    creditor_name = serializers.CharField(source='creditor.name', read_only=True)
-    journal_type_display = serializers.CharField(
-        source='get_journal_type_display', read_only=True
-    )
+    creditor_name = serializers.StringRelatedField(source='creditor', read_only=True)
 
     class Meta:
-        model = CreditorJournal
+        model  = CreditorJournal
         fields = [
-            'id', 'transaction_number', 'creditor', 'creditor_name',
-            'transaction_date', 'journal_type', 'journal_type_display',
-            'journal_amount', 'narrative', 'remarks',
-            'is_posted', 'posted_date', 'posted_by',
-            'created_at', 'updated_at'
+            'id', 'creditor', 'creditor_name',
+            'transaction_number', 'transaction_type', 'due_date',
+            'total_amount', 'station', 'created_by_user',
+            'transaction_date', 'transaction_reference', 'additional_reference',
+            'journal_type', 'journal_amount',
+            'age_current', 'age_30', 'age_60', 'age_90', 'age_120', 'age_150', 'age_180',
+            'is_posted', 'posted_at',
         ]
         read_only_fields = [
-            'transaction_number', 'posted_date', 'posted_by', 'created_at', 'updated_at'
+            'id', 'transaction_number', 'transaction_type', 'due_date',
+            'total_amount', 'station', 'created_by_user',
+            'age_current', 'age_30', 'age_60', 'age_90', 'age_120', 'age_150', 'age_180',
+            'is_posted', 'posted_at',
         ]
-
-    def validate_journal_amount(self, value):
-        """Validate journal amount"""
-        return validate_amount(value)
 
 
 # ============================================================================
-# OPEN ITEM SERIALIZERS
+# SUPPLIER LEDGER ENTRY (raw suptran import)
 # ============================================================================
 
-class OpenItemSerializer(serializers.ModelSerializer):
-    """Serializer for open items"""
-    creditor_name = serializers.CharField(source='creditor.name', read_only=True)
-    transaction_type_display = serializers.CharField(
-        source='get_transaction_type_display', read_only=True
-    )
-    is_overdue = serializers.SerializerMethodField()
+class SupplierLedgerEntrySerializer(serializers.ModelSerializer):
+    creditor_name = serializers.StringRelatedField(source='creditor', read_only=True)
 
     class Meta:
-        model = CreditorOpenItem
+        model  = SupplierLedgerEntry
         fields = [
-            'id', 'transaction_number', 'creditor', 'creditor_name',
-            'transaction_date', 'due_date', 'transaction_type', 'transaction_type_display',
-            'original_amount', 'balance_due', 'is_fully_allocated', 'is_overdue',
-            'created_at', 'updated_at'
+            'id', 'creditor', 'creditor_name',
+            'transaction_number', 'transaction_date', 'due_date',
+            'transaction_type', 'subtotal', 'vat_amount', 'total_amount',
+            'reference', 'grn_number', 'station', 'created_by_user',
+        ]
+        # Ledger entries are imported — nothing should be edited through the API
+        read_only_fields = '__all__'
+
+
+# ============================================================================
+# OPEN ITEMS
+# ============================================================================
+
+class CreditorOpenItemSerializer(serializers.ModelSerializer):
+    creditor_name = serializers.StringRelatedField(source='creditor', read_only=True)
+    age_bucket    = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = CreditorOpenItem
+        fields = [
+            'id', 'creditor', 'creditor_name',
+            'transaction_date', 'due_date', 'transaction_type', 'transaction_number',
+            # System-maintained
+            'original_amount', 'balance_due', 'age_period', 'ageing_flag',
+            'is_fully_allocated', 'is_legacy',
+            # FK links to typed transactions
+            'grn', 'invoice', 'credit_note', 'journal', 'ledger_entry',
+            # Computed
+            'age_bucket',
+            'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'transaction_number', 'original_amount', 'balance_due',
-            'created_at', 'updated_at'
+            'id', 'original_amount', 'balance_due', 'age_period', 'ageing_flag',
+            'is_fully_allocated', 'created_at', 'updated_at',
         ]
 
-    def get_is_overdue(self, obj):
-        """Check if item is overdue"""
-        if obj.due_date and obj.balance_due > 0:
-            return obj.due_date < datetime.now().date()
-        return False
+    def get_age_bucket(self, obj):
+        return obj.get_age_bucket()
 
 
 class OpenItemAllocationSerializer(serializers.ModelSerializer):
-    """Serializer for open item allocations"""
-    payment_number = serializers.CharField(source='payment.transaction_number', read_only=True)
-    open_item_number = serializers.CharField(source='open_item.transaction_number', read_only=True)
+    payment_number      = serializers.CharField(source='payment.transaction_number', read_only=True)
+    open_item_number    = serializers.CharField(source='open_item.transaction_number', read_only=True)
 
     class Meta:
-        model = OpenItemAllocation
+        model  = OpenItemAllocation
         fields = [
             'id', 'payment', 'payment_number', 'open_item', 'open_item_number',
             'amount_paid', 'settlement_discount', 'allocated_at',
-            'created_at', 'updated_at'
         ]
-        read_only_fields = ['allocated_at', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'allocated_at']
+
+    def validate(self, data):
+        open_item = data['open_item']
+        amount    = data['amount_paid'] + data.get('settlement_discount', 0)
+        if amount > open_item.balance_due:
+            raise serializers.ValidationError(
+                f"Allocation of {amount} exceeds open item balance of {open_item.balance_due}."
+            )
+        return data
 
 
 # ============================================================================
-# RFC SERIALIZERS
+# OPEN ITEM AUDIT (read-only)
+# ============================================================================
+
+class OpenItemAuditSerializer(serializers.ModelSerializer):
+    creditor_number = serializers.CharField(source='creditor.supplier_number', read_only=True)
+
+    class Meta:
+        model  = OpenItemAudit
+        fields = [
+            'id', 'creditor', 'creditor_number',
+            'transaction_number', 'transaction_type',
+            'this_transaction_type', 'this_transaction_number',
+            'transaction_date', 'amount',
+            'audit_timestamp', 'audit_notes',
+        ]
+        read_only_fields = '__all__'
+
+
+# ============================================================================
+# RFC (RETURN FOR CREDIT)
 # ============================================================================
 
 class RFCLineItemSerializer(serializers.ModelSerializer):
-    """Serializer for RFC line items"""
-    stock_code = serializers.CharField(source='stock_item.stock_code', read_only=True)
-    stock_description = serializers.CharField(source='stock_item.description', read_only=True)
-    tax_rate = serializers.DecimalField(
-        source='tax_code.tax_rate', read_only=True, max_digits=5, decimal_places=2
-    )
+    stock_code       = serializers.StringRelatedField(source='stock_item', read_only=True)
+    tax_code_display = serializers.StringRelatedField(source='tax_code',   read_only=True)
 
     class Meta:
-        model = RFCLineItem
+        model  = RFCLineItem
         fields = [
-            'id', 'line_number', 'stock_item', 'stock_code', 'stock_description',
-            'quantity_returned', 'unit_cost', 'tax_code', 'tax_rate',
-            'reason', 'line_value_exclusive', 'tax_amount', 'line_value_inclusive',
-            'created_at'
+            'id', 'line_number',
+            'stock_item', 'stock_code',
+            'quantity_returned', 'quantity_credited', 'quantity_stock',
+            'line_value', 'tax_code', 'tax_code_display',
+            'rfc_line_date', 'rfc_line_time',
+            'original_transaction_type', 'original_transaction_date',
+            'supplier_reference_number', 'reason',
+            # System-calculated
+            'unit_cost', 'line_value_exclusive', 'tax_amount', 'line_value_inclusive',
         ]
-        read_only_fields = [
-            'unit_cost', 'tax_amount', 'line_value_exclusive', 'line_value_inclusive'
-        ]
-
-    def validate_quantity_returned(self, value):
-        """Validate quantity"""
-        if value <= 0:
-            raise serializers.ValidationError("Quantity must be greater than zero.")
-        return value
+        read_only_fields = ['id', 'unit_cost', 'line_value_exclusive', 'tax_amount', 'line_value_inclusive']
 
 
 class RFCSerializer(serializers.ModelSerializer):
-    """Serializer for RFC"""
-    creditor_name = serializers.CharField(source='creditor.name', read_only=True)
-    status_display = serializers.CharField(source='get_status_display', read_only=True)
-    line_items = RFCLineItemSerializer(many=True, read_only=True)
-    lifecycle_status = serializers.SerializerMethodField()
+    creditor_name = serializers.StringRelatedField(source='creditor', read_only=True)
+    line_items    = RFCLineItemSerializer(many=True, read_only=True)
 
     class Meta:
-        model = RFC
+        model  = RFC
         fields = [
-            'id', 'rfc_number', 'creditor', 'creditor_name',
-            'return_date', 'status', 'status_display',
-            'date_sent', 'date_returned', 'credited_date', 'replaced_date',
-            'purchase_order_number', 'purchase_order_line_number',
-            'reason_for_return', 'remarks', 'line_items',
-            'total_value_exclusive', 'total_vat', 'total_value_inclusive',
-            'lifecycle_status', 'created_at', 'updated_at'
+            'id', 'creditor', 'creditor_name',
+            'rfc_number', 'return_date', 'date_sent', 'date_returned', 'status',
+            # System-calculated
+            'total_value_exclusive', 'total_value_inclusive',
+            'created_at', 'updated_at',
+            'line_items',
         ]
         read_only_fields = [
-            'rfc_number', 'total_value_exclusive', 'total_vat', 'total_value_inclusive',
-            'created_at', 'updated_at'
+            'id', 'total_value_exclusive', 'total_value_inclusive',
+            'created_at', 'updated_at',
         ]
 
-    def get_lifecycle_status(self, obj):
-        """Return lifecycle progress"""
-        steps = []
-        if obj.date_sent:
-            steps.append({'step': 'sent', 'date': obj.date_sent})
-        if obj.date_returned:
-            steps.append({'step': 'returned', 'date': obj.date_returned})
-        if obj.credited_date:
-            steps.append({'step': 'credited', 'date': obj.credited_date})
-        if obj.replaced_date:
-            steps.append({'step': 'replaced', 'date': obj.replaced_date})
-        return steps
+
+class RFCWriteSerializer(serializers.ModelSerializer):
+    line_items = RFCLineItemSerializer(many=True)
+
+    class Meta:
+        model  = RFC
+        fields = [
+            'creditor', 'rfc_number', 'return_date', 'date_sent', 'date_returned',
+            'status', 'line_items',
+        ]
+
+    def create(self, validated_data):
+        lines_data = validated_data.pop('line_items')
+        rfc = RFC.objects.create(**validated_data)
+        for i, line in enumerate(lines_data, start=1):
+            RFCLineItem.objects.create(rfc=rfc, line_number=i, **line)
+        return rfc
+
+    def update(self, instance, validated_data):
+        lines_data = validated_data.pop('line_items', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if lines_data is not None:
+            instance.line_items.all().delete()
+            for i, line in enumerate(lines_data, start=1):
+                RFCLineItem.objects.create(rfc=instance, line_number=i, **line)
+        return instance
 
 
 # ============================================================================
-# BULK AND REPORTING SERIALIZERS
+# EXPENSE CATEGORY MONTHLY BALANCE
 # ============================================================================
 
-class AgingAnalysisSerializer(serializers.Serializer):
-    """Serializer for aging analysis report"""
-    supplier_number = serializers.CharField()
-    name = serializers.CharField()
-    current_balance = serializers.DecimalField(max_digits=12, decimal_places=2)
-    balance_30_days = serializers.DecimalField(max_digits=12, decimal_places=2)
-    balance_60_days = serializers.DecimalField(max_digits=12, decimal_places=2)
-    balance_90_days = serializers.DecimalField(max_digits=12, decimal_places=2)
-    balance_120_days = serializers.DecimalField(max_digits=12, decimal_places=2)
-    balance_150_days = serializers.DecimalField(max_digits=12, decimal_places=2)
-    balance_180_days = serializers.DecimalField(max_digits=12, decimal_places=2)
-    total_balance = serializers.DecimalField(max_digits=12, decimal_places=2)
-    last_paid_date = serializers.DateField(allow_null=True)
-    credit_terms = serializers.CharField()
+class ExpenseCategoryMonthlyBalanceSerializer(serializers.ModelSerializer):
+    expense_category_display = serializers.StringRelatedField(source='expense_category', read_only=True)
+    annual_total             = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = ExpenseCategoryMonthlyBalance
+        fields = [
+            'id', 'expense_category', 'expense_category_display',
+            'expense_category_name', 'year',
+            # System-accumulated (read-only)
+            'expense_mtd', 'input_vat_mtd',
+            'exp_month_1', 'exp_month_2', 'exp_month_3', 'exp_month_4',
+            'exp_month_5', 'exp_month_6', 'exp_month_7', 'exp_month_8',
+            'exp_month_9', 'exp_month_10', 'exp_month_11', 'exp_month_12',
+            'annual_total',
+        ]
+        read_only_fields = [
+            'id',
+            'expense_mtd', 'input_vat_mtd',
+            'exp_month_1', 'exp_month_2', 'exp_month_3', 'exp_month_4',
+            'exp_month_5', 'exp_month_6', 'exp_month_7', 'exp_month_8',
+            'exp_month_9', 'exp_month_10', 'exp_month_11', 'exp_month_12',
+        ]
+
+    def get_annual_total(self, obj):
+        return obj.get_annual_total()
 
 
-class BulkPaymentSerializer(serializers.Serializer):
-    """Serializer for bulk payment processing"""
-    creditor = serializers.IntegerField()
-    transaction_date = serializers.DateField()
-    amount_paid = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal('0.01'))
-    payment_method = serializers.IntegerField()
-    allocations = serializers.ListField(
-        child=PaymentAllocationSerializer(),
-        required=False,
-        allow_empty=True
-    )
+# ============================================================================
+# EXPENSE CATEGORY TRANSACTION
+# ============================================================================
 
-    def validate_transaction_date(self, value):
-        return validate_transaction_date(value)
+class ExpenseCategoryTransactionSerializer(serializers.ModelSerializer):
+    expense_category_display = serializers.StringRelatedField(source='expense_category', read_only=True)
+    creditor_name            = serializers.StringRelatedField(source='creditor',          read_only=True)
 
-    def validate_amount_paid(self, value):
-        return validate_amount(value)
+    class Meta:
+        model  = ExpenseCategoryTransaction
+        fields = [
+            'id', 'expense_category', 'expense_category_display',
+            'creditor', 'creditor_name',
+            'transaction_date', 'transaction_number',
+            # User/source
+            'amount_exclusive', 'tax_indicator', 'source_type', 'grn_number',
+            # System-calculated
+            'input_vat_amount', 'amount_inclusive',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'input_vat_amount', 'amount_inclusive', 'created_at', 'updated_at']
 
 
-class BalanceReconciliationSerializer(serializers.Serializer):
-    """Serializer for balance reconciliation"""
-    creditor = serializers.IntegerField()
-    balance_current = serializers.DecimalField(max_digits=12, decimal_places=2)
-    balance_30_days = serializers.DecimalField(max_digits=12, decimal_places=2)
-    balance_60_days = serializers.DecimalField(max_digits=12, decimal_places=2)
-    balance_90_days = serializers.DecimalField(max_digits=12, decimal_places=2)
-    balance_120_days = serializers.DecimalField(max_digits=12, decimal_places=2)
-    balance_150_days = serializers.DecimalField(max_digits=12, decimal_places=2)
-    balance_180_days = serializers.DecimalField(max_digits=12, decimal_places=2)
+# ============================================================================
+# SUPPLIER PAYMENT ORDER
+# ============================================================================
+
+class SupplierPaymentOrderSerializer(serializers.ModelSerializer):
+    creditor_name = serializers.StringRelatedField(source='creditor', read_only=True)
+
+    class Meta:
+        model  = SupplierPaymentOrder
+        fields = [
+            'id', 'creditor', 'creditor_name',
+            'payment_date', 'amount',
+            'detail_line1', 'detail_line2', 'detail_line3',
+            # System-set by payment run
+            'is_processed', 'processed_date',
+        ]
+        read_only_fields = ['id', 'is_processed', 'processed_date']
+
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Amount must be greater than zero.")
+        return value
+
+
+# ============================================================================
+# CREDITOR TRANSACTION LINE (generic polymorphic)
+# ============================================================================
+
+class CreditorTransactionLineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = CreditorTransactionLine
+        fields = [
+            'id', 'content_type', 'object_id',
+            'line_number', 'stock_item', 'expense_category',
+            'quantity', 'unit_cost', 'tax_code',
+            'amount_exclusive',
+            # System-calculated
+            'tax_amount', 'amount_inclusive',
+        ]
+        read_only_fields = ['id', 'tax_amount', 'amount_inclusive']
+
+
+# ============================================================================
+# AGED BALANCE SUMMARY (read-only, used in dashboard/reporting views)
+# ============================================================================
+
+class CreditorAgedBalanceSummarySerializer(serializers.ModelSerializer):
+    """Compact aging snapshot for a single creditor — used on statement and age analysis."""
+
+    class Meta:
+        model  = Creditor
+        fields = [
+            'id', 'supplier_number', 'name',
+            'balance_current', 'balance_30_days', 'balance_60_days',
+            'balance_90_days', 'balance_120_days', 'balance_150_days', 'balance_180_days',
+            'total_outstanding_balance',
+        ]
+        read_only_fields = '__all__'

@@ -30,6 +30,12 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-change-me-in-producti
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
+LOGGING_CONFIG = None
+
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+
 # SUBDOMAIN SUPPORT
 # Development: allows *.localhost (e.g., acme.localhost, shop1.acme.localhost)
 # Production: allows *.yourdomain.com
@@ -43,7 +49,11 @@ MAIN_DOMAIN = 'localhost'  # For development
 # MAIN_DOMAIN = 'yourdomain.com'  # For production
 
 DEFAULT_TENANT_SLUG = 'dev'
-USE_DEFAULT_TENANT = True 
+USE_DEFAULT_TENANT = True
+
+# Default shop to use when no shop is specified in request
+# This is used when users log in and need to access shop-specific data
+USE_DEFAULT_SHOP = True 
 
 # Application definition
 
@@ -67,6 +77,7 @@ SHARED_APPS = [
     # Platform management (blue_olive database only)
     'tenancy',  # Tenant and Shop models
     'apps.saas_admin',  # SaaS administration (import, seeding, etc.)
+    'apps.common',  # Common utilities (permissions, serializers, services)
 ]
 
 # TENANT_APPS: These live in each tenant's database
@@ -92,14 +103,15 @@ INSTALLED_APPS = SHARED_APPS + TENANT_APPS
 
 # SHOP_APP_LABELS: Apps that are migrated per-shop to their own schemas
 # These are a subset of TENANT_APP_LABELS
+# NOTE: 'settings' MUST be first - other apps (creditors, debtors, etc.) depend on settings migrations
 SHOP_APP_LABELS = [
+    'settings',  # Must be first - other apps depend on settings.0003_apikey
     'cash_book',
     'creditors',
     'debtors',
     'general_ledger',
     'stock_control',
     'purchase_orders',
-    'settings',
     'pos',
 ]
 
@@ -215,6 +227,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     
     # Schema middleware after both tenant and auth
+    # Shop validation middleware runs BEFORE to re-register connection with correct shop
+    'tenancy.middleware.UserShopValidationMiddleware',
     'tenancy.schema_middleware.SchemaMiddleware',
     
     'django.contrib.messages.middleware.MessageMiddleware',

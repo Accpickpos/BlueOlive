@@ -1,6 +1,7 @@
 # tenancy/middleware.py
 import logging
 import re
+from django.db import connections
 from django.http import HttpResponseNotFound, JsonResponse
 from django.conf import settings
 from tenancy.models import Tenant, Shop
@@ -48,17 +49,23 @@ class TenantMiddleware:
             tenant = self._identify_tenant(request)
             
             if tenant:
-                # Register tenant database connection (CRITICAL!)
-                register_tenant_connection(tenant)
-                
-                # Set tenant context
-                set_current_tenant(tenant)
-                
-                # Identify and set shop (if applicable)
+                # Identify and set shop FIRST (before registering connection)
+                # This ensures proper shop-specific schema is used
                 shop = self._identify_shop(request, tenant)
                 if shop:
                     set_current_shop(shop.schema_name)
                     request.shop = shop
+                else:
+                    # DEBUG: Log when no shop is found
+                    if settings.DEBUG:
+                        logger.debug(f"[TenantMiddleware] No shop identified for tenant {tenant.name}")
+                
+                # Register tenant database connection with the correct shop schema
+                # This is CRITICAL for multi-shop data isolation within a tenant
+                register_tenant_connection(tenant, shop=shop)
+                
+                # Set tenant context
+                set_current_tenant(tenant)
                 
                 request.tenant = tenant
                 if settings.DEBUG:
@@ -313,23 +320,25 @@ class TenantMiddleware:
                 except Shop.DoesNotExist:
                     logger.warning(f"User's shop {shop_id} not found")
         
-        # Method 2: From session (ONLY for authenticated users)
-        if not shop and hasattr(request, 'session') and 'shop_id' in request.session:
-            # SECURITY: Only allow session shop for authenticated users
-            if hasattr(request, 'user') and request.user.is_authenticated:
-                try:
+        # Method 2: From session (shop_id is set when user switches shops)
+        # IMPORTANT: Read session directly, don't require authentication
+        # This ensures correct shop is used even before auth middleware runs
+        if not shop and hasattr(request, 'session') and 'current_shop_id' in request.session:
+            try:
+                session_shop_id = request.session.get('current_shop_id')
+                if session_shop_id:
                     shop = Shop.objects.get(
                         tenant=tenant,
-                        id=request.session['shop_id'],
+                        id=session_shop_id,
                         is_active=True
                     )
                     if settings.DEBUG:
                         logger.debug(f"Shop from session: {shop.name}")
-                except Shop.DoesNotExist:
-                    logger.warning(f"Session shop not found: {request.session['shop_id']}")
-            else:
-                if settings.DEBUG:
-                    logger.debug("Ignoring session shop for unauthenticated user")
+            except Shop.DoesNotExist:
+                logger.warning(f"Session shop not found: {session_shop_id}")
+                # Clear invalid shop from session
+                request.session.pop('current_shop_id', None)
+                request.session.pop('current_shop_schema', None)
         
         # Method 3: Development mode - allow header/query param override
         # SECURITY: Only in DEBUG mode
@@ -339,6 +348,8 @@ class TenantMiddleware:
         # Method 4: Default shop fallback
         if not shop:
             default_shop_enabled = getattr(settings, 'USE_DEFAULT_SHOP', False)
+            if settings.DEBUG:
+                logger.debug(f"[TenantMiddleware] USE_DEFAULT_SHOP={default_shop_enabled}, current shop={shop}")
             if default_shop_enabled:
                 # Query from default database (Shop model is in main DB)
                 shop = Shop.objects.using('default').filter(
@@ -346,7 +357,7 @@ class TenantMiddleware:
                     is_active=True
                 ).first()
                 if shop and settings.DEBUG:
-                    logger.debug(f"Using default shop: {shop.subdomain or shop.name}")
+                    logger.debug(f"[TenantMiddleware] Using default shop: {shop.subdomain or shop.name} (schema: {shop.schema_name})")
         
         return shop
     
@@ -456,3 +467,145 @@ class TenantRequiredMiddleware:
             if path.startswith(exempt_path):
                 return True
         return False
+
+
+class UserShopValidationMiddleware:
+    """
+    Validates user-shop association on every request.
+    Ensures:
+    1. User has valid shop access
+    2. Shop is active
+    3. Session shop is valid
+    4. Handles edge cases (revoked access, expired associations)
+    
+    This middleware should be placed AFTER TenantMiddleware and authentication.
+    """
+    
+    # Paths that don't require shop validation
+    EXEMPT_PATHS = [
+        '/health/',
+        '/metrics/',
+        '/static/',
+        '/media/',
+        '/admin/',
+        '/api/auth/',           # Authentication endpoints
+        '/auth/',               # Auth endpoints
+        '/api/v1/auth/',        # API auth
+        '/tenants/shops/',      # Shop listing
+        '/shops/list/',         # Shop list endpoint
+    ]
+    
+    def __init__(self, get_response):
+        self.get_response = get_response
+    
+    def __call__(self, request):
+        # Skip validation for exempt paths
+        if self._is_exempt(request.path):
+            return self.get_response(request)
+        
+        # Only validate for authenticated requests
+        if hasattr(request, 'user') and request.user.is_authenticated:
+            validation_result = self._validate_user_shop(request)
+            
+            if validation_result is not None:
+                return validation_result
+        
+        return self.get_response(request)
+    
+    def _is_exempt(self, path):
+        """Check if path is exempt from shop validation."""
+        for exempt in self.EXEMPT_PATHS:
+            if path.startswith(exempt):
+                return True
+        return False
+    
+    def _validate_user_shop(self, request):
+        """
+        Validate user has valid shop access.
+        Returns None if valid, JsonResponse if invalid.
+        
+        Note: Allows access during onboarding (new users without shops).
+        """
+        user = request.user
+        
+        # Skip validation for admin/superuser users - they can access without shops
+        if user.is_superuser or user.role == 'ADMIN':
+            return None
+        
+        # Check if user has any active shop access
+        try:
+            accessible_shops = list(user.get_active_shops())
+        except Exception as e:
+            logger.warning(f"Error getting accessible shops for user {user.id}: {e}")
+            accessible_shops = []
+        
+        # Allow users without shops during onboarding
+        # They can access the app but will be limited
+        if not accessible_shops:
+            # Allow access but log warning - user might be in onboarding
+            logger.info(f"User {user.id} has no active shop access - allowing during onboarding")
+            # Don't set current_shop_id - it will be null
+            # The frontend should handle showing an onboarding wizard
+            return None  # Allow access
+        
+        # Validate current session shop
+        session_shop_id = request.session.get('current_shop_id')
+        
+        if session_shop_id:
+            # Check if session shop is still valid
+            if not user.can_access_shop(session_shop_id):
+                # Session shop access was revoked - clear and redirect
+                logger.info(f"User {user.id} shop access revoked for shop {session_shop_id}, switching")
+                request.session.pop('current_shop_id', None)
+                request.session.pop('current_shop_schema', None)
+                
+                # Set first available shop as current
+                new_shop = accessible_shops[0]
+                request.session['current_shop_id'] = new_shop.id
+                request.session['current_shop_schema'] = new_shop.schema_name
+                user.current_shop_id = new_shop.id
+                
+                return JsonResponse({
+                    'error': 'SHOP_ACCESS_REVOKED',
+                    'message': f'Your access to the previous shop has been revoked. You have been switched to {new_shop.name}.',
+                    'current_shop': {
+                        'id': new_shop.id,
+                        'name': new_shop.name
+                    }
+                }, status=200)  # 200 with warning instead of 403
+        
+        # Set current shop if not set
+        if not getattr(user, 'current_shop_id', None):
+            if session_shop_id:
+                user.current_shop_id = session_shop_id
+            else:
+                # Auto-select first shop
+                first_shop = accessible_shops[0]
+                request.session['current_shop_id'] = first_shop.id
+                request.session['current_shop_schema'] = first_shop.schema_name
+                user.current_shop_id = first_shop.id
+                
+                if settings.DEBUG:
+                    logger.debug(f"Auto-selected shop {first_shop.name} for user {user.id}")
+        
+        # CRITICAL: Re-register database connection with correct shop schema
+        # This ensures all subsequent queries use the correct shop's schema
+        # TenantMiddleware runs before authentication, so we need to fix the schema here
+        current_shop_id = getattr(user, 'current_shop_id', None)
+        if current_shop_id:
+            tenant = getattr(request, 'tenant', None)
+            if tenant:
+                try:
+                    shop = Shop.objects.get(id=current_shop_id, tenant=tenant, is_active=True)
+                    # Close existing connection to force reconnect with new schema
+                    if tenant.db_alias in connections:
+                        connections[tenant.db_alias].close()
+                    # Re-register with correct shop schema
+                    register_tenant_connection(tenant, shop=shop)
+                    set_current_shop(shop.schema_name)
+                    if settings.DEBUG:
+                        logger.debug(f"Re-registered connection with shop schema: {shop.schema_name}")
+                except Shop.DoesNotExist:
+                    logger.warning(f"Current shop {current_shop_id} not found")
+        
+        return None  # Valid

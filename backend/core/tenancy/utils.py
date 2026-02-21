@@ -6,22 +6,28 @@ import psycopg2
 from psycopg2 import extensions
 import time
 
-def register_tenant_connection(tenant):
+def register_tenant_connection(tenant, shop=None):
     """
     Register tenant database connection using credentials from Django settings.
     This ensures all tenants use the same PostgreSQL credentials as the main database.
     
     CRITICAL: We set search_path to the shop's schema at the connection level so that
     ALL queries (including migrations) default to the shop's schema, not public.
+    
+    Args:
+        tenant: The Tenant object to connect to
+        shop: Optional Shop object. If provided, uses this shop's schema.
+              If not provided, falls back to tenant.shops.first() for backward compatibility.
     """
     alias = tenant.db_alias
     # Use credentials from settings, not from tenant object
     # This allows old tenants with incorrect db_password to still work
     default_db = settings.DATABASES['default']
     
-    # Get the shop's schema name from the first shop associated with this tenant
-    # This determines which schema migrations will create tables in
-    shop = tenant.shops.first()
+    # Get the shop's schema name - use provided shop or fall back to first shop
+    # This ensures proper multi-shop data isolation within a tenant
+    if shop is None:
+        shop = tenant.shops.first()
     shop_schema = shop.schema_name if shop else "public"  # Fallback to public if no shop
     
     # CRITICAL: shop_users table is ALWAYS in public schema, not the shop schema

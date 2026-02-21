@@ -31,6 +31,7 @@ from .permissions import (
     HasDebtorPermission, CanModifyDebtor, CanPostInvoice, 
     CanChargeInterest
 )
+from apps.common.permissions import BaseModelPermission, CanPostTransaction
 
 
 class DebtorViewSet(viewsets.ModelViewSet):
@@ -51,9 +52,9 @@ class DebtorViewSet(viewsets.ModelViewSet):
     queryset = Debtor.objects.all()
     permission_classes = [IsAuthenticated, HasDebtorPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['dno', 'dname', 'dsname', 'dcontact']
-    ordering_fields = ['dno', 'dname', 'dcrnt', 'created_at']
-    ordering = ['dno']
+    search_fields = ['customer_number', 'name', 'short_name', 'contact_person']
+    ordering_fields = ['customer_number', 'name', 'balance_current', 'created_at']
+    ordering = ['customer_number']
     
     def get_serializer_class(self):
         """Return appropriate serializer based on action."""
@@ -69,22 +70,22 @@ class DebtorViewSet(viewsets.ModelViewSet):
         try:
             debtor = self.get_object()
             data = {
-                'dno': debtor.dno,
-                'dname': debtor.dname,
-                'dcontact': debtor.dcontact,
-                'dtel': debtor.dtel,
-                'dclimit': debtor.dclimit,
-                'current': debtor.dcrnt,
-                'days_30': debtor.d30,
-                'days_60': debtor.d60,
-                'days_90': debtor.d90,
-                'days_120': debtor.d120,
-                'days_150': debtor.d150,
-                'days_180': debtor.d180,
+                'dno': debtor.customer_number,
+                'dname': debtor.name,
+                'dcontact': debtor.contact_person,
+                'dtel': debtor.phone,
+                'dclimit': debtor.credit_limit,
+                'current': debtor.balance_current,
+                'days_30': debtor.balance_30_days,
+                'days_60': debtor.balance_60_days,
+                'days_90': debtor.balance_90_days,
+                'days_120': debtor.balance_120_days,
+                'days_150': debtor.balance_150_days,
+                'days_180': debtor.balance_180_days,
                 'total_balance': debtor.get_total_balance(),
                 'overdue_balance': debtor.get_overdue_balance(),
-                'ddatlpd': debtor.ddatlpd,
-                'damtlpd': debtor.damtlpd,
+                'ddatlpd': debtor.last_payment_date,
+                'damtlpd': debtor.last_payment_amount,
             }
             serializer = AgeAnalysisSerializer(data)
             return Response(serializer.data)
@@ -104,7 +105,7 @@ class DebtorViewSet(viewsets.ModelViewSet):
             end_date = request.query_params.get('end_date')
             dtype = request.query_params.get('dtype')
             
-            transactions = DebtorTransaction.objects.filter(dno=debtor)
+            transactions = DebtorTransaction.objects.filter(customer_number=debtor)
             
             if start_date:
                 transactions = transactions.filter(dtdate__gte=start_date)
@@ -136,14 +137,14 @@ class DebtorViewSet(viewsets.ModelViewSet):
             
             total_debtors = debtors.count()
             active_debtors = debtors.filter(is_active=True).count()
-            blocked_debtors = debtors.filter(blockflag='Y').count()
+            blocked_debtors = debtors.filter(block_flag='Y').count()
             
             aggregates = debtors.aggregate(
-                total_balance=Sum('dcrnt'),
-                current_balance=Sum('dcrnt'),
-                d30_total=Sum('d30'),
-                d60_total=Sum('d60'),
-                d90_total=Sum('d90'),
+                total_balance=Sum('balance_current'),
+                current_balance=Sum('balance_current'),
+                d30_total=Sum('balance_30_days'),
+                d60_total=Sum('balance_60_days'),
+                d90_total=Sum('balance_90_days'),
             )
             
             data = {
@@ -156,9 +157,9 @@ class DebtorViewSet(viewsets.ModelViewSet):
                 'overdue_60': aggregates['d60_total'] or Decimal('0.00'),
                 'overdue_90': aggregates['d90_total'] or Decimal('0.00'),
                 'overdue_120_plus': sum([
-                    debtors.aggregate(Sum('d120'))['d120__sum'] or Decimal('0.00'),
-                    debtors.aggregate(Sum('d150'))['d150__sum'] or Decimal('0.00'),
-                    debtors.aggregate(Sum('d180'))['d180__sum'] or Decimal('0.00'),
+                    debtors.aggregate(Sum('balance_120_days'))['balance_120_days__sum'] or Decimal('0.00'),
+                    debtors.aggregate(Sum('balance_150_days'))['balance_150_days__sum'] or Decimal('0.00'),
+                    debtors.aggregate(Sum('balance_180_days'))['balance_180_days__sum'] or Decimal('0.00'),
                 ]),
             }
             
@@ -179,7 +180,7 @@ class DebtorViewSet(viewsets.ModelViewSet):
             
             return Response({
                 'status': 'success',
-                'message': f'Debtor {debtor.dno} blocked successfully'
+                'message': f'Debtor {debtor.customer_number} blocked successfully'
             })
         except Exception as e:
             return Response(
@@ -196,7 +197,7 @@ class DebtorViewSet(viewsets.ModelViewSet):
             
             return Response({
                 'status': 'success',
-                'message': f'Debtor {debtor.dno} unblocked successfully'
+                'message': f'Debtor {debtor.customer_number} unblocked successfully'
             })
         except Exception as e:
             return Response(
@@ -211,33 +212,33 @@ class DebtorViewSet(viewsets.ModelViewSet):
             debtor = self.get_object()
             
             balance_data = {
-                'dno': debtor.dno,
-                'dname': debtor.dname,
-                'dclimit': float(debtor.dclimit),
+                'customer_number': debtor.customer_number,
+                'name': debtor.name,
+                'credit_limit': float(debtor.credit_limit),
                 'balance_breakdown': {
-                    'current': float(debtor.dcrnt),
-                    '30_days': float(debtor.d30),
-                    '60_days': float(debtor.d60),
-                    '90_days': float(debtor.d90),
-                    '120_days': float(debtor.d120),
-                    '150_days': float(debtor.d150),
-                    '180_days': float(debtor.d180),
+                    'current': float(debtor.balance_current),
+                    '30_days': float(debtor.balance_30_days),
+                    '60_days': float(debtor.balance_60_days),
+                    '90_days': float(debtor.balance_90_days),
+                    '120_days': float(debtor.balance_120_days),
+                    '150_days': float(debtor.balance_150_days),
+                    '180_days': float(debtor.balance_180_days),
                 },
                 'total_balance': float(debtor.get_total_balance()),
-                'available_credit': float(debtor.dclimit - debtor.get_total_balance()),
+                'available_credit': float(debtor.credit_limit - debtor.get_total_balance()),
                 'credit_utilization_pct': float(
-                    (debtor.get_total_balance() / debtor.dclimit * 100) 
-                    if debtor.dclimit > 0 else 0
+                    (debtor.get_total_balance() / debtor.credit_limit * 100) 
+                    if debtor.credit_limit > 0 else 0
                 ),
                 'is_blocked': debtor.is_blocked(),
                 'is_active': debtor.is_active,
                 'last_payment': {
-                    'date': debtor.ddatlpd,
-                    'amount': float(debtor.damtlpd),
+                    'date': debtor.last_payment_date,
+                    'amount': float(debtor.last_payment_amount),
                 },
                 'sales': {
-                    'mtd': float(debtor.dsalesm),
-                    'ytd': float(debtor.dsalesy),
+                    'mtd': float(debtor.sales_month),
+                    'ytd': float(debtor.sales_year),
                 },
             }
             return Response(balance_data)
@@ -267,7 +268,7 @@ class DebtorTransactionViewSet(viewsets.ReadOnlyModelViewSet):
     
     def get_queryset(self):
         """Optimize queryset."""
-        return super().get_queryset().select_related('debtor')
+        return super().get_queryset().select_related('customer_number')
     
     @action(detail=False, methods=['get'])
     def summary(self, request):
@@ -316,7 +317,6 @@ class DebtorTransactionViewSet(viewsets.ReadOnlyModelViewSet):
         Groups outstanding amounts by age bucket.
         """
         try:
-            # Get aging analysis from the custom manager
             aging = DebtorTransaction.objects.aging_analysis()
             return Response(aging)
         except Exception as e:
@@ -335,7 +335,7 @@ class DebtorTransactionViewSet(viewsets.ReadOnlyModelViewSet):
             summary = self.get_queryset().filter(
                 transaction_type__in=['IN', 'CS'],
                 is_allocated=False
-            ).values('debtor', 'debtor__name').annotate(
+            ).values('customer_number', 'customer_number__name').annotate(
                 outstanding=Sum('total_amount'),
                 transaction_count=Count('id')
             ).order_by('-outstanding')
@@ -356,13 +356,13 @@ class DebteopenViewSet(viewsets.ModelViewSet):
     serializer_class = DebteopenSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['dno', 'type', 'posted', 'ageflag']
+    filterset_fields = ['customer_number', 'type', 'posted', 'ageflag']
     ordering_fields = ['date', 'total']
     ordering = ['-date']
     
     def get_queryset(self):
         """Optimize queryset."""
-        return super().get_queryset().select_related('dno')
+        return super().get_queryset().select_related('customer_number')
     
     @action(detail=False, methods=['get'])
     def outstanding(self, request):
@@ -428,13 +428,13 @@ class DpdcViewSet(viewsets.ModelViewSet):
     serializer_class = DpdcSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['dno', 'status', 'date']
+    filterset_fields = ['customer_number', 'status', 'date']
     ordering_fields = ['date', 'amount']
     ordering = ['date']
     
     def get_queryset(self):
         """Optimize queryset."""
-        return super().get_queryset().select_related('dno')
+        return super().get_queryset().select_related('customer_number')
     
     @action(detail=False, methods=['get'])
     def active(self, request):
@@ -515,13 +515,13 @@ class DebtorAuditViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = DebtorAuditSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['dno', 'type', 'date']
+    filterset_fields = ['customer_number', 'type', 'date']
     ordering_fields = ['date']
     ordering = ['-date']
     
     def get_queryset(self):
         """Optimize queryset."""
-        return super().get_queryset().select_related('dno')
+        return super().get_queryset().select_related('customer_number')
 
 
 class DareaViewSet(viewsets.ModelViewSet):
@@ -600,7 +600,7 @@ class DocumentSearchViewSet(viewsets.ViewSet):
                     invoices = invoices.filter(invoice_number__icontains=doc_number)
                 
                 if debtor_id:
-                    invoices = invoices.filter(debtor__dno=debtor_id)
+                    invoices = invoices.filter(debtor__customer_number=debtor_id)
                 
                 if doc_status:
                     invoices = invoices.filter(status=doc_status)
@@ -616,7 +616,7 @@ class DocumentSearchViewSet(viewsets.ViewSet):
                     invoices = invoices.filter(invoice_date__lte=date_to)
                 
                 invoices = invoices.select_related('debtor').values(
-                    'id', 'invoice_number', 'invoice_date', 'debtor__dname',
+                    'id', 'invoice_number', 'invoice_date', 'debtor__name',
                     'total_amount', 'status'
                 )[:50]
                 
@@ -626,7 +626,7 @@ class DocumentSearchViewSet(viewsets.ViewSet):
                         'document_number': inv['invoice_number'],
                         'document_type': 'invoice',
                         'document_date': inv['invoice_date'],
-                        'customer': inv['debtor__dname'],
+                        'customer': inv['debtor__name'],
                         'amount': float(inv['total_amount']),
                         'status': inv['status']
                     }

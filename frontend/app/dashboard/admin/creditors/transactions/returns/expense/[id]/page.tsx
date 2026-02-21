@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { creditorsApi } from '@/lib/creditorsApi';
+import settingsApi from '@/lib/settingsApi';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,20 +34,20 @@ export default function ExpenseReturnForm() {
 
   const { data: categories } = useQuery({
     queryKey: ['expense-categories'],
-    queryFn: () => creditorsApi.expenseCategories.list({ page_size: 100 }),
+    queryFn: () => settingsApi.expenseCategories.list({ page_size: 100 }),
   });
 
   const { data: creditNoteData, isLoading } = useQuery({
     queryKey: ['expense-return', returnId],
-    queryFn: () => creditorsApi.transactions.get(returnId),
+    queryFn: () => creditorsApi.creditNotes.get(returnId),
     enabled: !isNew,
   });
 
   const mutation = useMutation({
     mutationFn: (data: any) =>
       isNew
-        ? creditorsApi.transactions.create({ ...data, transaction_type: 'RETURN_EXPENSE' })
-        : creditorsApi.transactions.update(returnId, data),
+        ? creditorsApi.creditNotes.create({ ...data, transaction_type: 'RETURN_EXPENSE' })
+        : creditorsApi.creditNotes.update(returnId, data),
     onSuccess: () => {
       router.push('/dashboard/admin/creditors/transactions/returns/expense');
     },

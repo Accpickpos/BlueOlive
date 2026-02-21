@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { AlertCircle, Plus, Trash2 } from 'lucide-react';
 import { useCreditorsAPI } from '@/lib/creditorsApi';
 import creditorsApi from '@/lib/creditorsApi';
+import { CreditorAccount } from '@/lib/types/creditors';
 
 interface LineItem {
   id: string;
@@ -32,7 +33,7 @@ export default function ExpenseInvoiceForm({ onComplete }: ExpenseInvoiceFormPro
     { id: '1', category: '', description: '', cost: 0, tax_code: 1 },
   ]);
 
-  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<CreditorAccount[]>([]);
   const [expenseCategories, setExpenseCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -45,8 +46,8 @@ export default function ExpenseInvoiceForm({ onComplete }: ExpenseInvoiceFormPro
 
   const fetchSuppliers = async () => {
     try {
-      const suppliers = await listSuppliers();
-      setSuppliers(suppliers);
+      const response = await listSuppliers();
+      setSuppliers(response.results);
     } catch (err) {
       console.error('Error fetching suppliers:', err);
     }
@@ -112,12 +113,17 @@ export default function ExpenseInvoiceForm({ onComplete }: ExpenseInvoiceFormPro
         throw new Error('Please complete all line items');
       }
 
+      const inclusiveValue = formData.inclusive_of_vat ? 'INC' as const : 'EXC' as const;
+
       const payload = {
-        ...formData,
+        creditor: Number(formData.supplier),
+        transaction_date: formData.invoice_date,
+        supplier_invoice_number: formData.invoice_number,
+        inclusive_exclusive: inclusiveValue,
+        additional_reference: formData.additional_reference,
         line_items: lineItems.map(item => ({
-          category: item.category,
-          description: item.description,
-          cost: parseFloat(item.cost.toString()),
+          expense_category: Number(item.category),
+          amount: parseFloat(item.cost.toString()),
           tax_code: parseInt(item.tax_code.toString()),
         })),
       };

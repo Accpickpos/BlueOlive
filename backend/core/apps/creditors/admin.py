@@ -90,7 +90,7 @@ class CreditorAdmin(admin.ModelAdmin):
     readonly_fields = (
         'balance_current', 'balance_30_days', 'balance_60_days',
         'balance_90_days', 'balance_120_days', 'balance_150_days', 'balance_180_days',
-        'current_balance', 'last_paid_amount', 'last_paid_date',
+        'total_outstanding_balance', 'last_paid_amount', 'last_paid_date',
         'purchases_mtd', 'purchases_ytd', 'created_at', 'updated_at',
         'balance_brought_forward', 'get_aging_display'
     )
@@ -130,7 +130,7 @@ class CreditorAdmin(admin.ModelAdmin):
                 'get_aging_display',
                 ('balance_current', 'balance_30_days', 'balance_60_days'),
                 ('balance_90_days', 'balance_120_days', 'balance_150_days'),
-                ('balance_180_days', 'current_balance'),
+                ('balance_180_days', 'total_outstanding_balance'),
             ),
             'classes': ('wide',),
             'description': 'System-calculated aging balances (auto-updated)'

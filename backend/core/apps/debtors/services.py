@@ -41,6 +41,7 @@ class DebtorService:
         
         total_debtors = debtors.count()
         blocked_debtors = debtors.filter(blockflag='Y').count()
+        active_debtors = total_debtors - blocked_debtors
         
         aggregates = debtors.aggregate(
             total_balance=Sum(F('dcrnt') + F('d30') + 
@@ -53,17 +54,36 @@ class DebtorService:
             overdue_90=Sum('d90'),
             overdue_120=Sum(F('d120') + F('d150') + 
                           F('d180')),
+            total_credit_limit=Sum('dclimit'),
         )
+        
+        total_balance = aggregates['total_balance'] or Decimal('0.00')
+        total_credit_limit = aggregates['total_credit_limit'] or Decimal('0.00')
+        
+        # Calculate utilization percentage
+        utilization_percentage = float(total_credit_limit) / 100 if total_credit_limit > 0 else 0
         
         return {
             'total_debtors': total_debtors,
+            'active_debtors': active_debtors,
             'blocked_debtors': blocked_debtors,
-            'total_balance': aggregates['total_balance'] or Decimal('0.00'),
+            'total_balance': total_balance,
             'current_balance': aggregates['current_balance'] or Decimal('0.00'),
             'overdue_30': aggregates['overdue_30'] or Decimal('0.00'),
             'overdue_60': aggregates['overdue_60'] or Decimal('0.00'),
             'overdue_90': aggregates['overdue_90'] or Decimal('0.00'),
             'overdue_120_plus': aggregates['overdue_120'] or Decimal('0.00'),
+            'total_credit_limit': total_credit_limit,
+            'utilization_percentage': utilization_percentage,
+            'total_receivable': total_balance,
+            'aging_summary': {
+                'current': aggregates['current_balance'] or Decimal('0.00'),
+                'days_30': aggregates['overdue_30'] or Decimal('0.00'),
+                'days_60': aggregates['overdue_60'] or Decimal('0.00'),
+                'days_90': aggregates['overdue_90'] or Decimal('0.00'),
+                'days_120_plus': aggregates['overdue_120'] or Decimal('0.00'),
+            },
+            'critical_aging': aggregates['overdue_120'] or Decimal('0.00'),
         }
     
     @staticmethod

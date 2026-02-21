@@ -7,7 +7,7 @@ import { getStockItem, createStockItem, updateStockItem } from '@/lib/stockApi';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader, Save } from 'lucide-react';
 
@@ -129,20 +129,35 @@ export default function StockItemFormPage() {
           <div>
             <label className="text-sm font-medium">Department</label>
             <Select value={formData.department?.toString()} onValueChange={(value: string) => setFormData(prev => ({ ...prev, department: value }))}>
-              <option value="">Select Department</option>
+              <SelectTrigger>
+                <SelectValue placeholder="Select Department" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Select Department</SelectItem>
+              </SelectContent>
             </Select>
           </div>
           <div>
             <label className="text-sm font-medium">Tax Code</label>
             <Select value={formData.tax_code?.toString()} onValueChange={(value: string) => setFormData(prev => ({ ...prev, tax_code: parseInt(value) }))}>
-              <option value="1">1 - 15% VAT</option>
-              <option value="2">2 - 0% VAT</option>
+              <SelectTrigger>
+                <SelectValue placeholder="Select Tax Code" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">1 - 15% VAT</SelectItem>
+                <SelectItem value="2">2 - 0% VAT</SelectItem>
+              </SelectContent>
             </Select>
           </div>
           <div>
             <label className="text-sm font-medium">Supplier</label>
             <Select value={formData.supplier?.toString()} onValueChange={(value: string) => setFormData(prev => ({ ...prev, supplier: value }))}>
-              <option value="">Select Supplier</option>
+              <SelectTrigger>
+                <SelectValue placeholder="Select Supplier" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Select Supplier</SelectItem>
+              </SelectContent>
             </Select>
           </div>
           <div>

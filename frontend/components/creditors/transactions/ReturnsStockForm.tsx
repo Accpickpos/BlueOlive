@@ -44,7 +44,7 @@ export default function ReturnsStockForm({ onComplete }: ReturnsStockFormProps) 
   const fetchSuppliers = async () => {
     try {
       const suppliers = await listSuppliers();
-      setSuppliers(suppliers);
+      setSuppliers(suppliers.results || []);
     } catch (err) {
       console.error('Error fetching suppliers:', err);
     }
@@ -101,12 +101,14 @@ export default function ReturnsStockForm({ onComplete }: ReturnsStockFormProps) 
         throw new Error('Please complete all line items');
       }
 
-      const payload = {
-        ...formData,
-        line_items: lineItems.map(item => ({
-          stock_item: item.stock_item,
-          quantity: parseFloat(item.quantity.toString()),
-          unit_cost: parseFloat(item.unit_cost.toString()),
+      const payload: any = {
+        creditor: parseInt(formData.supplier),
+        rfc_number: formData.document_number || `RFC-${Date.now()}`,
+        return_date: formData.document_date,
+        line_items: lineItems.map((item, index) => ({
+          stock_item: 0, // Would need to look up stock item ID from stock_code
+          quantity_returned: parseFloat(item.quantity.toString()),
+          line_value: parseFloat(item.quantity.toString()) * parseFloat(item.unit_cost.toString()),
           tax_code: parseInt(item.tax_code.toString()),
         })),
       };

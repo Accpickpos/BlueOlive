@@ -24,7 +24,7 @@ export default function CreditorAccountDetailPage() {
     queryKey: ['account-transactions', accountId, page],
     queryFn: () =>
       creditorsApi.transactions.list({
-        account_id: accountIdNum,
+        creditor: accountIdNum,
         page,
         page_size: 25,
         ordering: '-transaction_date',
@@ -55,7 +55,7 @@ export default function CreditorAccountDetailPage() {
         </Link>
         <div>
           <h1 className="text-3xl font-bold">{account.name}</h1>
-          <p className="text-gray-600 mt-1">Account: {account.account_number}</p>
+          <p className="text-gray-600 mt-1">Account: {account.supplier_number}</p>
         </div>
       </div>
 
@@ -64,25 +64,25 @@ export default function CreditorAccountDetailPage() {
         <Card className="p-6">
           <p className="text-xs text-gray-600 uppercase">Account Balance</p>
           <p className="text-2xl font-bold text-red-600 mt-2">
-            R {account.balance?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
+            R {account.total_outstanding_balance?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
           </p>
         </Card>
         <Card className="p-6 border-l-4 border-l-green-500">
           <p className="text-xs text-gray-600 uppercase">Current</p>
           <p className="text-2xl font-bold text-green-600 mt-2">
-            R {account.current_aging?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
+            R {account.balance_current?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
           </p>
         </Card>
         <Card className="p-6 border-l-4 border-l-amber-500">
           <p className="text-xs text-gray-600 uppercase">30-60 Days</p>
           <p className="text-2xl font-bold text-amber-600 mt-2">
-            R {((account.d30 || 0) + (account.d60 || 0))?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
+            R {((account.balance_30_days || 0) + (account.balance_60_days || 0))?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
           </p>
         </Card>
         <Card className="p-6 border-l-4 border-l-red-500">
           <p className="text-xs text-gray-600 uppercase">90+ Days</p>
           <p className="text-2xl font-bold text-red-600 mt-2">
-            R {((account.d90 || 0) + (account.d120 || 0))?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
+            R {((account.balance_90_days || 0) + (account.balance_120_days || 0))?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
           </p>
         </Card>
       </div>
@@ -94,7 +94,7 @@ export default function CreditorAccountDetailPage() {
           <div className="space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-600">Account Type:</span>
-              <span className="font-bold">{account.account_type}</span>
+              <span className="font-bold">{account.account_category}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Contact Person:</span>
@@ -102,7 +102,7 @@ export default function CreditorAccountDetailPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Telephone:</span>
-              <span className="font-bold">{account.telephone || 'N/A'}</span>
+              <span className="font-bold">{account.telephone1 || 'N/A'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Email:</span>
@@ -115,17 +115,17 @@ export default function CreditorAccountDetailPage() {
           <div className="space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-600">Credit Terms:</span>
-              <span className="font-bold">{account.credit_terms} days</span>
+              <span className="font-bold">{account.payment_terms_days} days</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Payment Discount:</span>
-              <span className="font-bold">{account.payment_discount_percent}%</span>
+              <span className="font-bold">{account.prompt_payment_discount_percent}%</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Last Payment:</span>
               <span className="font-bold">
-                {account.last_payment_date
-                  ? new Date(account.last_payment_date).toLocaleDateString('en-ZA')
+                {account.last_paid_date
+                  ? new Date(account.last_paid_date).toLocaleDateString('en-ZA')
                   : 'N/A'}
               </span>
             </div>

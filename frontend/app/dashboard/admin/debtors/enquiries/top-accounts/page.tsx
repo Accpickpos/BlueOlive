@@ -57,37 +57,37 @@ export default function TopAccountsPage() {
             </thead>
             <tbody>
               {topAccounts.map((account, idx) => {
-                const percentUsed = account.dclimit ? (account.total_balance! / account.dclimit) * 100 : 0;
+                const percentUsed = account.credit_limit ? (account.total_balance! / account.credit_limit) * 100 : 0;
                 const utilColor = percentUsed > 80 ? 'text-red-600' : percentUsed > 60 ? 'text-orange-600' : 'text-green-600';
 
                 return (
                   <tr key={account.id} className="border-b hover:bg-gray-50">
                     <td className="px-4 py-3 font-bold text-center text-lg">{idx + 1}</td>
-                    <td className="px-4 py-3 font-medium">{account.dno}</td>
+                    <td className="px-4 py-3 font-medium">{account.customer_number}</td>
                     <td className="px-4 py-3">
                       <Link
                         href={`/dashboard/admin/debtors/enquiries/account?id=${account.id}`}
                         className="text-blue-600 hover:underline"
                       >
-                        {account.dname}
+                        {account.name}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{account.darea_name || '-'}</td>
+                    <td className="px-4 py-3 text-gray-600">{account.area_code || '-'}</td>
                     <td className="px-4 py-3 text-right font-bold text-blue-600">
                       ${account.total_balance?.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                     </td>
-                    <td className="px-4 py-3 text-right">${account.dclimit?.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right">${account.credit_limit?.toLocaleString()}</td>
                     <td className={`px-4 py-3 text-right font-semibold ${utilColor}`}>
                       {percentUsed.toFixed(0)}%
                     </td>
                     <td className="px-4 py-3 text-center text-sm">
-                      ${account.dcrnt?.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                      ${account.balance_current?.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                     </td>
-                    <td className={`px-4 py-3 text-center font-bold ${account.d180! > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      ${account.d180?.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                    <td className={`px-4 py-3 text-center font-bold ${account.balance_180_days! > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      ${account.balance_180_days?.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {account.blockflag ? (
+                      {account.is_blocked_flag ? (
                         <Badge className="bg-red-500">Blocked</Badge>
                       ) : account.is_active ? (
                         <Badge className="bg-green-500">Active</Badge>

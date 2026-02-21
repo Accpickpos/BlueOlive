@@ -4,8 +4,11 @@
  */
 
 // ============ Debtor Account ============
+// Note: API returns snake_case fields (customer_number, credit_limit, etc.)
+// Components may also use legacy short names (dno, dclimit, dname, etc.)
 export interface DebtorAccount {
   id: number;
+  // Primary API fields
   customer_number: number; // Account number
   name: string; // Debtor name
   short_name?: string; // Short name
@@ -59,6 +62,42 @@ export interface DebtorAccount {
   is_active: boolean; // Active status
   created_at?: string;
   updated_at?: string;
+  
+  // Legacy alias fields (used in some components for compatibility)
+  // These map to the standard fields above
+  dno: number; // Legacy alias for customer_number
+  dname: string; // Legacy alias for name
+  dclimit?: number; // Legacy alias for credit_limit
+  dcrnt?: number; // Legacy alias for balance_current
+  d30?: number; // Legacy alias for balance_30_days
+  d60?: number; // Legacy alias for balance_60_days
+  d90?: number; // Legacy alias for balance_90_days
+  d120?: number; // Legacy alias for balance_120_days
+  d150: number; // Legacy alias for balance_150_days
+  d180?: number; // Legacy alias for balance_180_days
+  blockflag?: boolean; // Legacy alias for is_blocked_flag
+  darea_name?: string; // Area name (may need separate API call)
+  
+  // Additional legacy alias fields
+  dcontact?: string; // Legacy alias for contact_person
+  dsname?: string; // Legacy alias for short_name
+  dtel?: string; // Legacy alias for phone
+  dfax?: string; // Legacy alias for fax
+  dadd1?: string; // Legacy alias for address_line1
+  dadd2?: string; // Legacy alias for address_line2
+  dadd3?: string; // Legacy alias for address_line3
+  dpcode?: string; // Legacy alias for postal_code
+  delad1?: string; // Legacy alias for delivery_address1
+  delad2?: string; // Legacy alias for delivery_address2
+  delad3?: string; // Legacy alias for delivery_address3
+  delad4?: string; // Legacy alias for delivery_address4
+  acctype?: string; // Legacy alias for account_type
+  price?: number; // Legacy alias for price_level
+  ddiscper?: number; // Legacy alias for discount_percentage
+  pdisc?: number; // Legacy alias for prompt_payment_discount
+  terms?: number; // Legacy alias for payment_terms
+  dtaxno?: string; // Legacy alias for tax_number
+  dintflag?: string | boolean; // Legacy alias for interest_flag
 }
 
 export interface DebtorCreateData extends Omit<DebtorAccount, 'id' | 'total_balance' | 'overdue_balance' | 'available_credit' | 'credit_utilization_pct' | 'is_blocked_flag' | 'created_at' | 'updated_at'> {}
@@ -165,15 +204,25 @@ export interface SalesArea {
 
 // ============ Summary ============
 export interface DebtorsSummary {
+  // Backend response fields
   total_debtors: number;
   active_debtors: number;
   blocked_debtors: number;
-  total_receivable: number;
-  average_dso: number;
-  critical_aging: number; // Amount over 120 days
-  total_credit_limit: number;
-  utilization_percentage: number;
-  top_debtors?: DebtorAccount[];
+  total_balance: number;
+  current_balance: number;
+  overdue_30: number;
+  overdue_60: number;
+  overdue_90: number;
+  overdue_120_plus: number;
+  
+  // Credit limit related fields
+  total_credit_limit?: number;
+  utilization_percentage?: number;
+  
+  // Aliases for component compatibility
+  total_receivable?: number;
+  average_dso?: number;
+  critical_aging?: number;
   aging_summary?: {
     current: number;
     days_30: number;

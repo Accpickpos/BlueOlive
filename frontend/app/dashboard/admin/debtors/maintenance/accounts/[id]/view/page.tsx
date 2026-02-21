@@ -31,6 +31,15 @@ function formatDateTime(dateString: string | null | undefined) {
   }
 }
 
+/**
+ * Normalizes a flag value that can be either a string ('Y') or boolean
+ * to a consistent boolean value
+ */
+function normalizeFlag(flag: string | boolean | null | undefined): boolean {
+  if (flag === 'Y' || flag === true) return true;
+  return false;
+}
+
 function getAccountType(acctype: string | null | undefined) {
   const types: Record<string, string> = {
     'O': 'Open Item',
@@ -75,9 +84,10 @@ export default function ViewAccountPage({ params }: ViewAccountPageProps) {
     );
   }
 
-  const isBlocked = account.blockflag === 'Y' || account.blockflag === true;
-  const isActive = account.is_active === 'Y' || account.is_active === true;
-  const chargesInterest = account.dintflag === 'Y' || account.dintflag === true;
+  // Normalize flags using helper function
+  const isBlocked = normalizeFlag(account.blockflag);
+  const isActive = normalizeFlag(account.is_active);
+  const chargesInterest = normalizeFlag(account.interest_flag);
   const totalBalance = typeof account.total_balance === 'number' ? account.total_balance : 0;
   const creditLimit = typeof account.dclimit === 'number' ? account.dclimit : 0;
   const availableCredit = creditLimit - totalBalance;

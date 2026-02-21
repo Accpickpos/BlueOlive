@@ -287,7 +287,21 @@ class SalesDepartment(TimeStampedModel, ActiveModel):
         editable=False,
         help_text="Gross profit Year-to-Date"
     )
-    
+
+    # Historical monthly sales (Period 1-12)
+    sales_p1  = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False, help_text="Sales Period 1")
+    sales_p2  = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False, help_text="Sales Period 2")
+    sales_p3  = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False, help_text="Sales Period 3")
+    sales_p4  = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False, help_text="Sales Period 4")
+    sales_p5  = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False, help_text="Sales Period 5")
+    sales_p6  = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False, help_text="Sales Period 6")
+    sales_p7  = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False, help_text="Sales Period 7")
+    sales_p8  = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False, help_text="Sales Period 8")
+    sales_p9  = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False, help_text="Sales Period 9")
+    sales_p10 = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False, help_text="Sales Period 10")
+    sales_p11 = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False, help_text="Sales Period 11")
+    sales_p12 = models.DecimalField(max_digits=15, decimal_places=2, default=0, editable=False, help_text="Sales Period 12")
+
     class Meta:
         db_table = 'sales_departments'
         ordering = ['number']
@@ -819,6 +833,7 @@ class SystemConfiguration(TimeStampedModel):
     
     # === COMPANY INFORMATION ===
     # Note: Tenant and Shop context are implicit in the schema; no FK references needed
+    shop_name = models.CharField(max_length=200, blank=True, help_text="Shop/Company name")
     shop_address = models.TextField(blank=True, help_text="Shop address")
     shop_phone = models.CharField(max_length=20, blank=True)
     shop_email = models.EmailField(blank=True)
@@ -1026,12 +1041,14 @@ class APIKey(TimeStampedModel):
     
     # Tenant binding - CRITICAL for security
     # Allow null for existing keys during migration, but enforce later
+    # db_constraint=False allows cross-schema FK (Tenant is in public DB, APIKey in tenant schema)
     tenant = models.ForeignKey(
         'tenancy.Tenant',
         on_delete=models.CASCADE,
         related_name='api_keys',
         null=True,  # Temporary: allow null during migration
         blank=True,
+        db_constraint=False,  # IMPORTANT: prevents migration from trying to FK to tenant's schema
         help_text="Tenant this API key belongs to"
     )
     

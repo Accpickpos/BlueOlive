@@ -27,8 +27,8 @@ export default function CreditorsMaintenance() {
         is_active: filterActive !== null ? filterActive : undefined,
       });
       console.log('Creditors list response:', data);
-      console.log('data.results:', data.results);
-      setCreditors(data.results || []);
+      console.log('data.results:', data);
+      setCreditors(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error loading creditors:', err);
       setError(err instanceof Error ? err.message : 'Failed to load creditors');
@@ -267,7 +267,7 @@ export default function CreditorsMaintenance() {
                             Edit
                           </button>
                           <button
-                            onClick={() => handleDelete(creditor.account_number)}
+                            onClick={() => handleDelete(Number(creditor.account_number))}
                             className="text-red-600 hover:text-red-900 inline-flex items-center gap-1"
                           >
                             <Trash2 size={16} />

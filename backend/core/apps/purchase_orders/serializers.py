@@ -185,7 +185,7 @@ class PurchaseOrderReceiptSerializer(serializers.ModelSerializer):
 class StockReceiptLineSerializer(serializers.Serializer):
     """Serializer for receiving stock against PO lines"""
     purchase_order_line_id = serializers.IntegerField()
-    quantity_received = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0.01)
+    quantity_received = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal('0.01'))
     actual_unit_cost = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
 
 

@@ -26,6 +26,7 @@ import {
   MessageSquare,
   Package,
   ArrowRight,
+  Upload,
 } from "lucide-react";
 
 // ================== MENU CONFIG ==================
@@ -99,6 +100,7 @@ const menuConfig = [
         ],
       },
       { type: "link", name: "Settings", href: "/dashboard/admin/settings", icon: UserCog },
+      { type: "link", name: "Import Data", href: "/dashboard/admin/import", icon: Upload },
     ],
   },
 

@@ -60,12 +60,12 @@ export default function DebtorsDashboard() {
                 <div
                   className="bg-blue-600 h-2 rounded-full"
                   style={{
-                    width: `${Math.min((summary.total_receivable! / summary.total_credit_limit!) * 100, 100)}%`,
+                    width: `${summary.total_credit_limit ? Math.min((summary.total_receivable! / summary.total_credit_limit) * 100, 100) : 0}%`,
                   }}
                 />
               </div>
               <div className="text-xs text-gray-600">
-                {summary.utilization_percentage?.toFixed(1)}% of ${summary.total_credit_limit?.toLocaleString('en-US', { maximumFractionDigits: 2 })} limit
+                {summary.utilization_percentage ? summary.utilization_percentage.toFixed(1) : '0.0'}% of ${summary.total_credit_limit?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || '0'} limit
               </div>
             </div>
           </Card>

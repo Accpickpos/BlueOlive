@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
-    Custom JWT serializer that includes tenant information in the token
+    Custom JWT serializer that includes tenant and shop information in the token
     """
     def validate(self, attrs):
         # Get the tenant from context (set by middleware)
@@ -39,6 +39,45 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         refresh['username'] = self.user.username
         refresh['email'] = self.user.email
         refresh['role'] = self.user.role
+        
+        # Add shop information - get user's accessible shops
+        # OPTIMIZATION: Only put current_shop in access token (small)
+        # Full accessible_shops list goes in refresh token only
+        try:
+            # Get accessible shops for this user
+            accessible_shops = list(self.user.get_active_shops())
+            
+            if accessible_shops:
+                # Set current shop - prefer head office or first shop
+                current_shop = None
+                for shop in accessible_shops:
+                    if shop.is_head_office:
+                        current_shop = shop
+                        break
+                
+                if not current_shop:
+                    current_shop = accessible_shops[0]
+                
+                # Only current shop in access token (for quick access)
+                refresh['current_shop_id'] = current_shop.id
+                refresh['current_shop_schema'] = current_shop.schema_name
+                
+                # Full shop list in refresh token only (larger, but fetched less frequently)
+                shop_list = [{
+                    'id': shop.id,
+                    'name': shop.name,
+                    'schema_name': shop.schema_name
+                } for shop in accessible_shops]
+                refresh['accessible_shops'] = shop_list
+                
+                # Add current shop to response (both tokens)
+                data['current_shop'] = {
+                    'id': current_shop.id,
+                    'name': current_shop.name,
+                    'schema_name': current_shop.schema_name
+                }
+        except Exception as e:
+            logger.warning(f"Could not get accessible shops for user {self.user.id}: {e}")
         
         data['refresh'] = str(refresh)
         data['access'] = str(refresh.access_token)

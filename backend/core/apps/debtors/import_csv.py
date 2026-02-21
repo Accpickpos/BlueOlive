@@ -395,15 +395,19 @@ def import_csv(request):
         )
 
     # --- Resolve tenant & shop ---
+    # First, get the shop to find its tenant (allows importing to any shop regardless of tenant_id param)
     try:
-        tenant = Tenant.objects.get(id=tenant_id, is_active=True)
-    except Tenant.DoesNotExist:
-        return Response({'error': f'Tenant {tenant_id} not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    try:
-        shop = Shop.objects.get(id=shop_id, tenant=tenant, is_active=True)
+        shop = Shop.objects.select_related('tenant').get(id=shop_id, is_active=True)
     except Shop.DoesNotExist:
-        return Response({'error': f'Shop {shop_id} not found for tenant'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': f'Shop {shop_id} not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Use the shop's actual tenant - this ensures we import to the correct tenant
+    # regardless of what tenant_id was sent in the request
+    tenant = shop.tenant
+    
+    # Verify the tenant is active
+    if not tenant.is_active:
+        return Response({'error': f'Tenant for shop {shop_id} is not active'}, status=status.HTTP_400_BAD_REQUEST)
 
     # --- CRITICAL FIX: Override the middleware's schema selection ---
     import logging

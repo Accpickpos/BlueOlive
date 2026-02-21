@@ -63,20 +63,73 @@ export const ENDPOINTS = {
 
   // ===== CREDITORS =====
   CREDITORS: {
+    BASE: `${API_V1_BASE}/creditors/`,
     ACCOUNTS: `${API_V1_BASE}/creditors/creditors/`,
     TRANSACTIONS: `${API_V1_BASE}/creditors/transactions/`,
     CREDIT_TERMS: `${API_V1_BASE}/creditors/credit-terms/`,
-    GRN: `${API_V1_BASE}/creditors/grn/`,
+    GRNS: `${API_V1_BASE}/creditors/grns/`,
     INVOICES: `${API_V1_BASE}/creditors/invoices/`,
     PAYMENTS: `${API_V1_BASE}/creditors/payments/`,
     JOURNALS: `${API_V1_BASE}/creditors/journals/`,
-    OPEN_ITEMS: `${API_V1_BASE}/creditors/open-items/`,
-    RFC: `${API_V1_BASE}/creditors/rfc/`,
+    CREDIT_NOTES: `${API_V1_BASE}/creditors/credit_notes/`,
+    OPEN_ITEMS: `${API_V1_BASE}/creditors/open_items/`,
+    LEDGER: `${API_V1_BASE}/creditors/ledger/`,
+    RFC: `${API_V1_BASE}/creditors/rfcs/`,
     SUMMARY: `${API_V1_BASE}/creditors/summary/`,
+    
+    // Expense categories
+    EXPENSE_MONTHLY: `${API_V1_BASE}/creditors/expense_monthly/`,
+    EXPENSE_TRANSACTIONS: `${API_V1_BASE}/creditors/expense_transactions/`,
+    
     // Dynamic endpoints for specific creditor actions
-    AGING_ANALYSIS: (id: string | number) => `${API_V1_BASE}/creditors/creditors/${id}/aging-analysis/`,
-    OUTSTANDING_ITEMS: (id: string | number) => `${API_V1_BASE}/creditors/creditors/${id}/outstanding-items/`,
-    OUTSTANDING_BALANCE: `${API_V1_BASE}/creditors/open-items/`,
+    AGED_BALANCES: (id: string | number) => `${API_V1_BASE}/creditors/creditors/${id}/aged_balances/`,
+    RECALCULATE_AGED: (id: string | number) => `${API_V1_BASE}/creditors/creditors/${id}/recalculate_aged/`,
+    CREDITOR_OPEN_ITEMS: (id: string | number) => `${API_V1_BASE}/creditors/creditors/${id}/open_items/`,
+    CREDITOR_LEDGER: (id: string | number) => `${API_V1_BASE}/creditors/creditors/${id}/ledger/`,
+    CREDITOR_TRANSACTIONS: (id: string | number) => `${API_V1_BASE}/creditors/creditors/${id}/transactions/`,
+    
+    // Age analysis
+    AGE_ANALYSIS: `${API_V1_BASE}/creditors/creditors/age_analysis/`,
+    
+    // GRN endpoints
+    GRNS_BY_CREDITOR: `${API_V1_BASE}/creditors/grns/by_creditor/`,
+    POST_GRN: (id: string | number) => `${API_V1_BASE}/creditors/grns/${id}/post/`,
+    GRN_LINES: (id: string | number) => `${API_V1_BASE}/creditors/grns/${id}/lines/`,
+    
+    // Invoice endpoints
+    INVOICE_LINES: (id: string | number) => `${API_V1_BASE}/creditors/invoices/${id}/lines/`,
+    POST_INVOICE: (id: string | number) => `${API_V1_BASE}/creditors/invoices/${id}/post/`,
+    
+    // Credit note endpoints
+    CREDIT_NOTE_LINES: (id: string | number) => `${API_V1_BASE}/creditors/credit_notes/${id}/lines/`,
+    POST_CREDIT_NOTE: (id: string | number) => `${API_V1_BASE}/creditors/credit_notes/${id}/post/`,
+    
+    // Payment endpoints
+    POST_PAYMENT: (id: string | number) => `${API_V1_BASE}/creditors/payments/${id}/post/`,
+    ALLOCATE_PAYMENT: (id: string | number) => `${API_V1_BASE}/creditors/payments/${id}/allocate/`,
+    
+    // Journal endpoints
+    POST_JOURNAL: (id: string | number) => `${API_V1_BASE}/creditors/journals/${id}/post/`,
+    
+    // Open items endpoints
+    OPEN_ITEMS_OUTSTANDING: `${API_V1_BASE}/creditors/open_items/outstanding/`,
+    OPEN_ITEMS_BY_CREDITOR: `${API_V1_BASE}/creditors/open_items/by_creditor/`,
+    OPEN_ITEM_ALLOCATIONS: `${API_V1_BASE}/creditors/open_item_allocations/`,
+    OPEN_ITEM_AUDITS: `${API_V1_BASE}/creditors/open_item_audits/`,
+    
+    // RFC endpoints
+    RFC_BY_STATUS: `${API_V1_BASE}/creditors/rfcs/by_status/`,
+    RFC_UPDATE_STATUS: (id: string | number) => `${API_V1_BASE}/creditors/rfcs/${id}/update_status/`,
+    RFC_LINES: (id: string | number) => `${API_V1_BASE}/creditors/rfcs/${id}/lines/`,
+    
+    // Expense endpoints
+    EXPENSE_BY_CREDITOR: `${API_V1_BASE}/creditors/expense_transactions/by_creditor/`,
+    EXPENSE_BY_CATEGORY: `${API_V1_BASE}/creditors/expense_transactions/by_category/`,
+    
+    // Payment orders endpoints
+    PAYMENT_ORDERS: `${API_V1_BASE}/creditors/payment_orders/`,
+    PAYMENT_ORDERS_PENDING: `${API_V1_BASE}/creditors/payment_orders/pending/`,
+    PROCESS_PAYMENT_ORDER: (id: string | number) => `${API_V1_BASE}/creditors/payment_orders/${id}/process/`,
   },
 
   // ===== CASH BOOK =====
@@ -107,18 +160,80 @@ export const ENDPOINTS = {
 
   // ===== STOCK CONTROL =====
   STOCK_CONTROL: {
-    DEPARTMENTS: `${API_V1_BASE}/stock-control/departments/`,
-    SALES_AREAS: `${API_V1_BASE}/stock-control/sales-areas/`,
-    STOCK_ITEMS: `${API_V1_BASE}/stock-control/stock-items/`,
-    SPECIAL_DEALS: `${API_V1_BASE}/stock-control/special-deals/`,
-    FUTURE_PRICING: `${API_V1_BASE}/stock-control/future-pricing/`,
-    SHRINK_WRAPS: `${API_V1_BASE}/stock-control/shrink-wraps/`,
-    PACK_BUNDLES: `${API_V1_BASE}/stock-control/pack-bundles/`,
-    TRANSACTIONS: `${API_V1_BASE}/stock-control/stock-transactions/`,
-    STOCK_TAKES: `${API_V1_BASE}/stock-control/stock-takes/`,
-    CONTRACT_PRICING: `${API_V1_BASE}/stock-control/contract-pricing/`,
-    LOOKUP_KEYS: `${API_V1_BASE}/stock-control/lookup-keys/`,
-    MONTHLY_STATS: `${API_V1_BASE}/stock-control/monthly-statistics/`,
+    // ── Core resources ────────────────────────────────────────────────────
+    STOCK_ITEMS:              `${API_V1_BASE}/stock-control/stock-items/`,
+    SPECIAL_DEALS:            `${API_V1_BASE}/stock-control/special-deals/`,
+    FUTURE_PRICING:           `${API_V1_BASE}/stock-control/future-pricing/`,
+    SHRINK_WRAPS:             `${API_V1_BASE}/stock-control/shrink-wraps/`,
+    PACK_BUNDLES:             `${API_V1_BASE}/stock-control/pack-bundles/`,
+    PACK_BUNDLE_INGREDIENTS:  `${API_V1_BASE}/stock-control/pack-bundle-ingredients/`,
+    TRANSACTIONS:             `${API_V1_BASE}/stock-control/stock-transactions/`,
+    MOVEMENT_LEDGER:          `${API_V1_BASE}/stock-control/stock-movement-ledger/`,
+    STOCK_TAKES:              `${API_V1_BASE}/stock-control/stock-takes/`,
+    STOCK_TAKE_ITEMS:         `${API_V1_BASE}/stock-control/stock-take-items/`,
+    CONTRACT_PRICING:         `${API_V1_BASE}/stock-control/contract-pricing/`,
+    LOOKUP_KEYS:              `${API_V1_BASE}/stock-control/lookup-keys/`,
+    MONTHLY_STATS:            `${API_V1_BASE}/stock-control/monthly-statistics/`,
+
+    // ── Branches (IBT Phase 1) ────────────────────────────────────────────
+    BRANCHES:                 `${API_V1_BASE}/stock-control/branches/`,
+    BRANCH_STOCK:             `${API_V1_BASE}/stock-control/branch-stock/`,
+
+    // ── Group Orders (Phase 3) ────────────────────────────────────────────
+    GROUP_ORDERS:             `${API_V1_BASE}/stock-control/group-orders/`,
+    GROUP_ORDER_ITEMS:        `${API_V1_BASE}/stock-control/group-order-items/`,
+
+    // ── Inter-Branch Transfers (IBT Phase 4) ──────────────────────────────
+    BRANCH_TRANSFERS:         `${API_V1_BASE}/stock-control/branch-transfers/`,
+    BRANCH_TRANSFER_ITEMS:    `${API_V1_BASE}/stock-control/branch-transfer-items/`,
+
+    // ── Inter-Branch Invoices (IBI Phase 5) ───────────────────────────────
+    BRANCH_TRANSFER_INVOICES: `${API_V1_BASE}/stock-control/branch-transfer-invoices/`,
+
+    // ── Stock Item dynamic actions ─────────────────────────────────────────
+    STOCK_ITEM_DETAIL:          (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/`,
+    STOCK_ITEM_PRICING:         (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/pricing/`,
+    STOCK_ITEM_TRANSACTIONS:    (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/transactions/`,
+    STOCK_ITEM_MONTHLY_STATS:   (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/monthly-stats/`,
+    STOCK_ITEM_ADJUST_STOCK:    (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/adjust-stock/`,
+    STOCK_ITEMS_LOW_STOCK:      `${API_V1_BASE}/stock-control/stock-items/low-stock/`,
+    STOCK_ITEMS_NEEDS_REORDER:  `${API_V1_BASE}/stock-control/stock-items/needs-reorder/`,
+
+    // ── Special Deals dynamic actions ──────────────────────────────────────
+    SPECIAL_DEALS_ACTIVE_TODAY: `${API_V1_BASE}/stock-control/special-deals/active-today/`,
+
+    // ── Future Pricing dynamic actions ─────────────────────────────────────
+    FUTURE_PRICING_APPLY:       (id: number) => `${API_V1_BASE}/stock-control/future-pricing/${id}/apply/`,
+
+    // ── Pack Bundle dynamic actions ────────────────────────────────────────
+    PACK_BUNDLE_RECALC_COST:    (code: string) => `${API_V1_BASE}/stock-control/pack-bundles/${code}/recalculate-cost/`,
+
+    // ── Stock Take dynamic actions ──────────────────────────────────────────
+    STOCK_TAKE_COMPLETE:        (id: number) => `${API_V1_BASE}/stock-control/stock-takes/${id}/complete/`,
+    STOCK_TAKE_UPDATE_STOCK:    (id: number) => `${API_V1_BASE}/stock-control/stock-takes/${id}/update-stock/`,
+    STOCK_TAKE_VARIANCE_REPORT: (id: number) => `${API_V1_BASE}/stock-control/stock-takes/${id}/variance-report/`,
+    STOCK_TAKE_ITEM_COUNT:      (id: number) => `${API_V1_BASE}/stock-control/stock-take-items/${id}/count/`,
+
+    // ── Branch dynamic actions ─────────────────────────────────────────────
+    BRANCH_DETAIL:              (code: string) => `${API_V1_BASE}/stock-control/branches/${code}/`,
+    BRANCH_STOCK_LEVELS:        (code: string) => `${API_V1_BASE}/stock-control/branches/${code}/stock/`,
+    BRANCH_STOCK_LOW:           `${API_V1_BASE}/stock-control/branch-stock/low-stock/`,
+
+    // ── Group Order dynamic actions ────────────────────────────────────────
+    GROUP_ORDER_RECALC_TOTAL:   (id: number) => `${API_V1_BASE}/stock-control/group-orders/${id}/recalculate-total/`,
+
+    // ── Branch Transfer dynamic actions ───────────────────────────────────
+    TRANSFER_APPROVE:           (id: number) => `${API_V1_BASE}/stock-control/branch-transfers/${id}/approve/`,
+    TRANSFER_DISPATCH:          (id: number) => `${API_V1_BASE}/stock-control/branch-transfers/${id}/dispatch/`,
+    TRANSFER_RECEIVE:           (id: number) => `${API_V1_BASE}/stock-control/branch-transfers/${id}/receive/`,
+    TRANSFER_CANCEL:            (id: number) => `${API_V1_BASE}/stock-control/branch-transfers/${id}/cancel/`,
+
+    // ── Branch Transfer Invoice dynamic actions ────────────────────────────
+    INVOICE_ISSUE:              (id: number) => `${API_V1_BASE}/stock-control/branch-transfer-invoices/${id}/issue/`,
+    INVOICE_MARK_PAID:          (id: number) => `${API_V1_BASE}/stock-control/branch-transfer-invoices/${id}/mark-paid/`,
+
+    // NOTE: DEPARTMENTS and SALES_AREAS are served by the SETTINGS app.
+    // Use SETTINGS.DEPARTMENTS and SETTINGS.SALES_AREAS for those resources.
   },
 
   // ===== PURCHASE ORDERS =====

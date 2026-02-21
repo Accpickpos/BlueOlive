@@ -15,12 +15,9 @@ export default function RFCPage() {
   const { data: rfcs, isLoading } = useQuery({
     queryKey: ['rfc-transactions', page, filterStatus],
     queryFn: () =>
-      creditorsApi.transactions.list({
-        transaction_type: 'RFC',
+      creditorsApi.rfc.list({
         page,
-        page_size: 25,
-        status: filterStatus !== 'all' ? filterStatus : undefined,
-        ordering: '-transaction_date',
+        status: filterStatus !== 'all' ? filterStatus as any : undefined,
       }),
   });
 

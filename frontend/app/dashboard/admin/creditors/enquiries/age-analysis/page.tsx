@@ -17,7 +17,7 @@ export default function AgeAnalysisPage() {
 
   const { data: summary, isLoading } = useQuery({
     queryKey: ['creditors-age-analysis', dateRange],
-    queryFn: () => creditorsApi.summary.get({ cutoff_date: dateRange.to }),
+    queryFn: () => creditorsApi.summary.get(),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -27,7 +27,7 @@ export default function AgeAnalysisPage() {
   });
 
   const sortedByAge = accounts?.results
-    ?.sort((a: CreditorAccount, b: CreditorAccount) => (b.d120 || 0) - (a.d120 || 0))
+    ?.sort((a: CreditorAccount, b: CreditorAccount) => (b.balance_120_days || 0) - (a.balance_120_days || 0))
     .slice(0, 20) || [];
 
   return (
@@ -90,37 +90,37 @@ export default function AgeAnalysisPage() {
               <div className="p-4 bg-green-50 rounded border border-green-200">
                 <p className="text-xs text-green-600 font-medium">Current</p>
                 <p className="text-2xl font-bold text-green-700">
-                  R {summary.current_aging?.toLocaleString('en-ZA', { maximumFractionDigits: 0 })}
+                  R {summary.balance_current?.toLocaleString('en-ZA', { maximumFractionDigits: 0 })}
                 </p>
                 <p className="text-xs text-green-600 mt-1">
-                  {((summary.current_aging || 0) / (summary.total_payable || 1) * 100).toFixed(1)}%
+                  {((summary.balance_current || 0) / (summary.total_payable || 1) * 100).toFixed(1)}%
                 </p>
               </div>
               <div className="p-4 bg-amber-50 rounded border border-amber-200">
                 <p className="text-xs text-amber-600 font-medium">30-60 Days</p>
                 <p className="text-2xl font-bold text-amber-700">
-                  R {((summary.d30 || 0) + (summary.d60 || 0))?.toLocaleString('en-ZA', { maximumFractionDigits: 0 })}
+                  R {((summary.balance_30_days || 0) + (summary.balance_60_days || 0))?.toLocaleString('en-ZA', { maximumFractionDigits: 0 })}
                 </p>
                 <p className="text-xs text-amber-600 mt-1">
-                  {(((summary.d30 || 0) + (summary.d60 || 0)) / (summary.total_payable || 1) * 100).toFixed(1)}%
+                  {(((summary.balance_30_days || 0) + (summary.balance_60_days || 0)) / (summary.total_payable || 1) * 100).toFixed(1)}%
                 </p>
               </div>
               <div className="p-4 bg-orange-50 rounded border border-orange-200">
                 <p className="text-xs text-orange-600 font-medium">60-90 Days</p>
                 <p className="text-2xl font-bold text-orange-700">
-                  R {(summary.d60 || 0)?.toLocaleString('en-ZA', { maximumFractionDigits: 0 })}
+                  R {(summary.balance_60_days || 0)?.toLocaleString('en-ZA', { maximumFractionDigits: 0 })}
                 </p>
                 <p className="text-xs text-orange-600 mt-1">
-                  {((summary.d60 || 0) / (summary.total_payable || 1) * 100).toFixed(1)}%
+                  {((summary.balance_60_days || 0) / (summary.total_payable || 1) * 100).toFixed(1)}%
                 </p>
               </div>
               <div className="p-4 bg-red-50 rounded border border-red-200">
                 <p className="text-xs text-red-600 font-medium">90-120 Days</p>
                 <p className="text-2xl font-bold text-red-700">
-                  R {(summary.d90 || 0)?.toLocaleString('en-ZA', { maximumFractionDigits: 0 })}
+                  R {(summary.balance_90_days || 0)?.toLocaleString('en-ZA', { maximumFractionDigits: 0 })}
                 </p>
                 <p className="text-xs text-red-600 mt-1">
-                  {((summary.d90 || 0) / (summary.total_payable || 1) * 100).toFixed(1)}%
+                  {((summary.balance_90_days || 0) / (summary.total_payable || 1) * 100).toFixed(1)}%
                 </p>
               </div>
               <div className="p-4 bg-red-100 rounded border border-red-300">
@@ -152,15 +152,15 @@ export default function AgeAnalysisPage() {
                   </thead>
                   <tbody>
                     {sortedByAge.map((account: CreditorAccount) => {
-                      const overdue = (account.d90 || 0) + (account.d120 || 0);
+                      const overdue = (account.balance_90_days || 0) + (account.balance_120_days || 0);
                       return (
                         <tr key={account.id} className="border-b">
                           <td className="px-4 py-3 font-medium">{account.account_number}</td>
                           <td className="px-4 py-3">{account.name}</td>
                           <td className="px-4 py-3 text-right font-bold text-red-600">
-                            R {account.d120?.toLocaleString('en-ZA', { maximumFractionDigits: 0 })}
+                            R {account.balance_120_days?.toLocaleString('en-ZA', { maximumFractionDigits: 0 })}
                           </td>
-                          <td className="px-4 py-3 text-right">R {account.d90?.toLocaleString('en-ZA', { maximumFractionDigits: 0 })}</td>
+                          <td className="px-4 py-3 text-right">R {account.balance_90_days?.toLocaleString('en-ZA', { maximumFractionDigits: 0 })}</td>
                           <td className="px-4 py-3 text-right font-bold text-red-700">
                             R {overdue.toLocaleString('en-ZA', { maximumFractionDigits: 0 })}
                           </td>

@@ -134,11 +134,12 @@ export const debtorsApi = {
   summary: {
     /**
      * Get overall debtors summary and analytics
+     * @param cutoff_date - Optional cutoff date for age analysis (YYYY-MM-DD)
      */
-    get: async (filters?: AgeAnalysisFilters) => {
+    get: async (cutoff_date?: string) => {
       const response = await api.get<DebtorsSummary>(
-        ENDPOINTS.DEBTORS.ACCOUNTS,
-        { params: filters }
+        ENDPOINTS.DEBTORS.SUMMARY,
+        { params: cutoff_date ? { cutoff_date } : undefined }
       );
       return response.data;
     },

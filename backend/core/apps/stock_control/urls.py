@@ -1,37 +1,180 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import (
-    SalesDepartmentViewSet, SalesAreaViewSet, StockItemViewSet,
-    SpecialDealViewSet, FuturePricingViewSet, ShrinkWrapViewSet,
-    PackBundleViewSet, StockTransactionViewSet, StockTakeViewSet,
-    ContractPricingViewSet, OneTouchLookupKeyViewSet, StockMonthlyStatisticViewSet,
-    BranchViewSet, BranchStockViewSet, GroupOrderViewSet,
-    BranchTransferViewSet, BranchTransferInvoiceViewSet
-)
+from . import views
 
 router = DefaultRouter()
 
-# Register all viewsets
-router.register(r'departments', SalesDepartmentViewSet, basename='department')
-router.register(r'sales-areas', SalesAreaViewSet, basename='salesarea')
-router.register(r'stock-items', StockItemViewSet, basename='stockitem')
-router.register(r'special-deals', SpecialDealViewSet, basename='specialdeal')
-router.register(r'future-pricing', FuturePricingViewSet, basename='futurepricing')
-router.register(r'shrink-wraps', ShrinkWrapViewSet, basename='shrinkwrap')
-router.register(r'pack-bundles', PackBundleViewSet, basename='packbundle')
-router.register(r'stock-transactions', StockTransactionViewSet, basename='stocktransaction')
-router.register(r'stock-takes', StockTakeViewSet, basename='stocktake')
-router.register(r'contract-pricing', ContractPricingViewSet, basename='contractpricing')
-router.register(r'lookup-keys', OneTouchLookupKeyViewSet, basename='oneTouchLookupKey')
-router.register(r'monthly-statistics', StockMonthlyStatisticViewSet, basename='stockmonthlystatistic')
+# ── Core Stock ──────────────────────────────────────────────────────────────
+router.register(r'stock-items',             views.StockItemViewSet,             basename='stockitem')
+router.register(r'special-deals',           views.SpecialDealViewSet,           basename='specialdeal')
+router.register(r'future-pricing',          views.FuturePricingViewSet,         basename='futurepricing')
+router.register(r'shrink-wraps',            views.ShrinkWrapViewSet,            basename='shrinkwrap')
 
-# Multi-branch feature routes
-router.register(r'branches', BranchViewSet, basename='branch')
-router.register(r'branch-stock', BranchStockViewSet, basename='branchstock')
-router.register(r'group-orders', GroupOrderViewSet, basename='grouporder')
-router.register(r'transfers', BranchTransferViewSet, basename='branchtransfer')
-router.register(r'ibi-invoices', BranchTransferInvoiceViewSet, basename='branchtransferinvoice')
+# ── Pack & Bundle ────────────────────────────────────────────────────────────
+router.register(r'pack-bundles',            views.PackBundleViewSet,            basename='packbundle')
+router.register(r'pack-bundle-ingredients', views.PackBundleIngredientViewSet,  basename='packbundleingredient')
+
+# ── Transactions & Ledger ────────────────────────────────────────────────────
+router.register(r'stock-transactions',      views.StockTransactionViewSet,      basename='stocktransaction')
+router.register(r'stock-movement-ledger',   views.StockMovementLedgerViewSet,   basename='stockmovementledger')
+
+# ── Stock Take ───────────────────────────────────────────────────────────────
+router.register(r'stock-takes',             views.StockTakeViewSet,             basename='stocktake')
+router.register(r'stock-take-items',        views.StockTakeItemViewSet,         basename='stocktakeitem')
+
+# ── Pricing & Keys ───────────────────────────────────────────────────────────
+router.register(r'contract-pricing',        views.ContractPricingViewSet,       basename='contractpricing')
+router.register(r'lookup-keys',             views.OneTouchLookupKeyViewSet,     basename='onetouchlookupkey')
+router.register(r'monthly-statistics',      views.StockMonthlyStatisticViewSet, basename='stockmonthlystatistic')
+
+# ── Branches ─────────────────────────────────────────────────────────────────
+router.register(r'branches',                views.BranchViewSet,                basename='branch')
+router.register(r'branch-stock',            views.BranchStockViewSet,           basename='branchstock')
+
+# ── Group Orders ─────────────────────────────────────────────────────────────
+router.register(r'group-orders',            views.GroupOrderViewSet,            basename='grouporder')
+router.register(r'group-order-items',       views.GroupOrderItemViewSet,        basename='grouporderitem')
+
+# ── Inter-Branch Transfers (IBT) ─────────────────────────────────────────────
+router.register(r'branch-transfers',        views.BranchTransferViewSet,        basename='branchtransfer')
+router.register(r'branch-transfer-items',   views.BranchTransferItemViewSet,    basename='branchtransferitem')
+
+# ── Inter-Branch Invoices (IBI) ──────────────────────────────────────────────
+router.register(r'branch-transfer-invoices', views.BranchTransferInvoiceViewSet, basename='branchtransferinvoice')
 
 urlpatterns = [
     path('', include(router.urls)),
 ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Full URL reference (generated by DefaultRouter + custom @actions)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# STOCK ITEMS
+#   GET    /stock-items/                                 list (compact)
+#   POST   /stock-items/                                 create
+#   GET    /stock-items/{stock_code}/                    retrieve (full)
+#   PUT    /stock-items/{stock_code}/                    update
+#   PATCH  /stock-items/{stock_code}/                    partial update
+#   DELETE /stock-items/{stock_code}/                    destroy
+#   GET    /stock-items/low-stock/                       items at/below reorder qty
+#   GET    /stock-items/needs-reorder/                   alias for low-stock
+#   GET    /stock-items/{stock_code}/pricing/            all price levels + active deal + future prices
+#   GET    /stock-items/{stock_code}/transactions/       movement history (?date_from &date_to &type)
+#   GET    /stock-items/{stock_code}/monthly-stats/      monthly sales statistics
+#   POST   /stock-items/{stock_code}/adjust-stock/       manual qty adjustment { quantity, comments }
+#
+# SPECIAL DEALS
+#   GET    /special-deals/                               list
+#   POST   /special-deals/                               create
+#   GET    /special-deals/{id}/                          retrieve
+#   PUT    /special-deals/{id}/                          update
+#   PATCH  /special-deals/{id}/                          partial update
+#   DELETE /special-deals/{id}/                          destroy
+#   GET    /special-deals/active-today/                  deals valid today
+#
+# FUTURE PRICING
+#   GET    /future-pricing/                              list
+#   POST   /future-pricing/                              create
+#   GET    /future-pricing/{id}/                         retrieve
+#   PUT    /future-pricing/{id}/                         update
+#   PATCH  /future-pricing/{id}/                         partial update
+#   DELETE /future-pricing/{id}/                         destroy
+#   POST   /future-pricing/{id}/apply/                   apply pricing to stock item now
+#
+# SHRINK WRAPS
+#   GET/POST/PUT/PATCH/DELETE  /shrink-wraps/{id}/
+#
+# PACK BUNDLES
+#   GET/POST/PUT/PATCH/DELETE  /pack-bundles/{stock_item}/
+#   POST   /pack-bundles/{stock_item}/recalculate-cost/
+#
+# PACK BUNDLE INGREDIENTS
+#   GET/POST/PUT/PATCH/DELETE  /pack-bundle-ingredients/{id}/
+#
+# STOCK TRANSACTIONS
+#   GET    /stock-transactions/                          list (?date_from &date_to &stock_item &type)
+#   POST   /stock-transactions/                          create
+#   GET    /stock-transactions/{id}/                     retrieve
+#   PUT    /stock-transactions/{id}/                     update
+#   PATCH  /stock-transactions/{id}/                     partial update
+#   DELETE /stock-transactions/{id}/                     destroy
+#
+# STOCK MOVEMENT LEDGER  (read-only)
+#   GET    /stock-movement-ledger/                       list (?stock_item &movement_type &movement_date)
+#   GET    /stock-movement-ledger/{id}/                  retrieve
+#
+# STOCK TAKES
+#   GET    /stock-takes/                                 list (compact)
+#   POST   /stock-takes/                                 create
+#   GET    /stock-takes/{id}/                            retrieve (with items)
+#   PUT    /stock-takes/{id}/                            update
+#   PATCH  /stock-takes/{id}/                            partial update
+#   DELETE /stock-takes/{id}/                            destroy
+#   POST   /stock-takes/{id}/complete/                   mark as COMPLETED
+#   POST   /stock-takes/{id}/update-stock/               apply counted qty to QOH
+#   GET    /stock-takes/{id}/variance-report/            items with non-zero variance
+#
+# STOCK TAKE ITEMS
+#   GET/POST/PUT/PATCH/DELETE  /stock-take-items/{id}/
+#   POST   /stock-take-items/{id}/count/                 record counted qty { quantity_counted }
+#
+# CONTRACT PRICING
+#   GET/POST/PUT/PATCH/DELETE  /contract-pricing/{id}/
+#
+# ONE-TOUCH / LOOKUP KEYS
+#   GET/POST/PUT/PATCH/DELETE  /lookup-keys/{id}/
+#
+# MONTHLY STATISTICS
+#   GET/POST/PUT/PATCH/DELETE  /monthly-statistics/{id}/
+#
+# BRANCHES
+#   GET    /branches/                                    list
+#   POST   /branches/                                    create
+#   GET    /branches/{branch_code}/                      retrieve
+#   PUT    /branches/{branch_code}/                      update
+#   PATCH  /branches/{branch_code}/                      partial update
+#   DELETE /branches/{branch_code}/                      destroy
+#   GET    /branches/{branch_code}/stock/                all stock levels at this branch (?search)
+#
+# BRANCH STOCK
+#   GET/POST/PUT/PATCH/DELETE  /branch-stock/{id}/
+#   GET    /branch-stock/low-stock/                      lines at/below reorder level (?branch)
+#
+# GROUP ORDERS
+#   GET    /group-orders/                                list (compact)
+#   POST   /group-orders/                                create
+#   GET    /group-orders/{id}/                           retrieve (with items)
+#   PUT    /group-orders/{id}/                           update
+#   PATCH  /group-orders/{id}/                           partial update
+#   DELETE /group-orders/{id}/                           destroy
+#   POST   /group-orders/{id}/recalculate-total/         recompute total from line items
+#
+# GROUP ORDER ITEMS
+#   GET/POST/PUT/PATCH/DELETE  /group-order-items/{id}/
+#
+# BRANCH TRANSFERS (IBT)
+#   GET    /branch-transfers/                            list (compact)
+#   POST   /branch-transfers/                            create
+#   GET    /branch-transfers/{id}/                       retrieve (with items)
+#   PUT    /branch-transfers/{id}/                       update
+#   PATCH  /branch-transfers/{id}/                       partial update
+#   DELETE /branch-transfers/{id}/                       destroy
+#   POST   /branch-transfers/{id}/approve/               PENDING → APPROVED
+#   POST   /branch-transfers/{id}/dispatch/              APPROVED → DISPATCHED
+#   POST   /branch-transfers/{id}/receive/               DISPATCHED/IN_TRANSIT → RECEIVED  { items: [...] }
+#   POST   /branch-transfers/{id}/cancel/                any → CANCELLED
+#
+# BRANCH TRANSFER ITEMS
+#   GET/POST/PUT/PATCH/DELETE  /branch-transfer-items/{id}/
+#
+# BRANCH TRANSFER INVOICES (IBI)
+#   GET    /branch-transfer-invoices/                    list
+#   POST   /branch-transfer-invoices/                    create
+#   GET    /branch-transfer-invoices/{id}/               retrieve
+#   PUT    /branch-transfer-invoices/{id}/               update
+#   PATCH  /branch-transfer-invoices/{id}/               partial update
+#   DELETE /branch-transfer-invoices/{id}/               destroy
+#   POST   /branch-transfer-invoices/{id}/issue/         DRAFT → ISSUED
+#   POST   /branch-transfer-invoices/{id}/mark-paid/     ISSUED → PAID

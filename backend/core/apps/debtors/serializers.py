@@ -10,6 +10,7 @@ from .models import (
     Debtor, DebtorTransaction, DebtorAudit,
     Debtopen, Dpdc, Darea
 )
+from apps.common.serializers import AuditFieldsMixin, BaseModelSerializer
 
 
 class DebtorListSerializer(serializers.ModelSerializer):
@@ -48,7 +49,6 @@ class DebtorListSerializer(serializers.ModelSerializer):
         try:
             return obj.total_balance
         except (AttributeError, TypeError) as e:
-            # Handle missing fields or calculation errors
             return Decimal(0)
     
     def get_overdue_balance(self, obj):
@@ -56,7 +56,6 @@ class DebtorListSerializer(serializers.ModelSerializer):
         try:
             return obj.overdue_balance
         except (AttributeError, TypeError) as e:
-            # Handle missing fields or calculation errors
             return Decimal(0)
     
     def get_is_blocked_flag(self, obj):
@@ -64,7 +63,6 @@ class DebtorListSerializer(serializers.ModelSerializer):
         try:
             return obj.is_blocked
         except (AttributeError, TypeError) as e:
-            # Handle missing field or method error
             return False
 
 
@@ -228,29 +226,23 @@ class DebtorCreateUpdateSerializer(serializers.ModelSerializer):
             'notes',
             'is_active',
         ]
-        read_only_fields = ['customer_number']
+        read_only_fields = []
     
     def to_internal_value(self, data):
         """Convert boolean and numeric values to Y/N format for flag fields."""
-        # Create a mutable copy of data
         data = dict(data)
         
-        # Convert boolean/numeric values to Y/N for flag fields
         flag_fields = ['discount_printable', 'interest_flag', 'block_flag', 'positive_balance_only']
         for field in flag_fields:
             if field in data:
                 value = data[field]
-                # Handle boolean values
                 if isinstance(value, bool):
                     data[field] = 'Y' if value else 'N'
-                # Handle string representations of booleans
                 elif isinstance(value, str):
                     if value.lower() in ['true', '1', 'y', 'yes']:
                         data[field] = 'Y'
                     elif value.lower() in ['false', '0', 'n', 'no', '']:
                         data[field] = 'N'
-                    # Keep it as is if already Y or N
-                # Handle numeric values
                 elif isinstance(value, (int, float)):
                     data[field] = 'Y' if value else 'N'
         
@@ -274,18 +266,15 @@ class DebtorCreateUpdateSerializer(serializers.ModelSerializer):
     
     def validate(self, data):
         """Validate debtor data."""
-        # Validate credit limit
         if data.get('credit_limit', 0) < 0:
             raise serializers.ValidationError({'credit_limit': 'Credit limit cannot be negative.'})
         
-        # Validate discounts
         if not 0 <= data.get('discount_percentage', 0) <= 100:
             raise serializers.ValidationError({'discount_percentage': 'Discount % must be 0-100.'})
         
         if not 0 <= data.get('prompt_payment_discount', 0) <= 100:
             raise serializers.ValidationError({'prompt_payment_discount': 'Prompt discount must be 0-100.'})
         
-        # Cash customers should not have credit limit
         if data.get('account_type') == 'C' and data.get('credit_limit', 0) > 0:
             raise serializers.ValidationError({'credit_limit': 'Cash customers should not have credit limit.'})
         
@@ -296,11 +285,11 @@ class DebtorTransactionSerializer(serializers.ModelSerializer):
     """Serializer for debtor transactions (DEBTRAN)."""
     
     debtor_name = serializers.CharField(
-        source='dno.dname',
+        source='customer_number.name',
         read_only=True
     )
     debtor_account = serializers.CharField(
-        source='dno.dno',
+        source='customer_number.customer_number',
         read_only=True
     )
     dtype_display = serializers.CharField(
@@ -311,7 +300,7 @@ class DebtorTransactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = DebtorTransaction
         fields = [
-            'dno',
+            'customer_number',
             'debtor_account',
             'debtor_name',
             'dtrano',
@@ -339,11 +328,11 @@ class DebteopenSerializer(serializers.ModelSerializer):
     """Serializer for open item transactions (DEBTOPEN)."""
     
     debtor_name = serializers.CharField(
-        source='dno.dname',
+        source='customer_number.name',
         read_only=True
     )
     debtor_account = serializers.CharField(
-        source='dno.dno',
+        source='customer_number.customer_number',
         read_only=True
     )
     type_display = serializers.CharField(
@@ -360,7 +349,7 @@ class DebteopenSerializer(serializers.ModelSerializer):
     class Meta:
         model = Debtopen
         fields = [
-            'dno',
+            'customer_number',
             'debtor_account',
             'debtor_name',
             'dtrano',
@@ -389,11 +378,11 @@ class DpdcSerializer(serializers.ModelSerializer):
     """Serializer for post-dated cheques (DPDC)."""
     
     debtor_name = serializers.CharField(
-        source='dno.dname',
+        source='customer_number.name',
         read_only=True
     )
     debtor_account = serializers.CharField(
-        source='dno.dno',
+        source='customer_number.customer_number',
         read_only=True
     )
     status_display = serializers.CharField(
@@ -405,7 +394,7 @@ class DpdcSerializer(serializers.ModelSerializer):
     class Meta:
         model = Dpdc
         fields = [
-            'dno',
+            'customer_number',
             'debtor_account',
             'debtor_name',
             'date',
@@ -425,7 +414,7 @@ class DebtorAuditSerializer(serializers.ModelSerializer):
     """Serializer for debtor audit records (DEBTORAUD)."""
     
     debtor_account = serializers.CharField(
-        source='dno.dno',
+        source='customer_number.customer_number',
         read_only=True
     )
     type_display = serializers.CharField(
@@ -440,7 +429,7 @@ class DebtorAuditSerializer(serializers.ModelSerializer):
     class Meta:
         model = DebtorAudit
         fields = [
-            'dno',
+            'customer_number',
             'debtor_account',
             'dtrano',
             'type',

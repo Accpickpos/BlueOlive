@@ -23,33 +23,33 @@ const MAX_CONTACT_LENGTH = 20;
 const MAX_POSTAL_CODE_LENGTH = 4;
 
 const DEFAULT_FORM_DATA: DebtorCreateData = {
-  dno: '',
-  dname: '',
-  dsname: '',
-  dcontact: '',
-  dtel: '',
-  dfax: '',
-  dadd1: '',
-  dadd2: '',
-  dadd3: '',
-  dpcode: '',
-  delad1: '',
-  delad2: '',
-  delad3: '',
-  delad4: '',
-  dtaxno: '',
-  acctype: '',
-  price: 1,
-  terms: 30,
-  ddiscper: 0,
-  pdisc: 0,
-  dclimit: 0,
-  darea: 0,
-  dintflag: false,
-  blockflag: false,
+  customer_number: 0,
+  name: '',
+  short_name: '',
+  contact_person: '',
+  phone: '',
+  fax: '',
+  address_line1: '',
+  address_line2: '',
+  address_line3: '',
+  postal_code: '',
+  delivery_address1: '',
+  delivery_address2: '',
+  delivery_address3: '',
+  delivery_address4: '',
+  tax_number: '',
+  account_type: '',
+  price_level: 1,
+  payment_terms: 30,
+  discount_percentage: 0,
+  prompt_payment_discount: 0,
+  credit_limit: 0,
+  area_code: 0,
+  interest_flag: false,
+  block_flag: false,
   is_active: true,
-  discprn: false,
-  dposbal: 0,
+  discount_printable: false,
+  positive_balance_only: false,
 };
 
 type FormData = DebtorCreateData & Partial<Pick<DebtorAccount, 'id' | 'created_at' | 'updated_at'>>;
@@ -70,17 +70,18 @@ export default function DebtorAccountForm({
         ...DEFAULT_FORM_DATA,
         ...initialData,
         // Normalize boolean flags from API ('Y'/'N' or true/false to boolean)
-        dintflag: initialData.dintflag === 'Y' || initialData.dintflag === true,
-        blockflag: initialData.blockflag === 'Y' || initialData.blockflag === true,
+        interest_flag: initialData.interest_flag === 'Y' || initialData.interest_flag === true,
+        block_flag: initialData.block_flag === 'Y' || initialData.block_flag === true,
+        discount_printable: initialData.discount_printable === 'Y' || initialData.discount_printable === true,
+        positive_balance_only: initialData.positive_balance_only === 'Y' || initialData.positive_balance_only === true,
       });
     }
   }, [initialData]);
 
   const mutation = useMutation({
     mutationFn: async () => {
-      // Prepare data for API submission
       const submitData = prepareSubmitData(formData, isEdit);
-      
+
       if (isEdit && initialData?.id) {
         return debtorsApi.accounts.update(initialData.id, submitData as DebtorEditData);
       } else {
@@ -97,7 +98,6 @@ export default function DebtorAccountForm({
     onError: (err: any) => {
       const errorData = err.response?.data;
       if (typeof errorData === 'object' && errorData !== null && !errorData.detail) {
-        // Handle field-specific validation errors
         const fieldErrors = Object.entries(errorData)
           .map(([field, message]) => `${field}: ${message}`)
           .join(', ');
@@ -111,16 +111,15 @@ export default function DebtorAccountForm({
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
-    
+
     let processedValue: any = value;
-    
+
     if (type === 'checkbox') {
       processedValue = (e.target as HTMLInputElement).checked;
     } else if (type === 'number') {
-      // Convert to number, handle empty string
       processedValue = value === '' ? 0 : Number(value);
     }
-    
+
     setFormData((prev) => ({
       ...prev,
       [name]: processedValue,
@@ -130,14 +129,13 @@ export default function DebtorAccountForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validate required fields
+
     const validationError = validateForm(formData);
     if (validationError) {
       setError(validationError);
       return;
     }
-    
+
     mutation.mutate();
   };
 
@@ -145,7 +143,7 @@ export default function DebtorAccountForm({
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Error Alert */}
       {error && (
-        <div 
+        <div
           className="p-3 bg-red-50 border border-red-200 rounded-lg flex gap-2"
           role="alert"
           aria-live="assertive"
@@ -157,7 +155,7 @@ export default function DebtorAccountForm({
 
       {/* Success Alert */}
       {success && (
-        <div 
+        <div
           className="p-3 bg-green-50 border border-green-200 rounded-lg flex gap-2"
           role="alert"
           aria-live="polite"
@@ -176,31 +174,31 @@ export default function DebtorAccountForm({
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="dno" className="block text-sm font-medium mb-1">
+                <label htmlFor="customer_number" className="block text-sm font-medium mb-1">
                   Account Number
                 </label>
                 <Input
-                  id="dno"
-                  name="dno"
-                  value={formData.dno || ''}
+                  id="customer_number"
+                  name="customer_number"
+                  value={formData.customer_number || ''}
                   onChange={handleChange}
                   placeholder="Auto-generated"
                   disabled={isEdit}
-                  aria-describedby="dno-hint"
+                  aria-describedby="customer_number-hint"
                 />
-                <p id="dno-hint" className="text-xs text-gray-500 mt-1">
+                <p id="customer_number-hint" className="text-xs text-gray-500 mt-1">
                   {isEdit ? 'Cannot be changed' : 'Will be assigned automatically'}
                 </p>
               </div>
-              
+
               <div>
-                <label htmlFor="dname" className="block text-sm font-medium mb-1">
+                <label htmlFor="name" className="block text-sm font-medium mb-1">
                   <span className="text-red-600">* </span>Debtor Name
                 </label>
                 <Input
-                  id="dname"
-                  name="dname"
-                  value={formData.dname || ''}
+                  id="name"
+                  name="name"
+                  value={formData.name || ''}
                   onChange={handleChange}
                   placeholder="Company name"
                   required
@@ -212,13 +210,13 @@ export default function DebtorAccountForm({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="dsname" className="block text-sm font-medium mb-1">
+                <label htmlFor="short_name" className="block text-sm font-medium mb-1">
                   <span className="text-red-600">* </span>Short Name
                 </label>
                 <Input
-                  id="dsname"
-                  name="dsname"
-                  value={formData.dsname || ''}
+                  id="short_name"
+                  name="short_name"
+                  value={formData.short_name || ''}
                   onChange={handleChange}
                   placeholder="Max 20 characters"
                   maxLength={MAX_SHORT_NAME_LENGTH}
@@ -227,15 +225,15 @@ export default function DebtorAccountForm({
                   disabled={mutation.isPending}
                 />
               </div>
-              
+
               <div>
-                <label htmlFor="acctype" className="block text-sm font-medium mb-1">
+                <label htmlFor="account_type" className="block text-sm font-medium mb-1">
                   Account Type
                 </label>
                 <select
-                  id="acctype"
-                  name="acctype"
-                  value={formData.acctype || ''}
+                  id="account_type"
+                  name="account_type"
+                  value={formData.account_type || ''}
                   onChange={handleChange}
                   className="w-full border rounded-md px-3 py-2 h-10 text-sm"
                   disabled={mutation.isPending}
@@ -248,49 +246,49 @@ export default function DebtorAccountForm({
             </div>
 
             <div>
-              <label htmlFor="dcontact" className="block text-sm font-medium mb-1">
+              <label htmlFor="contact_person" className="block text-sm font-medium mb-1">
                 Contact Person
               </label>
               <Input
-                id="dcontact"
-                name="dcontact"
-                value={formData.dcontact || ''}
+                id="contact_person"
+                name="contact_person"
+                value={formData.contact_person || ''}
                 onChange={handleChange}
-                placeholder="e.g., John Smith, Jane Doe"
+                placeholder="e.g., John Smith"
                 maxLength={MAX_CONTACT_LENGTH}
-                aria-describedby="dcontact-hint"
+                aria-describedby="contact_person-hint"
                 disabled={mutation.isPending}
               />
-              <p id="dcontact-hint" className="text-xs text-gray-500 mt-1">
+              <p id="contact_person-hint" className="text-xs text-gray-500 mt-1">
                 The person to ask for when calling about orders or payments
               </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="dtel" className="block text-sm font-medium mb-1">
+                <label htmlFor="phone" className="block text-sm font-medium mb-1">
                   Telephone
                 </label>
                 <Input
-                  id="dtel"
-                  name="dtel"
+                  id="phone"
+                  name="phone"
                   type="tel"
-                  value={formData.dtel || ''}
+                  value={formData.phone || ''}
                   onChange={handleChange}
                   placeholder="Primary phone"
                   disabled={mutation.isPending}
                 />
               </div>
-              
+
               <div>
-                <label htmlFor="dfax" className="block text-sm font-medium mb-1">
+                <label htmlFor="fax" className="block text-sm font-medium mb-1">
                   Fax
                 </label>
                 <Input
-                  id="dfax"
-                  name="dfax"
+                  id="fax"
+                  name="fax"
                   type="tel"
-                  value={formData.dfax || ''}
+                  value={formData.fax || ''}
                   onChange={handleChange}
                   placeholder="Fax number"
                   disabled={mutation.isPending}
@@ -300,27 +298,27 @@ export default function DebtorAccountForm({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="dtaxno" className="block text-sm font-medium mb-1">
+                <label htmlFor="tax_number" className="block text-sm font-medium mb-1">
                   Tax/VAT Number
                 </label>
                 <Input
-                  id="dtaxno"
-                  name="dtaxno"
-                  value={formData.dtaxno || ''}
+                  id="tax_number"
+                  name="tax_number"
+                  value={formData.tax_number || ''}
                   onChange={handleChange}
                   placeholder="VAT registration"
                   disabled={mutation.isPending}
                 />
               </div>
-              
+
               <div>
-                <label htmlFor="dpcode" className="block text-sm font-medium mb-1">
+                <label htmlFor="postal_code" className="block text-sm font-medium mb-1">
                   Postal Code
                 </label>
                 <Input
-                  id="dpcode"
-                  name="dpcode"
-                  value={formData.dpcode || ''}
+                  id="postal_code"
+                  name="postal_code"
+                  value={formData.postal_code || ''}
                   onChange={handleChange}
                   placeholder="Postal code"
                   maxLength={MAX_POSTAL_CODE_LENGTH}
@@ -339,27 +337,27 @@ export default function DebtorAccountForm({
               <h3 className="text-sm font-bold mb-3 text-gray-700">Postal Address</h3>
               <div className="space-y-2">
                 <Input
-                  id="dadd1"
-                  name="dadd1"
-                  value={formData.dadd1 || ''}
+                  id="address_line1"
+                  name="address_line1"
+                  value={formData.address_line1 || ''}
                   onChange={handleChange}
                   placeholder="Address Line 1"
                   aria-label="Postal address line 1"
                   disabled={mutation.isPending}
                 />
                 <Input
-                  id="dadd2"
-                  name="dadd2"
-                  value={formData.dadd2 || ''}
+                  id="address_line2"
+                  name="address_line2"
+                  value={formData.address_line2 || ''}
                   onChange={handleChange}
                   placeholder="Address Line 2"
                   aria-label="Postal address line 2"
                   disabled={mutation.isPending}
                 />
                 <Input
-                  id="dadd3"
-                  name="dadd3"
-                  value={formData.dadd3 || ''}
+                  id="address_line3"
+                  name="address_line3"
+                  value={formData.address_line3 || ''}
                   onChange={handleChange}
                   placeholder="City"
                   aria-label="Postal address city"
@@ -372,36 +370,36 @@ export default function DebtorAccountForm({
               <h3 className="text-sm font-bold mb-3 text-gray-700">Delivery Address</h3>
               <div className="space-y-2">
                 <Input
-                  id="delad1"
-                  name="delad1"
-                  value={formData.delad1 || ''}
+                  id="delivery_address1"
+                  name="delivery_address1"
+                  value={formData.delivery_address1 || ''}
                   onChange={handleChange}
                   placeholder="Address Line 1"
                   aria-label="Delivery address line 1"
                   disabled={mutation.isPending}
                 />
                 <Input
-                  id="delad2"
-                  name="delad2"
-                  value={formData.delad2 || ''}
+                  id="delivery_address2"
+                  name="delivery_address2"
+                  value={formData.delivery_address2 || ''}
                   onChange={handleChange}
                   placeholder="Address Line 2"
                   aria-label="Delivery address line 2"
                   disabled={mutation.isPending}
                 />
                 <Input
-                  id="delad3"
-                  name="delad3"
-                  value={formData.delad3 || ''}
+                  id="delivery_address3"
+                  name="delivery_address3"
+                  value={formData.delivery_address3 || ''}
                   onChange={handleChange}
                   placeholder="Address Line 3"
                   aria-label="Delivery address line 3"
                   disabled={mutation.isPending}
                 />
                 <Input
-                  id="delad4"
-                  name="delad4"
-                  value={formData.delad4 || ''}
+                  id="delivery_address4"
+                  name="delivery_address4"
+                  value={formData.delivery_address4 || ''}
                   onChange={handleChange}
                   placeholder="City"
                   aria-label="Delivery address city"
@@ -418,13 +416,13 @@ export default function DebtorAccountForm({
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label htmlFor="price" className="block text-sm font-medium mb-1">
+                <label htmlFor="price_level" className="block text-sm font-medium mb-1">
                   Price List
                 </label>
                 <select
-                  id="price"
-                  name="price"
-                  value={formData.price || 1}
+                  id="price_level"
+                  name="price_level"
+                  value={formData.price_level || 1}
                   onChange={handleChange}
                   className="w-full border rounded-md px-3 py-2 h-10 text-sm"
                   disabled={mutation.isPending}
@@ -434,37 +432,37 @@ export default function DebtorAccountForm({
                   <option value={3}>List 3</option>
                 </select>
               </div>
-              
+
               <div>
-                <label htmlFor="ddiscper" className="block text-sm font-medium mb-1">
+                <label htmlFor="discount_percentage" className="block text-sm font-medium mb-1">
                   Trade Discount (%)
                 </label>
                 <Input
-                  id="ddiscper"
-                  name="ddiscper"
+                  id="discount_percentage"
+                  name="discount_percentage"
                   type="number"
                   step="0.01"
                   min="0"
                   max="100"
-                  value={formData.ddiscper || ''}
+                  value={formData.discount_percentage || ''}
                   onChange={handleChange}
                   placeholder="0.00"
                   disabled={mutation.isPending}
                 />
               </div>
-              
+
               <div>
-                <label htmlFor="pdisc" className="block text-sm font-medium mb-1">
+                <label htmlFor="prompt_payment_discount" className="block text-sm font-medium mb-1">
                   Prompt Discount (%)
                 </label>
                 <Input
-                  id="pdisc"
-                  name="pdisc"
+                  id="prompt_payment_discount"
+                  name="prompt_payment_discount"
                   type="number"
                   step="0.01"
                   min="0"
                   max="100"
-                  value={formData.pdisc || ''}
+                  value={formData.prompt_payment_discount || ''}
                   onChange={handleChange}
                   placeholder="0.00"
                   disabled={mutation.isPending}
@@ -473,15 +471,15 @@ export default function DebtorAccountForm({
             </div>
 
             <div>
-              <label htmlFor="terms" className="block text-sm font-medium mb-1">
+              <label htmlFor="payment_terms" className="block text-sm font-medium mb-1">
                 Payment Terms (days)
               </label>
               <Input
-                id="terms"
-                name="terms"
+                id="payment_terms"
+                name="payment_terms"
                 type="number"
                 min="0"
-                value={formData.terms || 30}
+                value={formData.payment_terms || 30}
                 onChange={handleChange}
                 placeholder="30"
                 disabled={mutation.isPending}
@@ -501,32 +499,32 @@ export default function DebtorAccountForm({
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="dclimit" className="block text-sm font-medium mb-1">
+                <label htmlFor="credit_limit" className="block text-sm font-medium mb-1">
                   Credit Limit
                 </label>
                 <Input
-                  id="dclimit"
-                  name="dclimit"
+                  id="credit_limit"
+                  name="credit_limit"
                   type="number"
                   step="0.01"
                   min="0"
-                  value={formData.dclimit || ''}
+                  value={formData.credit_limit || ''}
                   onChange={handleChange}
                   placeholder="0.00"
                   disabled={mutation.isPending}
                 />
               </div>
-              
+
               <div>
-                <label htmlFor="darea" className="block text-sm font-medium mb-1">
+                <label htmlFor="area_code" className="block text-sm font-medium mb-1">
                   Sales Area
                 </label>
                 <Input
-                  id="darea"
-                  name="darea"
+                  id="area_code"
+                  name="area_code"
                   type="number"
                   min="0"
-                  value={formData.darea || 0}
+                  value={formData.area_code || 0}
                   onChange={handleChange}
                   placeholder="0"
                   disabled={mutation.isPending}
@@ -537,14 +535,14 @@ export default function DebtorAccountForm({
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
-                id="dintflag"
-                name="dintflag"
-                checked={(formData.dintflag === 'Y' || formData.dintflag === true) as boolean}
+                id="interest_flag"
+                name="interest_flag"
+                checked={(formData.interest_flag === 'Y' || formData.interest_flag === true) as boolean}
                 onChange={handleChange}
                 className="w-4 h-4 rounded border-gray-300"
                 disabled={mutation.isPending}
               />
-              <label htmlFor="dintflag" className="text-sm">
+              <label htmlFor="interest_flag" className="text-sm">
                 Charge interest on overdue balances
               </label>
             </div>
@@ -574,19 +572,19 @@ export default function DebtorAccountForm({
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  id="blockflag"
-                  name="blockflag"
-                  checked={(formData.blockflag === 'Y' || formData.blockflag === true) as boolean}
+                  id="block_flag"
+                  name="block_flag"
+                  checked={(formData.block_flag === 'Y' || formData.block_flag === true) as boolean}
                   onChange={handleChange}
                   className="w-4 h-4 rounded border-gray-300"
                   disabled={mutation.isPending}
-                  aria-describedby="blockflag-hint"
+                  aria-describedby="block_flag-hint"
                 />
-                <label htmlFor="blockflag" className="text-sm font-medium text-red-600">
+                <label htmlFor="block_flag" className="text-sm font-medium text-red-600">
                   Block account (prevents new transactions)
                 </label>
               </div>
-              <p id="blockflag-hint" className="text-xs text-gray-500 ml-6">
+              <p id="block_flag-hint" className="text-xs text-gray-500 ml-6">
                 Blocked accounts cannot create new orders or invoices
               </p>
             </div>
@@ -597,16 +595,16 @@ export default function DebtorAccountForm({
                   <div>
                     <dt className="font-semibold inline">Created: </dt>
                     <dd className="inline">
-                      {formData.created_at 
-                        ? new Date(formData.created_at).toLocaleString() 
+                      {formData.created_at
+                        ? new Date(formData.created_at).toLocaleString()
                         : 'N/A'}
                     </dd>
                   </div>
                   <div>
                     <dt className="font-semibold inline">Last Updated: </dt>
                     <dd className="inline">
-                      {formData.updated_at 
-                        ? new Date(formData.updated_at).toLocaleString() 
+                      {formData.updated_at
+                        ? new Date(formData.updated_at).toLocaleString()
                         : 'N/A'}
                     </dd>
                   </div>
@@ -643,58 +641,46 @@ export default function DebtorAccountForm({
 
 // Helper Functions
 
-/**
- * Validates form data before submission
- */
 function validateForm(data: FormData): string | null {
-  if (!data.dname?.trim()) {
+  if (!data.name?.trim()) {
     return 'Debtor name is required';
   }
-  
-  if (!data.dsname?.trim()) {
+
+  if (!data.short_name?.trim()) {
     return 'Short name is required';
   }
-  
-  if (data.dsname.length > MAX_SHORT_NAME_LENGTH) {
+
+  if (data.short_name.length > MAX_SHORT_NAME_LENGTH) {
     return `Short name must be ${MAX_SHORT_NAME_LENGTH} characters or less`;
   }
-  
-  if ((data.ddiscper ?? 0) < 0 || (data.ddiscper ?? 0) > 100) {
+
+  if ((data.discount_percentage ?? 0) < 0 || (data.discount_percentage ?? 0) > 100) {
     return 'Trade discount must be between 0 and 100';
   }
-  
-  if ((data.pdisc ?? 0) < 0 || (data.pdisc ?? 0) > 100) {
+
+  if ((data.prompt_payment_discount ?? 0) < 0 || (data.prompt_payment_discount ?? 0) > 100) {
     return 'Prompt discount must be between 0 and 100';
   }
-  
-  if ((data.terms ?? 0) < 0) {
+
+  if ((data.payment_terms ?? 0) < 0) {
     return 'Payment terms cannot be negative';
   }
-  
-  if (data.dclimit !== undefined && data.dclimit < 0) {
+
+  if (data.credit_limit !== undefined && data.credit_limit < 0) {
     return 'Credit limit cannot be negative';
   }
-  
+
   return null;
 }
 
-/**
- * Prepares form data for API submission
- * Converts boolean flags to API format if needed
- */
 function prepareSubmitData(data: FormData, isEdit: boolean): DebtorCreateData | DebtorEditData {
   const submitData = { ...data };
-  
-  // Remove metadata fields that shouldn't be submitted
+
   if (isEdit) {
     delete (submitData as any).created_at;
     delete (submitData as any).updated_at;
     delete (submitData as any).id;
   }
-  
-  // If your API expects 'Y'/'N' instead of boolean, uncomment this:
-  // submitData.dintflag = data.dintflag ? 'Y' : 'N';
-  // submitData.blockflag = data.blockflag ? 'Y' : 'N';
-  
+
   return submitData as DebtorCreateData | DebtorEditData;
 }

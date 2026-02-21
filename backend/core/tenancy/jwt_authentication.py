@@ -301,6 +301,10 @@ class TenantJWTAuthentication(JWTAuthentication):
         
         token_tenant_id = validated_token.get('tenant_id')
         token_tenant_slug = validated_token.get('tenant_slug')
+        token_shop_id = validated_token.get('shop_id')  # DEBUG: Check for shop_id
+        
+        if settings.DEBUG:
+            logger.debug(f"[JWT] token_tenant_id={token_tenant_id}, token_tenant_slug={token_tenant_slug}, token_shop_id={token_shop_id}")
         
         if not token_tenant_id and not token_tenant_slug:
             raise InvalidToken('Token missing tenant information')
@@ -328,6 +332,29 @@ class TenantJWTAuthentication(JWTAuthentication):
             # Step 4: Query user from tenant DB public schema
             # Using tenant.db_alias to route query to correct database
             user = ShopUser.objects.using(tenant.db_alias).get(id=user_id)
+            
+            # DEBUG: Set shop_id from token onto user object for middleware to use
+            token_shop_id = validated_token.get('shop_id')
+            if token_shop_id:
+                user.current_shop_id = token_shop_id
+                if settings.DEBUG:
+                    logger.debug(f"[JWT] Set user.current_shop_id = {token_shop_id}")
+            else:
+                # Try to get from session (set by auth backend)
+                # This is handled in middleware, but let's check token for accessible shops
+                accessible_shops = validated_token.get('accessible_shops', [])
+                if accessible_shops:
+                    # Set first accessible shop as current
+                    user.current_shop_id = accessible_shops[0].get('id')
+                    if settings.DEBUG:
+                        logger.debug(f"[JWT] Set user.current_shop_id from token = {user.current_shop_id}")
+            
+            # Also check for current_shop_id in token claims
+            current_shop = validated_token.get('current_shop')
+            if current_shop and not getattr(user, 'current_shop_id', None):
+                user.current_shop_id = current_shop.get('id')
+                if settings.DEBUG:
+                    logger.debug(f"[JWT] Set user.current_shop_id from current_shop claim = {user.current_shop_id}")
             
             if settings.DEBUG:
                 logger.debug(f"Found user: {user.username} (id={user.id})")

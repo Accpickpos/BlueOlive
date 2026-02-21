@@ -36,15 +36,15 @@ export default function StockReturnForm() {
 
   const { data: returnData, isLoading } = useQuery({
     queryKey: ['stock-return', returnId],
-    queryFn: () => creditorsApi.transactions.get(returnId),
+    queryFn: () => creditorsApi.creditNotes.get(returnId),
     enabled: !isNew,
   });
 
   const mutation = useMutation({
     mutationFn: (data: any) =>
       isNew
-        ? creditorsApi.transactions.create({ ...data, transaction_type: 'RETURN_STOCK' })
-        : creditorsApi.transactions.update(returnId, data),
+        ? creditorsApi.creditNotes.create({ ...data, transaction_type: 'RETURN_STOCK' })
+        : creditorsApi.creditNotes.update(returnId, data),
     onSuccess: () => {
       router.push('/dashboard/admin/creditors/transactions/returns/stock');
     },

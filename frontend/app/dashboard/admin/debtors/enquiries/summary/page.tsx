@@ -6,11 +6,18 @@ import { Card } from '@/components/ui/card';
 import { Loader, AlertCircle } from 'lucide-react';
 import SummaryStatistics from '@/components/debtors/enquiries/SummaryStatistics';
 import AgingChart from '@/components/debtors/enquiries/AgingChart';
+import type { DebtorAccount, DebtorsSummary } from '@/lib/types/debtors';
 
 export default function SummaryEnquiryPage() {
-  const { data: summary, isLoading, error } = useQuery({
+  const { data: summary, isLoading, error } = useQuery<DebtorsSummary>({
     queryKey: ['debtors-summary-enquiry'],
     queryFn: () => debtorsApi.summary.get(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: topDebtors } = useQuery<DebtorAccount[]>({
+    queryKey: ['debtors-top'],
+    queryFn: () => debtorsApi.summary.getTopDebtors(10),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -42,7 +49,7 @@ export default function SummaryEnquiryPage() {
           <AgingChart summary={summary} />
 
           {/* Top Debtors */}
-          {summary.top_debtors && summary.top_debtors.length > 0 && (
+          {topDebtors && topDebtors.length > 0 && (
             <Card className="p-6">
               <h2 className="text-lg font-bold mb-4">Top Debtors by Balance</h2>
               <div className="overflow-x-auto">
@@ -53,19 +60,17 @@ export default function SummaryEnquiryPage() {
                       <th className="px-4 py-3 text-left font-semibold">Name</th>
                       <th className="px-4 py-3 text-right font-semibold">Balance</th>
                       <th className="px-4 py-3 text-right font-semibold">Credit Limit</th>
-                      <th className="px-4 py-3 text-right font-semibold">DSO</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {summary.top_debtors.map((debtor, idx) => (
+                    {topDebtors.map((debtor: DebtorAccount, idx: number) => (
                       <tr key={idx} className="border-b">
-                        <td className="px-4 py-3 font-medium">{debtor.dno}</td>
-                        <td className="px-4 py-3">{debtor.dname}</td>
+                        <td className="px-4 py-3 font-medium">{debtor.customer_number}</td>
+                        <td className="px-4 py-3">{debtor.name}</td>
                         <td className="px-4 py-3 text-right font-bold text-blue-600">
                           ${debtor.total_balance?.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                         </td>
-                        <td className="px-4 py-3 text-right">${debtor.dclimit?.toLocaleString()}</td>
-                        <td className="px-4 py-3 text-right">{debtor.days_sales_outstanding?.toFixed(0)} days</td>
+                        <td className="px-4 py-3 text-right">${debtor.credit_limit?.toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>

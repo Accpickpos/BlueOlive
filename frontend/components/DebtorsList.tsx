@@ -294,7 +294,7 @@ export default function DebtorsList({ onRefresh }: DebtorsListProps) {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleDelete(debtor.id!, debtor.dname)}
+                              onClick={() => handleDelete(debtor.id, debtor.dname)}
                               title="Delete debtor"
                             >
                               <Trash2 className="w-4 h-4 text-red-600" />
