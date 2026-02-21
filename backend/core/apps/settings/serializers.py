@@ -21,6 +21,7 @@ from .models import (
     SystemConfiguration,
     DepartmentMonthlyStats,
     SalesAreaMonthlyStats,
+    APIKey,
 )
 
 User = get_user_model()
@@ -72,6 +73,18 @@ class SalesDepartmentSerializer(serializers.ModelSerializer):
             'profit_ytd',
             'gross_profit_percent_mtd',
             'gross_profit_percent_ytd',
+            'sales_p1',
+            'sales_p2',
+            'sales_p3',
+            'sales_p4',
+            'sales_p5',
+            'sales_p6',
+            'sales_p7',
+            'sales_p8',
+            'sales_p9',
+            'sales_p10',
+            'sales_p11',
+            'sales_p12',
             'is_active',
             'deactivated_at',
             'deactivated_by',
@@ -88,6 +101,18 @@ class SalesDepartmentSerializer(serializers.ModelSerializer):
             'profit_ytd',
             'gross_profit_percent_mtd',
             'gross_profit_percent_ytd',
+            'sales_p1',
+            'sales_p2',
+            'sales_p3',
+            'sales_p4',
+            'sales_p5',
+            'sales_p6',
+            'sales_p7',
+            'sales_p8',
+            'sales_p9',
+            'sales_p10',
+            'sales_p11',
+            'sales_p12',
             'deactivated_at',
             'deactivated_by',
             'created_at',
@@ -136,6 +161,18 @@ class SalesDepartmentListSerializer(serializers.ModelSerializer):
             'profit_ytd',
             'gross_profit_percent_mtd',
             'gross_profit_percent_ytd',
+            'sales_p1',
+            'sales_p2',
+            'sales_p3',
+            'sales_p4',
+            'sales_p5',
+            'sales_p6',
+            'sales_p7',
+            'sales_p8',
+            'sales_p9',
+            'sales_p10',
+            'sales_p11',
+            'sales_p12',
             'is_active',
         ]
 
@@ -664,6 +701,7 @@ class SystemConfigurationSerializer(serializers.ModelSerializer):
         model = SystemConfiguration
         fields = [
             'id',
+            'shop_name',
             'shop_address',
             'shop_phone',
             'shop_email',
@@ -775,3 +813,131 @@ class SalesAreaMonthlyStatsSerializer(serializers.ModelSerializer):
             'created_at',
         ]
         read_only_fields = fields
+
+
+class APIKeyListSerializer(serializers.ModelSerializer):
+    """Serializer for API key list view."""
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    is_valid = serializers.BooleanField(read_only=True)
+    tenant_name = serializers.CharField(source='tenant.name', read_only=True)
+    
+    class Meta:
+        model = APIKey
+        fields = [
+            'id',
+            'name',
+            'tenant',
+            'tenant_name',
+            'external_service',
+            'status',
+            'last_used',
+            'last_ip',
+            'expires_at',
+            'is_valid',
+            'created_at',
+            'created_by_name',
+        ]
+        read_only_fields = ['id', 'last_used', 'last_ip', 'created_at', 'is_valid', 'created_by_name', 'tenant_name']
+
+
+class APIKeyDetailSerializer(serializers.ModelSerializer):
+    """Detailed serializer for API key with all fields."""
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    is_valid = serializers.BooleanField(read_only=True)
+    tenant_name = serializers.CharField(source='tenant.name', read_only=True)
+    
+    class Meta:
+        model = APIKey
+        fields = [
+            'id',
+            'name',
+            'key',
+            'tenant',
+            'tenant_name',
+            'external_service',
+            'description',
+            'allowed_endpoints',
+            'allowed_methods',
+            'rate_limit_requests',
+            'rate_limit_window',
+            'status',
+            'last_used',
+            'last_ip',
+            'expires_at',
+            'is_valid',
+            'created_at',
+            'updated_at',
+            'created_by_name',
+        ]
+        read_only_fields = ['id', 'key', 'last_used', 'last_ip', 'created_at', 'updated_at', 'is_valid', 'created_by_name', 'tenant_name']
+
+
+class APIKeyCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for creating API keys.
+    
+    SECURITY: Tenant is automatically set from request context.
+    Users cannot create API keys for other tenants.
+    """
+    # Read-only display of tenant name
+    tenant_name = serializers.CharField(source='tenant.name', read_only=True)
+    
+    class Meta:
+        model = APIKey
+        fields = [
+            'tenant',
+            'tenant_name',
+            'name',
+            'external_service',
+            'description',
+            'allowed_endpoints',
+            'allowed_methods',
+            'rate_limit_requests',
+            'rate_limit_window',
+            'expires_at',
+        ]
+        read_only_fields = ['tenant_name']
+    
+    def create(self, validated_data):
+        """
+        Create API key with auto-generated secret.
+        
+        SECURITY: Automatically binds to current tenant.
+        """
+        # Get current user and set as created_by
+        request = self.context.get('request')
+        if request and hasattr(request, 'user') and request.user:
+            validated_data['created_by'] = request.user
+        
+        # Ensure tenant is set from request context (automatic binding)
+        if 'tenant' not in validated_data and request:
+            validated_data['tenant'] = request.tenant
+        
+        # SECURITY: If no tenant in request, raise error
+        if not validated_data.get('tenant'):
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'tenant': 'Tenant context required to create API keys'})
+        
+        api_key = APIKey.objects.create(**validated_data)
+        return api_key
+    
+    def to_representation(self, instance):
+        """Return the created key details."""
+        return APIKeyDetailSerializer(instance).data
+
+
+class APIKeyUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating API keys."""
+    
+    class Meta:
+        model = APIKey
+        fields = [
+            'name',
+            'description',
+            'allowed_endpoints',
+            'allowed_methods',
+            'rate_limit_requests',
+            'rate_limit_window',
+            'status',
+            'expires_at',
+        ]

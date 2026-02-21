@@ -1,4 +1,5 @@
 from django.apps import AppConfig
+from django.db.models.signals import post_migrate
 
 
 class TenancyConfig(AppConfig):
@@ -7,19 +8,30 @@ class TenancyConfig(AppConfig):
     verbose_name = "Multi-Tenancy"
 
     def ready(self):
-        import sys
         import tenancy.signals
-        
-        # Skip database access during migrations
-        if 'migrate' not in sys.argv and 'makemigrations' not in sys.argv:
-            self._register_tenant_connections()
+        # Register database connections after migrations complete
+        # This defers database access until apps are fully initialized
+        post_migrate.connect(
+            self._register_tenant_connections_after_migrate,
+            sender=self,
+            weak=False
+        )
+    
+    @staticmethod
+    def _register_tenant_connections_after_migrate(sender, **kwargs):
+        """Register database connections after migrations are complete."""
+        TenancyConfig._register_tenant_connections()
 
-    def _register_tenant_connections(self):
+    @staticmethod
+    def _register_tenant_connections():
         """Register database connections for all active tenants."""
         from django.db import connection
-        from django.db.utils import ProgrammingError
+        from django.db.utils import ProgrammingError, OperationalError
         from tenancy.models import Tenant
         from tenancy.utils import register_tenant_connection
+        import logging
+        
+        logger = logging.getLogger(__name__)
 
         try:
             # Check if the tenancy_tenant table exists before querying
@@ -29,16 +41,21 @@ class TenancyConfig(AppConfig):
                 )
                 if not cursor.fetchone():
                     # Table doesn't exist yet, skip registration
+                    logger.debug("tenancy_tenant table does not exist yet, skipping tenant registration")
                     return
 
             tenants = Tenant.objects.filter(is_active=True)
             for tenant in tenants:
-                register_tenant_connection(tenant)
-        except (ProgrammingError, Exception) as e:
+                try:
+                    register_tenant_connection(tenant)
+                except Exception as e:
+                    logger.warning(f"Failed to register connection for tenant {tenant.id}: {e}")
+        except (ProgrammingError, OperationalError) as e:
+            # Database not ready yet, this is normal during app initialization
+            logger.debug(f"Database not ready for tenant registration: {e}")
+        except Exception as e:
             # Log but don't fail app startup
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.debug(f"Skipping tenant connection registration: {e}")
+            logger.warning(f"Unexpected error during tenant connection registration: {e}")
     
     def get_models(self, include_auto_created=False, include_swapped=False):
         """

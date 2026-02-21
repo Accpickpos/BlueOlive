@@ -6,23 +6,33 @@ import psycopg2
 from psycopg2 import extensions
 import time
 
-def register_tenant_connection(tenant):
+def register_tenant_connection(tenant, shop=None):
     """
     Register tenant database connection using credentials from Django settings.
     This ensures all tenants use the same PostgreSQL credentials as the main database.
     
     CRITICAL: We set search_path to the shop's schema at the connection level so that
     ALL queries (including migrations) default to the shop's schema, not public.
+    
+    Args:
+        tenant: The Tenant object to connect to
+        shop: Optional Shop object. If provided, uses this shop's schema.
+              If not provided, falls back to tenant.shops.first() for backward compatibility.
     """
     alias = tenant.db_alias
     # Use credentials from settings, not from tenant object
     # This allows old tenants with incorrect db_password to still work
     default_db = settings.DATABASES['default']
     
-    # Get the shop's schema name from the first shop associated with this tenant
-    # This determines which schema migrations will create tables in
-    shop = tenant.shops.first()
-    search_path = shop.schema_name if shop else "public"  # Fallback to public if no shop
+    # Get the shop's schema name - use provided shop or fall back to first shop
+    # This ensures proper multi-shop data isolation within a tenant
+    if shop is None:
+        shop = tenant.shops.first()
+    shop_schema = shop.schema_name if shop else "public"  # Fallback to public if no shop
+    
+    # CRITICAL: shop_users table is ALWAYS in public schema, not the shop schema
+    # So we must prioritize public in search_path for authentication to work
+    # The shop schema is used for shop-specific data (invoices, products, etc.)
     
     db_config = {
         "ENGINE": "django.db.backends.postgresql",
@@ -32,11 +42,10 @@ def register_tenant_connection(tenant):
         "HOST": tenant.db_host,
         "PORT": tenant.db_port,
         "CONN_MAX_AGE": 60,  # tune as needed
-        # CRITICAL: Set options so PostgreSQL sets search_path BEFORE running any queries
-        # This is applied at the connection level by psycopg2 before Django uses the connection
-        # Use the shop's schema as primary, with public as fallback for system tables
+        # CRITICAL: Set search_path to public FIRST (for shop_users), then shop schema
+        # This ensures shop_users queries hit public schema while shop data queries hit shop schema
         "OPTIONS": {
-            'options': f'-c search_path="{search_path}",public -c statement_timeout=0'
+            'options': f'-c search_path=public,"{shop_schema}" -c statement_timeout=0'
         },
         "TIME_ZONE": settings.TIME_ZONE,
         "AUTOCOMMIT": True,

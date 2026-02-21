@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { creditorsApi } from '@/lib/creditorsApi';
+import settingsApi from '@/lib/settingsApi';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,11 +16,11 @@ export default function ExpenseAnalysisPage() {
   });
   const [page, setPage] = useState(1);
 
-  const { data: expenseData, isLoading } = useQuery({
+  const { data: expenseData, isLoading: isExpenseLoading } = useQuery({
     queryKey: ['creditors-expense-analysis', dateRange, page],
     queryFn: () =>
       creditorsApi.transactions.list({
-        transaction_type: 'INVOICE_EXPENSE',
+        transaction_type: 'IN',
         start_date: dateRange.from,
         end_date: dateRange.to,
         page,
@@ -28,15 +29,17 @@ export default function ExpenseAnalysisPage() {
       }),
   });
 
-  const { data: categoryBreakdown } = useQuery({
+  const { data: categoryBreakdown, isLoading: isCategoryLoading } = useQuery({
     queryKey: ['expense-category-breakdown', dateRange],
     queryFn: () =>
-      creditorsApi.expenseCategories.list({
+      settingsApi.expenseCategories.list({
         start_date: dateRange.from,
         end_date: dateRange.to,
         page_size: 100,
       }),
   });
+
+  const isLoading = isExpenseLoading || isCategoryLoading;
 
   if (isLoading) {
     return (
@@ -95,7 +98,7 @@ export default function ExpenseAnalysisPage() {
           <p className="text-2xl font-bold text-amber-600 mt-2">
             R {totalTax.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
           </p>
-          <p className="text-xs text-gray-600 mt-1">{((totalTax / totalExpenses) * 100).toFixed(1)}% of expenses</p>
+          <p className="text-xs text-gray-600 mt-1">{totalExpenses > 0 ? ((totalTax / totalExpenses) * 100).toFixed(1) : 0}% of expenses</p>
         </Card>
 
         <Card className="p-6">
@@ -133,7 +136,7 @@ export default function ExpenseAnalysisPage() {
                       R {cat.total_tax?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
                     </td>
                     <td className="px-4 py-3 text-right text-gray-600">
-                      {((cat.total_amount || 0) / totalExpenses * 100).toFixed(1)}%
+                      {totalExpenses > 0 ? ((cat.total_amount || 0) / totalExpenses * 100).toFixed(1) : 0}%
                     </td>
                   </tr>
                 ))}

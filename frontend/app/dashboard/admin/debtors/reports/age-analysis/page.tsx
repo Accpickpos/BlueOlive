@@ -18,7 +18,7 @@ export default function AgeAnalysisReportPage() {
 
   const { data: summary, isLoading } = useQuery({
     queryKey: ['age-analysis-report', dateRange],
-    queryFn: () => debtorsApi.summary.get({ cutoff_date: dateRange.to }),
+    queryFn: () => debtorsApi.summary.get(dateRange.to),
     staleTime: 5 * 60 * 1000,
   });
 

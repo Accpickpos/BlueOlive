@@ -1,6 +1,7 @@
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.contrib.auth.models import User
+from django.conf import settings
 from decimal import Decimal
 from django.utils import timezone
 from apps.creditors.models import Creditor
@@ -9,68 +10,124 @@ from apps.settings.models import TaxCode, SalesDepartment, SalesArea
 
 
 class StockItem(models.Model):
-    """Main Stock Item model"""
+    """Main Stock Item model - mapped from smast.dbf"""
     
+    # CODE C 13
     stock_code = models.CharField(max_length=13, unique=True, primary_key=True)
-    description = models.CharField(max_length=255)
+    # DESCRIP C 30
+    description = models.CharField(max_length=30)
+    # DEPT C 3
     department = models.ForeignKey(SalesDepartment, on_delete=models.PROTECT, related_name='stock_items')
+    # SUPNO N 4
     supplier = models.ForeignKey(Creditor, on_delete=models.PROTECT, related_name='stock_items', null=True, blank=True)
-    supplier_code = models.CharField(max_length=50, blank=True, null=True, help_text="Supplier's stock code")
+    # SUPCODE C 20
+    supplier_code = models.CharField(max_length=20, blank=True, null=True, help_text="Supplier's stock code")
     
     # Tax and pricing
+    # TAXIND N 1
     tax_code = models.ForeignKey(TaxCode, on_delete=models.PROTECT, related_name='stock_items', null=True, blank=True)
-    cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, validators=[MinValueValidator(0)])
-    average_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    # CPRICE N 12,2
+    cost_price = models.DecimalField(max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    # AVECOST N 12,2
+    average_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(0)])
     
     # Selling prices (3 price levels) - SPRICE, SPRICE1, SPRICE2
+    # SPRICE N 12,4
     selling_price_1 = models.DecimalField(max_digits=12, decimal_places=4, default=0, validators=[MinValueValidator(0)], help_text="SPRICE - Selling Price 1")
+    # SPRICE1 N 12,4
     selling_price_2 = models.DecimalField(max_digits=12, decimal_places=4, default=0, validators=[MinValueValidator(0)], help_text="SPRICE1 - Selling Price 2")
+    # SPRICE2 N 12,4
     selling_price_3 = models.DecimalField(max_digits=12, decimal_places=4, default=0, validators=[MinValueValidator(0)], help_text="SPRICE2 - Selling Price 3")
     
     # Markup percentages for each price level
-    markup_1 = models.DecimalField(max_digits=5, decimal_places=2, default=0)
-    markup_2 = models.DecimalField(max_digits=5, decimal_places=2, default=0)
-    markup_3 = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    # MUP N 6,2
+    markup_1 = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    # MUP1 N 6,2
+    markup_2 = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    # MUP2 N 6,2
+    markup_3 = models.DecimalField(max_digits=6, decimal_places=2, default=0)
     
-    # Stock control - QOH (Quantity on Hand)
+    # Stock control
+    # QOH N 14,4
     quantity_on_hand = models.DecimalField(max_digits=14, decimal_places=4, default=0, help_text="QOH - Current stock quantity")
+    # QTYBYSTOCK N 12,2
     quantity_allocated = models.DecimalField(
-        max_digits=14, decimal_places=4, default=0,
+        max_digits=12, decimal_places=2, default=0,
         help_text="QTYBYSTOCK - Quantity allocated to batches/lots"
     )
+    # QTYSORD N 10,2
     quantity_sale_order = models.DecimalField(
         max_digits=10, decimal_places=2, default=0,
         help_text="QTYSORD - Quantity reserved in sales orders"
     )
+    # QTYPORD N 10,2
+    quantity_on_order = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        help_text="QTYPORD - Quantity on purchase order"
+    )
     quantity_counted = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Used during stock take")
+    # REORD N 10,2
     reorder_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0, validators=[MinValueValidator(0)])
-    quantity_on_order = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
     # Settings
+    # SELLQTY N 10,2
     default_selling_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=1)
+    # ALLOWNEGSL C 1
     allow_negative_quantities = models.BooleanField(default=True)
-    maximum_discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
+    # MAXDISC N 6,2
+    maximum_discount_percent = models.DecimalField(max_digits=6, decimal_places=2, default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
     
     # Sales statistics
+    # QSOLDM N 10,2
     sales_mtd_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    # VSOLDM N 12,2
     sales_mtd_value = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    # QSOLDY N 10,2
     sales_ytd_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    # VSOLDY N 12,2
     sales_ytd_value = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    # GPM N 12,2
     gross_profit_mtd = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    # GPY N 12,2
     gross_profit_ytd = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     
     # Purchase statistics
+    # QTYPURCHM N 12,2
     purchased_mtd_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    # QTYPURCHY N 12,2
     purchased_ytd_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     
     # Balance brought forward
+    # BFWDQTY N 14,4
     balance_bfwd_quantity = models.DecimalField(max_digits=14, decimal_places=4, default=0)
+    # BFWDVAL N 10,2
     balance_bfwd_value = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    # CLOSTOCK N 12,0
     closing_stock_balance = models.DecimalField(max_digits=12, decimal_places=0, default=0)
-    
+
+    # Brought-forward values for sub-ledgers
+    # JCBFWDVAL N 14,2
+    job_card_bfwd_value = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        help_text="JCBFWDVAL - Job card brought-forward value"
+    )
+    # LBBFWDVAL N 14,2
+    laybye_bfwd_value = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        help_text="LBBFWDVAL - Laybye brought-forward value"
+    )
+    # RFBFWDVAL N 14,2
+    rfc_bfwd_value = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        help_text="RFBFWDVAL - RFC (Repair/Field Call) brought-forward value"
+    )
+
     # Dates
+    # DATELPURCH D 8
     date_last_purchased = models.DateField(null=True, blank=True)
+    # DATELSOLD D 8
     date_last_sold = models.DateField(null=True, blank=True)
+    # LASTSUP N 4
     last_supplier = models.ForeignKey(
         Creditor,
         on_delete=models.SET_NULL,
@@ -80,14 +137,26 @@ class StockItem(models.Model):
         help_text="Last supplier used for this item"
     )
     
-    # Bin location
-    bin_number = models.CharField(max_length=50, blank=True, null=True)
+    # Bin location - BIN N 4 (numeric in DBF)
+    bin_number = models.IntegerField(blank=True, null=True, help_text="BIN - Bin/shelf location number")
     
-    # Weight
+    # Weight - WEIGHT N 8,2
     weight = models.DecimalField(max_digits=8, decimal_places=2, default=0, blank=True, null=True, help_text="Weight of item")
     
-    # Stock count flag
+    # Stock count flag - SCOUNTFLAG C 1
     stock_count_flag = models.CharField(max_length=1, blank=True, null=True, help_text="Stock count flag")
+
+    # Pack/bundle code - PACK C 10
+    pack_code = models.CharField(
+        max_length=10, blank=True, null=True,
+        help_text="PACK - Pack or bundle group code"
+    )
+
+    # KVI flag - KVI C 1
+    kvi_flag = models.CharField(
+        max_length=1, blank=True, null=True,
+        help_text="KVI - Known Value Item flag"
+    )
     
     # Flags
     is_active = models.BooleanField(default=True)
@@ -135,10 +204,6 @@ class StockItem(models.Model):
         """
         Update average cost using weighted average cost method.
         Called when new stock is received.
-        
-        Args:
-            new_quantity: Quantity of new stock received
-            new_cost: Cost price of new stock
         """
         from decimal import Decimal
         
@@ -148,12 +213,10 @@ class StockItem(models.Model):
         current_cost = self.average_cost
         
         if current_qty > 0:
-            # Weighted average: (current_value + new_value) / (current_qty + new_qty)
             total_value = (current_qty * current_cost) + (new_quantity * new_cost)
             new_total_qty = current_qty + new_quantity
             self.average_cost = total_value / new_total_qty if new_total_qty > 0 else current_cost
         else:
-            # First stock received
             self.average_cost = new_cost if new_quantity > 0 else 0
         
         self.save(update_fields=['average_cost'])
@@ -170,16 +233,32 @@ class StockItem(models.Model):
 
 
 class SpecialDeal(models.Model):
-    """Special pricing for specific periods"""
+    """
+    Special pricing for specific periods.
+    Dates and prices sourced from smast.dbf: SPECSTDATE, SPECENDATE, SPPRICE1/2/3.
+    special_cost_price and special_markup_1/2/3 are application-managed fields
+    (not present in the legacy DBF) to support cost-aware special pricing.
+    """
     stock_item = models.ForeignKey(StockItem, on_delete=models.CASCADE, related_name='special_deals')
-    special_cost_price = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0)])
+    # Application-managed: cost price applicable during the special period
+    special_cost_price = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Cost price applicable during the special period (app-managed, not in legacy DBF)"
+    )
+    # SPPRICE1 N 12,4
     special_selling_price_1 = models.DecimalField(max_digits=12, decimal_places=4, default=0, help_text="SPPRICE1")
+    # SPPRICE2 N 12,4
     special_selling_price_2 = models.DecimalField(max_digits=12, decimal_places=4, default=0, help_text="SPPRICE2")
+    # SPPRICE3 N 12,4
     special_selling_price_3 = models.DecimalField(max_digits=12, decimal_places=4, default=0, help_text="SPPRICE3")
+    # Application-managed markup fields (not in legacy DBF)
     special_markup_1 = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     special_markup_2 = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     special_markup_3 = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    # SPECSTDATE D 8
     start_date = models.DateField(help_text="SPECSTDATE - Special start date")
+    # SPECENDATE D 8
     end_date = models.DateField(help_text="SPECENDATE - Special end date")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -199,15 +278,30 @@ class SpecialDeal(models.Model):
 
 
 class FuturePricing(models.Model):
-    """Future pricing for stock items"""
+    """
+    Future pricing for stock items.
+    Prices sourced from smast.dbf: NEWPR, NEWPR1, NEWPR2, NEWPRDATE.
+    future_cost_price and future_markup_1/2/3 are application-managed fields
+    (not present in the legacy DBF) to support cost-aware future pricing.
+    """
     stock_item = models.ForeignKey(StockItem, on_delete=models.CASCADE, related_name='future_prices')
-    future_cost_price = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0)])
+    # Application-managed: anticipated cost price when future pricing takes effect
+    future_cost_price = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        validators=[MinValueValidator(0)],
+        help_text="Anticipated cost price at effective date (app-managed, not in legacy DBF)"
+    )
+    # NEWPR N 12,4
     future_selling_price_1 = models.DecimalField(max_digits=12, decimal_places=4, default=0, help_text="NEWPR - New price 1")
+    # NEWPR1 N 12,4
     future_selling_price_2 = models.DecimalField(max_digits=12, decimal_places=4, default=0, help_text="NEWPR1 - New price 2")
+    # NEWPR2 N 12,4
     future_selling_price_3 = models.DecimalField(max_digits=12, decimal_places=4, default=0, help_text="NEWPR2 - New price 3")
+    # Application-managed markup fields (not in legacy DBF)
     future_markup_1 = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     future_markup_2 = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     future_markup_3 = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    # NEWPRDATE D 8
     effective_date = models.DateField(help_text="NEWPRDATE - New price effective date")
     is_applied = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -299,7 +393,11 @@ class PackBundleIngredient(models.Model):
 
 
 class StockTransaction(models.Model):
-    """Stock movement transactions"""
+    """
+    Stock movement transactions - mapped from stran.dbf.
+    The QTY field from stran.dbf is split into quantity_in/quantity_out based on transaction type.
+    The running balance (BALANCE) is maintained in StockMovementLedger.
+    """
     
     TRANSACTION_TYPES = [
         ('INCOMING', 'Incoming Stock'),
@@ -320,63 +418,72 @@ class StockTransaction(models.Model):
     ]
     
     transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPES)
+    # CODE C 13
     stock_item = models.ForeignKey(StockItem, on_delete=models.PROTECT, related_name='transactions')
+    # DATE D 8
     transaction_date = models.DateField(default=timezone.now)
+    # TIME C 5
     transaction_time = models.TimeField(null=True, blank=True, help_text="Time of transaction (HH:MM)")
-    transaction_number = models.CharField(max_length=50, blank=True, null=True)
+    # TRANO N 6
+    transaction_number = models.IntegerField(blank=True, null=True, help_text="TRANO - Transaction reference number")
     
-    quantity_in = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    quantity_out = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    quantity_balance = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    # QTY N 14,4 - split into in/out based on TYPE
+    quantity_in = models.DecimalField(max_digits=14, decimal_places=4, default=0)
+    quantity_out = models.DecimalField(max_digits=14, decimal_places=4, default=0)
+    quantity_balance = models.DecimalField(max_digits=14, decimal_places=4, default=0)
     
+    # DISCOUNT N 7,2
     discount = models.DecimalField(max_digits=7, decimal_places=2, default=0, help_text="Discount applied")
+    # COST N 10,2
     unit_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    # STDPRICE N 12,2
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    # VAL N 14,4
     value = models.DecimalField(max_digits=14, decimal_places=4, default=0, help_text="Transaction value")
     
+    # DEPT C 3
     department = models.ForeignKey(
         SalesDepartment,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='stock_transactions',
-        help_text="Department involved in transaction"
     )
     
+    # TAXIND C 1
     tax_code = models.ForeignKey(
         TaxCode,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='stock_transactions',
-        help_text="Tax code for transaction"
     )
     
+    # DNO N 5
     debtor = models.ForeignKey(
         'debtors.Debtor',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='stock_transactions',
-        help_text="Debtor account if applicable"
     )
     
+    # SUPNO N 4
     supplier = models.ForeignKey(
         Creditor,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='stock_transactions',
-        help_text="Supplier account if applicable"
     )
     
-    reference = models.CharField(max_length=255, blank=True, null=True)
-    station_number = models.IntegerField(null=True, blank=True, help_text="Station/POS terminal number")
-    comments = models.CharField(max_length=255, blank=True, null=True, help_text="Transaction comments")
+    # SOURCE N 2 - station/source terminal number
+    station_number = models.IntegerField(null=True, blank=True, help_text="SOURCE - Station/POS terminal or source number")
+    # COMMENTS C 30
+    comments = models.CharField(max_length=30, blank=True, null=True)
     
     # Audit fields
     created_by = models.CharField(max_length=255, null=True, blank=True)
-    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -387,10 +494,67 @@ class StockTransaction(models.Model):
             models.Index(fields=['stock_item', 'transaction_date']),
             models.Index(fields=['transaction_type']),
             models.Index(fields=['transaction_date']),
+            models.Index(fields=['transaction_number']),
         ]
 
     def __str__(self):
         return f"{self.transaction_type} - {self.stock_item.stock_code} - {self.transaction_date}"
+
+
+class StockMovementLedger(models.Model):
+    """
+    Running balance ledger per stock item - mapped from stmove{CODE}.dbf files.
+    Each stock item has its own stmove DBF (e.g. stmove41200.dbf for item 41200).
+    This consolidates all per-item movement files into a single table.
+    Fields: DATE, TIME, TYPE, TRANO, DETAILS, QTYIN, QTYOUT, BALANCE, BFWD, PERUNIT, SUPDETAILS, RECORD
+    """
+
+    # DATE C 10 (stored as string "YYYY/MM/DD" in DBF)
+    movement_date = models.DateField(help_text="DATE - Date of movement")
+    # TIME C 8
+    movement_time = models.TimeField(null=True, blank=True, help_text="TIME - Time of movement")
+    # TYPE C 2
+    movement_type = models.CharField(max_length=2, help_text="TYPE - Movement type code (e.g. SI, SO, SR)")
+    # TRANO N 6
+    transaction_number = models.IntegerField(null=True, blank=True, help_text="TRANO - Linked transaction number")
+    # DETAILS C 30
+    details = models.CharField(max_length=30, blank=True, null=True, help_text="DETAILS - Description or reference")
+    # QTYIN C 14 (stored as formatted string in DBF)
+    quantity_in = models.DecimalField(max_digits=14, decimal_places=4, default=0, help_text="QTYIN - Quantity received")
+    # QTYOUT C 14
+    quantity_out = models.DecimalField(max_digits=14, decimal_places=4, default=0, help_text="QTYOUT - Quantity issued")
+    # BALANCE C 14
+    balance = models.DecimalField(max_digits=14, decimal_places=4, default=0, help_text="BALANCE - Running stock balance")
+    # BFWD N 12,2
+    brought_forward = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="BFWD - Brought-forward value")
+    # PERUNIT N 12,2
+    per_unit_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="PERUNIT - Cost per unit at time of movement")
+    # SUPDETAILS C 25
+    supplier_details = models.CharField(max_length=25, blank=True, null=True, help_text="SUPDETAILS - Supplier reference or details")
+    # RECORD C 15
+    record_reference = models.CharField(max_length=15, blank=True, null=True, help_text="RECORD - Source record reference")
+
+    # FK to link back to the stock item (derived from filename e.g. stmove41200)
+    stock_item = models.ForeignKey(
+        StockItem,
+        on_delete=models.PROTECT,
+        related_name='movement_ledger',
+        help_text="Stock item this ledger entry belongs to"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'stock_movement_ledger'
+        ordering = ['stock_item', 'movement_date', 'movement_time']
+        indexes = [
+            models.Index(fields=['stock_item', 'movement_date']),
+            models.Index(fields=['movement_type']),
+            models.Index(fields=['transaction_number']),
+        ]
+
+    def __str__(self):
+        return f"{self.stock_item_id} | {self.movement_date} | {self.movement_type} | in={self.quantity_in} out={self.quantity_out} bal={self.balance}"
 
 
 class StockTake(models.Model):
@@ -406,11 +570,9 @@ class StockTake(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='IN_PROGRESS')
     description = models.TextField(blank=True, null=True)
     
-    # Update options
     reset_negatives_to_zero = models.BooleanField(default=False)
     set_uncounted_to_zero = models.BooleanField(default=False)
     
-    # After trading options
     is_after_trading = models.BooleanField(default=False)
     trading_start_date = models.DateTimeField(null=True, blank=True)
     
@@ -432,12 +594,12 @@ class StockTakeItem(models.Model):
     stock_take = models.ForeignKey(StockTake, on_delete=models.CASCADE, related_name='items')
     stock_item = models.ForeignKey(StockItem, on_delete=models.PROTECT, related_name='stock_take_items')
     
-    quantity_on_hand = models.DecimalField(max_digits=10, decimal_places=2, help_text="System quantity before count")
+    quantity_on_hand = models.DecimalField(max_digits=14, decimal_places=4, help_text="System quantity before count")
     quantity_counted = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     variance_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     variance_value = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     
-    cost_price_at_count = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    cost_price_at_count = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     
     is_counted = models.BooleanField(default=False)
     count_date = models.DateTimeField(null=True, blank=True)
@@ -476,32 +638,16 @@ class ContractPricing(models.Model):
     supplier = models.ForeignKey(Creditor, on_delete=models.CASCADE, related_name='contract_prices', null=True, blank=True)
     
     pricing_method = models.CharField(max_length=20, choices=PRICING_METHOD_CHOICES)
-    
-    # For actual price method
     contract_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    
-    # For cost + markup method
     markup_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    
-    # For discount methods
     discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     
-    # Last selling price
     last_selling_price = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        default=0,
+        max_digits=12, decimal_places=2, default=0,
         help_text="LSELL - Last transaction selling price"
     )
-    last_updated_date = models.DateField(
-        null=True,
-        blank=True,
-        help_text="LUPDATE - Last update date for contract"
-    )
-    
-    # Fixed pricing flag
+    last_updated_date = models.DateField(null=True, blank=True, help_text="LUPDATE - Last update date for contract")
     is_fixed_pricing = models.BooleanField(default=False, help_text="FIXEDPRICE - Prevent POS from changing price")
-    
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -565,3 +711,271 @@ class StockMonthlyStatistic(models.Model):
 
     def __str__(self):
         return f"{self.stock_item.stock_code} - {self.year}/{self.month}"
+
+
+# ============================================================================
+# Phase 1: Branch Management Models
+# ============================================================================
+
+class Branch(models.Model):
+    """Branch/Location model for multi-branch stock management"""
+    
+    BRANCH_TYPE_CHOICES = [
+        ('RETAIL', 'Retail Store'),
+        ('WAREHOUSE', 'Warehouse'),
+        ('HQ', 'Headquarters'),
+    ]
+    
+    branch_code = models.CharField(max_length=10, unique=True, primary_key=True)
+    branch_name = models.CharField(max_length=100)
+    branch_type = models.CharField(max_length=20, choices=BRANCH_TYPE_CHOICES)
+    address = models.TextField(blank=True, null=True)
+    contact_phone = models.CharField(max_length=20, blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    is_default = models.BooleanField(default=False)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.CharField(max_length=255, null=True, blank=True)
+    updated_by = models.CharField(max_length=255, null=True, blank=True)
+
+    class Meta:
+        db_table = 'branches'
+        ordering = ['branch_code']
+        indexes = [
+            models.Index(fields=['is_active']),
+            models.Index(fields=['is_default']),
+            models.Index(fields=['branch_type']),
+        ]
+
+    def __str__(self):
+        return f"{self.branch_code} - {self.branch_name}"
+
+
+class BranchStock(models.Model):
+    """Stock quantity tracking per branch"""
+    
+    id = models.BigAutoField(primary_key=True)
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name='branch_stocks')
+    stock_item = models.ForeignKey(StockItem, on_delete=models.CASCADE, related_name='branch_stocks')
+    
+    quantity = models.DecimalField(max_digits=14, decimal_places=4, default=0)
+    quantity_allocated = models.DecimalField(max_digits=14, decimal_places=4, default=0)
+    reorder_level = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    reorder_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'branch_stocks'
+        unique_together = ['branch', 'stock_item']
+        ordering = ['branch', 'stock_item']
+        indexes = [
+            models.Index(fields=['branch', 'quantity']),
+            models.Index(fields=['stock_item', 'branch']),
+        ]
+
+    def __str__(self):
+        return f"{self.branch.branch_code} - {self.stock_item.stock_code} ({self.quantity})"
+
+    @property
+    def available_quantity(self):
+        return max(Decimal('0'), (self.quantity - self.quantity_allocated))
+
+
+# ============================================================================
+# Phase 3: Group Orders
+# ============================================================================
+
+class GroupOrder(models.Model):
+    """Group order model for consolidating multiple orders"""
+    
+    STATUS_CHOICES = [
+        ('DRAFT', 'Draft'),
+        ('ACTIVE', 'Active'),
+        ('COMPLETED', 'Completed'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+    
+    id = models.BigAutoField(primary_key=True)
+    group_order_number = models.CharField(max_length=20, unique=True)
+    order_date = models.DateField(default=timezone.now)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT')
+    branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name='group_orders')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_group_orders')
+    notes = models.TextField(blank=True, null=True)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'group_orders'
+        ordering = ['-order_date', '-group_order_number']
+        indexes = [
+            models.Index(fields=['status', 'branch']),
+            models.Index(fields=['order_date']),
+        ]
+
+    def __str__(self):
+        return f"{self.group_order_number} - {self.status}"
+
+    def calculate_total_amount(self):
+        total = sum(item.line_total for item in self.items.all())
+        self.total_amount = total
+        self.save(update_fields=['total_amount'])
+        return total
+
+
+class GroupOrderItem(models.Model):
+    """Individual items in a group order"""
+    
+    id = models.BigAutoField(primary_key=True)
+    group_order = models.ForeignKey(GroupOrder, on_delete=models.CASCADE, related_name='items')
+    stock_item = models.ForeignKey(StockItem, on_delete=models.PROTECT, related_name='group_order_items')
+    quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=4)
+    line_total = models.DecimalField(max_digits=12, decimal_places=2)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'group_order_items'
+        unique_together = ['group_order', 'stock_item']
+        ordering = ['stock_item']
+
+    def __str__(self):
+        return f"{self.group_order.group_order_number} - {self.stock_item.stock_code}"
+
+    def save(self, *args, **kwargs):
+        self.line_total = self.quantity * self.unit_price
+        super().save(*args, **kwargs)
+
+
+# ============================================================================
+# Phase 4: IBT - Inter-Branch Transfer
+# ============================================================================
+
+class BranchTransfer(models.Model):
+    """Inter-branch transfer request"""
+    
+    STATUS_CHOICES = [
+        ('DRAFT', 'Draft'),
+        ('PENDING', 'Pending Approval'),
+        ('APPROVED', 'Approved'),
+        ('DISPATCHED', 'Dispatched'),
+        ('IN_TRANSIT', 'In Transit'),
+        ('RECEIVED', 'Received'),
+        ('COMPLETED', 'Completed'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+    
+    TRANSFER_TYPE_CHOICES = [
+        ('STANDARD', 'Standard Transfer'),
+        ('URGENT', 'Urgent Transfer'),
+        ('RETURN', 'Return Transfer'),
+    ]
+    
+    id = models.BigAutoField(primary_key=True)
+    transfer_number = models.CharField(max_length=20, unique=True)
+    from_branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name='transfers_out')
+    to_branch = models.ForeignKey(Branch, on_delete=models.PROTECT, related_name='transfers_in')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT')
+    transfer_type = models.CharField(max_length=20, choices=TRANSFER_TYPE_CHOICES, default='STANDARD')
+    
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='transfers_requested')
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='transfers_approved')
+    dispatched_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='transfers_dispatched')
+    received_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='transfers_received')
+    
+    requested_date = models.DateTimeField(default=timezone.now)
+    approved_date = models.DateTimeField(null=True, blank=True)
+    dispatched_date = models.DateTimeField(null=True, blank=True)
+    received_date = models.DateTimeField(null=True, blank=True)
+    
+    notes = models.TextField(blank=True, null=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'branch_transfers'
+        ordering = ['-requested_date', '-transfer_number']
+        indexes = [
+            models.Index(fields=['status', 'from_branch']),
+            models.Index(fields=['status', 'to_branch']),
+            models.Index(fields=['requested_date']),
+            models.Index(fields=['transfer_type']),
+        ]
+
+    def __str__(self):
+        return f"{self.transfer_number} - {self.from_branch.branch_code} → {self.to_branch.branch_code}: {self.status}"
+
+
+class BranchTransferItem(models.Model):
+    """Individual items in a branch transfer"""
+    
+    id = models.BigAutoField(primary_key=True)
+    transfer = models.ForeignKey(BranchTransfer, on_delete=models.CASCADE, related_name='items')
+    stock_item = models.ForeignKey(StockItem, on_delete=models.PROTECT, related_name='transfer_items')
+    
+    quantity_requested = models.DecimalField(max_digits=10, decimal_places=2)
+    quantity_dispatched = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    quantity_received = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    variance = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'branch_transfer_items'
+        unique_together = ['transfer', 'stock_item']
+        ordering = ['stock_item']
+
+    def __str__(self):
+        return f"{self.transfer.transfer_number} - {self.stock_item.stock_code}"
+
+    def save(self, *args, **kwargs):
+        self.variance = self.quantity_received - self.quantity_requested
+        super().save(*args, **kwargs)
+
+
+# ============================================================================
+# Phase 5: IBI - Inter-Branch Invoicing
+# ============================================================================
+
+class BranchTransferInvoice(models.Model):
+    """Invoice for inter-branch transfers"""
+    
+    STATUS_CHOICES = [
+        ('DRAFT', 'Draft'),
+        ('ISSUED', 'Issued'),
+        ('PAID', 'Paid'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+    
+    id = models.BigAutoField(primary_key=True)
+    transfer = models.OneToOneField(BranchTransfer, on_delete=models.CASCADE, related_name='invoice')
+    invoice_number = models.CharField(max_length=20, unique=True)
+    invoice_date = models.DateField(default=timezone.now)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT')
+    
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    vat_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'branch_transfer_invoices'
+        ordering = ['-invoice_date', '-invoice_number']
+        indexes = [
+            models.Index(fields=['status']),
+            models.Index(fields=['invoice_date']),
+        ]
+
+    def __str__(self):
+        return f"{self.invoice_number} - {self.status}"

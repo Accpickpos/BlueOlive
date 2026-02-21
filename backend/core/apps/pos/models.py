@@ -4,10 +4,639 @@ Based on the PointOfSale.pdf documentation.
 """
 from django.db import models
 from django.conf import settings
-from django.core.validators import MinValueValidator
+from django.core.validators import MinValueValidator, MaxValueValidator
 from apps.settings.models import TimeStampedModel, SalesArea
 from apps.debtors.models import Debtor
 from apps.stock_control.models import StockItem
+from django.core.exceptions import ValidationError
+from decimal import Decimal
+from datetime import date
+
+
+class Invoice(TimeStampedModel):
+    """
+    Customer Invoice with State Machine Workflow
+    
+    Manages invoice lifecycle from draft → posted → paid/overdue
+    """
+    
+    STATUS_CHOICES = [
+        ('DRAFT', 'Draft'),
+        ('POSTED', 'Posted'),
+        ('PAID', 'Paid'),
+        ('PARTIAL_PAID', 'Partially Paid'),
+        ('OVERDUE', 'Overdue'),
+        ('CANCELLED', 'Cancelled'),
+        ('VOID', 'Void'),
+    ]
+    
+    # ==========================================
+    # IDENTIFICATION & DATES
+    # ==========================================
+    
+    invoice_number = models.CharField(
+        max_length=20,
+        unique=True,
+        db_index=True,
+        help_text="Invoice Number"
+    )
+    
+    invoice_date = models.DateField(
+        db_index=True,
+        help_text="Invoice Date"
+    )
+    
+    due_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Payment Due Date"
+    )
+    
+    # ==========================================
+    # CUSTOMER INFORMATION
+    # ==========================================
+    
+    debtor = models.ForeignKey(
+        Debtor,
+        on_delete=models.PROTECT,
+        related_name='invoices',
+        help_text="Customer/Debtor"
+    )
+    
+    # ==========================================
+    # DELIVERY & ORDER INFORMATION
+    # ==========================================
+    
+    delivery_name = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Delivery Name"
+    )
+    
+    delivery_address_line1 = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Delivery Address Line 1"
+    )
+    
+    delivery_address_line2 = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Delivery Address Line 2"
+    )
+    
+    delivery_telephone = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Delivery Telephone"
+    )
+    
+    order_number = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Customer Order Number"
+    )
+    
+    customer_reference = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Customer Reference"
+    )
+    
+    job_card_number = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Job Card Number"
+    )
+    
+    sales_area = models.CharField(
+        max_length=2,
+        blank=True,
+        help_text="Sales Area Code"
+    )
+    
+    # ==========================================
+    # FINANCIAL TOTALS
+    # ==========================================
+    
+    subtotal = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Subtotal (excl. VAT)"
+    )
+    
+    discount_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Total Discount Amount"
+    )
+    
+    vat_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="VAT Amount (15%)"
+    )
+    
+    total_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Total Amount (incl. VAT)"
+    )
+    
+    # ==========================================
+    # COST & PROFIT
+    # ==========================================
+    
+    total_cost = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Total Cost Price"
+    )
+    
+    gross_profit = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Gross Profit (Total - Cost)"
+    )
+    
+    # ==========================================
+    # STATUS & WORKFLOW
+    # ==========================================
+    
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='DRAFT',
+        db_index=True,
+        help_text="Invoice Status"
+    )
+    
+    is_posted = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Posted to accounts flag"
+    )
+    
+    posted_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date posted to accounts"
+    )
+    
+    # ==========================================
+    # PAYMENT TRACKING
+    # ==========================================
+    
+    amount_paid = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Amount Paid"
+    )
+    
+    paid_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date Fully Paid"
+    )
+    
+    # ==========================================
+    # METADATA
+    # ==========================================
+    
+    created_by = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="User who created invoice"
+    )
+    
+    notes = models.TextField(
+        blank=True,
+        help_text="Internal Notes"
+    )
+    
+    class Meta:
+        ordering = ['-invoice_date', '-invoice_number']
+        verbose_name = 'Invoice'
+        verbose_name_plural = 'Invoices'
+        indexes = [
+            models.Index(fields=['debtor', '-invoice_date'], name='idx_inv_deb_date'),
+            models.Index(fields=['is_posted'], name='idx_inv_posted'),
+            models.Index(fields=['status'], name='idx_inv_status'),
+            models.Index(fields=['invoice_date'], name='idx_inv_date'),
+        ]
+    
+    def __str__(self):
+        return f"Invoice {self.invoice_number} - {self.debtor.name}"
+    
+    def clean(self):
+        """Validate invoice data and state transitions."""
+        errors = {}
+        
+        # Cannot modify posted invoices (except status/payment)
+        if self.pk and self.is_posted:
+            original = Invoice.objects.get(pk=self.pk)
+            if (original.is_posted and 
+                any([
+                    self.subtotal != original.subtotal,
+                    self.total_amount != original.total_amount,
+                    self.debtor_id != original.debtor_id
+                ])):
+                errors['is_posted'] = 'Cannot modify financial details of posted invoices.'
+        
+        # Amount paid cannot exceed total
+        if self.amount_paid > self.total_amount:
+            errors['amount_paid'] = 'Amount paid cannot exceed total invoice amount.'
+        
+        # Amounts must be non-negative
+        if self.subtotal < 0:
+            errors['subtotal'] = 'Subtotal cannot be negative.'
+        
+        if self.total_amount < 0:
+            errors['total_amount'] = 'Total amount cannot be negative.'
+        
+        if errors:
+            raise ValidationError(errors)
+    
+    def save(self, *args, **kwargs):
+        """Auto-calculate due date if not set."""
+        if not self.due_date and self.debtor and self.invoice_date:
+            from datetime import timedelta
+            self.due_date = self.invoice_date + timedelta(days=self.debtor.payment_terms)
+        
+        self.full_clean()
+        super().save(*args, **kwargs)
+    
+    # ==========================================
+    # PROPERTIES
+    # ==========================================
+    
+    @property
+    def balance_due(self):
+        """Calculate outstanding balance."""
+        return self.total_amount - self.amount_paid
+    
+    @property
+    def is_overdue(self):
+        """Check if invoice is overdue."""
+        if not self.due_date:
+            return False
+        return (self.due_date < date.today() and 
+                self.balance_due > 0 and 
+                self.status not in ['PAID', 'CANCELLED', 'VOID'])
+    
+    @property
+    def days_overdue(self):
+        """Calculate days overdue."""
+        if not self.is_overdue:
+            return 0
+        return (date.today() - self.due_date).days
+    
+    @property
+    def profit_margin(self):
+        """Calculate profit margin percentage."""
+        if self.subtotal == 0:
+            return Decimal('0.00')
+        return (self.gross_profit / self.subtotal) * 100
+    
+    # ==========================================
+    # STATE MACHINE METHODS
+    # ==========================================
+    
+    def can_be_posted(self):
+        """Check if invoice can be posted."""
+        return (self.status == 'DRAFT' and 
+                self.total_amount > 0 and 
+                self.lines.exists())
+    
+    def can_be_cancelled(self):
+        """Check if invoice can be cancelled."""
+        return self.status in ['DRAFT', 'POSTED'] and self.amount_paid == 0
+    
+    def can_be_voided(self):
+        """Check if invoice can be voided."""
+        return self.is_posted and self.amount_paid == 0
+    
+    def post(self, posted_by=''):
+        """
+        Post invoice to accounts.
+        
+        Args:
+            posted_by: Username of person posting
+        
+        Raises:
+            ValidationError: If invoice cannot be posted
+        """
+        if not self.can_be_posted():
+            raise ValidationError(
+                f'Invoice cannot be posted (current status: {self.status})'
+            )
+        
+        self.status = 'POSTED'
+        self.is_posted = True
+        self.posted_date = date.today()
+        
+        if posted_by:
+            if not self.created_by:
+                self.created_by = posted_by
+        
+        self.save()
+        
+        # Create debtor transaction
+        from apps.debtors.models import DebtorTransaction
+        DebtorTransaction.objects.create(
+            debtor=self.debtor,
+            transaction_number=self.invoice_number,
+            transaction_type='IN',
+            transaction_date=self.invoice_date,
+            subtotal=self.subtotal,
+            vat_amount=self.vat_amount,
+            total_amount=self.total_amount,
+            status='posted',
+            created_by=posted_by
+        )
+    
+    def mark_as_paid(self, payment_date=None, amount=None):
+        """
+        Mark invoice as fully paid.
+        
+        Args:
+            payment_date: Date of payment (defaults to today)
+            amount: Payment amount (defaults to balance due)
+        """
+        if self.status in ['CANCELLED', 'VOID']:
+            raise ValidationError(f'Cannot mark {self.status} invoice as paid')
+        
+        self.amount_paid = amount or self.total_amount
+        self.paid_date = payment_date or date.today()
+        self.status = 'PAID'
+        self.save()
+    
+    def apply_payment(self, amount, payment_date=None):
+        """
+        Apply a partial payment to invoice.
+        
+        Args:
+            amount: Payment amount
+            payment_date: Date of payment
+        
+        Returns:
+            Decimal: Remaining balance
+        """
+        if amount <= 0:
+            raise ValidationError('Payment amount must be positive')
+        
+        self.amount_paid += amount
+        
+        if self.amount_paid >= self.total_amount:
+            # Fully paid
+            self.mark_as_paid(payment_date, self.total_amount)
+        else:
+            # Partially paid
+            self.status = 'PARTIAL_PAID'
+            self.save()
+        
+        return self.balance_due
+    
+    def cancel(self, reason=''):
+        """
+        Cancel invoice.
+        
+        Args:
+            reason: Cancellation reason
+        
+        Raises:
+            ValidationError: If invoice cannot be cancelled
+        """
+        if not self.can_be_cancelled():
+            raise ValidationError('Invoice cannot be cancelled')
+        
+        self.status = 'CANCELLED'
+        if reason:
+            self.notes = f"{self.notes}\nCancelled: {reason}".strip()
+        self.save()
+    
+    def void(self, reason=''):
+        """
+        Void a posted invoice.
+        
+        Args:
+            reason: Void reason
+        
+        Raises:
+            ValidationError: If invoice cannot be voided
+        """
+        if not self.can_be_voided():
+            raise ValidationError('Invoice cannot be voided')
+        
+        self.status = 'VOID'
+        if reason:
+            self.notes = f"{self.notes}\nVoided: {reason}".strip()
+        self.save()
+    
+    def recalculate_totals(self):
+        """Recalculate all totals from line items."""
+        lines = self.lines.all()
+        
+        self.subtotal = sum(line.line_total for line in lines)
+        self.discount_amount = sum(
+            line.quantity * line.unit_price * (line.discount_percentage / 100)
+            for line in lines
+        )
+        self.vat_amount = sum(line.vat_amount for line in lines)
+        self.total_amount = self.subtotal + self.vat_amount
+        self.total_cost = sum(line.line_cost for line in lines)
+        self.gross_profit = self.subtotal - self.total_cost
+        
+        self.save()
+
+
+class InvoiceLine(TimeStampedModel):
+    """
+    Invoice Line Item
+    
+    Individual items/services on an invoice.
+    """
+    
+    # ==========================================
+    # FOREIGN KEYS
+    # ==========================================
+    
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name='lines',
+        help_text="Parent Invoice"
+    )
+    
+    # ==========================================
+    # LINE IDENTIFICATION
+    # ==========================================
+    
+    line_number = models.PositiveIntegerField(
+        help_text="Line Number (sequence)"
+    )
+    
+    # ==========================================
+    # STOCK INFORMATION
+    # ==========================================
+    
+    stock_code = models.CharField(
+        max_length=13,
+        blank=True,
+        help_text="Stock Code"
+    )
+    
+    description = models.CharField(
+        max_length=200,
+        help_text="Item Description"
+    )
+    
+    # ==========================================
+    # QUANTITY & PRICING
+    # ==========================================
+    
+    quantity = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))],
+        help_text="Quantity"
+    )
+    
+    unit_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        validators=[MinValueValidator(Decimal('0'))],
+        help_text="Unit Price (excl. VAT)"
+    )
+    
+    discount_percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        validators=[
+            MinValueValidator(Decimal('0')),
+            MaxValueValidator(Decimal('100'))
+        ],
+        help_text="Discount %"
+    )
+    
+    # ==========================================
+    # TAX
+    # ==========================================
+    
+    tax_code = models.PositiveIntegerField(
+        default=1,
+        help_text="Tax Code (1=Standard 15%)"
+    )
+    
+    vat_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal('15.00'),
+        help_text="VAT Rate %"
+    )
+    
+    # ==========================================
+    # CALCULATED FIELDS
+    # ==========================================
+    
+    line_total = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        help_text="Line Total (excl. VAT, after discount)"
+    )
+    
+    vat_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        help_text="VAT Amount for this line"
+    )
+    
+    # ==========================================
+    # COST & PROFIT
+    # ==========================================
+    
+    cost_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0'))],
+        help_text="Cost Price per Unit"
+    )
+    
+    line_cost = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Total Cost (quantity × cost_price)"
+    )
+    
+    line_profit = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        help_text="Line Profit (line_total - line_cost)"
+    )
+    
+    class Meta:
+        ordering = ['line_number']
+        unique_together = [['invoice', 'line_number']]
+        verbose_name = 'Invoice Line'
+        verbose_name_plural = 'Invoice Lines'
+    
+    def __str__(self):
+        return f"{self.invoice.invoice_number} - Line {self.line_number}: {self.description}"
+    
+    def clean(self):
+        """Validate line item data."""
+        errors = {}
+        
+        if self.quantity <= 0:
+            errors['quantity'] = 'Quantity must be greater than zero.'
+        
+        if self.unit_price < 0:
+            errors['unit_price'] = 'Unit price cannot be negative.'
+        
+        if not 0 <= self.discount_percentage <= 100:
+            errors['discount_percentage'] = 'Discount must be between 0 and 100.'
+        
+        if self.cost_price < 0:
+            errors['cost_price'] = 'Cost price cannot be negative.'
+        
+        if errors:
+            raise ValidationError(errors)
+    
+    def save(self, *args, **kwargs):
+        """Auto-calculate line totals before saving."""
+        # Calculate line total: quantity × price × (1 - discount%)
+        discount_factor = Decimal('1') - (self.discount_percentage / Decimal('100'))
+        gross_amount = self.quantity * self.unit_price
+        self.line_total = gross_amount * discount_factor
+        
+        # Calculate VAT
+        if self.tax_code == 1:  # Standard rated
+            self.vat_amount = self.line_total * (self.vat_rate / Decimal('100'))
+        else:  # Exempt or zero-rated
+            self.vat_amount = Decimal('0.00')
+        
+        # Calculate cost and profit
+        self.line_cost = self.quantity * self.cost_price
+        self.line_profit = self.line_total - self.line_cost
+        
+        self.full_clean()
+        super().save(*args, **kwargs)
+        
+        # Update invoice totals
+        if self.invoice_id:
+            self.invoice.recalculate_totals()
+
 
 
 class CashSale(TimeStampedModel):

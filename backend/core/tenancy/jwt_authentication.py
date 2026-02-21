@@ -1,9 +1,12 @@
 # tenancy/jwt_authentication.py
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken, AuthenticationFailed
+from rest_framework_simplejwt.tokens import AccessToken
+from django.conf import settings
 from shop_users.models import ShopUser
 from tenancy.models import Tenant
-from tenancy.tenant_context import get_current_tenant
+from tenancy.tenant_context import get_current_tenant, set_current_tenant
+from tenancy.utils import register_tenant_connection
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,197 +16,361 @@ class TenantJWTAuthentication(JWTAuthentication):
     """
     Custom JWT authentication that validates tenant context.
     Reads JWT from httpOnly cookies (secure) instead of headers.
+    
+    Architecture:
+    - Each tenant has a separate database
+    - Within each tenant DB, shops exist as PostgreSQL schemas
+    - Main database stores Tenant model
+    - ShopUser exists in each tenant DB's public schema
+    
+    Flow:
+    1. Extract JWT from cookie or Authorization header
+    2. Validate CSRF token (for cookie-based auth)
+    3. Validate token structure
+    4. Load Tenant from main DB using tenant_id from token
+    5. Register tenant database connection
+    6. Query ShopUser from tenant DB public schema
+    7. Validate user-tenant relationship
     """
+    
+    # Safe methods that don't require CSRF (these are read-only/secure)
+    SAFE_METHODS = ('GET', 'HEAD', 'OPTIONS')
     
     def get_raw_token(self, request):
         """
         Override to get JWT from httpOnly cookie instead of Authorization header.
         Falls back to Authorization header for API compatibility.
         """
+        # Try httpOnly cookie first (web app)
+        token = request.COOKIES.get('access_token')
+        if token:
+            if settings.DEBUG:
+                logger.debug(f"JWT token found in cookie, length={len(token)}")
+            return token.encode('utf-8')
+        
+        # Fall back to Authorization header (API clients)
+        if settings.DEBUG:
+            logger.debug("No cookie token, checking Authorization header")
+        return super().get_raw_token(request)
+    
+    def _validate_csrf(self, request):
+        """
+        Validate CSRF token for cookie-based authentication.
+        
+        For state-changing methods (POST, PUT, PATCH, DELETE), CSRF is required.
+        For safe methods (GET, HEAD, OPTIONS), CSRF is optional.
+        
+        This protects against CSRF attacks when JWT is stored in cookies.
+        
+        NOTE: Public auth endpoints (signup, login, etc.) are exempted from CSRF
+        validation because they use @csrf_exempt decorator at the view level.
+        """
+        # Define public auth endpoints that don't require CSRF validation
+        # These endpoints use @csrf_exempt at the view level
+        # Use full path for matching since request.path includes /api/v1/ prefix
+        public_auth_paths = [
+            '/users/auth/signup/',
+            '/users/auth/login/',
+            '/users/auth/csrf/',
+            '/users/auth/token/refresh/',
+            '/users/auth/logout/',
+            '/users/auth/unified-login/',
+            '/auth/signup/',
+            '/auth/login/',
+            '/auth/csrf/',
+            '/auth/token/refresh/',
+            '/auth/logout/',
+            '/auth/unified-login/',
+            # Shop creation endpoint - JWT authentication is sufficient
+            '/tenants/shops/',
+            '/tenants/shops',
+            '/shops/',
+            '/shops',
+        ]
+        
+        # Check if this is a public auth endpoint
+        request_path = request.path
+        for path in public_auth_paths:
+            if request_path.endswith(path) or path in request_path:
+                if settings.DEBUG:
+                    logger.debug(f"Skipping CSRF validation for public auth endpoint: {request_path}")
+                return True
+        
+        # Check if this is a state-changing request
+        # Check if this is a state-changing request
+        method = request.method
+        if method in self.SAFE_METHODS:
+            # Safe methods don't require CSRF validation
+            return True
+        
+        # For state-changing methods, check CSRF token
+        # Try multiple sources for CSRF token
+        csrf_token = None
+        
+        # 1. Check X-CSRFToken header (common for AJAX)
+        csrf_token = request.headers.get('X-CSRFToken') or \
+                    request.META.get('HTTP_X_CSRFTOKEN')
+        
+        # 2. Check CSRF cookie
+        if not csrf_token:
+            csrf_token = request.COOKIES.get('csrftoken')
+        
+        # 3. Check request body (as fallback)
+        if not csrf_token:
+            csrf_token = request.POST.get('csrfmiddlewaretoken')
+        
+        # Validate CSRF token
+        if not csrf_token:
+            logger.warning("CSRF token missing for state-changing request")
+            return False
+        
+        # Get the expected CSRF token from Django's cookie (NOT a new token)
         try:
-            logger.info(f"get_raw_token() called")
-            logger.info(f"Cookies: {list(request.COOKIES.keys())}")
+            # Use request.META['CSRF_COOKIE'] which contains the original token
+            # NOT get_csrf_token() which generates a NEW token each time!
+            expected_csrf = request.META.get('CSRF_COOKIE')
             
-            # Try to get from httpOnly cookie first
-            token = request.COOKIES.get('access_token')
-            if token:
-                logger.info(f"JWT token found in cookie, length={len(token)}")
-                return token.encode()
+            # If not in META, try to get from cookie directly
+            if not expected_csrf:
+                expected_csrf = request.COOKIES.get('csrftoken')
             
-            logger.warning("JWT token not in cookie, checking Authorization header")
-            # Fall back to Authorization header (for API clients)
-            result = super().get_raw_token(request)
-            logger.info(f"Authorization header result: {result is not None}")
-            return result
+            if not expected_csrf:
+                # If we can't find the original token, log and fail
+                logger.warning("No CSRF cookie found in request")
+                return False
         except Exception as e:
-            logger.error(f"get_raw_token() exception: {str(e)}")
-            raise
+            logger.error(f"Error getting CSRF token: {e}")
+            return False
+        
+        # Constant-time comparison to prevent timing attacks
+        if not self._constant_time_compare(csrf_token, expected_csrf):
+            logger.warning(f"CSRF token mismatch: got {csrf_token[:10]}..., expected {expected_csrf[:10]}...")
+            return False
+        
+        return True
+    
+    def _constant_time_compare(self, val1, val2):
+        """
+        Constant-time string comparison to prevent timing attacks.
+        """
+        if isinstance(val1, str):
+            val1 = val1.encode('utf-8')
+        if isinstance(val2, str):
+            val2 = val2.encode('utf-8')
+        
+        if len(val1) != len(val2):
+            return False
+        
+        result = 0
+        for c1, c2 in zip(val1, val2):
+            result |= c1 ^ c2
+        return result == 0
     
     def authenticate(self, request):
         """
         Authenticate using JWT from cookie or Authorization header.
-        Returns None if authentication is not attempted (allows public endpoints to work).
-        Only raises AuthenticationFailed if authentication is attempted but fails.
+        Returns None if no authentication is attempted (allows public endpoints).
+        Raises AuthenticationFailed if authentication is attempted but fails.
         """
-        logger.info(f"TenantJWTAuthentication.authenticate() called, path={request.path}")
-        logger.info(f"Request cookies: {list(request.COOKIES.keys())}")
+        # Skip authentication entirely for public auth endpoints
+        public_auth_paths = [
+            '/users/auth/signup/',
+            '/users/auth/login/',
+            '/users/auth/csrf/',
+            '/users/auth/token/refresh/',
+            '/users/auth/logout/',
+            '/users/auth/unified-login/',
+            '/auth/signup/',
+            '/auth/login/',
+            '/auth/csrf/',
+            '/auth/token/refresh/',
+            '/auth/logout/',
+            '/auth/unified-login/',
+        ]
+        request_path = request.path
+        for path in public_auth_paths:
+            if request_path.endswith(path) or path in request_path:
+                if settings.DEBUG:
+                    logger.debug(f"Skipping authentication for public endpoint: {request_path}")
+                return None
+        
+        if settings.DEBUG:
+            logger.debug(f"Authentication attempt on: {request.path}")
+            logger.debug(f"Request cookies: {list(request.COOKIES.keys())}")
         
         try:
-            # Try to get token from httpOnly cookie first
-            token = request.COOKIES.get('access_token')
-            if not token:
-                logger.debug("No access_token in cookies, checking Authorization header")
-                # Fall back to parent's method which checks Authorization header
-                try:
-                    result = super().authenticate(request)
-                    if result is None:
-                        logger.debug("No Authorization header found, allowing public/anonymous access")
-                        return None
-                except (AuthenticationFailed, InvalidToken) as e:
-                    # Authentication was attempted but failed - propagate the error
-                    logger.warning(f"Authorization header authentication failed: {str(e)}")
-                    raise
-                except Exception as e:
-                    # Log unexpected errors, but for authentication we return None (not authenticated)
-                    logger.debug(f"Authorization header check failed: {str(e)}")
-                    return None
-            else:
-                logger.debug(f"Token found in cookie, length={len(token)}")
-                # Decode the token manually
-                from rest_framework_simplejwt.tokens import AccessToken
-                try:
-                    validated_token = AccessToken(token)
-                    logger.debug(f"Token validated successfully")
-                    result = self.get_user(validated_token), validated_token
-                except (AuthenticationFailed, InvalidToken) as e:
-                    logger.warning(f"Token validation failed: {str(e)}")
-                    raise
-                except Exception as e:
-                    logger.error(f"Failed to decode token: {str(e)}")
-                    raise AuthenticationFailed(f"Token validation error: {str(e)}")
-            
-            if result is None:
-                logger.debug(f"JWT authentication returned None")
+            # Get raw token
+            raw_token = self.get_raw_token(request)
+            if raw_token is None:
+                logger.debug("No token found, allowing anonymous access")
                 return None
             
-            user, validated_token = result
-            logger.info(f"JWT authenticated user: {user.username}, token_tenant_id={validated_token.get('tenant_id')}")
+            # Track if token came from cookie
+            cookie_token = request.COOKIES.get('access_token')
             
-            # Get tenant from token
-            token_tenant_id = validated_token.get('tenant_id')
-            token_tenant_slug = validated_token.get('tenant_slug')
+            # Validate the token first
+            try:
+                validated_token = AccessToken(raw_token)
+            except Exception as e:
+                # Token is invalid/expired - this is NOT an authentication failure
+                # This is normal for unauthenticated users with stale cookies
+                # Let the request through to be handled by permission classes
+                if settings.DEBUG:
+                    logger.debug(f"Invalid/expired token, allowing anonymous: {type(e).__name__}")
+                return None
             
-            # Get current tenant from context (set by middleware)
-            current_tenant = get_current_tenant()
+            # If token came from cookie, validate CSRF
+            # Skip CSRF if using Authorization header (standard API practice)
+            auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+            if cookie_token and not auth_header.startswith('Bearer '):
+                if not self._validate_csrf(request):
+                    logger.warning("CSRF validation failed for cookie-based JWT")
+                    raise AuthenticationFailed('CSRF validation failed')
+            
+            logger.debug("Token validated successfully")
+            
+            # Get user from tenant database
+            # This will also set up tenant context
+            user = self.get_user(validated_token)
             
             # Validate tenant context
-            if current_tenant:
-                # If there's a current tenant, validate it matches the token
-                if token_tenant_id and current_tenant.id != token_tenant_id:
-                    logger.warning(
-                        f"Tenant mismatch: token has {token_tenant_id}, "
-                        f"context has {current_tenant.id}"
-                    )
-                    raise AuthenticationFailed('Tenant mismatch')
-            elif token_tenant_id:
-                # If no current tenant in context but token has one,
-                # try to load it (for API calls without middleware)
-                try:
-                    tenant = Tenant.objects.get(id=token_tenant_id)
-                    from tenancy.tenant_context import set_current_tenant
-                    set_current_tenant(tenant)
-                except Tenant.DoesNotExist:
-                    raise AuthenticationFailed('Invalid tenant in token')
+            self._validate_tenant_context(user, validated_token)
             
-            # Validate user belongs to tenant
-            if hasattr(user, 'tenant_id') and token_tenant_id:
-                if user.tenant_id != token_tenant_id:
-                    raise AuthenticationFailed('User does not belong to this tenant')
+            if settings.DEBUG:
+                logger.debug(f"JWT authentication successful for user: {user.username}")
             
             return user, validated_token
             
         except (AuthenticationFailed, InvalidToken) as e:
-            # Authentication was attempted but failed - propagate the error
+            logger.warning(f"Authentication failed: {type(e).__name__} - {str(e)}")
             raise
         except Exception as e:
-            logger.error(f"Unexpected JWT authentication error: {str(e)}")
-            # For unexpected errors during authentication, log and return None
-            # This prevents 500 errors on authentication issues
-            return None
+            logger.error(f"Unexpected authentication error: {type(e).__name__}: {str(e)}", exc_info=True)
+            raise AuthenticationFailed('Authentication error')
+    
+    def _validate_tenant_context(self, user, validated_token):
+        """
+        Validate that token tenant matches context tenant and user belongs to tenant.
+        
+        This is called AFTER get_user() has already set up the tenant context.
+        """
+        token_tenant_id = validated_token.get('tenant_id')
+        
+        if not token_tenant_id:
+            raise AuthenticationFailed('Token missing tenant information')
+        
+        # Get current tenant (should already be set by get_user)
+        current_tenant = get_current_tenant()
+        
+        if not current_tenant:
+            # This shouldn't happen if get_user() worked correctly
+            logger.error("No tenant in context after get_user()")
+            raise AuthenticationFailed('Tenant context not set')
+        
+        # Validate token tenant matches context tenant
+        if current_tenant.id != token_tenant_id:
+            logger.warning(
+                f"Tenant mismatch: token={token_tenant_id}, context={current_tenant.id}"
+            )
+            raise AuthenticationFailed('Tenant mismatch')
+        
+        # Validate user belongs to tenant
+        if hasattr(user, 'tenant_id') and user.tenant_id != token_tenant_id:
+            logger.warning(
+                f"User {user.id} does not belong to tenant {token_tenant_id}"
+            )
+            raise AuthenticationFailed('User does not belong to this tenant')
     
     def get_user(self, validated_token):
         """
-        Override to get user from ShopUser model (from tenant database)
+        Get user from tenant database public schema.
+        
+        Critical Steps:
+        1. Extract user_id and tenant_id from token
+        2. Query Tenant from main database
+        3. Register tenant database connection (REQUIRED!)
+        4. Set tenant in context
+        5. Query ShopUser from tenant DB public schema
+        
+        Note: tenant_id in token is REQUIRED for security and performance.
+        We do NOT search across all tenants.
         """
+        user_id = validated_token.get('user_id')
+        if user_id is None:
+            raise InvalidToken('Token contained no recognizable user identification')
+        
+        token_tenant_id = validated_token.get('tenant_id')
+        token_tenant_slug = validated_token.get('tenant_slug')
+        token_shop_id = validated_token.get('shop_id')  # DEBUG: Check for shop_id
+        
+        if settings.DEBUG:
+            logger.debug(f"[JWT] token_tenant_id={token_tenant_id}, token_tenant_slug={token_tenant_slug}, token_shop_id={token_shop_id}")
+        
+        if not token_tenant_id and not token_tenant_slug:
+            raise InvalidToken('Token missing tenant information')
+        
         try:
-            user_id = validated_token.get('user_id')
-            if user_id is None:
-                raise InvalidToken('Token contained no recognizable user identification')
-
-            # Log tenant context
-            tenant = get_current_tenant()
-            token_tenant_id = validated_token.get('tenant_id')
-            token_tenant_slug = validated_token.get('tenant_slug')
-            logger.info(f"JWT get_user: user_id={user_id}, context_tenant={tenant}, token_tenant_id={token_tenant_id}, token_tenant_slug={token_tenant_slug}")
-
-            # If token has tenant info, use it (most reliable)
-            if token_tenant_id or token_tenant_slug:
-                try:
-                    if token_tenant_slug:
-                        tenant = Tenant.objects.get(slug=token_tenant_slug)
-                    elif token_tenant_id:
-                        tenant = Tenant.objects.get(id=token_tenant_id)
-                    
-                    from tenancy.tenant_context import set_current_tenant
-                    from tenancy.utils import register_tenant_connection
-                    register_tenant_connection(tenant)
-                    set_current_tenant(tenant)
-                    logger.info(f"Set tenant from token: {tenant.slug}")
-                except Tenant.DoesNotExist:
-                    logger.error(f"Tenant from token not found: id={token_tenant_id}, slug={token_tenant_slug}")
-                    raise AuthenticationFailed('Tenant not found')
+            # Step 1: Get tenant from main database
+            if token_tenant_slug:
+                tenant = Tenant.objects.get(slug=token_tenant_slug)
             else:
-                # Token doesn't have tenant info - try to find user in any tenant
-                # This handles old tokens created before tenant info was added
-                logger.warning(f"Token has no tenant info, searching for user {user_id} across all tenants")
-                user_found = None
-                found_tenant = None
-                
-                for search_tenant in Tenant.objects.all():
-                    try:
-                        from tenancy.utils import register_tenant_connection
-                        register_tenant_connection(search_tenant)
-                        test_user = ShopUser.objects.using(search_tenant.db_alias).get(id=user_id)
-                        user_found = test_user
-                        found_tenant = search_tenant
-                        logger.info(f"Found user {user_id} in tenant: {search_tenant.slug}")
-                        break
-                    except ShopUser.DoesNotExist:
-                        continue
-                
-                if found_tenant:
-                    from tenancy.tenant_context import set_current_tenant
-                    from tenancy.utils import register_tenant_connection
-                    register_tenant_connection(found_tenant)
-                    set_current_tenant(found_tenant)
-                    tenant = found_tenant
-                else:
-                    logger.error(f"User {user_id} not found in any tenant")
-                    raise AuthenticationFailed('User not found in any tenant')
-
-            # Get user from tenant database
-            if tenant:
-                logger.info(f"Querying user from tenant DB: {tenant.db_alias}")
-                user = ShopUser.objects.using(tenant.db_alias).get(id=user_id)
+                tenant = Tenant.objects.get(id=token_tenant_id)
+            
+            if settings.DEBUG:
+                logger.debug(f"Loaded tenant: {tenant.slug} (id={tenant.id})")
+            
+            # Step 2: CRITICAL - Register tenant database connection
+            # This tells Django about the tenant's database
+            register_tenant_connection(tenant)
+            
+            # Step 3: Set tenant in thread-local context
+            set_current_tenant(tenant)
+            
+            if settings.DEBUG:
+                logger.debug(f"Tenant context set: {tenant.slug}, db_alias: {tenant.db_alias}")
+            
+            # Step 4: Query user from tenant DB public schema
+            # Using tenant.db_alias to route query to correct database
+            user = ShopUser.objects.using(tenant.db_alias).get(id=user_id)
+            
+            # DEBUG: Set shop_id from token onto user object for middleware to use
+            token_shop_id = validated_token.get('shop_id')
+            if token_shop_id:
+                user.current_shop_id = token_shop_id
+                if settings.DEBUG:
+                    logger.debug(f"[JWT] Set user.current_shop_id = {token_shop_id}")
             else:
-                logger.warning(f"No tenant context for user {user_id}, querying main DB")
-                user = ShopUser.objects.get(id=user_id)
-
+                # Try to get from session (set by auth backend)
+                # This is handled in middleware, but let's check token for accessible shops
+                accessible_shops = validated_token.get('accessible_shops', [])
+                if accessible_shops:
+                    # Set first accessible shop as current
+                    user.current_shop_id = accessible_shops[0].get('id')
+                    if settings.DEBUG:
+                        logger.debug(f"[JWT] Set user.current_shop_id from token = {user.current_shop_id}")
+            
+            # Also check for current_shop_id in token claims
+            current_shop = validated_token.get('current_shop')
+            if current_shop and not getattr(user, 'current_shop_id', None):
+                user.current_shop_id = current_shop.get('id')
+                if settings.DEBUG:
+                    logger.debug(f"[JWT] Set user.current_shop_id from current_shop claim = {user.current_shop_id}")
+            
+            if settings.DEBUG:
+                logger.debug(f"Found user: {user.username} (id={user.id})")
+            
+            # Step 5: Validate user is active
             if not user.is_active:
                 raise AuthenticationFailed('User is inactive')
-
+            
             return user
-
+            
+        except Tenant.DoesNotExist:
+            logger.error(f"Tenant not found: id={token_tenant_id}, slug={token_tenant_slug}")
+            raise AuthenticationFailed('Invalid tenant')
         except ShopUser.DoesNotExist:
-            logger.error(f"JWT get_user: User {user_id} not found")
+            logger.error(f"User {user_id} not found in tenant {tenant.slug}")
             raise AuthenticationFailed('User not found')
+        except Exception as e:
+            logger.error(f"Error loading user: {type(e).__name__} - {str(e)}", exc_info=True)
+            raise AuthenticationFailed('Authentication failed')

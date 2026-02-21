@@ -29,7 +29,8 @@ export function clearAuthData(): void {
   // Reset all auth-related state on logout
   // Cookies are cleared by backend on logout endpoint
   csrfToken = null;
-  isLoggingOut = true;
+  // Note: do not set isLoggingOut here - only set it in logout() function
+  // Setting it here blocks token refresh from retrying on subsequent 401 errors
 }
 
 // Store CSRF token globally
@@ -152,10 +153,6 @@ const PUBLIC_ENDPOINTS = [
   '/api/v1/users/auth/signup/',
   '/api/v1/users/auth/csrf/',
   '/api/v1/users/auth/token/refresh/',
-  '/api/users/auth/login/',
-  '/api/users/auth/signup/',
-  '/api/users/auth/csrf/',
-  '/api/users/auth/token/refresh/',
 ];
 
 function isPublicEndpoint(url: string | undefined): boolean {
@@ -263,7 +260,7 @@ api.interceptors.response.use(
       
       try {
         // Call refresh endpoint to refresh httpOnly cookies
-        await axios.post(`${API_BASE}/api/users/auth/token/refresh/`, {}, {
+        await axios.post(`${API_BASE}/api/v1/users/auth/token/refresh/`, {}, {
           withCredentials: true,
         });
         
@@ -340,6 +337,8 @@ export async function signup(signupData: {
 
 export async function logout(): Promise<AxiosResponse> {
   try {
+    // Mark logout in progress to suppress token refresh attempts
+    isLoggingOut = true;
     const response = await api.post('/api/v1/users/auth/logout/');
     // Clear CSRF token cache and other auth data
     clearAuthData();
@@ -523,7 +522,7 @@ posApi.interceptors.response.use(
       
       try {
         // Refresh token via httpOnly cookies
-        await axios.post(`${API_BASE}/api/users/auth/token/refresh/`, {}, {
+        await axios.post(`${API_BASE}/api/v1/users/auth/token/refresh/`, {}, {
           withCredentials: true,
         });
         return posApi(originalRequest);

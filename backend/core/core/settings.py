@@ -30,6 +30,12 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-change-me-in-producti
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
+LOGGING_CONFIG = None
+
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+
 # SUBDOMAIN SUPPORT
 # Development: allows *.localhost (e.g., acme.localhost, shop1.acme.localhost)
 # Production: allows *.yourdomain.com
@@ -38,6 +44,16 @@ ALLOWED_HOSTS = os.environ.get(
     'localhost,127.0.0.1,.localhost'
 ).split(',')
 
+# Domain configuration for tenant identification
+MAIN_DOMAIN = 'localhost'  # For development
+# MAIN_DOMAIN = 'yourdomain.com'  # For production
+
+DEFAULT_TENANT_SLUG = 'dev'
+USE_DEFAULT_TENANT = True
+
+# Default shop to use when no shop is specified in request
+# This is used when users log in and need to access shop-specific data
+USE_DEFAULT_SHOP = True 
 
 # Application definition
 
@@ -54,11 +70,14 @@ SHARED_APPS = [
     # 3rd-party (in default DB)
     'rest_framework',
     'rest_framework_simplejwt',
+    
     'corsheaders',
     'drf_spectacular',
 
     # Platform management (blue_olive database only)
     'tenancy',  # Tenant and Shop models
+    'apps.saas_admin',  # SaaS administration (import, seeding, etc.)
+    'apps.common',  # Common utilities (permissions, serializers, services)
 ]
 
 # TENANT_APPS: These live in each tenant's database
@@ -75,6 +94,7 @@ TENANT_APPS = [
     'apps.purchase_orders',
     'apps.settings',
     'apps.pos',
+    'apps.messaging',
 ]
 
 # Django requires INSTALLED_APPS to know which apps are available
@@ -83,14 +103,15 @@ INSTALLED_APPS = SHARED_APPS + TENANT_APPS
 
 # SHOP_APP_LABELS: Apps that are migrated per-shop to their own schemas
 # These are a subset of TENANT_APP_LABELS
+# NOTE: 'settings' MUST be first - other apps (creditors, debtors, etc.) depend on settings migrations
 SHOP_APP_LABELS = [
+    'settings',  # Must be first - other apps depend on settings.0003_apikey
     'cash_book',
     'creditors',
     'debtors',
     'general_ledger',
     'stock_control',
     'purchase_orders',
-    'settings',
     'pos',
 ]
 
@@ -100,6 +121,7 @@ TENANT_APP_LABELS = [
     'admin',           # Django admin
     'token_blacklist', # JWT token blacklist (has FK to user)
     'shop_users',      # Custom user model
+    'messaging',
 
 ] + SHOP_APP_LABELS
 
@@ -196,17 +218,26 @@ MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
+    
+    # CRITICAL: Tenant middleware BEFORE authentication
+    # This ensures tenant context is set when authenticate() is called
+    'tenancy.middleware.TenantMiddleware',
+    
+    # Authentication middleware AFTER tenant is set
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    
+    # Schema middleware after both tenant and auth
+    # Shop validation middleware runs BEFORE to re-register connection with correct shop
+    'tenancy.middleware.UserShopValidationMiddleware',
+    'tenancy.schema_middleware.SchemaMiddleware',
+    
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'tenancy.middleware.TenantMiddleware',  # Tenant middleware should be after auth
-    'tenancy.schema_middleware.SchemaMiddleware',  # Set PostgreSQL search_path for shop schema
-    'core.logging_config.RequestLoggingMiddleware',  # Add request logging context
-    'core.versioning.APIVersioningMiddleware',  # API versioning middleware
+    
+    'core.logging_config.RequestLoggingMiddleware',
+    'core.versioning.APIVersioningMiddleware',
 ]
 
-DEFAULT_TENANT_SLUG = 'dev'
-USE_DEFAULT_SHOP = True
 
 # CORS settings
 CORS_ALLOWED_ORIGINS = os.environ.get(
@@ -473,6 +504,15 @@ CELERY_RESULT_EXPIRES = 3600  # 1 hour
 CELERY_WORKER_PREFETCH_MULTIPLIER = 4
 CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+# Windows compatibility: Use threads pool instead of prefork (Windows doesn't support forking)
+# For production on Windows, consider using eventlet or gevent
+import sys
+if sys.platform == 'win32':
+    CELERY_WORKER_POOL = 'threads'
+    CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+    # Disable soft timeout on Windows (not supported by billiard)
+    CELERY_WORKER_DISABLE_RATE_LIMITS = True
 
 # Celery task routing (optional, for scaling specific task types)
 CELERY_TASK_ROUTING = {

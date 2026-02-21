@@ -35,6 +35,7 @@ from apps.purchase_orders.urls import router as purchase_orders_router
 from apps.pos.urls import router as pos_router
 from apps.settings.urls import router as settings_router
 from apps.general_ledger.urls import router as general_ledger_router
+from apps.messaging.urls import urlpatterns as messaging_urls
 
 class LoginRequiredTemplateView(LoginRequiredMixin, TemplateView):
     pass
@@ -47,6 +48,9 @@ v1_api_patterns = [
     path('users/', include('shop_users.shops_urls')),  # Root-level users endpoint  
     path('users/auth/', include('shop_users.urls')),  # Auth endpoints at /api/v1/users/auth/
     
+    # SaaS Administration (superuser only)
+    path('saas-admin/', include('apps.saas_admin.urls')),
+
     # Business Applications
     path('debtors/', include(debtors_router.urls)),
     path('creditors/', include(creditors_urls)),
@@ -56,6 +60,7 @@ v1_api_patterns = [
     path('pos/', include(pos_router.urls)),
     path('settings/', include(settings_router.urls)),
     path('general-ledger/', include(general_ledger_router.urls)),
+    path('messaging/', include(messaging_urls)),
 ]
 
 urlpatterns = [
@@ -91,6 +96,7 @@ urlpatterns = [
     path('api/pos/', include(pos_router.urls)),
     path('api/settings/', include(settings_router.urls)),
     path('api/general-ledger/', include(general_ledger_router.urls)),
+    path('api/messaging/', include(messaging_urls)),
     
     # Template views for SPA
     path('', TemplateView.as_view(template_name='index.html'), name='home'),

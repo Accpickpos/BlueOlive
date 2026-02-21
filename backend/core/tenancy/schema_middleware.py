@@ -35,6 +35,9 @@ class SchemaMiddleware:
             shop_schema = get_current_shop()
             tenant = get_current_tenant()
             
+            # DEBUG: Log what we found
+            logger.debug(f"[SchemaMiddleware] shop_schema={shop_schema}, tenant={tenant.name if tenant else None}")
+            
             if shop_schema and tenant:
                 # Get the tenant database connection
                 db_alias = tenant.db_alias
@@ -48,6 +51,12 @@ class SchemaMiddleware:
                         logger.debug(f"Set search_path to: {shop_schema}, public")
                 except Exception as e:
                     logger.warning(f"Failed to set search_path: {str(e)}")
+            else:
+                # DEBUG: Log why we're not setting search_path
+                if not shop_schema:
+                    logger.debug("[SchemaMiddleware] No shop_schema in context - search_path not set")
+                if not tenant:
+                    logger.debug("[SchemaMiddleware] No tenant in context - search_path not set")
         
         except Exception as e:
             logger.error(f"Error in schema middleware: {str(e)}")

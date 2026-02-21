@@ -236,12 +236,12 @@ export default function AuthPage() {
 
                 <div>
                   <label htmlFor="login-username" className="block text-sm font-medium text-gray-700 mb-1">
-                    Username or Email
+                    Username
                   </label>
                   <input
                     id="login-username"
                     type="text"
-                    placeholder="Your username or email"
+                    placeholder="Your username"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
                     value={loginData.username}
                     onChange={(e) => setLoginData({ ...loginData, username: e.target.value })}

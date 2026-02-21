@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { creditorsApi } from '@/lib/creditorsApi';
-import { TransactionType } from '@/lib/types/creditors';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -50,13 +49,29 @@ export default function StockReceiptForm() {
 
   const { data: grn, isLoading } = useQuery({
     queryKey: ['grn', grnId],
-    queryFn: () => creditorsApi.transactions.get(grnId),
+    queryFn: () => creditorsApi.grns.get(grnId),
     enabled: !isNew,
   });
 
   const mutation = useMutation({
-    mutationFn: (data: GRNData) =>
-      isNew ? creditorsApi.transactions.create({ ...data, transaction_type: TransactionType.GRN }) : creditorsApi.transactions.update(grnId, data),
+    mutationFn: (data: GRNData) => {
+      const apiData: any = {
+        creditor: data.supplier_id,
+        transaction_date: data.invoice_date,
+        supplier_invoice_number: data.invoice_number,
+        inclusive_exclusive: data.vat_option === 'I' ? 'INC' as const : 'EXC' as const,
+        surcharge_amount: data.surcharge,
+        line_items: data.line_items.map((item) => ({
+          stock_item: 0,
+          quantity_received: item.quantity,
+          unit_cost: item.unit_cost,
+          tax_code: item.tax_rate,
+        })),
+      };
+      return isNew 
+        ? creditorsApi.grns.create(apiData) 
+        : creditorsApi.grns.update(grnId, apiData);
+    },
     onSuccess: () => {
       router.push('/dashboard/admin/creditors/transactions/stock-receipts');
     },

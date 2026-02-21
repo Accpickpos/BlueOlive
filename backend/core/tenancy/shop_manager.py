@@ -156,43 +156,55 @@ def migrate_shop_apps(tenant, schema_name):
             
             # STEP 4: Migrate each shop app
             logger.info(f"Step 4: Migrating shop apps to schema: {schema_name}...")
-            for app_label in shop_app_labels:
-                try:
-                    logger.info(f"  Migrating {app_label}...")
-                    
-                    # Before migrating, update the database connection options to use the shop schema
-                    # This ensures Django creates tables in the correct schema
-                    original_options = settings.DATABASES[alias].get('OPTIONS', {}).copy()
-                    settings.DATABASES[alias]['OPTIONS'] = {
-                        'options': f'-c search_path={schema_name},public'
-                    }
-                    # Also update the connection cache
-                    connections.databases[alias]['OPTIONS'] = settings.DATABASES[alias]['OPTIONS']
-                    
-                    # Close any existing connection to force reconnect with new options
-                    connections[alias].close()
-                    
+            
+            # Set SHOP_SCHEMA environment variable so db_router allows migrations
+            original_shop_schema = os.environ.get('SHOP_SCHEMA')
+            os.environ['SHOP_SCHEMA'] = schema_name
+            
+            try:
+                for app_label in shop_app_labels:
                     try:
-                        call_command(
-                            'migrate',
-                            app_label,
-                            database=alias,
-                            verbosity=1,
-                            interactive=False,
-                        )
-                        logger.info(f"  ✓ {app_label} migrated to {schema_name}")
-                    finally:
-                        # Restore original options
+                        logger.info(f"  Migrating {app_label}...")
+                        
+                        # Before migrating, update the database connection options to use the shop schema
+                        # This ensures Django creates tables in the correct schema
+                        original_options = settings.DATABASES[alias].get('OPTIONS', {}).copy()
+                        settings.DATABASES[alias]['OPTIONS'] = {
+                            'options': f'-c search_path={schema_name},public'
+                        }
+                        # Also update the connection cache
+                        connections.databases[alias]['OPTIONS'] = settings.DATABASES[alias]['OPTIONS']
+                        
+                        # Close any existing connection to force reconnect with new options
+                        connections[alias].close()
+                        
+                        try:
+                            call_command(
+                                'migrate',
+                                app_label,
+                                database=alias,
+                                verbosity=1,
+                                interactive=False,
+                            )
+                            logger.info(f"  ✓ {app_label} migrated to {schema_name}")
+                        finally:
+                            # Restore original options
+                            settings.DATABASES[alias]['OPTIONS'] = original_options
+                            connections.databases[alias]['OPTIONS'] = original_options
+                            connections[alias].close()  # Close to force reconnect with public schema
+                        
+                    except Exception as e:
+                        logger.error(f"  ✗ Failed to migrate {app_label}: {str(e)}")
+                        # Restore original options even on error
                         settings.DATABASES[alias]['OPTIONS'] = original_options
                         connections.databases[alias]['OPTIONS'] = original_options
-                        connections[alias].close()  # Close to force reconnect with public schema
-                    
-                except Exception as e:
-                    logger.error(f"  ✗ Failed to migrate {app_label}: {str(e)}")
-                    # Restore original options even on error
-                    settings.DATABASES[alias]['OPTIONS'] = original_options
-                    connections.databases[alias]['OPTIONS'] = original_options
-                    # Try to continue with other apps
+                        # Try to continue with other apps
+            finally:
+                # Restore SHOP_SCHEMA environment variable
+                if original_shop_schema is None:
+                    os.environ.pop('SHOP_SCHEMA', None)
+                else:
+                    os.environ['SHOP_SCHEMA'] = original_shop_schema
             
             # After migrations, verify and create any missing tables
             logger.info(f"Step 5: Verifying tables in schema {schema_name}...")

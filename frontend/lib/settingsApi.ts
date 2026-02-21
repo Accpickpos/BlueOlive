@@ -17,6 +17,7 @@
 
 import { api } from './api';
 import { ENDPOINTS } from './api-config';
+import { PaginatedResponse } from './types/creditors';
 
 export interface Department {
   id?: number;
@@ -227,7 +228,7 @@ export const settingsApi = {
   // ============ EXPENSE CATEGORIES ============
   expenseCategories: {
     list: async (filters?: any) => {
-      const response = await api.get<{ results: ExpenseCategory[] }>(
+      const response = await api.get<PaginatedResponse<ExpenseCategory>>(
         ENDPOINTS.SETTINGS.EXPENSE_CATEGORIES,
         { params: filters }
       );

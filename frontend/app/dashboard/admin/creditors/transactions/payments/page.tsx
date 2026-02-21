@@ -1,23 +1,25 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { creditorsApi } from '@/lib/creditorsApi';
-import type { CreditorAccount } from '@/lib/types/creditors';
+import type { CreditorAccount, AgedBalanceSummary } from '@/lib/types/creditors';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Loader, Check } from 'lucide-react';
 
 export default function CreditorPaymentsPage() {
-  const router = useRouter();
   const [selectedAccount, setSelectedAccount] = useState<CreditorAccount | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [paymentData, setPaymentData] = useState({
-    payment_date: new Date().toISOString().split('T')[0],
-    amount_tendered: 0,
-    allocations: [] as Array<{ aging_period: string; amount: number }>,
+  const [paymentData, setPaymentData] = useState<{
+    transaction_date: string;
+    amount_paid: number;
+    transaction_reference?: string;
+  }>({
+    transaction_date: new Date().toISOString().split('T')[0],
+    amount_paid: 0,
+    transaction_reference: '',
   });
 
   const { data: suppliers } = useQuery({
@@ -29,26 +31,28 @@ export default function CreditorPaymentsPage() {
       }),
   });
 
-  const { data: accountDetail, isLoading: accountLoading } = useQuery({
-    queryKey: ['creditor-account-detail', selectedAccount?.id],
-    queryFn: () => creditorsApi.accounts.get(selectedAccount!.id),
+  const { data: accountDetail, isLoading: accountLoading } = useQuery<AgedBalanceSummary>({
+    queryKey: ['creditor-aged-balance', selectedAccount?.id],
+    queryFn: () => creditorsApi.accounts.agedBalances(selectedAccount!.id),
     enabled: !!selectedAccount,
   });
 
   const paymentMutation = useMutation({
-    mutationFn: (data: any) =>
-      creditorsApi.transactions.create({
-        ...data,
-        account_id: selectedAccount!.id,
-        transaction_type: 'PAYMENT',
+    mutationFn: (data: { transaction_date: string; amount_paid: number; transaction_reference?: string }) =>
+      creditorsApi.payments.create({
+        creditor: selectedAccount!.id,
+        transaction_date: data.transaction_date,
+        amount_due: data.amount_paid,
+        amount_paid: data.amount_paid,
+        transaction_reference: data.transaction_reference || undefined,
       }),
     onSuccess: () => {
       alert('Payment recorded successfully');
       setSelectedAccount(null);
       setPaymentData({
-        payment_date: new Date().toISOString().split('T')[0],
-        amount_tendered: 0,
-        allocations: [],
+        transaction_date: new Date().toISOString().split('T')[0],
+        amount_paid: 0,
+        transaction_reference: '',
       });
     },
   });
@@ -62,10 +66,9 @@ export default function CreditorPaymentsPage() {
     e.preventDefault();
     if (!selectedAccount) return;
 
-    // Validate allocations sum
-    const totalAllocated = paymentData.allocations.reduce((sum, a) => sum + a.amount, 0);
-    if (totalAllocated !== paymentData.amount_tendered) {
-      alert('Allocated amount must match tendered amount');
+    // Validate positive amount
+    if (paymentData.amount_paid <= 0) {
+      alert('Amount paid must be greater than zero');
       return;
     }
 
@@ -113,9 +116,9 @@ export default function CreditorPaymentsPage() {
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-bold">{supplier.account_number} - {supplier.name}</p>
+                        <p className="font-bold">{supplier.supplier_number} - {supplier.name}</p>
                         <p className="text-xs text-gray-600 mt-1">
-                          Type: {supplier.account_type} | Balance: R {supplier.balance?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
+                          Category: {supplier.account_category === 'B' ? 'BBF' : supplier.account_category === 'O' ? 'Open Item' : 'N/A'}
                         </p>
                       </div>
                       <span className="text-blue-600">→</span>
@@ -133,17 +136,17 @@ export default function CreditorPaymentsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Selected Supplier</p>
-                <p className="text-lg font-bold">{selectedAccount.account_number} - {selectedAccount.name}</p>
-                <p className="text-xs text-gray-600 mt-1">Type: {selectedAccount.account_type}</p>
+                <p className="text-lg font-bold">{selectedAccount.supplier_number} - {selectedAccount.name}</p>
+                <p className="text-xs text-gray-600 mt-1">Category: {selectedAccount.account_category === 'B' ? 'BBF' : selectedAccount.account_category === 'O' ? 'Open Item' : 'N/A'}</p>
               </div>
               <Button
                 variant="outline"
                 onClick={() => {
                   setSelectedAccount(null);
                   setPaymentData({
-                    payment_date: new Date().toISOString().split('T')[0],
-                    amount_tendered: 0,
-                    allocations: [],
+                    transaction_date: new Date().toISOString().split('T')[0],
+                    amount_paid: 0,
+                    transaction_reference: '',
                   });
                 }}
               >
@@ -162,27 +165,35 @@ export default function CreditorPaymentsPage() {
                   <label className="block text-sm font-medium mb-1">Payment Date</label>
                   <Input
                     type="date"
-                    value={paymentData.payment_date}
-                    onChange={(e) => setPaymentData({ ...paymentData, payment_date: e.target.value })}
+                    value={paymentData.transaction_date}
+                    onChange={(e) => setPaymentData({ ...paymentData, transaction_date: e.target.value })}
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Amount Tendered (R)</label>
+                  <label className="block text-sm font-medium mb-1">Amount Paid (R)</label>
                   <Input
                     type="number"
                     step="0.01"
-                    value={paymentData.amount_tendered}
+                    value={paymentData.amount_paid}
                     onChange={(e) => {
-                      const newAmount = parseFloat(e.target.value);
+                      const newAmount = parseFloat(e.target.value) || 0;
                       setPaymentData({
                         ...paymentData,
-                        amount_tendered: newAmount,
-                        allocations: [{ aging_period: 'Current', amount: newAmount }],
+                        amount_paid: newAmount,
                       });
                     }}
                     placeholder="0.00"
                     required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Payment Reference</label>
+                  <Input
+                    type="text"
+                    value={paymentData.transaction_reference || ''}
+                    onChange={(e) => setPaymentData({ ...paymentData, transaction_reference: e.target.value })}
+                    placeholder="Enter payment reference..."
                   />
                 </div>
               </div>
@@ -196,46 +207,46 @@ export default function CreditorPaymentsPage() {
                   <div className="p-3 bg-green-50 rounded border border-green-200">
                     <p className="text-xs text-green-600 font-medium">Current</p>
                     <p className="text-lg font-bold text-green-700">
-                      R {accountDetail.current_aging?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
+                      R {accountDetail.balance_current?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
                     </p>
                   </div>
                   <div className="p-3 bg-amber-50 rounded border border-amber-200">
                     <p className="text-xs text-amber-600 font-medium">30 Days</p>
                     <p className="text-lg font-bold text-amber-700">
-                      R {accountDetail.d30?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
+                      R {accountDetail.balance_30_days?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
                     </p>
                   </div>
                   <div className="p-3 bg-orange-50 rounded border border-orange-200">
                     <p className="text-xs text-orange-600 font-medium">60 Days</p>
                     <p className="text-lg font-bold text-orange-700">
-                      R {accountDetail.d60?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
+                      R {accountDetail.balance_60_days?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
                     </p>
                   </div>
                   <div className="p-3 bg-red-50 rounded border border-red-200">
                     <p className="text-xs text-red-600 font-medium">90 Days</p>
                     <p className="text-lg font-bold text-red-700">
-                      R {accountDetail.d90?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
+                      R {accountDetail.balance_90_days?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
                     </p>
                   </div>
                   <div className="p-3 bg-red-100 rounded border border-red-300">
                     <p className="text-xs text-red-800 font-medium">120+ Days</p>
                     <p className="text-lg font-bold text-red-900">
-                      R {accountDetail.d120?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
+                      R {accountDetail.balance_120_days?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
                     </p>
                   </div>
                 </div>
 
                 {/* Allocation Table */}
-                {selectedAccount.account_type === 'BBF' ? (
+                {selectedAccount.account_category === 'B' ? (
                   <div>
                     <h3 className="font-bold mb-3">Allocate to Aging Periods</h3>
                     <div className="space-y-2">
                       {[
-                        { period: 'Current', color: 'bg-green-100', value: accountDetail.current_aging },
-                        { period: '30 Days', color: 'bg-amber-100', value: accountDetail.d30 },
-                        { period: '60 Days', color: 'bg-orange-100', value: accountDetail.d60 },
-                        { period: '90 Days', color: 'bg-red-100', value: accountDetail.d90 },
-                        { period: '120+ Days', color: 'bg-red-200', value: accountDetail.d120 },
+                        { period: 'Current', color: 'bg-green-100', value: accountDetail.balance_current },
+                        { period: '30 Days', color: 'bg-amber-100', value: accountDetail.balance_30_days },
+                        { period: '60 Days', color: 'bg-orange-100', value: accountDetail.balance_60_days },
+                        { period: '90 Days', color: 'bg-red-100', value: accountDetail.balance_90_days },
+                        { period: '120+ Days', color: 'bg-red-200', value: accountDetail.balance_120_days },
                       ].map((period) => (
                         <div key={period.period} className="flex items-center gap-2">
                           <span className={`px-3 py-2 text-sm font-medium rounded w-24 ${period.color}`}>
@@ -247,16 +258,10 @@ export default function CreditorPaymentsPage() {
                             placeholder="0.00"
                             className="flex-1"
                             onChange={(e) => {
-                              const newAllocations = paymentData.allocations.filter(
-                                (a) => a.aging_period !== period.period
-                              );
-                              if (e.target.value) {
-                                newAllocations.push({
-                                  aging_period: period.period,
-                                  amount: parseFloat(e.target.value),
-                                });
-                              }
-                              setPaymentData({ ...paymentData, allocations: newAllocations });
+                              const newAmount = parseFloat(e.target.value) || 0;
+                              // Note: Full allocation functionality would require open_item IDs
+                              // For now, this is a display-only placeholder
+                              console.log('Allocation for', period.period, ':', newAmount);
                             }}
                           />
                         </div>
@@ -274,12 +279,12 @@ export default function CreditorPaymentsPage() {
             )}
 
             {/* Validation Messages */}
-            {paymentData.amount_tendered > 0 && (
+            {paymentData.amount_paid > 0 && (
               <Card className="p-6 mb-6 bg-gray-50">
                 <div className="flex items-center gap-2">
                   <Check className="w-5 h-5 text-green-600" />
                   <p className="text-sm text-gray-700">
-                    Amount tendered: <strong>R {paymentData.amount_tendered.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}</strong>
+                    Amount paid: <strong>R {paymentData.amount_paid.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}</strong>
                   </p>
                 </div>
               </Card>
@@ -290,7 +295,7 @@ export default function CreditorPaymentsPage() {
               <Button
                 type="submit"
                 className="bg-green-600 hover:bg-green-700"
-                disabled={paymentMutation.isPending || paymentData.amount_tendered === 0}
+                disabled={paymentMutation.isPending || paymentData.amount_paid === 0}
               >
                 {paymentMutation.isPending ? 'Recording...' : 'Record Payment'}
               </Button>

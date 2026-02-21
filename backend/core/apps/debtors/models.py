@@ -3,24 +3,39 @@ Debtors (Customers) models.
 Based on the Debtors.pdf documentation.
 """
 from django.db import models
+from django.db.models import Q
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.core.exceptions import ValidationError
 from decimal import Decimal
 from datetime import date
+from django.utils import timezone
 from apps.settings.models import TimeStampedModel, SalesArea, PostingStatusMixin
 
 
+
 class Debtor(TimeStampedModel):
-    """Debtor/Customer Master File (DMAST table).
+    """
+    Debtor/Customer Master Record (DMAST table)
     
     Stores all customer account information, balances, and settings.
-    Maps from legacy DMAST table structure.
+    Uses modern field names with legacy DBF column mappings for seamless import.
     """
     
-    ACCOUNT_CATEGORY_CHOICES = [
-        ('', 'Balance Brought Forward'),
-        ('O', 'Open Item'),
-        ('C', 'Cash Customer'),
+    ACCOUNT_TYPE_CHOICES = [
+        ('', 'Balance Brought Forward'),  # Legacy default - monthly balance aging
+        ('O', 'Open Item'),               # Item-by-item transaction allocation
+        ('C', 'Cash Customer'),           # Cash only, no credit
+        ('N', 'Normal Credit'),           # Standard credit terms
+        ('B', 'COD'),                     # Cash on delivery
+    ]
+    
+    BLOCK_FLAG_CHOICES = [
+        ('0', 'Active'),          # Normal trading account
+        ('1', 'Credit Hold'),     # Over limit or payment issues
+        ('2', 'Closed'),          # Account closed
+        ('3', 'No Delivery'),     # Collection only
+        ('Y', 'Blocked'),         # Legacy: general block
+        ('N', 'Active Legacy'),   # Legacy: active
     ]
     
     INTEREST_FLAG_CHOICES = [
@@ -28,388 +43,761 @@ class Debtor(TimeStampedModel):
         ('N', 'No - Do Not Charge'),
     ]
     
-    # Account Identification (DMAST fields)
-    dno = models.PositiveIntegerField(
-        primary_key=False,
+    PRICE_LEVEL_CHOICES = [
+        (1, 'Retail'),
+        (2, 'Trade'),
+        (3, 'Wholesale'),
+    ]
+    
+    # ==========================================
+    # PRIMARY IDENTIFICATION
+    # ==========================================
+    
+    customer_number = models.IntegerField(
         unique=True,
         db_index=True,
+        db_column='dno',
         help_text="Debtor Account Number (DNO) - Numeric 5"
     )
-    dname = models.CharField(
-        max_length=40,
-        help_text="Debtors Name (DNAME) - Character 40"
+    
+    # ==========================================
+    # BASIC INFORMATION
+    # ==========================================
+    
+    name = models.CharField(
+        max_length=100,
+        db_column='dname',
+        help_text="Customer/Debtor Name (DNAME) - Character 40"
     )
-    dsname = models.CharField(
-        max_length=5,
+    
+    short_name = models.CharField(
+        max_length=20,
+        blank=True,
         db_index=True,
+        db_column='dsname',
         help_text="Short/Sort Name (DSNAME) - Character 5"
     )
     
-    # Contact Information
-    dcontact = models.CharField(
-        max_length=20,
+    # ==========================================
+    # CONTACT INFORMATION
+    # ==========================================
+    
+    contact_person = models.CharField(
+        max_length=50,
         blank=True,
+        db_column='dcontact',
         help_text="Contact Person (DCONTACT) - Character 20"
     )
-    dtel = models.CharField(
-        max_length=15,
+    
+    phone = models.CharField(
+        max_length=20,
         blank=True,
-        help_text="Telephone # (DTEL) - Character 15"
-    )
-    dfax = models.CharField(
-        max_length=15,
-        blank=True,
-        help_text="Fax # (DFAX) - Character 15"
+        db_column='dtel',
+        help_text="Telephone Number (DTEL) - Character 15"
     )
     
-    # Postal Address
-    dadd1 = models.CharField(
-        max_length=25,
+    phone2 = models.CharField(
+        max_length=20,
         blank=True,
+        db_column='tel2',
+        help_text="Alternative Phone (TEL2) - Character 15"
+    )
+    
+    fax = models.CharField(
+        max_length=20,
+        blank=True,
+        db_column='dfax',
+        help_text="Fax Number (DFAX) - Character 15"
+    )
+    
+    email = models.EmailField(
+        blank=True,
+        db_column='email',
+        help_text="Email Address (EMAIL) - Character 50"
+    )
+    
+    # ==========================================
+    # POSTAL ADDRESS
+    # ==========================================
+    
+    address_line1 = models.CharField(
+        max_length=100,
+        blank=True,
+        db_column='dadd1',
         help_text="Postal Address Line 1 (DADD1) - Character 25"
     )
-    dadd2 = models.CharField(
-        max_length=25,
+    
+    address_line2 = models.CharField(
+        max_length=100,
         blank=True,
+        db_column='dadd2',
         help_text="Postal Address Line 2 (DADD2) - Character 25"
     )
-    dadd3 = models.CharField(
-        max_length=25,
+    
+    address_line3 = models.CharField(
+        max_length=100,
         blank=True,
+        db_column='dadd3',
         help_text="Postal Address Line 3 (DADD3) - Character 25"
     )
-    dpcode = models.CharField(
-        max_length=4,
+    
+    postal_code = models.CharField(
+        max_length=10,
         blank=True,
+        db_column='dpcode',
         help_text="Postal Code (DPCODE) - Character 4"
     )
     
-    # Delivery Address
-    delad1 = models.CharField(
-        max_length=25,
+    # ==========================================
+    # DELIVERY ADDRESS
+    # ==========================================
+    
+    delivery_address1 = models.CharField(
+        max_length=100,
         blank=True,
+        db_column='delad1',
         help_text="Delivery Address Line 1 (DELAD1) - Character 25"
     )
-    delad2 = models.CharField(
-        max_length=25,
+    
+    delivery_address2 = models.CharField(
+        max_length=100,
         blank=True,
+        db_column='delad2',
         help_text="Delivery Address Line 2 (DELAD2) - Character 25"
     )
-    delad3 = models.CharField(
-        max_length=25,
+    
+    delivery_address3 = models.CharField(
+        max_length=100,
         blank=True,
+        db_column='delad3',
         help_text="Delivery Address Line 3 (DELAD3) - Character 25"
     )
-    delad4 = models.CharField(
-        max_length=25,
+    
+    delivery_address4 = models.CharField(
+        max_length=100,
         blank=True,
+        db_column='delad4',
         help_text="Delivery Address Line 4 (DELAD4) - Character 25"
     )
     
-    # Business Identifiers
-    dtaxno = models.CharField(
+    # ==========================================
+    # BUSINESS IDENTIFIERS
+    # ==========================================
+    
+    tax_number = models.CharField(
+        max_length=30,
+        blank=True,
+        db_column='dtaxno',
+        help_text="Tax/Company Registration Number (DTAXNO) - Character 20"
+    )
+    
+    vat_reference = models.CharField(
         max_length=20,
         blank=True,
-        help_text="Tax No. (DTAXNO) - Character 20"
+        db_column='vatref',
+        help_text="VAT Registration Number (VATREF) - Character 10"
     )
     
-    # Sales Area & Salesman
-    darea = models.PositiveIntegerField(
-        default=0,
+    # ==========================================
+    # SALES AREA & SALESMAN
+    # ==========================================
+    
+    area_code = models.IntegerField(
+        null=True,
+        blank=True,
+        db_column='darea',
         validators=[MinValueValidator(0), MaxValueValidator(99)],
-        help_text="Salesman/Area # (DAREA) - Numeric 2"
+        help_text="Salesman/Area Number (DAREA) - Numeric 2"
     )
     
-    # Account Configuration
-    acctype = models.CharField(
+    # ==========================================
+    # ACCOUNT CONFIGURATION
+    # ==========================================
+    
+    account_type = models.CharField(
         max_length=1,
-        choices=ACCOUNT_CATEGORY_CHOICES,
+        choices=ACCOUNT_TYPE_CHOICES,
         default='',
-        help_text="Account Category/Type (ACCTYPE) - Blank=Balance Forward, O=Open Item, C=Cash"
+        db_column='acctype',
+        help_text="Account Type (ACCTYPE) - Blank=Balance Forward, O=Open Item, C=Cash, N=Normal, B=COD",
+        blank=True
     )
-    price = models.PositiveIntegerField(
+    
+    price_level = models.IntegerField(
         default=1,
+        choices=PRICE_LEVEL_CHOICES,
         validators=[MinValueValidator(1), MaxValueValidator(3)],
-        help_text="Price Level (PRICE) - Numeric 1 (1, 2, or 3)"
+        db_column='price',
+        help_text="Price Level (PRICE) - Numeric 1 (1=Retail, 2=Trade, 3=Wholesale)"
     )
-    terms = models.PositiveIntegerField(
+    
+    payment_terms = models.IntegerField(
         default=30,
         validators=[MinValueValidator(0), MaxValueValidator(999)],
-        help_text="Payment Terms (TERMS) - Numeric 3 (in days)"
+        db_column='terms',
+        help_text="Payment Terms in Days (TERMS) - Numeric 3"
     )
     
-    # Discount Settings
-    ddiscper = models.DecimalField(
+    # ==========================================
+    # DISCOUNT SETTINGS
+    # ==========================================
+    
+    discount_percentage = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        default=0,
-        validators=[MinValueValidator(0), MaxValueValidator(100)],
-        help_text="Discount % (DDISCPER) - Numeric 10.2"
+        default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0')), MaxValueValidator(Decimal('100'))],
+        db_column='ddiscper',
+        help_text="Standard Discount % (DDISCPER) - Numeric 10.2"
     )
-    pdisc = models.DecimalField(
+    
+    prompt_payment_discount = models.DecimalField(
         max_digits=6,
         decimal_places=2,
-        default=0,
-        validators=[MinValueValidator(0), MaxValueValidator(100)],
-        help_text="Prompt Discount (PDISC) - Numeric 6.2"
+        default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0')), MaxValueValidator(Decimal('100'))],
+        db_column='pdisc',
+        help_text="Prompt Payment Discount % (PDISC) - Numeric 6.2"
     )
-    discprn = models.CharField(
+    
+    discount_printable = models.CharField(
         max_length=1,
         choices=[('Y', 'Yes'), ('N', 'No')],
         default='N',
-        help_text="Print Discount on Invoice (DISCPRN) - Character 1"
+        db_column='discprn',
+        help_text="Print Discount on Invoice (DISCPRN) - Y/N"
     )
     
-    # Credit Limit
-    dclimit = models.DecimalField(
+    # ==========================================
+    # CREDIT MANAGEMENT
+    # ==========================================
+    
+    credit_limit = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        default=0,
-        validators=[MinValueValidator(0)],
+        default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0'))],
+        db_column='dclimit',
         help_text="Credit Limit (DCLIMIT) - Numeric 12.2"
     )
     
-    # Interest & Block Flags
-    dintflag = models.CharField(
+    # ==========================================
+    # ACCOUNT STATUS FLAGS
+    # ==========================================
+    
+    block_flag = models.CharField(
+        max_length=1,
+        choices=BLOCK_FLAG_CHOICES,
+        default='0',
+        db_column='blockflag',
+        help_text="Block Account (BLOCKFLAG) - 0=Active, 1=Credit Hold, 2=Closed, 3=No Delivery"
+    )
+    
+    interest_flag = models.CharField(
         max_length=1,
         choices=INTEREST_FLAG_CHOICES,
         default='N',
-        help_text="Charge Interest Y/N (DINTFLAG) - Character 1"
+        db_column='dintflag',
+        help_text="Charge Interest (DINTFLAG) - Y/N"
     )
-    blockflag = models.CharField(
-        max_length=1,
-        choices=[('Y', 'Blocked'), ('N', 'Active')],
-        default='N',
-        help_text="Block Account (BLOCKFLAG) - Character 1"
-    )
-    dposbal = models.CharField(
+    
+    positive_balance_only = models.CharField(
         max_length=1,
         choices=[('Y', 'Yes'), ('N', 'No')],
         default='Y',
-        help_text="Print Account Balance on POS (DPOSBAL) - Character 1"
+        db_column='dposbal',
+        help_text="Print Account Balance on POS (DPOSBAL) - Y/N"
     )
     
-    # Account Balances (DMAST aging buckets)
-    dbalbfwd = models.DecimalField(
-        max_digits=10,
+    # ==========================================
+    # AGING BALANCES (All in ZAR)
+    # ==========================================
+    
+    balance_brought_forward = models.DecimalField(
+        max_digits=12,
         decimal_places=2,
-        default=0,
-        help_text="Balance B/F from Previous Month (DBALBFWD) - Numeric 10.2"
-    )
-    dcrnt = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=0,
-        help_text="Current Balance (DCRNT) - Numeric 10.2"
-    )
-    d30 = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=0,
-        help_text="30 Day Balance (D30) - Numeric 10.2"
-    )
-    d60 = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=0,
-        help_text="60 Day Balance (D60) - Numeric 10.2"
-    )
-    d90 = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=0,
-        help_text="90 Day Balance (D90) - Numeric 10.2"
-    )
-    d120 = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=0,
-        help_text="120 Day Balance (D120) - Numeric 10.2"
-    )
-    d150 = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=0,
-        help_text="150 Day Balance (D150) - Numeric 10.2"
-    )
-    d180 = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=0,
-        help_text="180 Day Balance (D180) - Numeric 10.2"
+        default=Decimal('0.00'),
+        db_column='dbalbfwd',
+        help_text="Balance Brought Forward (DBALBFWD) - Numeric 10.2"
     )
     
-    # Sales & Profit Statistics
-    dsalesm = models.DecimalField(
-        max_digits=10,
+    balance_current = models.DecimalField(
+        max_digits=12,
         decimal_places=2,
-        default=0,
-        help_text="Sales Total for Month (DSALESM) - Numeric 10.2"
+        default=Decimal('0.00'),
+        db_column='dcrnt',
+        help_text="Current Month Balance (DCRNT) - Numeric 10.2"
     )
-    dsalesy = models.DecimalField(
-        max_digits=10,
+    
+    balance_30_days = models.DecimalField(
+        max_digits=12,
         decimal_places=2,
-        default=0,
+        default=Decimal('0.00'),
+        db_column='d30',
+        help_text="30 Days Balance (D30) - Numeric 10.2"
+    )
+    
+    balance_60_days = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        db_column='d60',
+        help_text="60 Days Balance (D60) - Numeric 10.2"
+    )
+    
+    balance_90_days = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        db_column='d90',
+        help_text="90 Days Balance (D90) - Numeric 10.2"
+    )
+    
+    balance_120_days = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        db_column='d120',
+        help_text="120 Days Balance (D120) - Numeric 10.2"
+    )
+    
+    balance_150_days = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        db_column='d150',
+        help_text="150 Days Balance (D150) - Numeric 10.2"
+    )
+    
+    balance_180_days = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        db_column='d180',
+        help_text="180+ Days Balance (D180) - Numeric 10.2"
+    )
+    
+    # ==========================================
+    # SALES & PROFIT STATISTICS
+    # ==========================================
+    
+    sales_month = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        db_column='dsalesm',
+        help_text="Sales Total for Current Month (DSALESM) - Numeric 10.2"
+    )
+    
+    sales_year = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        db_column='dsalesy',
         help_text="Sales Total for Year (DSALESY) - Numeric 10.2"
     )
-    dprofitm = models.DecimalField(
-        max_digits=10,
+    
+    profit_month = models.DecimalField(
+        max_digits=12,
         decimal_places=2,
-        default=0,
-        help_text="Profit for Month (DPROFITM) - Numeric 10.2"
+        default=Decimal('0.00'),
+        db_column='dprofitm',
+        help_text="Profit for Current Month (DPROFITM) - Numeric 10.2"
     )
-    dprofity = models.DecimalField(
-        max_digits=10,
+    
+    profit_year = models.DecimalField(
+        max_digits=12,
         decimal_places=2,
-        default=0,
+        default=Decimal('0.00'),
+        db_column='dprofity',
         help_text="Profit for Year (DPROFITY) - Numeric 10.2"
     )
     
-    # Payment Tracking
-    damtlpd = models.DecimalField(
-        max_digits=10,
+    # ==========================================
+    # PAYMENT TRACKING
+    # ==========================================
+    
+    last_payment_amount = models.DecimalField(
+        max_digits=12,
         decimal_places=2,
-        default=0,
-        help_text="Amount Last Paid (DAMTLPD) - Numeric 10.2"
+        default=Decimal('0.00'),
+        db_column='damtlpd',
+        help_text="Amount of Last Payment (DAMTLPD) - Numeric 10.2"
     )
-    ddatlpd = models.DateField(
+    
+    last_payment_date = models.DateField(
         null=True,
         blank=True,
-        help_text="Date Last Paid (DDATLPD) - Date 8"
+        db_column='ddatlpd',
+        help_text="Date of Last Payment (DDATLPD) - Date 8"
     )
     
-    is_active = models.BooleanField(default=True)
+    # ==========================================
+    # METADATA
+    # ==========================================
+    
+    date_opened = models.DateField(
+        null=True,
+        blank=True,
+        db_column='dateopened',
+        help_text="Date Account Opened (DATEOPENED) - Date 8"
+    )
+    
+    notes = models.TextField(
+        blank=True,
+        db_column='notes',
+        help_text="Additional Notes (NOTES) - Memo field"
+    )
+    
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Active status (for soft delete)"
+    )
     
     class Meta:
-        ordering = ['dno']
-        verbose_name = 'Debtor Master (DMAST)'
-        verbose_name_plural = 'Debtor Masters (DMAST)'
+        db_table = 'dmast'
+        ordering = ['customer_number']
+        verbose_name = 'Debtor'
+        verbose_name_plural = 'Debtors'
         indexes = [
-            models.Index(fields=['dsname']),
-            models.Index(fields=['darea']),
-            models.Index(fields=['is_active']),
-            models.Index(fields=['blockflag']),
+            models.Index(fields=['customer_number'], name='idx_dno'),
+            models.Index(fields=['short_name'], name='idx_dsname'),
+            models.Index(fields=['name'], name='idx_dname'),
+            models.Index(fields=['area_code'], name='idx_darea'),
+            models.Index(fields=['block_flag'], name='idx_blockflag'),
+            models.Index(fields=['-balance_current'], name='idx_balance_curr'),
+            models.Index(fields=['is_active'], name='idx_is_active'),
         ]
     
     def __str__(self):
-        return f"{self.dno} - {self.dname}"
+        return f"{self.customer_number} - {self.name}"
+    
+    # ==========================================
+    # VALIDATION
+    # ==========================================
     
     def clean(self):
-        """Validate debtor data."""
-        # Credit limit must be non-negative
-        if self.dclimit < 0:
-            raise ValidationError({'dclimit': 'Credit limit cannot be negative.'})
+        """Validate debtor data according to business rules."""
+        errors = {}
         
-        # Discount percentages must be 0-100
-        if not 0 <= self.ddiscper <= 100:
-            raise ValidationError({'ddiscper': 'Discount percentage must be between 0 and 100.'})
+        # Credit limit validation
+        if self.credit_limit < 0:
+            errors['credit_limit'] = 'Credit limit cannot be negative.'
         
-        if not 0 <= self.pdisc <= 100:
-            raise ValidationError({'pdisc': 'Prompt discount must be between 0 and 100.'})
+        # Discount validation
+        if not 0 <= self.discount_percentage <= 100:
+            errors['discount_percentage'] = 'Discount percentage must be between 0 and 100.'
         
-        # Price level must be 1-3
-        if not 1 <= self.price <= 3:
-            raise ValidationError({'price': 'Price level must be between 1 and 3.'})
+        if not 0 <= self.prompt_payment_discount <= 100:
+            errors['prompt_payment_discount'] = 'Prompt discount must be between 0 and 100.'
         
-        # Terms must be non-negative
-        if self.terms < 0:
-            raise ValidationError({'terms': 'Payment terms must be non-negative.'})
+        # Price level validation
+        if not 1 <= self.price_level <= 3:
+            errors['price_level'] = 'Price level must be between 1 and 3.'
+        
+        # Payment terms validation
+        if self.payment_terms < 0:
+            errors['payment_terms'] = 'Payment terms cannot be negative.'
         
         # Cash customers should not have credit limit
-        if self.acctype == 'C' and self.dclimit > 0:
-            raise ValidationError({'dclimit': 'Cash customers should not have a credit limit.'})
+        if self.account_type == 'C' and self.credit_limit > 0:
+            errors['credit_limit'] = 'Cash customers should not have a credit limit.'
+        
+        # VAT number validation (South African format: 10 digits)
+        if self.vat_reference and len(self.vat_reference.replace(' ', '')) not in [0, 10]:
+            errors['vat_reference'] = 'VAT number should be 10 digits (South African format).'
+        
+        if errors:
+            raise ValidationError(errors)
     
     def save(self, *args, **kwargs):
-        """Save debtor record."""
+        """Validate and save."""
         self.full_clean()
         super().save(*args, **kwargs)
     
-    def get_total_balance(self):
-        """Calculate total balance across all aging buckets."""
+    # ==========================================
+    # COMPUTED PROPERTIES
+    # ==========================================
+    
+    @property
+    def total_balance(self):
+        """Calculate total outstanding balance across all aging buckets."""
         return (
-            self.dcrnt + self.d30 + self.d60 + self.d90 +
-            self.d120 + self.d150 + self.d180
+            self.balance_brought_forward +
+            self.balance_current +
+            self.balance_30_days +
+            self.balance_60_days +
+            self.balance_90_days +
+            self.balance_120_days +
+            self.balance_150_days +
+            self.balance_180_days
         )
     
-    def get_overdue_balance(self):
-        """Get balance over 30 days old."""
+    @property
+    def overdue_balance(self):
+        """Get balance over 30 days old (excluding current)."""
         return (
-            self.d30 + self.d60 + self.d90 +
-            self.d120 + self.d150 + self.d180
+            self.balance_30_days +
+            self.balance_60_days +
+            self.balance_90_days +
+            self.balance_120_days +
+            self.balance_150_days +
+            self.balance_180_days
         )
+    
+    @property
+    def is_over_credit_limit(self):
+        """Check if customer has exceeded credit limit."""
+        return self.total_balance > self.credit_limit
+    
+    @property
+    def credit_available(self):
+        """Calculate available credit."""
+        available = self.credit_limit - self.total_balance
+        return max(Decimal('0.00'), available)
+    
+    @property
+    def is_blocked(self):
+        """Check if account is blocked (any block status)."""
+        return self.block_flag in ['1', '2', '3', 'Y']
+    
+    @property
+    def is_trading(self):
+        """Check if account is actively trading (not closed)."""
+        return self.block_flag not in ['2'] and self.is_active
+    
+    @property
+    def charges_interest(self):
+        """Check if interest should be charged."""
+        return self.interest_flag == 'Y'
+    
+    # ==========================================
+    # BUSINESS METHODS
+    # ==========================================
     
     def get_aged_balance(self, days):
-        """Get  balance for specific age bucket."""
-        if days == 0:
-            return self.dcrnt
-        elif days == 30:
-            return self.d30
-        elif days == 60:
-            return self.d60
-        elif days == 90:
-            return self.d90
-        elif days == 120:
-            return self.d120
-        elif days == 150:
-            return self.d150
-        elif days == 180:
-            return self.d180
-        return Decimal(0)
+        """
+        Get balance for specific age bucket.
+        
+        Args:
+            days (int): Age bucket (0, 30, 60, 90, 120, 150, 180)
+        
+        Returns:
+            Decimal: Balance for that age bucket
+        """
+        age_map = {
+            0: self.balance_current,
+            30: self.balance_30_days,
+            60: self.balance_60_days,
+            90: self.balance_90_days,
+            120: self.balance_120_days,
+            150: self.balance_150_days,
+            180: self.balance_180_days,
+        }
+        return age_map.get(days, Decimal('0.00'))
     
-    def is_blocked(self):
-        """Check if account is blocked."""
-        return self.blockflag == 'Y'
-    
-    def set_blocked(self, blocked=True):
-        """Block or unblock account."""
-        self.blockflag = 'Y' if blocked else 'N'
-        self.save(update_fields=['blockflag'])
+    def set_blocked(self, blocked=True, reason='1'):
+        """
+        Block or unblock account.
+        
+        Args:
+            blocked (bool): True to block, False to unblock
+            reason (str): Block reason code (1=Credit Hold, 2=Closed, 3=No Delivery)
+        """
+        if blocked:
+            self.block_flag = reason if reason in ['1', '2', '3'] else '1'
+        else:
+            self.block_flag = '0'
+        self.save(update_fields=['block_flag', 'updated_at'])
     
     def set_interest_flag(self, charge_interest=True):
-        """Set whether to charge interest."""
-        self.dintflag = 'Y' if charge_interest else 'N'
-        self.save(update_fields=['dintflag'])
+        """
+        Set whether to charge interest on overdue balances.
+        
+        Args:
+            charge_interest (bool): True to charge interest, False otherwise
+        """
+        self.interest_flag = 'Y' if charge_interest else 'N'
+        self.save(update_fields=['interest_flag', 'updated_at'])
+    
+    def update_last_payment(self, amount, payment_date=None):
+        """
+        Update last payment information.
+        
+        Args:
+            amount (Decimal): Payment amount
+            payment_date (date): Payment date (defaults to today)
+        """
+        self.last_payment_amount = amount
+        self.last_payment_date = payment_date or date.today()
+        self.save(update_fields=['last_payment_amount', 'last_payment_date', 'updated_at'])
+    
+    def get_aging_summary(self):
+        """
+        Get aging summary as a dictionary.
+        
+        Returns:
+            dict: Aging buckets with labels and amounts
+        """
+        return {
+            'current': {'label': 'Current', 'amount': self.balance_current},
+            '30_days': {'label': '30 Days', 'amount': self.balance_30_days},
+            '60_days': {'label': '60 Days', 'amount': self.balance_60_days},
+            '90_days': {'label': '90 Days', 'amount': self.balance_90_days},
+            '120_days': {'label': '120 Days', 'amount': self.balance_120_days},
+            '150_days': {'label': '150 Days', 'amount': self.balance_150_days},
+            '180_days': {'label': '180+ Days', 'amount': self.balance_180_days},
+            'total': {'label': 'Total Outstanding', 'amount': self.total_balance},
+        }
+    
+    def check_credit_approval(self, amount):
+        """
+        Check if a transaction amount can be approved within credit limit.
+        
+        Args:
+            amount (Decimal): Transaction amount
+        
+        Returns:
+            tuple: (approved: bool, reason: str)
+        """
+        # Cash customers always approved
+        if self.account_type == 'C':
+            return (True, 'Cash customer')
+        
+        # Blocked accounts denied
+        if self.is_blocked:
+            return (False, f'Account blocked: {self.get_block_flag_display()}')
+        
+        # Check credit limit
+        new_balance = self.total_balance + amount
+        if new_balance > self.credit_limit:
+            return (False, f'Would exceed credit limit by R{new_balance - self.credit_limit:.2f}')
+        
+        return (True, 'Approved')
 
 
-class AuditLog(TimeStampedModel):
-    """Audit log for sensitive debtor changes."""
+
+
+
+
+class DebtorTransactionQuerySet(models.QuerySet):
+    """Custom QuerySet for DebtorTransaction with business logic helpers."""
     
-    CHANGE_TYPE_CHOICES = [
-        ('BLOCK', 'Account Blocked'),
-        ('UNBLOCK', 'Account Unblocked'),
-        ('CREDIT_LIMIT', 'Credit Limit Changed'),
-        ('INTEREST', 'Interest Charged'),
-        ('PAYMENT', 'Payment Recorded'),
-        ('BALANCE', 'Balance Adjusted'),
-    ]
+    def invoices(self):
+        """Filter to invoice and cash sale transactions (revenue-generating)."""
+        return self.filter(transaction_type__in=['IN', 'CS'])
     
-    debtor = models.ForeignKey(
-        Debtor,
-        on_delete=models.CASCADE,
-        related_name='audit_logs'
-    )
-    change_type = models.CharField(max_length=20, choices=CHANGE_TYPE_CHOICES)
-    old_value = models.TextField(blank=True)
-    new_value = models.TextField(blank=True)
-    changed_by = models.CharField(max_length=200, blank=True)
-    description = models.TextField(blank=True)
+    def payments(self):
+        """Filter to payment and receipt transactions (inbound money)."""
+        return self.filter(transaction_type__in=['PM', 'RCP'])
     
-    class Meta:
-        ordering = ['-created_at']
-        indexes = [
-            models.Index(fields=['debtor', 'created_at']),
-            models.Index(fields=['change_type', 'created_at']),
-        ]
+    def credits(self):
+        """Filter to credit notes, returns, and refunds (reductions)."""
+        return self.filter(transaction_type__in=['CN', 'CR', 'RF'])
     
-    def __str__(self):
-        return f"{self.debtor.account_number} - {self.change_type}"
+    def journal_entries(self):
+        """Filter to manual journal entries."""
+        return self.filter(transaction_type__in=['JD', 'JC'])
+    
+    def interest_charges(self):
+        """Filter to interest charge transactions."""
+        return self.filter(transaction_type__in=['INT'])
+    
+    def by_period(self, start_date, end_date):
+        """Filter transactions within a date range."""
+        return self.filter(transaction_date__range=[start_date, end_date])
+    
+    def outstanding(self):
+        """Filter to outstanding (unallocated) transactions."""
+        return self.filter(is_allocated=False)
+    
+    def allocated(self):
+        """Filter to fully allocated transactions."""
+        return self.filter(is_allocated=True)
+    
+    def by_source(self, source):
+        """Filter transactions by source type."""
+        return self.filter(source_type=source)
+    
+    def aging_analysis(self, as_of_date=None):
+        """
+        Get aging analysis of outstanding transactions.
+        Returns aggregated amounts by age bucket.
+        """
+        from django.db.models import Sum, Q
+        from datetime import timedelta
+        
+        as_of = as_of_date or date.today()
+        
+        outstanding = self.filter(is_allocated=False)
+        
+        return outstanding.aggregate(
+            current=Sum(
+                'total_amount',
+                filter=Q(transaction_date__gte=as_of - timedelta(days=30))
+            ),
+            days_30_60=Sum(
+                'total_amount',
+                filter=Q(transaction_date__gte=as_of - timedelta(days=60))
+                & Q(transaction_date__lt=as_of - timedelta(days=30))
+            ),
+            days_60_90=Sum(
+                'total_amount',
+                filter=Q(transaction_date__gte=as_of - timedelta(days=90))
+                & Q(transaction_date__lt=as_of - timedelta(days=60))
+            ),
+            days_90_plus=Sum(
+                'total_amount',
+                filter=Q(transaction_date__lt=as_of - timedelta(days=90))
+            ),
+        )
+
+
+class DebtorTransactionManager(models.Manager):
+    """Custom manager for DebtorTransaction."""
+    
+    def get_queryset(self):
+        """Return custom QuerySet."""
+        return DebtorTransactionQuerySet(self.model, using=self._db)
+    
+    # Proxy methods for convenience
+    def invoices(self):
+        return self.get_queryset().invoices()
+    
+    def payments(self):
+        return self.get_queryset().payments()
+    
+    def credits(self):
+        return self.get_queryset().credits()
+    
+    def journal_entries(self):
+        return self.get_queryset().journal_entries()
+    
+    def interest_charges(self):
+        return self.get_queryset().interest_charges()
+    
+    def by_period(self, start_date, end_date):
+        return self.get_queryset().by_period(start_date, end_date)
+    
+    def outstanding(self):
+        return self.get_queryset().outstanding()
+    
+    def allocated(self):
+        return self.get_queryset().allocated()
+    
+    def by_source(self, source):
+        return self.get_queryset().by_source(source)
+    
+    def aging_analysis(self, as_of_date=None):
+        return self.get_queryset().aging_analysis(as_of_date)
 
 
 class DebtorTransaction(TimeStampedModel):
-    """Debtor Transactions (DEBTRAN table).
+    """
+    Debtor Transactions (DEBTRAN table)
     
-    Transactions on invoice sales, cash sales, C/N, Cash/Ret, Debtors Receipts.
-    Tracks all postings to debtor accounts.
+    All postings to debtor accounts including invoices, cash sales,
+    credit notes, receipts, and interest charges.
     """
     
     TRANSACTION_TYPE_CHOICES = [
@@ -417,282 +805,649 @@ class DebtorTransaction(TimeStampedModel):
         ('CN', 'Credit Note'),
         ('CS', 'Cash Sale'),
         ('CR', 'Cash Return'),
+        ('PM', 'Payment'),
         ('RCP', 'Receipt'),
         ('INT', 'Interest Charge'),
         ('JD', 'Journal Debit'),
         ('JC', 'Journal Credit'),
+        ('RF', 'Refund'),
     ]
     
     VAT_STATUS_CHOICES = [
-        ('S', 'Taxable'),
+        ('S', 'Standard Rated (15%)'),
         ('E', 'Exempt'),
         ('Z', 'Zero Rated'),
     ]
     
-    # Foreign Key to Debtor
-    dno = models.ForeignKey(
+    # Custom manager
+    objects = DebtorTransactionManager()
+    
+    # ==========================================
+    # FOREIGN KEYS
+    # ==========================================
+    
+    debtor = models.ForeignKey(
         Debtor,
         on_delete=models.PROTECT,
-        related_name='debtran_transactions',
-        help_text="Debtor account number (DNO)"
+        related_name='transactions',
+        db_column='dno',
+        help_text="Debtor Account Number (DNO)"
     )
     
-    # Transaction Identification
-    dtrano = models.CharField(
+    # ==========================================
+    # TRANSACTION IDENTIFICATION
+    # ==========================================
+    
+    transaction_number = models.CharField(
         max_length=6,
         db_index=True,
-        help_text="Transaction # (DTRANO) - Numeric 6"
+        db_column='dtrano',
+        help_text="Transaction Number (DTRANO) - Numeric 6"
     )
-    dtype = models.CharField(
+    
+    transaction_type = models.CharField(
         max_length=3,
         choices=TRANSACTION_TYPE_CHOICES,
+        db_column='dtype',
         help_text="Transaction Type (DTYPE) - Character 3"
     )
-    dtdate = models.DateField(
+    
+    transaction_date = models.DateField(
         db_index=True,
+        db_column='dtdate',
         help_text="Transaction Date (DTDATE) - Date 8"
     )
-    time = models.TimeField(
+    
+    transaction_time = models.TimeField(
         null=True,
         blank=True,
+        db_column='time',
         help_text="Transaction Time (TIME) - Character 8 (HH:MM:SS)"
     )
     
-    # Amounts
-    dtsub = models.DecimalField(
+    # ==========================================
+    # FINANCIAL AMOUNTS
+    # ==========================================
+    
+    subtotal = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        help_text="Total Excl. VAT (DTSUB) - Numeric 12.2"
+        db_column='dtsub',
+        help_text="Subtotal Excl. VAT (DTSUB) - Numeric 12.2"
     )
-    dtgst = models.DecimalField(
+    
+    vat_amount = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        default=0,
-        help_text="VAT (DTGST) - Numeric 12.2"
+        default=Decimal('0.00'),
+        db_column='dtgst',
+        help_text="VAT Amount (DTGST) - Numeric 12.2"
     )
-    dttot = models.DecimalField(
+    
+    total_amount = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        help_text="Transaction Total (DTTOT) - Numeric 12.2"
+        db_column='dttot',
+        help_text="Transaction Total Incl. VAT (DTTOT) - Numeric 12.2"
     )
-    dtaxstat = models.CharField(
+    
+    vat_status = models.CharField(
         max_length=1,
         choices=VAT_STATUS_CHOICES,
         default='S',
+        db_column='dtaxstat',
         help_text="VAT Status (DTAXSTAT) - Character 1"
     )
     
-    # Source & References
-    source = models.PositiveIntegerField(
+    # ==========================================
+    # SOURCE & REFERENCES
+    # ==========================================
+    
+    source_station = models.PositiveIntegerField(
         default=0,
         validators=[MaxValueValidator(99)],
-        help_text="Station No. (SOURCE) - Numeric 2"
-    )
-    ordno = models.CharField(
-        max_length=10,
-        blank=True,
-        help_text="Order # (ORDNO) - Character 10"
-    )
-    custref = models.CharField(
-        max_length=10,
-        blank=True,
-        help_text="Customer Ref (CUSTREF) - Character 10"
+        db_column='source',
+        help_text="Station/Till Number (SOURCE) - Numeric 2"
     )
     
-    # Delivery Details
-    del1 = models.CharField(
-        max_length=25,
+    order_number = models.CharField(
+        max_length=10,
         blank=True,
-        help_text="Delivery Details Line 1 (DEL1) - Character 25"
+        db_column='ordno',
+        help_text="Order Number (ORDNO) - Character 10"
     )
-    del2 = models.CharField(
-        max_length=25,
+    
+    customer_reference = models.CharField(
+        max_length=10,
         blank=True,
-        help_text="Delivery Details Line 2 (DEL2) - Character 25"
+        db_column='custref',
+        help_text="Customer Reference (CUSTREF) - Character 10"
     )
-    del3 = models.CharField(
-        max_length=25,
+    
+    vat_reference = models.CharField(
+        max_length=10,
         blank=True,
-        help_text="Delivery Details Line 3 (DEL3) - Character 25"
+        db_column='vatref',
+        help_text="VAT Reference (VATREF) - Character 10"
     )
-    del4 = models.CharField(
-        max_length=25,
+    
+    station = models.CharField(
+        max_length=5,
         blank=True,
-        help_text="Delivery Details Line 4 (DEL4) - Character 25"
+        db_column='station',
+        help_text="Station Code (STATION) - Character 2"
+    )
+    
+    # ==========================================
+    # DELIVERY/DESCRIPTION DETAILS
+    # ==========================================
+    
+    description_line1 = models.CharField(
+        max_length=100,
+        blank=True,
+        db_column='del1',
+        help_text="Delivery/Description Line 1 (DEL1) - Character 25"
+    )
+    
+    description_line2 = models.CharField(
+        max_length=100,
+        blank=True,
+        db_column='del2',
+        help_text="Delivery/Description Line 2 (DEL2) - Character 25"
+    )
+    
+    description_line3 = models.CharField(
+        max_length=100,
+        blank=True,
+        db_column='del3',
+        help_text="Delivery/Description Line 3 (DEL3) - Character 25"
+    )
+    
+    description_line4 = models.CharField(
+        max_length=100,
+        blank=True,
+        db_column='del4',
+        help_text="Delivery/Description Line 4 (DEL4) - Character 25"
+    )
+    
+    # ==========================================
+    # SOURCE TRACKING
+    # ==========================================
+    
+    SOURCE_CHOICES = [
+        ('POS', 'Point of Sale'),
+        ('INVOICE', 'Invoice Entry'),
+        ('IMPORT', 'Bulk Import'),
+        ('MANUAL', 'Manual Entry'),
+    ]
+    
+    source_type = models.CharField(
+        max_length=20,
+        choices=SOURCE_CHOICES,
+        default='POS',
+        help_text="Source of transaction (POS, Invoice, Import, Manual)"
+    )
+    
+    source_reference = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Link to original record (invoice ID, import batch ID, etc)"
+    )
+    
+    # ==========================================
+    # ALLOCATION STATUS
+    # ==========================================
+    
+    is_allocated = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Whether transaction has been fully allocated/paid"
+    )
+    
+    # ==========================================
+    # STATUS
+    # ==========================================
+    
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('posted', 'Posted'),
+        ('void', 'Void'),
+        ('reversed', 'Reversed'),
+    ]
+    
+    status = models.CharField(
+        max_length=10,
+        choices=STATUS_CHOICES,
+        default='posted',
+        help_text="Transaction status"
+    )
+    
+    created_by = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="User who created transaction"
     )
     
     class Meta:
-        ordering = ['-dtdate', '-dtrano']
-        verbose_name = 'Debtor Transaction (DEBTRAN)'
-        verbose_name_plural = 'Debtor Transactions (DEBTRAN)'
-        unique_together = ['dno', 'dtrano', 'dtdate']
+        db_table = 'debtran'
+        ordering = ['-transaction_date', '-transaction_number']
+        verbose_name = 'Debtor Transaction'
+        verbose_name_plural = 'Debtor Transactions'
+        unique_together = [['debtor', 'transaction_number', 'transaction_date']]
         indexes = [
-            models.Index(fields=['dno', 'dtdate']),
-            models.Index(fields=['dtype', 'dtdate']),
-            models.Index(fields=['dtdate']),
+            models.Index(fields=['debtor', '-transaction_date'], name='idx_deb_tran_date'),
+            models.Index(fields=['transaction_type', '-transaction_date'], name='idx_tran_type_date'),
+            models.Index(fields=['transaction_number'], name='idx_dtrano'),
+            models.Index(fields=['status'], name='idx_tran_status'),
+            models.Index(fields=['source_type'], name='idx_tran_source_type'),
+            models.Index(fields=['is_allocated'], name='idx_tran_allocated'),
+            models.Index(fields=['debtor', 'is_allocated', '-transaction_date'], name='idx_deb_alloc_date'),
         ]
     
     def __str__(self):
-        return f"DEBTRAN {self.dno.dno} - {self.dtrano} ({self.dtdate})"
+        return f"{self.transaction_number} - {self.debtor.name} ({self.transaction_date})"
     
     def clean(self):
         """Validate transaction data."""
-        if self.dtsub < 0:
-            raise ValidationError('Amount excl. VAT cannot be negative.')
-        if self.dtgst < 0:
-            raise ValidationError('VAT amount cannot be negative.')
-        if self.dttot <= 0 and self.dtype != 'CN':
-            raise ValidationError('Transaction total must be greater than zero.')
+        errors = {}
+        
+        # Amount validations
+        if self.subtotal < 0 and self.transaction_type not in ['CN', 'CR', 'RF']:
+            errors['subtotal'] = 'Subtotal cannot be negative for this transaction type.'
+        
+        if self.vat_amount < 0:
+            errors['vat_amount'] = 'VAT amount cannot be negative.'
+        
+        # Total should equal subtotal + VAT
+        expected_total = self.subtotal + self.vat_amount
+        if abs(self.total_amount - expected_total) > Decimal('0.01'):
+            errors['total_amount'] = f'Total should equal subtotal + VAT (expected {expected_total})'
+        
+        # Credit notes and returns should have negative amounts
+        if self.transaction_type in ['CN', 'CR', 'RF'] and self.total_amount > 0:
+            errors['total_amount'] = 'Credit transactions should have negative amounts'
+        
+        if errors:
+            raise ValidationError(errors)
     
     def save(self, *args, **kwargs):
-        """Validate before saving."""
+        """Validate and save."""
         self.full_clean()
         super().save(*args, **kwargs)
-
-
-class Invoice(PostingStatusMixin, TimeStampedModel):
-    """Customer invoice with state machine workflow."""
     
-    STATUS_CHOICES = [
-        ('DRAFT', 'Draft'),
-        ('POSTED', 'Posted'),
-        ('PAID', 'Paid'),
-        ('PARTIAL_PAID', 'Partially Paid'),
-        ('OVERDUE', 'Overdue'),
-        ('CANCELLED', 'Cancelled'),
+    @property
+    def is_debit(self):
+        """Check if transaction increases customer balance (debit)."""
+        return self.transaction_type in ['IN', 'CS', 'JD', 'INT']
+    
+    @property
+    def is_credit(self):
+        """Check if transaction decreases customer balance (credit)."""
+        return self.transaction_type in ['CN', 'CR', 'PM', 'RCP', 'JC', 'RF']
+    
+    @property
+    def signed_amount(self):
+        """Get amount with correct sign (positive for debits, negative for credits)."""
+        return self.total_amount if self.is_debit else -abs(self.total_amount)
+
+
+class DebtorOpenItem(TimeStampedModel):
+    """
+    Open Item Transactions (DEBTOPEN table)
+    
+    Tracks individual transactions for debtors using open item accounting.
+    Each transaction is allocated individually to receipts.
+    """
+    
+    TRANSACTION_TYPE_CHOICES = [
+        ('IN', 'Invoice'),
+        ('CN', 'Credit Note'),
+        ('PY', 'Payment'),
+        ('JD', 'Journal Debit'),
+        ('JC', 'Journal Credit'),
+        ('DM', 'Debit Memo'),
+        ('CM', 'Credit Memo'),
     ]
     
-    debtor = models.ForeignKey(Debtor, on_delete=models.PROTECT, related_name='invoices')
-    invoice_number = models.CharField(max_length=20, unique=True, db_index=True)
-    invoice_date = models.DateField(db_index=True)
+    AGING_CHOICES = [
+        ('0', 'Current'),
+        ('1', '30 Days'),
+        ('2', '60 Days'),
+        ('3', '90 Days'),
+        ('4', '120+ Days'),
+    ]
     
-    # Header Information
-    delivery_name = models.CharField(max_length=200, blank=True)
-    delivery_address_line1 = models.CharField(max_length=200, blank=True)
-    delivery_address_line2 = models.CharField(max_length=200, blank=True)
-    delivery_telephone = models.CharField(max_length=50, blank=True)
-    order_number = models.CharField(max_length=50, blank=True)
-    customer_reference = models.CharField(max_length=50, blank=True)
-    job_card_number = models.CharField(max_length=50, blank=True)
+    # ==========================================
+    # FOREIGN KEYS & IDENTIFICATION
+    # ==========================================
     
-    sales_area = models.ForeignKey(
-        SalesArea,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True
+    debtor = models.ForeignKey(
+        Debtor,
+        on_delete=models.CASCADE,
+        related_name='open_items',
+        db_column='dno',
+        help_text="Debtor Number (DNO)"
     )
     
-    # Totals
-    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    vat_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    transaction_number = models.CharField(
+        max_length=6,
+        db_column='dtrano',
+        help_text="Transaction Number (DTRANO) - Character 6"
+    )
     
-    # Cost and Profit
-    total_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    gross_profit = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    transaction_type = models.CharField(
+        max_length=2,
+        choices=TRANSACTION_TYPE_CHOICES,
+        db_column='type',
+        help_text="Transaction Type (TYPE) - Character 2"
+    )
     
-    # Status and Workflow
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT')
-    is_cancelled = models.BooleanField(default=False)  # Kept for backwards compatibility
+    transaction_date = models.DateField(
+        db_index=True,
+        db_column='date',
+        help_text="Transaction Date (DATE) - Date 8"
+    )
     
-    # Payment tracking
-    amount_paid = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    paid_date = models.DateField(null=True, blank=True)
+    # ==========================================
+    # FINANCIAL AMOUNTS
+    # ==========================================
+    
+    original_amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0'))],
+        db_column='total',
+        help_text="Original Transaction Total (TOTAL) - Numeric 14.2"
+    )
+    
+    balance_due = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0'))],
+        db_column='balancedue',
+        help_text="Current Balance Due (BALANCEDUE) - Numeric 14.2"
+    )
+    
+    # ==========================================
+    # STATUS & AGING
+    # ==========================================
+    
+    age_flag = models.CharField(
+        max_length=1,
+        choices=AGING_CHOICES,
+        default='0',
+        db_column='ageflag',
+        help_text="Aging Flag (AGEFLAG) - 0=Current, 1=30, 2=60, 3=90, 4=120+"
+    )
+    
+    posted = models.CharField(
+        max_length=10,
+        default='Y',
+        db_column='posted',
+        help_text="Posted Status (POSTED) - Y/N"
+    )
+    
+    due_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Payment due date"
+    )
+    
+    fully_paid = models.BooleanField(
+        default=False,
+        help_text="Fully allocated/paid flag"
+    )
     
     class Meta:
-        ordering = ['-invoice_date', '-invoice_number']
+        db_table = 'debtopen'
+        ordering = ['transaction_date', 'transaction_number']
+        verbose_name = 'Open Item Transaction'
+        verbose_name_plural = 'Open Item Transactions'
+        unique_together = [['debtor', 'transaction_number']]
         indexes = [
-            models.Index(fields=['debtor', 'invoice_date']),
-            models.Index(fields=['is_posted']),
-            models.Index(fields=['status']),
+            models.Index(fields=['debtor', 'transaction_date'], name='idx_dopen_deb_date'),
+            models.Index(fields=['posted', 'age_flag'], name='idx_dopen_post_age'),
+            models.Index(fields=['transaction_date', 'age_flag'], name='idx_dopen_date_age'),
+            models.Index(fields=['fully_paid'], name='idx_dopen_paid'),
         ]
     
     def __str__(self):
-        return f"Invoice {self.invoice_number}"
+        return f"{self.transaction_number} - {self.debtor.name} (Due: R{self.balance_due})"
     
     def clean(self):
-        """Validate invoice state."""
-        # Cannot modify posted invoices
-        if self.is_posted and self.pk:
-            orig = Invoice.objects.get(pk=self.pk)
-            if orig.is_posted and self.total_amount != orig.total_amount:
-                raise ValidationError('Cannot modify amounts on posted invoices.')
+        """Validate open item data."""
+        errors = {}
         
-        # Amount paid cannot exceed total
-        if self.amount_paid > self.total_amount:
-            raise ValidationError('Amount paid cannot exceed total invoice amount.')
+        if self.original_amount < 0:
+            errors['original_amount'] = 'Original amount cannot be negative.'
+        
+        if self.balance_due < 0:
+            errors['balance_due'] = 'Balance due cannot be negative.'
+        
+        if self.balance_due > self.original_amount:
+            errors['balance_due'] = 'Balance due cannot exceed original amount.'
+        
+        if errors:
+            raise ValidationError(errors)
     
-    def can_be_posted(self):
-        """Check if invoice can be posted."""
-        return self.status == 'DRAFT' and self.total_amount > 0 and not self.is_cancelled
+    def save(self, *args, **kwargs):
+        """Validate and save."""
+        # Auto-calculate due date if not set
+        if not self.due_date and self.debtor and self.transaction_date:
+            self.due_date = self.transaction_date + timezone.timedelta(
+                days=self.debtor.payment_terms
+            )
+        
+        # Auto-update aging flag
+        self.update_age_flag()
+        
+        # Mark as fully paid if balance is zero
+        if self.balance_due == 0:
+            self.fully_paid = True
+        
+        self.full_clean()
+        super().save(*args, **kwargs)
     
-    def mark_as_posted(self):
-        """Transition invoice to posted state."""
-        if not self.can_be_posted():
-            raise ValidationError(f'Invoice cannot be posted (current status: {self.status})')
-        self.status = 'POSTED'
-        self.is_posted = True
+    @property
+    def allocated_amount(self):
+        """Calculate amount allocated (original - balance due)."""
+        return self.original_amount - self.balance_due
+    
+    @property
+    def days_overdue(self):
+        """Calculate days past due date."""
+        if not self.due_date:
+            return 0
+        if self.due_date >= date.today():
+            return 0
+        return (date.today() - self.due_date).days
+    
+    def update_age_flag(self):
+        """Update aging flag based on days overdue."""
+        days = self.days_overdue
+        
+        if days <= 0:
+            self.age_flag = '0'  # Current
+        elif days <= 30:
+            self.age_flag = '1'  # 30 days
+        elif days <= 60:
+            self.age_flag = '2'  # 60 days
+        elif days <= 90:
+            self.age_flag = '3'  # 90 days
+        else:
+            self.age_flag = '4'  # 120+ days
+    
+    def allocate_payment(self, amount):
+        """
+        Allocate a payment against this open item.
+        
+        Args:
+            amount (Decimal): Payment amount to allocate
+        
+        Returns:
+            Decimal: Unused portion of payment (if any)
+        """
+        if amount <= 0:
+            return Decimal('0.00')
+        
+        # Allocate up to balance due
+        allocation = min(amount, self.balance_due)
+        self.balance_due -= allocation
+        
+        # Mark as fully paid if balance is zero
+        if self.balance_due == 0:
+            self.fully_paid = True
+        
         self.save()
-    
-    def mark_as_paid(self):
-        """Mark invoice as fully paid."""
-        if self.status in ['CANCELLED']:
-            raise ValidationError(f'Cannot mark {self.status} invoice as paid')
-        self.status = 'PAID'
-        self.amount_paid = self.total_amount
-        self.paid_date = date.today()
-        self.save()
-    
-    def mark_as_cancelled(self, reason=''):
-        """Cancel invoice."""
-        if self.status == 'PAID':
-            raise ValidationError('Cannot cancel a paid invoice')
-        self.status = 'CANCELLED'
-        self.is_cancelled = True
-        self.save()
+        
+        # Return unused portion
+        return amount - allocation
 
 
-class InvoiceLine(TimeStampedModel):
-    """Invoice line item."""
-    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='lines')
-    line_number = models.PositiveIntegerField()
+class DebtorAudit(TimeStampedModel):
+    """
+    Debtor Audit Trail (DEBTORAUD table)
     
-    stock_code = models.CharField(max_length=13, blank=True)
-    description = models.CharField(max_length=200)
-    quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    Complete audit log of all debtor transaction changes and allocations.
+    """
     
-    unit_price = models.DecimalField(max_digits=12, decimal_places=4)
-    discount_percentage = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        default=0
+    TRANSACTION_TYPE_CHOICES = [
+        ('IN', 'Invoice'),
+        ('CR', 'Credit Note'),
+        ('PA', 'Payment'),
+        ('AD', 'Adjustment'),
+        ('DM', 'Debit Memo'),
+        ('CM', 'Credit Memo'),
+        ('AL', 'Allocation'),
+    ]
+    
+    # ==========================================
+    # FOREIGN KEYS & IDENTIFICATION
+    # ==========================================
+    
+    debtor = models.ForeignKey(
+        Debtor,
+        on_delete=models.CASCADE,
+        related_name='audit_records',
+        db_column='dno',
+        help_text="Debtor Number (DNO)"
     )
-    tax_code = models.PositiveIntegerField(default=1)
     
-    # Calculated fields
-    line_total = models.DecimalField(max_digits=12, decimal_places=2)
-    vat_amount = models.DecimalField(max_digits=12, decimal_places=2)
-    cost_price = models.DecimalField(max_digits=12, decimal_places=4, default=0)
-    line_profit = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    transaction_number = models.CharField(
+        max_length=6,
+        db_column='dtrano',
+        help_text="Transaction Number (DTRANO) - Character 6"
+    )
+    
+    # ==========================================
+    # AUDIT DETAILS
+    # ==========================================
+    
+    transaction_type = models.CharField(
+        max_length=2,
+        choices=TRANSACTION_TYPE_CHOICES,
+        db_column='type',
+        help_text="Transaction Type (TYPE) - Character 2"
+    )
+    
+    current_type = models.CharField(
+        max_length=2,
+        choices=TRANSACTION_TYPE_CHOICES,
+        db_column='thistype',
+        help_text="Current Transaction Type (THISTYPE) - Character 2"
+    )
+    
+    current_transaction = models.CharField(
+        max_length=6,
+        db_column='thistran',
+        help_text="Current Transaction Number (THISTRAN) - Character 6"
+    )
+    
+    audit_date = models.DateField(
+        db_index=True,
+        db_column='date',
+        help_text="Audit Date (DATE) - Date 8"
+    )
+    
+    amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0'))],
+        db_column='amount',
+        help_text="Audit Amount (AMOUNT) - Numeric 12.2"
+    )
+    
+    # ==========================================
+    # ADDITIONAL TRACKING
+    # ==========================================
+    
+    performed_by = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="User who performed the action"
+    )
+    
+    notes = models.TextField(
+        blank=True,
+        help_text="Audit notes"
+    )
     
     class Meta:
-        ordering = ['line_number']
-        unique_together = ['invoice', 'line_number']
+        db_table = 'debtoraud'
+        ordering = ['-audit_date', '-created_at']
+        verbose_name = 'Debtor Audit Record'
+        verbose_name_plural = 'Debtor Audit Records'
+        unique_together = [['debtor', 'transaction_number', 'audit_date']]
+        indexes = [
+            models.Index(fields=['debtor', '-audit_date'], name='idx_daud_deb_date'),
+            models.Index(fields=['audit_date', 'transaction_type'], name='idx_daud_date_type'),
+            models.Index(fields=['transaction_type'], name='idx_daud_type'),
+        ]
     
     def __str__(self):
-        return f"{self.invoice.invoice_number} - Line {self.line_number}"
+        return f"Audit: {self.debtor.customer_number} - {self.transaction_number} ({self.audit_date})"
     
     def clean(self):
-        """Validate line item data."""
-        if self.quantity <= 0:
-            raise ValidationError('Quantity must be greater than zero.')
-        if self.unit_price < 0:
-            raise ValidationError('Unit price cannot be negative.')
-        if not 0 <= self.discount_percentage <= 100:
-            raise ValidationError('Discount percentage must be between 0 and 100.')
-        if self.cost_price < 0:
-            raise ValidationError('Cost price cannot be negative.')
+        """Validate audit data."""
+        if self.amount < 0:
+            raise ValidationError({'amount': 'Audit amount cannot be negative.'})
+    
+    def save(self, *args, **kwargs):
+        """Validate and save."""
+        self.full_clean()
+        super().save(*args, **kwargs)
+    
+    @staticmethod
+    def log_transaction(debtor, transaction_number, transaction_type, amount, 
+                       current_type=None, current_transaction=None, 
+                       performed_by='', notes=''):
+        """
+        Create an audit log entry.
+        
+        Args:
+            debtor: Debtor instance
+            transaction_number: Transaction number
+            transaction_type: Type of transaction
+            amount: Transaction amount
+            current_type: Current transaction type (for allocations)
+            current_transaction: Current transaction number (for allocations)
+            performed_by: Username of person performing action
+            notes: Additional notes
+        
+        Returns:
+            DebtorAudit: Created audit record
+        """
+        return DebtorAudit.objects.create(
+            debtor=debtor,
+            transaction_number=transaction_number,
+            transaction_type=transaction_type,
+            current_type=current_type or transaction_type,
+            current_transaction=current_transaction or transaction_number,
+            audit_date=date.today(),
+            amount=amount,
+            performed_by=performed_by,
+            notes=notes
+        )
 
 
 class PostDatedCheque(TimeStampedModel):

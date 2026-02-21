@@ -11,22 +11,21 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ArrowLeft, Download } from 'lucide-react';
-import { API_BASE_URL } from '@/lib/api-config';
+import { creditorsApi } from '@/lib/creditorsApi';
+import { AgedBalanceSummary } from '@/lib/types/creditors';
 
 interface SupplierData {
-  account_number: number;
-  account_name: string;
-  balances: {
-    current: number;
-    '30_days': number;
-    '60_days': number;
-    '90_days': number;
-    '120_days': number;
-    '150_days': number;
-    '180_days': number;
-    total: number;
-  };
-  status: string;
+  id: number;
+  supplier_number: string;
+  name: string;
+  balance_current: number;
+  balance_30_days: number;
+  balance_60_days: number;
+  balance_90_days: number;
+  balance_120_days: number;
+  balance_150_days: number;
+  balance_180_days: number;
+  total_outstanding_balance: number;
 }
 
 interface AgeAnalysisData {
@@ -68,21 +67,52 @@ export default function CreditorsSummaryEnquiry({ onBack }: { onBack: () => void
   const [ageData, setAgeData] = useState<AgeAnalysisData | null>(null);
   const [controlData, setControlData] = useState<ControlData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [sortByDisplay, setSortByDisplay] = useState('account_name'); // account_number, account_name, total
+  const [sortByDisplay, setSortByDisplay] = useState('name'); // supplier_number, name, total
 
   const fetchAgeAnalysis = async () => {
     setLoading(true);
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/creditors/enquiries/age_analysis/?order_by=${orderBy}&include_zero_balance=${includeZero}`,
+      // Map frontend orderBy to API order_by parameter
+      const orderMap: Record<string, string> = {
+        'A': 'name',
+        'N': 'supplier_number',
+        'V': '-total_outstanding_balance',
+      };
+      
+      const data = await creditorsApi.summary.ageAnalysis({
+        order_by: orderMap[orderBy],
+        include_zero_balance: includeZero,
+      });
+      
+      // Transform data to the expected format
+      const totals = data.reduce(
+        (acc, creditor) => ({
+          current: acc.current + creditor.balance_current,
+          '30_days': acc['30_days'] + creditor.balance_30_days,
+          '60_days': acc['60_days'] + creditor.balance_60_days,
+          '90_days': acc['90_days'] + creditor.balance_90_days,
+          '120_days': acc['120_days'] + creditor.balance_120_days,
+          '150_days': acc['150_days'] + creditor.balance_150_days,
+          '180_days': acc['180_days'] + creditor.balance_180_days,
+          total: acc.total + creditor.total_outstanding_balance,
+        }),
         {
-          credentials: 'include',
+          current: 0,
+          '30_days': 0,
+          '60_days': 0,
+          '90_days': 0,
+          '120_days': 0,
+          '150_days': 0,
+          '180_days': 0,
+          total: 0,
         }
       );
-      if (response.ok) {
-        const data = await response.json();
-        setAgeData(data);
-      }
+      
+      setAgeData({
+        analysis: data,
+        totals,
+        count: data.length,
+      });
     } catch (err) {
       console.error('Error fetching age analysis:', err);
     } finally {
@@ -93,16 +123,8 @@ export default function CreditorsSummaryEnquiry({ onBack }: { onBack: () => void
   const fetchControlTotals = async () => {
     setLoading(true);
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/creditors/enquiries/control_enquiry/`,
-        {
-          credentials: 'include',
-        }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setControlData(data);
-      }
+      const data = await creditorsApi.summary.controlTotals();
+      setControlData(data);
     } catch (err) {
       console.error('Error fetching control totals:', err);
     } finally {
@@ -116,7 +138,14 @@ export default function CreditorsSummaryEnquiry({ onBack }: { onBack: () => void
     } else {
       fetchControlTotals();
     }
-  }, [enquiryType, orderBy, includeZero]);
+  }, [enquiryType]);
+
+  // Refetch when orderBy or includeZero changes
+  useEffect(() => {
+    if (enquiryType === 'age') {
+      fetchAgeAnalysis();
+    }
+  }, [orderBy, includeZero]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-ZA', {
@@ -126,12 +155,12 @@ export default function CreditorsSummaryEnquiry({ onBack }: { onBack: () => void
   };
 
   const getSortedData = (data: SupplierData[]) => {
-    if (sortByDisplay === 'account_number') {
-      return [...data].sort((a, b) => a.account_number - b.account_number);
+    if (sortByDisplay === 'supplier_number') {
+      return [...data].sort((a, b) => a.supplier_number.localeCompare(b.supplier_number));
     } else if (sortByDisplay === 'total') {
-      return [...data].sort((a, b) => b.balances.total - a.balances.total);
+      return [...data].sort((a, b) => b.total_outstanding_balance - a.total_outstanding_balance);
     }
-    return data;
+    return [...data].sort((a, b) => a.name.localeCompare(b.name));
   };
 
   return (
@@ -269,8 +298,8 @@ export default function CreditorsSummaryEnquiry({ onBack }: { onBack: () => void
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="account_name">Account Name</SelectItem>
-                    <SelectItem value="account_number">Account Number</SelectItem>
+                    <SelectItem value="name">Account Name</SelectItem>
+                    <SelectItem value="supplier_number">Account Number</SelectItem>
                     <SelectItem value="total">Total Due</SelectItem>
                   </SelectContent>
                 </Select>
@@ -299,39 +328,39 @@ export default function CreditorsSummaryEnquiry({ onBack }: { onBack: () => void
                   <tbody>
                     {getSortedData(ageData.analysis).map((supplier: SupplierData, idx: number) => (
                       <tr key={idx} className="border-b hover:bg-gray-50">
-                        <td className="py-2 px-4">{supplier.account_number}</td>
-                        <td className="py-2 px-4">{supplier.account_name}</td>
+                        <td className="py-2 px-4">{supplier.supplier_number}</td>
+                        <td className="py-2 px-4">{supplier.name}</td>
                         <td className="text-right py-2 px-4">
-                          {formatCurrency(supplier.balances.current)}
+                          {formatCurrency(supplier.balance_current)}
                         </td>
                         <td className="text-right py-2 px-4">
-                          {formatCurrency(supplier.balances['30_days'])}
+                          {formatCurrency(supplier.balance_30_days)}
                         </td>
                         <td className="text-right py-2 px-4">
-                          {formatCurrency(supplier.balances['60_days'])}
+                          {formatCurrency(supplier.balance_60_days)}
                         </td>
                         <td className="text-right py-2 px-4">
-                          {formatCurrency(supplier.balances['90_days'])}
+                          {formatCurrency(supplier.balance_90_days)}
                         </td>
                         <td className="text-right py-2 px-4">
                           {formatCurrency(
-                            supplier.balances['120_days'] +
-                              supplier.balances['150_days'] +
-                              supplier.balances['180_days']
+                            supplier.balance_120_days +
+                              supplier.balance_150_days +
+                              supplier.balance_180_days
                           )}
                         </td>
                         <td className="text-right py-2 px-4 font-bold">
-                          {formatCurrency(supplier.balances.total)}
+                          {formatCurrency(supplier.total_outstanding_balance)}
                         </td>
                         <td className="text-center py-2 px-4">
                           <span
                             className={`text-xs px-2 py-1 rounded ${
-                              supplier.status === 'Active'
+                              supplier.total_outstanding_balance > 0
                                 ? 'bg-green-100 text-green-800'
                                 : 'bg-gray-100 text-gray-800'
                             }`}
                           >
-                            {supplier.status}
+                            {supplier.total_outstanding_balance > 0 ? 'Active' : 'Inactive'}
                           </span>
                         </td>
                       </tr>

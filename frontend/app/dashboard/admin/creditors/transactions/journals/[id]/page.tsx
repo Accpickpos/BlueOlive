@@ -31,15 +31,15 @@ export default function JournalEntryForm() {
 
   const { data: entry, isLoading } = useQuery({
     queryKey: ['journal-entry', entryId],
-    queryFn: () => creditorsApi.transactions.get(entryId),
+    queryFn: () => creditorsApi.journals.get(entryId),
     enabled: !isNew,
   });
 
   const mutation = useMutation({
     mutationFn: (data: any) =>
       isNew
-        ? creditorsApi.transactions.create({ ...data, transaction_type: 'JOURNAL' })
-        : creditorsApi.transactions.update(entryId, data),
+        ? creditorsApi.journals.create(data)
+        : creditorsApi.journals.update(entryId, data),
     onSuccess: () => {
       router.push('/dashboard/admin/creditors/transactions/journals');
     },

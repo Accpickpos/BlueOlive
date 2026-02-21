@@ -1,12 +1,15 @@
 from django.shortcuts import render
 from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAdminUser
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from .models import Tenant, Shop
 from .serializers import TenantSerializer, ShopSerializer
 from tenancy.tenant_context import get_current_tenant
 from tenancy.permissions import IsAdmin, IsTenantMember, CanCreateTenant
+import logging
+
+logger = logging.getLogger(__name__)
 
 @api_view(['GET'])
 def current_tenant(request):
@@ -125,6 +128,25 @@ class ShopViewSet(viewsets.ModelViewSet):
             return [IsAdmin()]
         else:
             return [IsTenantMember()]
+
+    @action(detail=True, methods=['get'], permission_classes=[IsTenantMember])
+    def check_setup_status(self, request, pk=None):
+        """
+        Check the setup status of a shop.
+        Returns the current setup status: 'pending', 'ready', or 'failed'.
+        """
+        shop = self.get_object()
+        return Response({
+            'id': shop.id,
+            'name': shop.name,
+            'setup_status': shop.setup_status,
+            'is_ready': shop.setup_status == 'ready',
+            'message': {
+                'pending': 'Shop is being set up. This may take a few moments...',
+                'ready': 'Shop is ready for use!',
+                'failed': 'Shop setup failed. Please contact support.',
+            }.get(shop.setup_status, 'Unknown status')
+        })
 
     def get_serializer_class(self):
         """
@@ -258,5 +280,152 @@ def create_tenant_and_shop(request):
         return Response(
             {'detail': f'Error creating tenant: {str(e)}'},
             status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+# =============================================================================
+# Shop Switching Views - Multi-Shop User Management
+# =============================================================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def switch_shop(request):
+    """
+    Allow users to switch between their accessible shops.
+    
+    Request body:
+        {
+            "shop_id": 123
+        }
+    
+    Returns:
+        Success message with new shop details
+    """
+    user = request.user
+    shop_id = request.data.get('shop_id')
+    
+    if not shop_id:
+        return Response(
+            {'error': 'shop_id is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Validate user has access to this shop
+    if not user.can_access_shop(shop_id):
+        return Response(
+            {'error': 'You do not have access to this shop'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    try:
+        shop = Shop.objects.using('default').get(id=shop_id, is_active=True)
+    except Shop.DoesNotExist:
+        return Response(
+            {'error': 'Shop not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Update session
+    request.session['current_shop_id'] = shop.id
+    request.session['current_shop_schema'] = shop.schema_name
+    
+    # Update user object for current request
+    user.current_shop_id = shop.id
+    
+    logger.info(f"User {user.id} switched to shop {shop.id} ({shop.name})")
+    
+    return Response({
+        'message': f'Switched to {shop.name}',
+        'shop': {
+            'id': shop.id,
+            'name': shop.name,
+            'schema_name': shop.schema_name
+        }
+    })
+
+
+@api_view(['GET'])
+def get_accessible_shops(request):
+    """
+    Get list of shops user has access to.
+    
+    Returns:
+        List of shops with their details and current status
+    """
+    import traceback
+    
+    # Check authentication manually
+    if not request.user or not request.user.is_authenticated:
+        return Response(
+            {'error': 'Authentication required'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+    
+    user = request.user
+    
+    try:
+        shops = user.get_active_shops()
+        
+        current_shop_id = getattr(user, 'current_shop_id', None)
+        
+        if not current_shop_id:
+            current_shop_id = request.session.get('current_shop_id')
+        
+        shop_list = [{
+            'id': shop.id,
+            'name': shop.name,
+            'schema_name': shop.schema_name,
+            'is_head_office': shop.is_head_office,
+            'is_current': shop.id == current_shop_id
+        } for shop in shops]
+        
+        return Response(shop_list)
+    
+    except Exception as e:
+        error_detail = traceback.format_exc()
+        logger.error(f"Error getting accessible shops for user {user.id}: {e}\n{error_detail}")
+        # Only expose traceback in DEBUG mode
+        from django.conf import settings
+        response_data = {'error': 'Failed to get accessible shops', 'detail': str(e)}
+        if settings.DEBUG:
+            response_data['trace'] = error_detail[:2000]
+        return Response(
+            response_data,
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_current_shop(request):
+    """
+    Get the current active shop for the authenticated user.
+    """
+    user = request.user
+    
+    # Try to get from user object first
+    shop_id = getattr(user, 'current_shop_id', None)
+    
+    if not shop_id:
+        shop_id = request.session.get('current_shop_id')
+    
+    if not shop_id:
+        return Response(
+            {'error': 'No current shop set'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        shop = Shop.objects.using('default').get(id=shop_id, is_active=True)
+        return Response({
+            'id': shop.id,
+            'name': shop.name,
+            'schema_name': shop.schema_name,
+            'is_head_office': shop.is_head_office
+        })
+    except Shop.DoesNotExist:
+        return Response(
+            {'error': 'Current shop not found or inactive'},
+            status=status.HTTP_404_NOT_FOUND
         )
 

@@ -21,6 +21,7 @@ from .views import (
     SystemConfigurationViewSet,
     DepartmentMonthlyStatsViewSet,
     SalesAreaMonthlyStatsViewSet,
+    APIKeyViewSet,
 )
 from .api.import_api import ImportViewSet
 
@@ -40,6 +41,7 @@ router.register(r'system-config', SystemConfigurationViewSet, basename='system-c
 router.register(r'department-stats', DepartmentMonthlyStatsViewSet, basename='department-stats')
 router.register(r'sales-area-stats', SalesAreaMonthlyStatsViewSet, basename='sales-area-stats')
 router.register(r'import', ImportViewSet, basename='import')
+router.register(r'api-keys', APIKeyViewSet, basename='api-key')
 
 app_name = 'settings'
 

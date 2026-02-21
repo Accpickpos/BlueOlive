@@ -3,24 +3,32 @@ Debtors filters.
 Django filters for debtor-related models.
 """
 import django_filters
-from .models import Debtor, DebtorTransaction, Invoice
+from .models import Debtor, DebtorTransaction
 from django.db import models
+from django.db.models import Q, Sum
+from datetime import date, timedelta
 
 
 class DebtorFilter(django_filters.FilterSet):
     """Filter for Debtor model."""
     
-    account_number = django_filters.CharFilter(lookup_expr='icontains')
+    account_number = django_filters.CharFilter(
+        field_name='customer_number',
+        lookup_expr='icontains'
+    )
     name = django_filters.CharFilter(lookup_expr='icontains')
-    search_name = django_filters.CharFilter(lookup_expr='icontains')
+    search_name = django_filters.CharFilter(
+        field_name='short_name',
+        lookup_expr='icontains'
+    )
     
     # Balance filters
     min_balance = django_filters.NumberFilter(
-        field_name='current_balance',
+        field_name='balance_current',
         lookup_expr='gte'
     )
     max_balance = django_filters.NumberFilter(
-        field_name='current_balance',
+        field_name='balance_current',
         lookup_expr='lte'
     )
     
@@ -43,25 +51,29 @@ class DebtorFilter(django_filters.FilterSet):
         model = Debtor
         fields = {
             'is_active': ['exact'],
-            'is_blocked': ['exact'],
-            'account_category': ['exact'],
-            'sales_area': ['exact'],
-            'charge_interest': ['exact'],
+            'block_flag': ['exact'],
+            'account_type': ['exact'],
+            'area_code': ['exact'],
+            'interest_flag': ['exact'],
             'price_level': ['exact'],
         }
     
     def filter_over_credit_limit(self, queryset, name, value):
         """Filter debtors over their credit limit.
-        Checks total balance (not just current) against credit limit.
+        Checks balance against credit limit.
         """
         if value:
-            # Check if total_balance exceeds credit_limit
-            return queryset.filter(total_balance__gt=models.F('credit_limit'))
+            # Check if any aging balance exceeds credit_limit
+            return queryset.filter(
+                models.Q(balance_current__gt=models.F('credit_limit')) |
+                models.Q(balance_30_days__gt=0) |
+                models.Q(balance_60_days__gt=0)
+            )
         return queryset
 
 
 class DebtorTransactionFilter(django_filters.FilterSet):
-    """Filter for DebtorTransaction model."""
+    """Filter for DebtorTransaction model with powerful analysis capabilities."""
     
     # Date range filters
     date_from = django_filters.DateFilter(
@@ -86,6 +98,52 @@ class DebtorTransactionFilter(django_filters.FilterSet):
     # Reference search
     reference = django_filters.CharFilter(lookup_expr='icontains')
     
+    # Source filtering
+    source_type = django_filters.ChoiceFilter(
+        choices=DebtorTransaction.SOURCE_CHOICES
+    )
+    
+    # Aggregation filters for analysis
+    has_balance = django_filters.BooleanFilter(
+        method='filter_has_balance',
+        help_text="Filter to transactions with outstanding balance"
+    )
+    
+    age_bucket = django_filters.ChoiceFilter(
+        method='filter_age_bucket',
+        choices=[
+            ('current', 'Current (0-30 days)'),
+            ('30_60', '30-60 Days'),
+            ('60_90', '60-90 Days'),
+            ('90_plus', '90+ Days'),
+        ],
+        help_text="Filter by age bucket of transaction"
+    )
+    
+    # Date component filters for analysis
+    month = django_filters.NumberFilter(
+        field_name='transaction_date',
+        lookup_expr='month',
+        help_text="Filter by month (1-12)"
+    )
+    
+    year = django_filters.NumberFilter(
+        field_name='transaction_date',
+        lookup_expr='year',
+        help_text="Filter by year"
+    )
+    
+    quarter = django_filters.ChoiceFilter(
+        method='filter_quarter',
+        choices=[
+            (1, 'Q1'),
+            (2, 'Q2'),
+            (3, 'Q3'),
+            (4, 'Q4'),
+        ],
+        help_text="Filter by fiscal quarter"
+    )
+    
     class Meta:
         model = DebtorTransaction
         fields = {
@@ -93,48 +151,42 @@ class DebtorTransactionFilter(django_filters.FilterSet):
             'transaction_type': ['exact'],
             'transaction_date': ['exact', 'year', 'month'],
             'is_allocated': ['exact'],
+            'status': ['exact'],
         }
-
-
-class InvoiceFilter(django_filters.FilterSet):
-    """Filter for Invoice model."""
     
-    invoice_number = django_filters.CharFilter(lookup_expr='icontains')
-    order_number = django_filters.CharFilter(lookup_expr='icontains')
-    customer_reference = django_filters.CharFilter(lookup_expr='icontains')
+    def filter_has_balance(self, queryset, name, value):
+        """Filter transactions with outstanding/unallocated balance."""
+        if value:
+            return queryset.filter(is_allocated=False)
+        return queryset.filter(is_allocated=True)
     
-    # Date range filters
-    date_from = django_filters.DateFilter(
-        field_name='invoice_date',
-        lookup_expr='gte'
-    )
-    date_to = django_filters.DateFilter(
-        field_name='invoice_date',
-        lookup_expr='lte'
-    )
+    def filter_age_bucket(self, queryset, name, value):
+        """Filter transactions by age bucket based on transaction date."""
+        as_of = date.today()
+        
+        if value == 'current':
+            return queryset.filter(
+                transaction_date__gte=as_of - timedelta(days=30)
+            )
+        elif value == '30_60':
+            return queryset.filter(
+                transaction_date__gte=as_of - timedelta(days=60),
+                transaction_date__lt=as_of - timedelta(days=30)
+            )
+        elif value == '60_90':
+            return queryset.filter(
+                transaction_date__gte=as_of - timedelta(days=90),
+                transaction_date__lt=as_of - timedelta(days=60)
+            )
+        elif value == '90_plus':
+            return queryset.filter(
+                transaction_date__lt=as_of - timedelta(days=90)
+            )
+        return queryset
     
-    # Amount filters
-    min_amount = django_filters.NumberFilter(
-        field_name='total_amount',
-        lookup_expr='gte'
-    )
-    max_amount = django_filters.NumberFilter(
-        field_name='total_amount',
-        lookup_expr='lte'
-    )
-    
-    # Profit filters
-    min_profit = django_filters.NumberFilter(
-        field_name='gross_profit',
-        lookup_expr='gte'
-    )
-    
-    class Meta:
-        model = Invoice
-        fields = {
-            'debtor': ['exact'],
-            'sales_area': ['exact'],
-            'is_posted': ['exact'],
-            'is_cancelled': ['exact'],
-            'invoice_date': ['exact', 'year', 'month'],
-        }
+    def filter_quarter(self, queryset, name, value):
+        """Filter by fiscal quarter."""
+        if value:
+            value = int(value)
+            return queryset.filter(transaction_date__quarter=value)
+        return queryset

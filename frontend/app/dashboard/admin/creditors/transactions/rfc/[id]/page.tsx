@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { creditorsApi } from '@/lib/creditorsApi';
-import { TransactionType } from '@/lib/types/creditors';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,13 +46,29 @@ export default function RFCForm() {
 
   const { data: rfc, isLoading } = useQuery({
     queryKey: ['rfc', rfcId],
-    queryFn: () => creditorsApi.transactions.get(rfcId),
+    queryFn: () => creditorsApi.rfc.get(rfcId),
     enabled: !isNew && rfcId !== 'edit',
   });
 
   const mutation = useMutation({
-    mutationFn: (data: RFCData) =>
-      isNew ? creditorsApi.transactions.create({ ...data, transaction_type: TransactionType.RFC }) : creditorsApi.transactions.update(rfcId, data),
+    mutationFn: (data: RFCData) => {
+      const apiData: any = {
+        creditor: data.supplier_id,
+        rfc_number: `RFC-${Date.now()}`, // Would need proper RFC number generation
+        return_date: data.rfc_date,
+        status: data.status,
+        line_items: data.items.map((item, index) => ({
+          stock_item: 0,
+          quantity_returned: item.quantity,
+          line_value: item.quantity * item.unit_value,
+          tax_code: 0,
+          reason: item.return_reason,
+        })),
+      };
+      return isNew 
+        ? creditorsApi.rfc.create(apiData) 
+        : creditorsApi.rfc.update(rfcId, apiData);
+    },
     onSuccess: () => {
       router.push('/dashboard/admin/creditors/transactions/rfc');
     },

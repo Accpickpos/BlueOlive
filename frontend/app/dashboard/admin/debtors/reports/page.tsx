@@ -3,6 +3,9 @@
 import Link from 'next/link';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useState } from 'react';
+import { api } from '@/lib/api';
+
 import {
   BarChart3,
   FileText,
@@ -12,6 +15,8 @@ import {
   Users,
   AlertCircle,
   Download,
+  Filter,
+  RotateCcw,
 } from 'lucide-react';
 
 interface ReportFilters {
@@ -110,7 +115,7 @@ export default function DebtorsReportsPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await axios.post(
+      const response = await api.post(
         '/api/debtors/reports/generate/',
         { ...filters, reportType: selectedReport },
         {
@@ -129,7 +134,7 @@ export default function DebtorsReportsPage() {
 
   const downloadReport = async (format: 'pdf' | 'csv') => {
     try {
-      const response = await axios.post(
+      const response = await api.post(
         `/api/debtors/reports/generate/`,
         { ...filters, reportType: selectedReport, format },
         {
@@ -146,6 +151,7 @@ export default function DebtorsReportsPage() {
       document.body.appendChild(link);
       link.click();
       link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
     } catch (err: any) {
       setError('Failed to download report');
     }

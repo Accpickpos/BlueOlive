@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
-    Custom JWT serializer that includes tenant information in the token
+    Custom JWT serializer that includes tenant and shop information in the token
     """
     def validate(self, attrs):
         # Get the tenant from context (set by middleware)
@@ -39,6 +39,45 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         refresh['username'] = self.user.username
         refresh['email'] = self.user.email
         refresh['role'] = self.user.role
+        
+        # Add shop information - get user's accessible shops
+        # OPTIMIZATION: Only put current_shop in access token (small)
+        # Full accessible_shops list goes in refresh token only
+        try:
+            # Get accessible shops for this user
+            accessible_shops = list(self.user.get_active_shops())
+            
+            if accessible_shops:
+                # Set current shop - prefer head office or first shop
+                current_shop = None
+                for shop in accessible_shops:
+                    if shop.is_head_office:
+                        current_shop = shop
+                        break
+                
+                if not current_shop:
+                    current_shop = accessible_shops[0]
+                
+                # Only current shop in access token (for quick access)
+                refresh['current_shop_id'] = current_shop.id
+                refresh['current_shop_schema'] = current_shop.schema_name
+                
+                # Full shop list in refresh token only (larger, but fetched less frequently)
+                shop_list = [{
+                    'id': shop.id,
+                    'name': shop.name,
+                    'schema_name': shop.schema_name
+                } for shop in accessible_shops]
+                refresh['accessible_shops'] = shop_list
+                
+                # Add current shop to response (both tokens)
+                data['current_shop'] = {
+                    'id': current_shop.id,
+                    'name': current_shop.name,
+                    'schema_name': current_shop.schema_name
+                }
+        except Exception as e:
+            logger.warning(f"Could not get accessible shops for user {self.user.id}: {e}")
         
         data['refresh'] = str(refresh)
         data['access'] = str(refresh.access_token)
@@ -230,25 +269,67 @@ def user_profile(request):
     """
     Get current user profile
     """
-    user = request.user
-    tenant = get_current_tenant()
-    
-    return Response({
-        'user': {
+    try:
+        user = request.user
+        
+        # Check if user is authenticated
+        if not user or not user.is_authenticated:
+            return Response(
+                {'error': 'User not authenticated'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        tenant = None
+        tenant_data = None
+        
+        # Try to get current tenant
+        try:
+            tenant = get_current_tenant()
+        except Exception as e:
+            logger.warning(f"Failed to get current tenant: {str(e)}")
+            # Continue without tenant data if we can't get it
+        
+        # Build tenant response
+        if tenant:
+            try:
+                tenant_data = {
+                    'id': tenant.id,
+                    'name': tenant.name,
+                    'slug': tenant.slug,
+                    'subdomain': tenant.subdomain,
+                }
+            except Exception as e:
+                logger.warning(f"Failed to serialize tenant data: {str(e)}")
+                tenant_data = None
+        
+        # Build user response
+        user_data = {
             'id': user.id,
             'username': user.username,
             'email': user.email,
             'first_name': user.first_name,
             'last_name': user.last_name,
-            'role': user.role,
-        },
-        'tenant': {
-            'id': tenant.id,
-            'name': tenant.name,
-            'slug': tenant.slug,
-            'subdomain': tenant.subdomain,
-        } if tenant else None
-    })
+            'role': getattr(user, 'role', 'CASHIER'),  # Default to CASHIER if not set
+            'is_staff': user.is_staff,
+            'is_superuser': user.is_superuser,
+            'is_active': user.is_active,
+        }
+        
+        # Include tenant_id if user has one
+        if hasattr(user, 'tenant_id') and user.tenant_id:
+            user_data['tenant_id'] = user.tenant_id
+        
+        return Response({
+            'user': user_data,
+            'tenant': tenant_data,
+        })
+    
+    except Exception as e:
+        logger.error(f"Error fetching user profile: {str(e)}", exc_info=True)
+        return Response(
+            {'error': 'Failed to fetch user profile', 'detail': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @api_view(['POST'])

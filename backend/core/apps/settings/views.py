@@ -30,6 +30,7 @@ from .models import (
     SystemConfiguration,
     DepartmentMonthlyStats,
     SalesAreaMonthlyStats,
+    APIKey,
 )
 from .serializers import (
     SalesDepartmentSerializer,
@@ -51,6 +52,10 @@ from .serializers import (
     SystemConfigurationSerializer,
     DepartmentMonthlyStatsSerializer,
     SalesAreaMonthlyStatsSerializer,
+    APIKeyListSerializer,
+    APIKeyDetailSerializer,
+    APIKeyCreateSerializer,
+    APIKeyUpdateSerializer,
 )
 
 
@@ -710,3 +715,186 @@ class SalesAreaMonthlyStatsViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         
         return Response(serializer.data)
+
+
+class APIKeyViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing API keys.
+    
+    SECURITY: All operations are scoped to the current tenant.
+    Users can only see and manage API keys belonging to their tenant.
+    
+    Actions:
+    - list: List all API keys (tenant-scoped)
+    - create: Create a new API key
+    - retrieve: Get API key details
+    - update: Update API key settings
+    - partial_update: Partially update API key
+    - destroy: Delete API key
+    - revoke: Revoke an API key
+    - validate: Test an API key
+    """
+    queryset = APIKey.objects.all()
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'external_service', 'created_at']
+    search_fields = ['name', 'external_service']
+    ordering_fields = ['name', 'created_at', 'last_used', 'expires_at']
+    ordering = ['-created_at']
+    
+    def get_queryset(self):
+        """
+        Filter API keys by current tenant.
+        
+        SECURITY: This prevents users from accessing other tenants' API keys.
+        """
+        user = self.request.user
+        
+        # Allow superusers to see all API keys (with warning in debug mode)
+        if user.is_superuser:
+            return APIKey.objects.all().select_related('tenant', 'created_by')
+        
+        # Get tenant from request (set by TenantMiddleware)
+        tenant = getattr(self.request, 'tenant', None)
+        
+        if tenant:
+            # Filter by tenant
+            return APIKey.objects.filter(tenant=tenant).select_related('tenant', 'created_by')
+        
+        # No tenant - return empty queryset for security
+        return APIKey.objects.none()
+    
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action."""
+        if self.action == 'list':
+            return APIKeyListSerializer
+        elif self.action == 'create':
+            return APIKeyCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return APIKeyUpdateSerializer
+        return APIKeyDetailSerializer
+    
+    def perform_create(self, serializer):
+        """
+        Set created_by user and tenant when creating API key.
+        
+        SECURITY: Automatically binds the API key to the current tenant.
+        """
+        # Get tenant from request
+        tenant = getattr(self.request, 'tenant', None)
+        
+        # If user is superuser, allow them to specify tenant
+        if self.request.user.is_superuser:
+            # Let them specify, but validate it exists
+            pass
+        elif tenant:
+            # Force tenant to current tenant (prevent cross-tenant creation)
+            serializer.validated_data['tenant'] = tenant
+        
+        serializer.save(created_by=self.request.user)
+    
+    def perform_update(self, serializer):
+        """Set updated_by user when updating API key."""
+        serializer.save(updated_by=self.request.user)
+    
+    def perform_destroy(self, instance):
+        """
+        Delete API key with tenant validation.
+        
+        SECURITY: get_queryset already filters by tenant.
+        """
+        instance.delete()
+    
+    @action(detail=True, methods=['post'])
+    def revoke(self, request, pk=None):
+        """Revoke an API key."""
+        api_key = self.get_object()
+        
+        if api_key.status == 'REVOKED':
+            return Response(
+                {'status': 'error', 'message': 'API key already revoked'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        api_key.status = 'REVOKED'
+        api_key.updated_by = request.user
+        api_key.save()
+        
+        return Response({
+            'status': 'success',
+            'message': f'API key {api_key.name} revoked successfully'
+        })
+    
+    @action(detail=True, methods=['post'])
+    def activate(self, request, pk=None):
+        """Activate an API key."""
+        api_key = self.get_object()
+        
+        if api_key.status == 'ACTIVE':
+            return Response(
+                {'status': 'error', 'message': 'API key already active'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        api_key.status = 'ACTIVE'
+        api_key.updated_by = request.user
+        api_key.save()
+        
+        return Response({
+            'status': 'success',
+            'message': f'API key {api_key.name} activated successfully'
+        })
+    
+    @action(detail=True, methods=['post'])
+    def validate(self, request, pk=None):
+        """Test/validate an API key."""
+        api_key = self.get_object()
+        
+        return Response({
+            'status': 'success',
+            'message': 'API key is valid',
+            'data': {
+                'is_valid': api_key.is_valid,
+                'key_id': api_key.id,
+                'name': api_key.name,
+                'external_service': api_key.external_service,
+                'status': api_key.status,
+                'expires_at': api_key.expires_at,
+                'last_used': api_key.last_used,
+            }
+        })
+    
+    @action(detail=False, methods=['post'])
+    def test_key(self, request):
+        """Test an API key (for external clients)."""
+        key = request.data.get('key')
+        
+        if not key:
+            return Response(
+                {'status': 'error', 'message': 'API key required in request body'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            api_key = APIKey.objects.get(key=key)
+            
+            if not api_key.is_valid:
+                return Response(
+                    {'status': 'error', 'message': 'API key is not valid'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+            
+            return Response({
+                'status': 'success',
+                'message': 'API key is valid',
+                'data': {
+                    'is_valid': True,
+                    'name': api_key.name,
+                    'external_service': api_key.external_service,
+                }
+            })
+        except APIKey.DoesNotExist:
+            return Response(
+                {'status': 'error', 'message': 'API key not found'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )

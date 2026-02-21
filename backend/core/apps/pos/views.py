@@ -12,13 +12,9 @@ from datetime import date
 from .models import (
     ReceiptOnAccount, CreditNote, CashReturn,
     CashACheque, TransactionQuery,
-    CashSale, Laybye, Quotation, JobCard
+    CashSale, Laybye, Quotation, JobCard, Payout, Repair, CashControl
 )
 
-from .models import (
-    CashSale, Laybye, Quotation, Payout, Repair,
-    JobCard, CashControl
-)
 from .serializers import (
     CashSaleListSerializer, CashSaleDetailSerializer, CashSaleCreateSerializer,
     LaybyeListSerializer, LaybyeDetailSerializer,
@@ -521,6 +517,45 @@ class JobCardViewSet(viewsets.ModelViewSet):
         if self.action == 'retrieve':
             queryset = queryset.prefetch_related('lines')
         return queryset
+    
+    @action(detail=True, methods=['post'])
+    def convert_to_invoice(self, request, pk=None):
+        """Convert job card to customer invoice."""
+        job_card = self.get_object()
+        debtor_id = request.data.get('debtor_id')
+        
+        if not debtor_id:
+            return Response(
+                {'error': 'debtor_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            from apps.debtors.models import Debtor
+            debtor = Debtor.objects.get(id=debtor_id)
+            
+            from .services import QuotationService
+            invoice = QuotationService.convert_job_card_to_invoice(job_card, debtor)
+            
+            # Import the invoice serializer
+            from .serializers import InvoiceDetailSerializer
+            serializer = InvoiceDetailSerializer(invoice)
+            
+            return Response({
+                'status': 'success',
+                'message': 'Job card converted to invoice',
+                'invoice': serializer.data
+            }, status=status.HTTP_201_CREATED)
+        except Debtor.DoesNotExist:
+            return Response(
+                {'error': f'Debtor with id {debtor_id} not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except ValueError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class CashControlViewSet(viewsets.ReadOnlyModelViewSet):

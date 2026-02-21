@@ -8,6 +8,7 @@ from .models import (
     BankReconciliation, BankReconciliationItem, CashFloat, ExpenseCategoryBalance,
     IncomeCategoryBalance, UnpresentedCheque
 )
+from apps.common.serializers import AuditFieldsMixin, BaseModelSerializer
 
 
 class IncomeCategorySerializer(serializers.ModelSerializer):

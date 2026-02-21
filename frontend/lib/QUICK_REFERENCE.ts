@@ -191,9 +191,7 @@ await settingsApi.creditTerms.list();
 // Get system configuration
 await settingsApi.systemConfig.list();
 
-// Import data
-const file = ...; // File from input
-await settingsApi.import.importData(file, 'inventory');
+// Import data - see settingsApi.import.importData() for usage
 
 
 // ============================================================

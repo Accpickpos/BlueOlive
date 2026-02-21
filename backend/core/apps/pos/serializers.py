@@ -10,7 +10,7 @@ from .models import (
     CashSale, CashSaleLine, Tender, Laybye, LaybyeLine, LaybyelPayment,
     Quotation, QuotationLine, Payout, Repair, JobCard, JobCardLine,
     CashControl, ReceiptOnAccount, CreditNote, CreditNoteLine,
-    CashReturn, CashReturnLine, CashACheque, TransactionQuery
+    CashReturn, CashReturnLine, CashACheque, TransactionQuery, Invoice, InvoiceLine
 )
 from apps.settings.models import SalesArea
 from .price_validation_service import PriceValidationService
@@ -652,6 +652,184 @@ class TransactionQuerySerializer(serializers.ModelSerializer):
         model = TransactionQuery
         fields = '__all__'
         read_only_fields = ['created_at', 'updated_at']
+
+
+class InvoiceLineSerializer(serializers.ModelSerializer):
+    """Serializer for invoice line items."""
+    
+    class Meta:
+        model = InvoiceLine
+        fields = [
+            'id',
+            'line_number',
+            'stock_code',
+            'description',
+            'quantity',
+            'unit_price',
+            'discount_percentage',
+            'tax_code',
+            'vat_rate',
+            'line_total',
+            'vat_amount',
+            'cost_price',
+            'line_cost',
+            'line_profit',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['line_total', 'vat_amount', 'line_cost', 'line_profit', 'created_at', 'updated_at']
+
+
+class InvoiceListSerializer(serializers.ModelSerializer):
+    """Serializer for invoice list view."""
+    
+    debtor_name = serializers.CharField(source='debtor.dname', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    
+    class Meta:
+        model = Invoice
+        fields = [
+            'id',
+            'invoice_number',
+            'invoice_date',
+            'due_date',
+            'debtor',
+            'debtor_name',
+            'total_amount',
+            'amount_paid',
+            'balance_due',
+            'status',
+            'status_display',
+            'is_posted',
+            'is_overdue',
+            'created_at',
+        ]
+        read_only_fields = ['is_posted', 'balance_due', 'is_overdue', 'created_at']
+
+
+class InvoiceDetailSerializer(serializers.ModelSerializer):
+    """Detailed serializer for invoice with line items."""
+    
+    debtor_name = serializers.CharField(source='debtor.dname', read_only=True)
+    lines = InvoiceLineSerializer(many=True, read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    profit_margin = serializers.ReadOnlyField()
+    balance_due = serializers.ReadOnlyField()
+    is_overdue = serializers.ReadOnlyField()
+    days_overdue = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = Invoice
+        fields = [
+            'id',
+            'invoice_number',
+            'invoice_date',
+            'due_date',
+            'debtor',
+            'debtor_name',
+            'delivery_name',
+            'delivery_address_line1',
+            'delivery_address_line2',
+            'delivery_telephone',
+            'order_number',
+            'customer_reference',
+            'job_card_number',
+            'sales_area',
+            'subtotal',
+            'discount_amount',
+            'vat_amount',
+            'total_amount',
+            'total_cost',
+            'gross_profit',
+            'profit_margin',
+            'status',
+            'status_display',
+            'is_posted',
+            'posted_date',
+            'amount_paid',
+            'paid_date',
+            'balance_due',
+            'is_overdue',
+            'days_overdue',
+            'created_by',
+            'notes',
+            'lines',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = [
+            'is_posted',
+            'posted_date',
+            'profit_margin',
+            'balance_due',
+            'is_overdue',
+            'days_overdue',
+            'created_at',
+            'updated_at'
+        ]
+
+
+class InvoiceCreateUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for creating/updating invoice."""
+    
+    lines = InvoiceLineSerializer(many=True, required=False, write_only=True)
+    
+    class Meta:
+        model = Invoice
+        fields = [
+            'invoice_number',
+            'invoice_date',
+            'due_date',
+            'debtor',
+            'delivery_name',
+            'delivery_address_line1',
+            'delivery_address_line2',
+            'delivery_telephone',
+            'order_number',
+            'customer_reference',
+            'job_card_number',
+            'sales_area',
+            'subtotal',
+            'discount_amount',
+            'vat_amount',
+            'total_amount',
+            'total_cost',
+            'gross_profit',
+            'status',
+            'created_by',
+            'notes',
+            'lines',
+        ]
+    
+    def create(self, validated_data):
+        """Create invoice with line items."""
+        lines_data = validated_data.pop('lines', [])
+        
+        with db_transaction.atomic():
+            invoice = Invoice.objects.create(**validated_data)
+            
+            for line_data in lines_data:
+                InvoiceLine.objects.create(invoice=invoice, **line_data)
+        
+        return invoice
+    
+    def update(self, instance, validated_data):
+        """Update invoice with line items."""
+        lines_data = validated_data.pop('lines', None)
+        
+        with db_transaction.atomic():
+            # Update invoice fields
+            for attr, value in validated_data.items():
+                setattr(instance, attr, value)
+            instance.save()
+            
+            # Update line items if provided
+            if lines_data is not None:
+                instance.lines.all().delete()
+                for line_data in lines_data:
+                    InvoiceLine.objects.create(invoice=instance, **line_data)
+        
+        return instance
 
 
 """

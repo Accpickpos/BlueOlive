@@ -115,27 +115,76 @@ class ShopUserCreateSerializer(serializers.ModelSerializer):
     """
     Serializer for creating new users (includes password requirement)
     """
-    password = serializers.CharField(write_only=True, required=True, min_length=8)
+    password = serializers.CharField(
+        write_only=True, 
+        required=True, 
+        min_length=8,
+        help_text='Password must be at least 8 characters long. Use a mix of uppercase, lowercase, numbers, and special characters for better security.'
+    )
     confirm_password = serializers.CharField(write_only=True, required=True)
     shop_ids = serializers.ListField(
         child=serializers.IntegerField(),
         required=False,
         allow_empty=True
     )
+    password_display = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = ShopUser
         fields = [
+            'id',
             'username',
             'email',
             'first_name',
             'last_name',
             'password',
             'confirm_password',
+            'password_display',
             'role',
             'phone',
             'shop_ids',
+            'is_active',
+            'date_joined',
         ]
+        read_only_fields = ['id', 'date_joined', 'password_display']
+    
+    def get_password_display(self, obj):
+        """
+        Return password info message after user creation.
+        Note: Actual password is not returned for security reasons.
+        Show this message only during creation (when password was just set).
+        """
+        # This is populated during create() via context
+        return self.context.get('password_info', None)
+    
+    def validate_password(self, value):
+        """
+        Validate password meets security requirements
+        """
+        if len(value) < 8:
+            raise serializers.ValidationError(
+                "Password must be at least 8 characters long."
+            )
+        
+        # Check for at least one uppercase letter
+        if not any(char.isupper() for char in value):
+            raise serializers.ValidationError(
+                "Password must contain at least one uppercase letter (A-Z)."
+            )
+        
+        # Check for at least one lowercase letter
+        if not any(char.islower() for char in value):
+            raise serializers.ValidationError(
+                "Password must contain at least one lowercase letter (a-z)."
+            )
+        
+        # Check for at least one digit
+        if not any(char.isdigit() for char in value):
+            raise serializers.ValidationError(
+                "Password must contain at least one number (0-9)."
+            )
+        
+        return value
     
     def validate(self, attrs):
         """
@@ -143,15 +192,19 @@ class ShopUserCreateSerializer(serializers.ModelSerializer):
         """
         if attrs.get('password') != attrs.get('confirm_password'):
             raise serializers.ValidationError({
-                "password": "Password fields didn't match."
+                "confirm_password": "Password fields didn't match."
             })
+        
+        # Remove confirm_password from attrs
+        attrs.pop('confirm_password', None)
+        
         return attrs
     
     def create(self, validated_data):
         """
-        Create user with hashed password and tenant from context
+        Create user with hashed password and tenant from context.
+        Returns password info message for display to admin.
         """
-        validated_data.pop('confirm_password')
         password = validated_data.pop('password')
         shop_ids = validated_data.pop('shop_ids', [])
         
@@ -169,5 +222,13 @@ class ShopUserCreateSerializer(serializers.ModelSerializer):
         
         # Save to tenant database
         user.save(using=tenant.db_alias)
+        
+        # Add password info to context for response
+        self.context['password_info'] = {
+            'message': 'User created successfully. Password has been securely hashed.',
+            'note': 'Password is not stored in plain text and cannot be retrieved. User can reset password if forgotten.',
+            'username': user.username,
+            'email': user.email
+        }
         
         return user

@@ -5,14 +5,25 @@
  * This allows easy importing: import { debtorsApi, creditorsApi } from '@/lib/api'
  */
 
-export { authApi, default } from './authApi';
-export { tenantsApi, default } from './tenantsApi';
-export { debtorsApi, default } from './debtorsApi';
-export { creditorsApi, default } from './creditorsApi';
-export { cashBookApi, default } from './cashBookApi';
-export { generalLedgerApi, default } from './generalLedgerApi';
-export { stockApi, default } from './stockApi';
-export { purchaseOrdersApi, default } from './purchaseOrdersApi';
+export { authApi } from './authApi';
+export { tenantsApi } from './tenantsApi';
+export { debtorsApi } from './debtorsApi';
+export { creditorsApi } from './creditorsApi';
+export { cashBookApi } from './cashBookApi';
+export { generalLedgerApi } from './generalLedgerApi';
+export { stockControlApi as stockApi } from './stockControlApi';
+export { stockControlApi } from './stockControlApi';
+export {
+  getStockItem,
+  getStockItems,
+  createStockItem,
+  updateStockItem,
+  deleteStockItem,
+  getStockItemPricing,
+  getStockItemTransactions,
+  adjustStockItem,
+} from './stockControlApi';
+export { purchaseOrdersApi } from './purchaseOrdersApi';
 export { posAPI, usePOSAPI } from './posApi';
 export { settingsApi, default } from './settingsApi';
 
@@ -33,8 +44,8 @@ export {
   useCreditorMutation,
   useInvoiceMutation,
   usePaymentMutation,
-  type UseCreditorApiResponse,
-  type UseCreditorApiState,
+  type UseApiResponse,
+  type UseApiState,
 } from './hooks/useCreditorApi';
 
 // Export configuration

@@ -85,26 +85,26 @@ export default function CreditorAccountsPage() {
             <tbody>
               {accounts?.results?.map((account: CreditorAccount) => (
                 <tr key={account.id} className="border-b hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium">{account.account_number}</td>
+                  <td className="px-4 py-3 font-medium">{account.supplier_number}</td>
                   <td className="px-4 py-3">{account.name}</td>
                   <td className="px-4 py-3">
                     <span
                       className={`px-2 py-1 rounded text-xs font-medium ${
-                        account.account_type === 'BBF'
+                        account.account_category === 'B'
                           ? 'bg-purple-100 text-purple-800'
                           : 'bg-violet-100 text-violet-800'
                       }`}
                     >
-                      {account.account_type}
+                      {account.account_category === 'B' ? 'BBF' : account.account_category === 'O' ? 'OI' : ''}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-600">{account.contact_person}</td>
                   <td className="px-4 py-3 text-right font-bold">
-                    R {account.balance?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
+                    R {account.total_outstanding_balance?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-600">
-                    {account.last_payment_date
-                      ? new Date(account.last_payment_date).toLocaleDateString('en-ZA')
+                    {account.last_paid_date
+                      ? new Date(account.last_paid_date).toLocaleDateString('en-ZA')
                       : 'N/A'}
                   </td>
                   <td className="px-4 py-3 text-center">

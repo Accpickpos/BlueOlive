@@ -225,8 +225,8 @@ class ShopSerializer(serializers.ModelSerializer):
     class Meta:
         model = Shop
         fields = ['id', 'name', 'code', 'address', 'phone', 'description', 
-                  'schema_name', 'subdomain', 'is_head_office', 'is_active', 'created_at']
-        read_only_fields = ['id', 'schema_name', 'created_at']
+                  'schema_name', 'subdomain', 'is_head_office', 'is_active', 'setup_status', 'created_at']
+        read_only_fields = ['id', 'schema_name', 'setup_status', 'created_at']
 
     def create(self, validated_data):
         """

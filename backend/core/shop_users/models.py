@@ -43,16 +43,17 @@ class ShopUser(AbstractUser):
         help_text='List of shop IDs this user is assigned to'
     )
     
-    # Role field - simplified to 3 core roles matching API specification
+    # Role field - simplified to 4 core roles matching API specification
     ROLE_CHOICES = [
         ('ADMIN', 'Admin - Full tenant access'),
         ('MANAGER', 'Manager - Can manage shop users'),
-        ('USER', 'User - Basic access'),
+        ('STAFF', 'Staff - Staff member with limited access'),
+        ('CASHIER', 'Cashier - Basic access'),
     ]
     role = models.CharField(
         max_length=20,
         choices=ROLE_CHOICES,
-        default='USER'
+        default='CASHIER'
     )
     
     # Additional fields
@@ -122,9 +123,13 @@ class ShopUser(AbstractUser):
     
     def save(self, *args, **kwargs):
         """
-        Override save to ensure tenant_id is set.
+        Override save to ensure tenant_id is set and is_staff is synced with role.
         Superusers can have tenant_id = None.
         """
+        # Sync is_staff with role - staff members, managers, and admins have is_staff=True
+        role = getattr(self, 'role', 'CASHIER') or 'CASHIER'  # Default to CASHIER if not set
+        self.is_staff = role in ('ADMIN', 'MANAGER', 'STAFF')
+        
         if not self.tenant_id and not self.is_superuser:
             from tenancy.tenant_context import get_current_tenant
             tenant = get_current_tenant()
@@ -191,3 +196,93 @@ class ShopUser(AbstractUser):
         self.save()
         
         return True, "Email verified successfully"
+    
+    def get_active_shops(self):
+        """
+        Get all active shops user has access to.
+        Uses shop_ids JSON field for multi-shop access.
+        """
+        from tenancy.models import Shop
+        
+        # Admins have access to all shops in their tenant
+        if self.is_superuser or self.role == 'ADMIN':
+            if not self.tenant_id:
+                return Shop.objects.none()
+            return Shop.objects.using('default').filter(
+                tenant_id=self.tenant_id, 
+                is_active=True
+            )
+        
+        # Use shop_ids JSON field for explicit access
+        shop_ids_list = getattr(self, 'shop_ids', []) or []
+        
+        if not shop_ids_list:
+            # No explicit shop assignments - return empty
+            return Shop.objects.none()
+        
+        return Shop.objects.using('default').filter(
+            id__in=shop_ids_list,
+            is_active=True,
+            tenant_id=self.tenant_id
+        )
+    
+    def get_current_shop(self):
+        """
+        Get the currently active shop for this user.
+        Prefers session-based shop, then falls back to first available.
+        """
+        from tenancy.models import Shop
+        
+        # Check if current_shop_id is set
+        current_shop_id = getattr(self, 'current_shop_id', None)
+        if current_shop_id:
+            shop = Shop.objects.using('default').filter(
+                id=current_shop_id,
+                is_active=True,
+                user_associations__user=self,
+                user_associations__is_active=True
+            ).first()
+            if shop:
+                return shop
+        
+        # Fallback to first available shop
+        return self.get_active_shops().first()
+    
+    def can_access_shop(self, shop_id):
+        """
+        Check if user can access a specific shop.
+        
+        Args:
+            shop_id: ID of the shop to check access for
+            
+        Returns:
+            bool: True if user has access, False otherwise
+        """
+        from tenancy.models import Shop
+        
+        # Admins can access any shop in their tenant
+        if self.is_superuser or self.role == 'ADMIN':
+            shop = Shop.objects.using('default').filter(
+                id=shop_id, 
+                is_active=True
+            ).first()
+            return shop and shop.tenant_id == self.tenant_id
+        
+        # Check shop_ids JSON field
+        shop_ids_list = getattr(self, 'shop_ids', []) or []
+        return shop_id in shop_ids_list
+    
+    def get_accessible_shops_list(self):
+        """
+        Get list of accessible shops as dict for serialization.
+        """
+        shops = self.get_active_shops()
+        current_id = getattr(self, 'current_shop_id', None)
+        
+        return [{
+            'id': shop.id,
+            'name': shop.name,
+            'schema_name': shop.schema_name,
+            'is_head_office': shop.is_head_office,
+            'is_current': shop.id == current_id
+        } for shop in shops]

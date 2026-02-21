@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { creditorsApi } from '@/lib/creditorsApi';
+import settingsApi from '@/lib/settingsApi';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,20 +35,20 @@ export default function ExpenseInvoiceForm() {
 
   const { data: categories } = useQuery({
     queryKey: ['expense-categories'],
-    queryFn: () => creditorsApi.expenseCategories.list({ page_size: 100 }),
+    queryFn: () => settingsApi.expenseCategories.list({ page_size: 100 }),
   });
 
   const { data: invoiceData, isLoading } = useQuery({
     queryKey: ['expense-invoice', invoiceId],
-    queryFn: () => creditorsApi.transactions.get(invoiceId),
+    queryFn: () => creditorsApi.invoices.get(invoiceId),
     enabled: !isNew,
   });
 
   const mutation = useMutation({
     mutationFn: (data: any) =>
       isNew
-        ? creditorsApi.transactions.create({ ...data, transaction_type: 'INVOICE_EXPENSE' })
-        : creditorsApi.transactions.update(invoiceId, data),
+        ? creditorsApi.invoices.create({ ...data, transaction_type: 'INVOICE_EXPENSE' })
+        : creditorsApi.invoices.update(invoiceId, data),
     onSuccess: () => {
       router.push('/dashboard/admin/creditors/transactions/invoices/expense');
     },

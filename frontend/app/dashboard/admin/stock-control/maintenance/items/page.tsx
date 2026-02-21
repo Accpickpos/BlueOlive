@@ -6,7 +6,7 @@ import { getStockItems, deleteStockItem } from '@/lib/stockApi';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { 
   Loader, Plus, Edit, Trash2, Search, 
@@ -65,8 +65,13 @@ export default function StockItemsMaintenancePage() {
               className="pl-10"
             />
           </div>
-          <Select className="w-48">
-            <option value="">All Departments</option>
+          <Select>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="All Departments" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All Departments</SelectItem>
+            </SelectContent>
           </Select>
         </div>
       </Card>

@@ -1,966 +1,686 @@
+from django.db.models import Q, Sum, F
+from django.utils import timezone
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
-from django.db.models import Q, Sum, F, Count, DecimalField
-from django.db.models.functions import Coalesce
-from django.utils import timezone
-from decimal import Decimal
-from datetime import datetime, timedelta
 
 from .models import (
-    SalesDepartment, SalesArea, StockItem, SpecialDeal, FuturePricing,
-    ShrinkWrap, PackBundle, PackBundleIngredient, StockTransaction,
+    StockItem, SpecialDeal, FuturePricing, ShrinkWrap,
+    PackBundle, PackBundleIngredient, StockTransaction, StockMovementLedger,
     StockTake, StockTakeItem, ContractPricing, OneTouchLookupKey,
-    StockMonthlyStatistic
+    StockMonthlyStatistic, Branch, BranchStock, GroupOrder, GroupOrderItem,
+    BranchTransfer, BranchTransferItem, BranchTransferInvoice,
 )
 from .serializers import (
-    SalesDepartmentSerializer, SalesAreaSerializer, StockItemListSerializer,
-    StockItemDetailSerializer, StockItemCreateUpdateSerializer, SpecialDealSerializer,
-    FuturePricingSerializer, ShrinkWrapSerializer, PackBundleSerializer,
-    PackBundleIngredientSerializer, PackBundleCreateSerializer, StockTransactionSerializer,
-    StockTransactionCreateSerializer, StockTakeSerializer, StockTakeItemSerializer,
-    StockTakeCountSerializer, ContractPricingSerializer, OneTouchLookupKeySerializer,
-    StockMonthlyStatisticSerializer, PriceAdjustmentSerializer, StockValuationSerializer,
-    ManufactureItemSerializer
+    StockItemSerializer, StockItemListSerializer,
+    SpecialDealSerializer, FuturePricingSerializer,
+    ShrinkWrapSerializer,
+    PackBundleSerializer, PackBundleIngredientSerializer,
+    StockTransactionSerializer,
+    StockMovementLedgerSerializer,
+    StockTakeSerializer, StockTakeListSerializer, StockTakeItemSerializer,
+    ContractPricingSerializer,
+    OneTouchLookupKeySerializer,
+    StockMonthlyStatisticSerializer,
+    BranchSerializer, BranchStockSerializer,
+    GroupOrderSerializer, GroupOrderListSerializer, GroupOrderItemSerializer,
+    BranchTransferSerializer, BranchTransferListSerializer, BranchTransferItemSerializer,
+    BranchTransferInvoiceSerializer,
 )
 
 
-class SalesDepartmentViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for Sales Departments
-    
-    list: Get all departments
-    create: Create new department
-    retrieve: Get department details
-    update: Update department
-    partial_update: Partially update department
-    destroy: Delete department
-    """
-    queryset = SalesDepartment.objects.all()
-    serializer_class = SalesDepartmentSerializer
-    permission_classes = [IsAuthenticated]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['department_name', 'department_number']
-    ordering_fields = ['department_number', 'department_name']
-    ordering = ['department_number']
-    
-    @action(detail=True, methods=['get'])
-    def stock_items(self, request, pk=None):
-        """Get all stock items in this department"""
-        department = self.get_object()
-        items = StockItem.objects.filter(department=department)
-        serializer = StockItemListSerializer(items, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=True, methods=['get'])
-    def sales_statistics(self, request, pk=None):
-        """Get sales statistics for this department"""
-        department = self.get_object()
-        items = StockItem.objects.filter(department=department)
-        
-        stats = {
-            'total_items': items.count(),
-            'active_items': items.filter(is_active=True).count(),
-            'total_stock_value': sum(item.quantity_on_hand * item.cost_price for item in items),
-            'mtd_sales': sum(item.sales_mtd_value for item in items),
-            'ytd_sales': sum(item.sales_ytd_value for item in items),
-        }
-        
-        return Response(stats)
-
-
-class SalesAreaViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for Sales Areas/Salesmen
-    
-    list: Get all areas
-    create: Create new area
-    retrieve: Get area details
-    update: Update area
-    partial_update: Partially update area
-    destroy: Delete area
-    """
-    queryset = SalesArea.objects.all()
-    serializer_class = SalesAreaSerializer
-    permission_classes = [IsAuthenticated]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['area_name', 'area_number']
-    ordering_fields = ['area_number', 'area_name']
-    ordering = ['area_number']
-
+# ─────────────────────────────────────────────
+# StockItem
+# ─────────────────────────────────────────────
 
 class StockItemViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for Stock Items
-    
-    list: Get all stock items (lightweight)
-    create: Create new stock item
-    retrieve: Get detailed stock item
-    update: Update stock item
-    partial_update: Partially update stock item
-    destroy: Delete stock item
+    CRUD for stock items with filtering, search, and helper actions.
+
+    List filters:  ?department=&supplier=&is_active=&search=
+    Custom actions:
+      GET  /stock-items/{pk}/pricing/          — all prices + deals + future pricing
+      GET  /stock-items/{pk}/transactions/     — movement history
+      GET  /stock-items/{pk}/monthly-stats/    — monthly sales breakdown
+      GET  /stock-items/low-stock/             — items at or below reorder qty
+      GET  /stock-items/needs-reorder/         — alias for low-stock
+      POST /stock-items/{pk}/adjust-stock/     — manual qty adjustment
     """
-    queryset = StockItem.objects.select_related('department', 'supplier').all()
+    queryset = StockItem.objects.select_related(
+        'department', 'supplier', 'tax_code', 'last_supplier'
+    ).prefetch_related('special_deals', 'future_prices')
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['department', 'supplier', 'is_active', 'tax_code']
-    search_fields = ['stock_code', 'description', 'supplier_code']
-    ordering_fields = ['stock_code', 'description', 'cost_price', 'selling_price_1', 'quantity_on_hand']
+    filterset_fields = ['department', 'supplier', 'is_active', 'tax_code', 'kvi_flag']
+    search_fields = ['stock_code', 'description', 'supplier_code', 'bin_number']
+    ordering_fields = ['stock_code', 'description', 'quantity_on_hand', 'cost_price', 'selling_price_1']
     ordering = ['stock_code']
-    
+
     def get_serializer_class(self):
         if self.action == 'list':
             return StockItemListSerializer
-        elif self.action in ['create', 'update', 'partial_update']:
-            return StockItemCreateUpdateSerializer
-        return StockItemDetailSerializer
-    
-    @action(detail=False, methods=['get'])
-    def search(self, request):
-        """Advanced search with multiple criteria"""
-        query = request.query_params.get('q', '')
-        search_type = request.query_params.get('type', 'all')  # all, code, description, supplier_code
-        
-        queryset = self.get_queryset()
-        
-        if search_type == 'code':
-            queryset = queryset.filter(stock_code__icontains=query)
-        elif search_type == 'description':
-            queryset = queryset.filter(description__icontains=query)
-        elif search_type == 'supplier_code':
-            queryset = queryset.filter(supplier_code__icontains=query)
-        else:  # all
-            queryset = queryset.filter(
-                Q(stock_code__icontains=query) |
-                Q(description__icontains=query) |
-                Q(supplier_code__icontains=query)
-            )
-        
-        serializer = StockItemListSerializer(queryset[:50], many=True)  # Limit to 50 results
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['post'])
-    def bulk_lookup(self, request):
-        """
-        Fast bulk lookup for stock items - supports multiple lookup types.
-        
-        OPTION 1: Single lookup type (recommended)
-        POST /api/stock-control/stock-items/bulk_lookup/
-        {
-            "lookup_by": "stock_code",  // or "supplier_code" or "description"
-            "values": ["SKU001", "SKU002", "SKU003"],
-            "include_fields": ["stock_code", "description", "quantity_on_hand", ...]  // optional
-        }
-        
-        OPTION 2: Mixed lookup types
-        {
-            "lookup_by": "mixed",
-            "values": [
-                {"key": "SKU001", "type": "stock_code"},
-                {"key": "SUP-ABC", "type": "supplier_code"},
-                {"key": "Electronic", "type": "description"}
-            ],
-            "include_fields": [...]  // optional
-        }
-        
-        BACKWARD COMPATIBILITY: Old format still works
-        {
-            "stock_codes": ["SKU001", "SKU002"],  // Maps to lookup_by='stock_code'
-            "include_fields": [...]
-        }
-        """
-        # Backward compatibility: convert old stock_codes format to new values format
-        stock_codes = request.data.get('stock_codes')
-        if stock_codes is not None:
-            values = stock_codes
-            lookup_by = 'stock_code'
-        else:
-            lookup_by = request.data.get('lookup_by', 'stock_code')
-            values = request.data.get('values', [])
-        
-        include_fields = request.data.get('include_fields')
-        
-        # Validate input
-        if not values:
-            return Response(
-                {'error': 'values is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        if not isinstance(values, list):
-            return Response(
-                {'error': 'values must be a list'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        if len(values) > 500:
-            return Response(
-                {'error': 'Maximum 500 values per request'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Validate lookup_by parameter
-        valid_lookup_types = ['stock_code', 'supplier_code', 'description', 'mixed']
-        if lookup_by not in valid_lookup_types:
-            return Response(
-                {'error': f'lookup_by must be one of: {", ".join(valid_lookup_types)}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Handle mixed lookup type
-        if lookup_by == 'mixed':
-            return self._handle_mixed_lookup(values, include_fields)
-        
-        # Handle single lookup type
-        return self._handle_single_lookup(lookup_by, values, include_fields)
-    
-    def _handle_single_lookup(self, lookup_by, values, include_fields):
-        """Handle single lookup type (stock_code, supplier_code, or description)"""
-        
-        # Build query based on lookup type
-        if lookup_by == 'stock_code':
-            items = StockItem.objects.filter(
-                stock_code__in=values
-            ).select_related('department', 'supplier')
-            lookup_key = 'stock_code'
-            lookup_field = 'stock_code'
-            
-        elif lookup_by == 'supplier_code':
-            items = StockItem.objects.filter(
-                supplier_code__in=values
-            ).select_related('department', 'supplier')
-            lookup_key = 'supplier_code'
-            lookup_field = 'supplier_code'
-            
-        elif lookup_by == 'description':
-            # For description, we need to do case-insensitive matching
-            from django.db.models import Q
-            query = Q()
-            for value in values:
-                query |= Q(description__icontains=value)
-            items = StockItem.objects.filter(query).select_related('department', 'supplier')
-            lookup_key = 'description'
-            lookup_field = 'description'
-        
-        # Create lookup dict (handling multiple items with same value)
-        items_dict = {}
-        for item in items:
-            key_value = getattr(item, lookup_field)
-            if key_value not in items_dict:
-                items_dict[key_value] = []
-            items_dict[key_value].append(item)
-        
-        # Build response maintaining order and including nulls for missing values
-        result = []
-        for value in values:
-            matches = items_dict.get(value, [])
-            
-            if not matches:
-                result.append({
-                    lookup_key: value,
-                    'found': False,
-                    'data': None
-                })
-            else:
-                # For supplier_code and description, multiple items may match
-                # Return first match, but note count
-                item = matches[0]
-                serialized = StockItemListSerializer(item).data
-                
-                # Filter to requested fields if specified
-                if include_fields:
-                    filtered_data = {
-                        k: v for k, v in serialized.items() 
-                        if k in include_fields or k == 'stock_code'
-                    }
-                else:
-                    filtered_data = serialized
-                
-                result.append({
-                    lookup_key: value,
-                    'found': True,
-                    'match_count': len(matches),  # Show if multiple items matched
-                    'data': filtered_data
-                })
-        
-        return Response({
-            'lookup_by': lookup_by,
-            'count': len([r for r in result if r['found']]),
-            'total': len(result),
-            'results': result
-        })
-    
-    def _handle_mixed_lookup(self, values, include_fields):
-        """Handle mixed lookup types in single request"""
-        
-        if not all(isinstance(v, dict) and 'key' in v and 'type' in v for v in values):
-            return Response(
-                {'error': 'mixed lookup requires list of {key, type} objects'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Build comprehensive query to fetch all potential matches
-        from django.db.models import Q
-        
-        query = Q()
-        for item in values:
-            lookup_type = item.get('type')
-            key_value = item.get('key')
-            
-            if lookup_type == 'stock_code':
-                query |= Q(stock_code=key_value)
-            elif lookup_type == 'supplier_code':
-                query |= Q(supplier_code=key_value)
-            elif lookup_type == 'description':
-                query |= Q(description__icontains=key_value)
-        
-        all_items = StockItem.objects.filter(query).select_related('department', 'supplier')
-        
-        # Build lookup dicts for each type
-        by_stock_code = {item.stock_code: item for item in all_items}
-        by_supplier_code = {}
-        by_description = {}
-        
-        for item in all_items:
-            if item.supplier_code:
-                if item.supplier_code not in by_supplier_code:
-                    by_supplier_code[item.supplier_code] = []
-                by_supplier_code[item.supplier_code].append(item)
-            
-            if item.description:
-                if item.description.lower() not in by_description:
-                    by_description[item.description.lower()] = []
-                by_description[item.description.lower()].append(item)
-        
-        # Build response
-        result = []
-        for lookup_item in values:
-            lookup_type = lookup_item.get('type')
-            key_value = lookup_item.get('key')
-            item = None
-            match_count = 0
-            
-            if lookup_type == 'stock_code':
-                item = by_stock_code.get(key_value)
-                match_count = 1 if item else 0
-            elif lookup_type == 'supplier_code':
-                matches = by_supplier_code.get(key_value, [])
-                if matches:
-                    item = matches[0]
-                    match_count = len(matches)
-            elif lookup_type == 'description':
-                matches = by_description.get(key_value.lower(), [])
-                if matches:
-                    item = matches[0]
-                    match_count = len(matches)
-            
-            if item is None:
-                result.append({
-                    'lookup_key': key_value,
-                    'lookup_type': lookup_type,
-                    'found': False,
-                    'data': None
-                })
-            else:
-                serialized = StockItemListSerializer(item).data
-                
-                if include_fields:
-                    filtered_data = {
-                        k: v for k, v in serialized.items() 
-                        if k in include_fields or k == 'stock_code'
-                    }
-                else:
-                    filtered_data = serialized
-                
-                result.append({
-                    'lookup_key': key_value,
-                    'lookup_type': lookup_type,
-                    'found': True,
-                    'match_count': match_count,
-                    'data': filtered_data
-                })
-        
-        return Response({
-            'lookup_by': 'mixed',
-            'count': len([r for r in result if r['found']]),
-            'total': len(result),
-            'results': result
-        })
-    
+        return StockItemSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user.username)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user.username)
+
     @action(detail=True, methods=['get'])
-    def movement_history(self, request, pk=None):
-        """Get movement history for a stock item"""
-        stock_item = self.get_object()
-        start_date = request.query_params.get('start_date')
-        end_date = request.query_params.get('end_date')
-        
-        transactions = StockTransaction.objects.filter(stock_item=stock_item)
-        
-        if start_date:
-            transactions = transactions.filter(transaction_date__gte=start_date)
-        if end_date:
-            transactions = transactions.filter(transaction_date__lte=end_date)
-        
-        serializer = StockTransactionSerializer(transactions, many=True)
-        return Response(serializer.data)
-    
+    def pricing(self, request, pk=None):
+        """Return all pricing information for a stock item."""
+        item = self.get_object()
+        data = {
+            'stock_code': item.stock_code,
+            'cost_price': item.cost_price,
+            'average_cost': item.average_cost,
+            'selling_price_1': item.selling_price_1,
+            'selling_price_2': item.selling_price_2,
+            'selling_price_3': item.selling_price_3,
+            'markup_1': item.markup_1,
+            'markup_2': item.markup_2,
+            'markup_3': item.markup_3,
+            'gross_profit_pct_1': item.calculate_gross_profit(1),
+            'gross_profit_pct_2': item.calculate_gross_profit(2),
+            'gross_profit_pct_3': item.calculate_gross_profit(3),
+            'active_special_deal': None,
+            'future_prices': FuturePricingSerializer(
+                item.future_prices.filter(is_applied=False).order_by('effective_date'),
+                many=True
+            ).data,
+        }
+        today = timezone.now().date()
+        deal = item.special_deals.filter(
+            start_date__lte=today, end_date__gte=today, is_active=True
+        ).first()
+        if deal:
+            data['active_special_deal'] = SpecialDealSerializer(deal).data
+        return Response(data)
+
     @action(detail=True, methods=['get'])
-    def sales_history(self, request, pk=None):
-        """Get sales history for a stock item"""
-        stock_item = self.get_object()
-        
-        # Get monthly statistics
-        stats = StockMonthlyStatistic.objects.filter(stock_item=stock_item).order_by('-year', '-month')
-        serializer = StockMonthlyStatisticSerializer(stats, many=True)
-        return Response(serializer.data)
-    
+    def transactions(self, request, pk=None):
+        """Return transaction history for a stock item, newest first."""
+        item = self.get_object()
+        qs = item.transactions.select_related(
+            'department', 'debtor', 'supplier'
+        ).order_by('-transaction_date', '-id')
+
+        # Optional date range filtering
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+        tx_type = request.query_params.get('type')
+        if date_from:
+            qs = qs.filter(transaction_date__gte=date_from)
+        if date_to:
+            qs = qs.filter(transaction_date__lte=date_to)
+        if tx_type:
+            qs = qs.filter(transaction_type=tx_type)
+
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(StockTransactionSerializer(page, many=True).data)
+        return Response(StockTransactionSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['get'])
+    def monthly_stats(self, request, pk=None):
+        item = self.get_object()
+        qs = item.monthly_stats.order_by('-year', '-month')
+        return Response(StockMonthlyStatisticSerializer(qs, many=True).data)
+
     @action(detail=False, methods=['get'])
-    def below_reorder(self, request):
-        """Get items below reorder level"""
-        items = StockItem.objects.filter(
-            quantity_on_hand__lte=F('reorder_quantity'),
-            is_active=True
-        ).exclude(reorder_quantity=0)
-        
-        serializer = StockItemListSerializer(items, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'])
-    def negative_stock(self, request):
-        """Get items with negative stock"""
-        items = StockItem.objects.filter(quantity_on_hand__lt=0)
-        serializer = StockItemListSerializer(items, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'])
-    def slow_movers(self, request):
-        """Get slow-moving items based on last sale date"""
-        days = int(request.query_params.get('days', 90))
-        cutoff_date = timezone.now().date() - timedelta(days=days)
-        
-        items = StockItem.objects.filter(
-            Q(date_last_sold__lt=cutoff_date) | Q(date_last_sold__isnull=True),
-            quantity_on_hand__gt=0,
-            is_active=True
-        )
-        
-        serializer = StockItemListSerializer(items, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['post'])
-    def bulk_price_adjustment(self, request):
-        """Bulk price adjustment for multiple items"""
-        serializer = PriceAdjustmentSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        
-        data = serializer.validated_data
-        
-        # Build queryset
-        queryset = StockItem.objects.all()
-        if data.get('department'):
-            queryset = queryset.filter(department=data['department'])
-        if data.get('supplier'):
-            queryset = queryset.filter(supplier=data['supplier'])
-        
-        # Calculate adjustment multiplier
-        amount = data['amount']
-        if data['value_type'] == 'PERCENTAGE':
-            if data['adjustment_type'] == 'INCREASE':
-                multiplier = 1 + (amount / 100)
-            else:
-                multiplier = 1 - (amount / 100)
-        else:  # RAND
-            multiplier = None  # We'll add/subtract directly
-        
-        # Apply adjustments
-        updated_count = 0
-        for item in queryset:
-            if data['price_type'] == 'COST':
-                if multiplier:
-                    item.cost_price = item.cost_price * Decimal(str(multiplier))
-                else:
-                    if data['adjustment_type'] == 'INCREASE':
-                        item.cost_price = item.cost_price + amount
-                    else:
-                        item.cost_price = max(0, item.cost_price - amount)
-            else:  # SELLING
-                price_levels = data.get('price_levels', [1, 2, 3])
-                for level in price_levels:
-                    current_price = getattr(item, f'selling_price_{level}')
-                    if multiplier:
-                        new_price = current_price * Decimal(str(multiplier))
-                    else:
-                        if data['adjustment_type'] == 'INCREASE':
-                            new_price = current_price + amount
-                        else:
-                            new_price = max(0, current_price - amount)
-                    setattr(item, f'selling_price_{level}', new_price)
-            
-            item.save()
-            updated_count += 1
-        
-        return Response({
-            'message': f'Successfully updated {updated_count} items',
-            'updated_count': updated_count
-        })
-    
-    @action(detail=True, methods=['post'])
-    def adjust_quantity(self, request, pk=None):
-        """Adjust quantity for a stock item"""
-        stock_item = self.get_object()
-        new_quantity = Decimal(request.data.get('quantity', 0))
-        reference = request.data.get('reference', 'Manual adjustment')
-        
-        # Create adjustment transaction
-        quantity_diff = new_quantity - stock_item.quantity_on_hand
-        
-        transaction_data = {
+    def low_stock(self, request):
+        """Items where available quantity <= reorder quantity."""
+        items = [
+            item for item in StockItem.objects.filter(is_active=True)
+            if item.needs_reordering()
+        ]
+        return Response(StockItemListSerializer(items, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='needs-reorder')
+    def needs_reorder(self, request):
+        return self.low_stock(request)
+
+    @action(detail=True, methods=['post'], url_path='adjust-stock')
+    def adjust_stock(self, request, pk=None):
+        """
+        Manual stock adjustment.
+        Body: { "quantity": <signed float>, "comments": "..." }
+        Positive quantity = stock in; negative = stock out.
+        """
+        item = self.get_object()
+        qty = request.data.get('quantity')
+        if qty is None:
+            return Response({'error': 'quantity is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            qty = float(qty)
+        except (TypeError, ValueError):
+            return Response({'error': 'quantity must be a number.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if qty == 0:
+            return Response({'error': 'quantity must be non-zero.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        tx_data = {
             'transaction_type': 'ADJUSTMENT',
-            'stock_item': stock_item.stock_code,
-            'quantity_in': quantity_diff if quantity_diff > 0 else 0,
-            'quantity_out': abs(quantity_diff) if quantity_diff < 0 else 0,
-            'unit_cost': stock_item.cost_price,
-            'reference': reference
+            'stock_item': item.stock_code,
+            'transaction_date': timezone.now().date(),
+            'quantity_in': max(qty, 0),
+            'quantity_out': max(-qty, 0),
+            'quantity_balance': float(item.quantity_on_hand) + qty,
+            'unit_cost': float(item.average_cost),
+            'comments': request.data.get('comments', 'Manual adjustment'),
         }
-        
-        transaction_serializer = StockTransactionCreateSerializer(data=transaction_data)
-        transaction_serializer.is_valid(raise_exception=True)
-        transaction_serializer.save()
-        
+        serializer = StockTransactionSerializer(data=tx_data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(created_by=request.user.username)
+
+        item.quantity_on_hand = F('quantity_on_hand') + qty
+        item.save(update_fields=['quantity_on_hand'])
+        item.refresh_from_db()
+
         return Response({
-            'message': 'Quantity adjusted successfully',
-            'old_quantity': stock_item.quantity_on_hand,
-            'new_quantity': new_quantity,
-            'adjustment': quantity_diff
+            'message': f"Stock adjusted by {qty}.",
+            'new_quantity_on_hand': item.quantity_on_hand,
+            'transaction': serializer.data,
         })
 
+
+# ─────────────────────────────────────────────
+# SpecialDeal
+# ─────────────────────────────────────────────
 
 class SpecialDealViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for Special Deals
-    
-    list: Get all special deals
-    create: Create new special deal
-    retrieve: Get special deal details
-    update: Update special deal
-    partial_update: Partially update special deal
-    destroy: Delete special deal
-    """
-    queryset = SpecialDeal.objects.select_related('stock_item').all()
+    queryset = SpecialDeal.objects.select_related('stock_item')
     serializer_class = SpecialDealSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['stock_item', 'is_active']
     ordering_fields = ['start_date', 'end_date']
-    ordering = ['-start_date']
-    
-    @action(detail=False, methods=['get'])
-    def active(self, request):
-        """Get currently active special deals"""
-        today = timezone.now().date()
-        deals = SpecialDeal.objects.filter(
-            start_date__lte=today,
-            end_date__gte=today,
-            is_active=True
-        )
-        serializer = self.get_serializer(deals, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['post'])
-    def bulk_create_department(self, request):
-        """Create special deals for entire department"""
-        department_id = request.data.get('department')
-        adjustment_type = request.data.get('adjustment_type')  # + or -
-        value_type = request.data.get('value_type')  # P or R
-        amount = Decimal(request.data.get('amount', 0))
-        price_levels = request.data.get('price_levels', [1, 2, 3])
-        start_date = request.data.get('start_date')
-        end_date = request.data.get('end_date')
-        
-        items = StockItem.objects.filter(department_id=department_id, is_active=True)
-        created_deals = []
-        
-        for item in items:
-            deal_data = {
-                'stock_item': item.stock_code,
-                'special_cost_price': item.cost_price,
-                'start_date': start_date,
-                'end_date': end_date,
-                'is_active': True
-            }
-            
-            # Calculate special prices
-            for level in price_levels:
-                current_price = getattr(item, f'selling_price_{level}')
-                
-                if value_type == 'P':  # Percentage
-                    if adjustment_type == '+':
-                        new_price = current_price * (1 + amount / 100)
-                    else:
-                        new_price = current_price * (1 - amount / 100)
-                else:  # Rand
-                    if adjustment_type == '+':
-                        new_price = current_price + amount
-                    else:
-                        new_price = max(0, current_price - amount)
-                
-                deal_data[f'special_selling_price_{level}'] = new_price
-                
-                # Calculate markup
-                if item.cost_price > 0:
-                    markup = ((new_price - item.cost_price) / item.cost_price) * 100
-                    deal_data[f'special_markup_{level}'] = markup
-            
-            deal = SpecialDeal.objects.create(**deal_data)
-            created_deals.append(deal)
-        
-        serializer = self.get_serializer(created_deals, many=True)
-        return Response({
-            'message': f'Created {len(created_deals)} special deals',
-            'deals': serializer.data
-        }, status=status.HTTP_201_CREATED)
 
+    @action(detail=False, methods=['get'], url_path='active-today')
+    def active_today(self, request):
+        """Return all special deals valid today."""
+        today = timezone.now().date()
+        qs = SpecialDeal.objects.filter(
+            start_date__lte=today, end_date__gte=today, is_active=True
+        ).select_related('stock_item')
+        return Response(SpecialDealSerializer(qs, many=True).data)
+
+
+# ─────────────────────────────────────────────
+# FuturePricing
+# ─────────────────────────────────────────────
 
 class FuturePricingViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for Future Pricing
-    
-    list: Get all future prices
-    create: Create new future price
-    retrieve: Get future price details
-    update: Update future price
-    partial_update: Partially update future price
-    destroy: Delete future price
-    """
-    queryset = FuturePricing.objects.select_related('stock_item').all()
+    queryset = FuturePricing.objects.select_related('stock_item')
     serializer_class = FuturePricingSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['stock_item', 'is_applied']
     ordering_fields = ['effective_date']
-    ordering = ['effective_date']
-    
-    @action(detail=False, methods=['post'])
-    def apply_future_prices(self, request):
-        """Apply future prices that are due"""
-        cutoff_date = request.data.get('cutoff_date', timezone.now().date())
-        
-        future_prices = FuturePricing.objects.filter(
-            effective_date__lte=cutoff_date,
-            is_applied=False
-        )
-        
-        updated_count = 0
-        for fp in future_prices:
-            item = fp.stock_item
-            item.cost_price = fp.future_cost_price
-            item.selling_price_1 = fp.future_selling_price_1
-            item.selling_price_2 = fp.future_selling_price_2
-            item.selling_price_3 = fp.future_selling_price_3
-            item.markup_1 = fp.future_markup_1
-            item.markup_2 = fp.future_markup_2
-            item.markup_3 = fp.future_markup_3
-            item.save()
-            
-            fp.is_applied = True
-            fp.save()
-            updated_count += 1
-        
-        return Response({
-            'message': f'Applied {updated_count} future prices',
-            'updated_count': updated_count
-        })
 
+    @action(detail=True, methods=['post'], url_path='apply')
+    def apply(self, request, pk=None):
+        """Apply future pricing to the stock item immediately."""
+        fp = self.get_object()
+        if fp.is_applied:
+            return Response({'error': 'Already applied.'}, status=status.HTTP_400_BAD_REQUEST)
+        item = fp.stock_item
+        item.selling_price_1 = fp.future_selling_price_1
+        item.selling_price_2 = fp.future_selling_price_2
+        item.selling_price_3 = fp.future_selling_price_3
+        item.markup_1 = fp.future_markup_1
+        item.markup_2 = fp.future_markup_2
+        item.markup_3 = fp.future_markup_3
+        if fp.future_cost_price:
+            item.cost_price = fp.future_cost_price
+        item.save()
+        fp.is_applied = True
+        fp.save(update_fields=['is_applied'])
+        return Response({'message': 'Future pricing applied.', 'stock_code': item.stock_code})
+
+
+# ─────────────────────────────────────────────
+# ShrinkWrap
+# ─────────────────────────────────────────────
 
 class ShrinkWrapViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for Shrink/Wrap relationships (Bulk to Unit conversion)
-    
-    list: Get all shrink wrap relationships
-    create: Create new relationship
-    retrieve: Get relationship details
-    update: Update relationship
-    partial_update: Partially update relationship
-    destroy: Delete relationship
-    """
-    queryset = ShrinkWrap.objects.select_related('shrink_pack_code', 'bulk_pack_code').all()
+    queryset = ShrinkWrap.objects.select_related('shrink_pack_code', 'bulk_pack_code')
     serializer_class = ShrinkWrapSerializer
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filter_backends = [DjangoFilterBackend]
     filterset_fields = ['shrink_pack_code', 'bulk_pack_code']
-    search_fields = ['shrink_pack_code__stock_code', 'bulk_pack_code__stock_code']
 
+
+# ─────────────────────────────────────────────
+# PackBundle
+# ─────────────────────────────────────────────
 
 class PackBundleViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for Pack/Bundle (BOM - Bill of Materials)
-    
-    list: Get all pack/bundles
-    create: Create new pack/bundle with ingredients
-    retrieve: Get pack/bundle details
-    update: Update pack/bundle
-    partial_update: Partially update pack/bundle
-    destroy: Delete pack/bundle
-    """
-    queryset = PackBundle.objects.select_related('stock_item').prefetch_related('ingredients').all()
+    queryset = PackBundle.objects.prefetch_related('ingredients__ingredient_stock')
+    serializer_class = PackBundleSerializer
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ['stock_item']
-    search_fields = ['stock_item__stock_code', 'stock_item__description']
-    
-    def get_serializer_class(self):
-        if self.action == 'create':
-            return PackBundleCreateSerializer
-        return PackBundleSerializer
-    
-    @action(detail=True, methods=['patch'])
-    def update_total_cost(self, request, pk=None):
-        """Recalculate total cost from ingredients"""
-        bundle = self.get_object()
-        total_cost = bundle.calculate_total_cost()
-        return Response({
-            'total_cost': float(total_cost),
-            'message': 'Total cost updated'
-        })
 
+    @action(detail=True, methods=['post'], url_path='recalculate-cost')
+    def recalculate_cost(self, request, pk=None):
+        bundle = self.get_object()
+        total = bundle.calculate_total_cost()
+        return Response({'total_cost': total})
+
+
+class PackBundleIngredientViewSet(viewsets.ModelViewSet):
+    queryset = PackBundleIngredient.objects.select_related('ingredient_stock')
+    serializer_class = PackBundleIngredientSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['pack_bundle', 'ingredient_stock']
+
+
+# ─────────────────────────────────────────────
+# StockTransaction
+# ─────────────────────────────────────────────
 
 class StockTransactionViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for Stock Transactions (Transaction Ledger)
-    
-    list: Get all transactions
-    create: Create new transaction
-    retrieve: Get transaction details
-    """
-    queryset = StockTransaction.objects.select_related('stock_item', 'department', 'debtor', 'supplier').all()
+    queryset = StockTransaction.objects.select_related(
+        'stock_item', 'department', 'tax_code', 'debtor', 'supplier'
+    )
+    serializer_class = StockTransactionSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['stock_item', 'transaction_type', 'transaction_date']
-    ordering_fields = ['transaction_date', 'created_at']
-    ordering = ['-transaction_date']
-    
-    def get_serializer_class(self):
-        if self.action == 'create':
-            return StockTransactionCreateSerializer
-        return StockTransactionSerializer
-    
-    @action(detail=False, methods=['get'])
-    def running_balance(self, request):
-        """Get running balance for a stock item"""
-        stock_code = request.query_params.get('stock_code')
-        if not stock_code:
-            return Response(
-                {'error': 'stock_code parameter required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            stock_item = StockItem.objects.get(stock_code=stock_code)
-        except StockItem.DoesNotExist:
-            return Response(
-                {'error': f'Stock item {stock_code} not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        transactions = StockTransaction.objects.filter(
-            stock_item=stock_item
-        ).order_by('transaction_date')
-        
-        serializer = StockTransactionSerializer(transactions, many=True)
-        return Response({
-            'stock_code': stock_code,
-            'current_qoh': float(stock_item.quantity_on_hand),
-            'transactions': serializer.data
-        })
+    filterset_fields = ['stock_item', 'transaction_type', 'transaction_date', 'department', 'debtor', 'supplier']
+    ordering_fields = ['transaction_date', 'id']
+    ordering = ['-transaction_date', '-id']
 
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user.username)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        date_from = self.request.query_params.get('date_from')
+        date_to = self.request.query_params.get('date_to')
+        if date_from:
+            qs = qs.filter(transaction_date__gte=date_from)
+        if date_to:
+            qs = qs.filter(transaction_date__lte=date_to)
+        return qs
+
+
+# ─────────────────────────────────────────────
+# StockMovementLedger
+# ─────────────────────────────────────────────
+
+class StockMovementLedgerViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only ledger — entries are created by the system during transactions."""
+    queryset = StockMovementLedger.objects.select_related('stock_item')
+    serializer_class = StockMovementLedgerSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['stock_item', 'movement_type', 'movement_date']
+    ordering_fields = ['movement_date', 'movement_time']
+    ordering = ['movement_date', 'movement_time']
+
+
+# ─────────────────────────────────────────────
+# StockTake
+# ─────────────────────────────────────────────
 
 class StockTakeViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for Stock Take (Physical Inventory Count)
-    
-    list: Get all stock takes
-    create: Create new stock take
-    retrieve: Get stock take details
-    update: Update stock take
-    partial_update: Partially update stock take
+    Manage stock take sessions.
+
+    Custom actions:
+      POST /stock-takes/{pk}/complete/          — mark as COMPLETED
+      POST /stock-takes/{pk}/update-stock/      — apply counted quantities to QOH
+      GET  /stock-takes/{pk}/variance-report/   — items with non-zero variance
     """
-    queryset = StockTake.objects.prefetch_related('items').all()
-    serializer_class = StockTakeSerializer
+    queryset = StockTake.objects.prefetch_related('items__stock_item')
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['status']
     ordering_fields = ['stock_take_date']
     ordering = ['-stock_take_date']
-    
-    @action(detail=True, methods=['post'])
-    def add_item(self, request, pk=None):
-        """Add or update a counted item to stock take"""
-        stock_take = self.get_object()
-        serializer = StockTakeCountSerializer(data=request.data)
-        
-        if serializer.is_valid():
-            stock_item = serializer.validated_data['stock_item']
-            quantity_counted = serializer.validated_data['quantity_counted']
-            add_to_previous = serializer.validated_data.get('add_to_previous', False)
-            
-            item, created = StockTakeItem.objects.get_or_create(
-                stock_take=stock_take,
-                stock_item=stock_item,
-                defaults={
-                    'quantity_on_hand': stock_item.quantity_on_hand,
-                    'cost_price_at_count': stock_item.cost_price
-                }
-            )
-            
-            if add_to_previous and not created:
-                quantity_counted += item.quantity_counted
-            
-            item.quantity_counted = quantity_counted
-            item.is_counted = True
-            item.count_date = timezone.now()
-            item.calculate_variance()
-            
-            return Response(
-                StockTakeItemSerializer(item).data,
-                status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
-            )
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return StockTakeListSerializer
+        return StockTakeSerializer
+
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
-        """Mark stock take as completed"""
-        stock_take = self.get_object()
-        
-        if stock_take.status != 'IN_PROGRESS':
+        take = self.get_object()
+        if take.status != 'IN_PROGRESS':
             return Response(
-                {'error': 'Can only complete stock takes in progress'},
+                {'error': f"Cannot complete a stock take with status '{take.status}'."},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        stock_take.status = 'COMPLETED'
-        stock_take.completed_at = timezone.now()
-        stock_take.save()
-        
-        return Response(StockTakeSerializer(stock_take).data)
-    
-    @action(detail=True, methods=['post'])
-    def post_to_inventory(self, request, pk=None):
-        """Post stock take results to update inventory"""
-        stock_take = self.get_object()
-        
-        if stock_take.status != 'COMPLETED':
-            return Response(
-                {'error': 'Can only post completed stock takes'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        updated_items = []
-        for item in stock_take.items.all():
-            stock_item = item.stock_item
-            variance = item.quantity_counted - item.quantity_on_hand
-            
-            if variance != 0:
-                # Create adjustment transaction
-                StockTransaction.objects.create(
-                    transaction_type='STOCK_TAKE',
-                    stock_item=stock_item,
-                    transaction_date=stock_take.stock_take_date,
-                    quantity_in=variance if variance > 0 else 0,
-                    quantity_out=abs(variance) if variance < 0 else 0,
-                    value=abs(variance) * stock_item.cost_price,
-                    comments=f'Stock take {stock_take.id} adjustment',
-                    created_by=request.user.username if request.user.is_authenticated else 'system'
-                )
-                
-                # Update stock item
-                stock_item.quantity_on_hand = item.quantity_counted
-                stock_item.closing_stock_balance = item.quantity_counted
-                stock_item.save()
-                updated_items.append(stock_item.stock_code)
-        
-        stock_take.status = 'UPDATED'
-        stock_take.save()
-        
-        return Response({
-            'message': 'Stock take posted to inventory',
-            'stock_take_id': stock_take.id,
-            'updated_items': updated_items,
-            'total_updated': len(updated_items)
-        })
+        take.status = 'COMPLETED'
+        take.completed_at = timezone.now()
+        take.save(update_fields=['status', 'completed_at'])
+        return Response({'message': 'Stock take completed.', 'completed_at': take.completed_at})
 
+    @action(detail=True, methods=['post'], url_path='update-stock')
+    def update_stock(self, request, pk=None):
+        """Apply counted quantities as adjustments to stock QOH."""
+        take = self.get_object()
+        if take.status not in ('COMPLETED', 'IN_PROGRESS'):
+            return Response(
+                {'error': 'Stock take must be COMPLETED or IN_PROGRESS to update stock.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        items = take.items.select_related('stock_item')
+        updated = 0
+        for item in items:
+            if not item.is_counted and not take.set_uncounted_to_zero:
+                continue
+            counted = item.quantity_counted
+            if take.reset_negatives_to_zero and counted < 0:
+                counted = 0
+            item.stock_item.quantity_on_hand = counted
+            item.stock_item.save(update_fields=['quantity_on_hand'])
+            item.calculate_variance()
+            updated += 1
+        take.status = 'UPDATED'
+        take.save(update_fields=['status'])
+        return Response({'message': f'Stock updated for {updated} items.'})
+
+    @action(detail=True, methods=['get'], url_path='variance-report')
+    def variance_report(self, request, pk=None):
+        take = self.get_object()
+        items = take.items.exclude(variance_quantity=0).select_related('stock_item')
+        return Response(StockTakeItemSerializer(items, many=True).data)
+
+
+class StockTakeItemViewSet(viewsets.ModelViewSet):
+    queryset = StockTakeItem.objects.select_related('stock_take', 'stock_item')
+    serializer_class = StockTakeItemSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['stock_take', 'stock_item', 'is_counted']
+
+    @action(detail=True, methods=['post'])
+    def count(self, request, pk=None):
+        """Record a counted quantity for this item."""
+        item = self.get_object()
+        qty = request.data.get('quantity_counted')
+        if qty is None:
+            return Response({'error': 'quantity_counted is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            item.quantity_counted = float(qty)
+        except (TypeError, ValueError):
+            return Response({'error': 'quantity_counted must be a number.'}, status=status.HTTP_400_BAD_REQUEST)
+        item.is_counted = True
+        item.count_date = timezone.now()
+        item.calculate_variance()
+        return Response(StockTakeItemSerializer(item).data)
+
+
+# ─────────────────────────────────────────────
+# ContractPricing
+# ─────────────────────────────────────────────
 
 class ContractPricingViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for Contract Pricing (Debtor-specific pricing)
-    
-    list: Get all contracts
-    create: Create new contract
-    retrieve: Get contract details
-    update: Update contract
-    partial_update: Partially update contract
-    destroy: Delete contract
-    """
-    queryset = ContractPricing.objects.select_related('debtor', 'stock_item', 'department', 'supplier').all()
+    queryset = ContractPricing.objects.select_related(
+        'debtor', 'stock_item', 'department', 'supplier'
+    )
     serializer_class = ContractPricingSerializer
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ['debtor', 'pricing_method', 'is_active']
-    search_fields = ['debtor__name', 'stock_item__stock_code']
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['debtor', 'stock_item', 'department', 'supplier', 'pricing_method', 'is_active']
 
+
+# ─────────────────────────────────────────────
+# OneTouchLookupKey
+# ─────────────────────────────────────────────
 
 class OneTouchLookupKeyViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for One-Touch POS Shortcuts
-    
-    list: Get all lookup keys
-    create: Create new lookup key
-    retrieve: Get lookup key details
-    update: Update lookup key
-    partial_update: Partially update lookup key
-    destroy: Delete lookup key
-    """
-    queryset = OneTouchLookupKey.objects.select_related('stock_item').all()
+    queryset = OneTouchLookupKey.objects.select_related('stock_item')
     serializer_class = OneTouchLookupKeySerializer
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    search_fields = ['key_character', 'stock_item__stock_code', 'stock_item__description']
-    
-    @action(detail=False, methods=['get'])
-    def lookup_by_key(self, request):
-        """Quick lookup by single character key"""
-        key = request.query_params.get('key', '').upper()
-        
-        if not key or len(key) != 1:
-            return Response(
-                {'error': 'key parameter must be a single character'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            lookup_key = OneTouchLookupKey.objects.get(key_character=key)
-            serializer = self.get_serializer(lookup_key)
-            return Response(serializer.data)
-        except OneTouchLookupKey.DoesNotExist:
-            return Response(
-                {'error': f'No lookup key found for character {key}'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['stock_item']
 
 
-class StockMonthlyStatisticViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    ViewSet for Stock Monthly Statistics (Read-only)
-    
-    list: Get all monthly statistics
-    retrieve: Get monthly statistic details
-    """
-    queryset = StockMonthlyStatistic.objects.select_related('stock_item').all()
+# ─────────────────────────────────────────────
+# StockMonthlyStatistic
+# ─────────────────────────────────────────────
+
+class StockMonthlyStatisticViewSet(viewsets.ModelViewSet):
+    queryset = StockMonthlyStatistic.objects.select_related('stock_item')
     serializer_class = StockMonthlyStatisticSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['stock_item', 'year', 'month']
     ordering_fields = ['year', 'month']
     ordering = ['-year', '-month']
+
+
+# ─────────────────────────────────────────────
+# Branch
+# ─────────────────────────────────────────────
+
+class BranchViewSet(viewsets.ModelViewSet):
+    """
+    Manage branches/locations.
+
+    Custom actions:
+      GET /branches/{pk}/stock/     — all stock levels at this branch
+    """
+    queryset = Branch.objects.all()
+    serializer_class = BranchSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ['branch_type', 'is_active', 'is_default']
+    search_fields = ['branch_code', 'branch_name']
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user.username)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user.username)
+
+    @action(detail=True, methods=['get'])
+    def stock(self, request, pk=None):
+        branch = self.get_object()
+        qs = branch.branch_stocks.select_related('stock_item')
+        search = request.query_params.get('search')
+        if search:
+            qs = qs.filter(
+                Q(stock_item__stock_code__icontains=search) |
+                Q(stock_item__description__icontains=search)
+            )
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(BranchStockSerializer(page, many=True).data)
+        return Response(BranchStockSerializer(qs, many=True).data)
+
+
+# ─────────────────────────────────────────────
+# BranchStock
+# ─────────────────────────────────────────────
+
+class BranchStockViewSet(viewsets.ModelViewSet):
+    queryset = BranchStock.objects.select_related('branch', 'stock_item')
+    serializer_class = BranchStockSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['branch', 'stock_item']
+
+    @action(detail=False, methods=['get'], url_path='low-stock')
+    def low_stock(self, request):
+        """Branch stock lines where available quantity <= reorder level."""
+        qs = BranchStock.objects.select_related('branch', 'stock_item').annotate(
+            avail=F('quantity') - F('quantity_allocated')
+        ).filter(avail__lte=F('reorder_level'))
+        branch = request.query_params.get('branch')
+        if branch:
+            qs = qs.filter(branch=branch)
+        return Response(BranchStockSerializer(qs, many=True).data)
+
+
+# ─────────────────────────────────────────────
+# GroupOrder
+# ─────────────────────────────────────────────
+
+class GroupOrderViewSet(viewsets.ModelViewSet):
+    """
+    Manage group orders.
+
+    Custom actions:
+      POST /group-orders/{pk}/recalculate-total/
+    """
+    queryset = GroupOrder.objects.select_related('branch').prefetch_related('items__stock_item')
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['branch', 'status']
+    ordering_fields = ['order_date', 'total_amount']
+    ordering = ['-order_date']
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return GroupOrderListSerializer
+        return GroupOrderSerializer
+
+    @action(detail=True, methods=['post'], url_path='recalculate-total')
+    def recalculate_total(self, request, pk=None):
+        order = self.get_object()
+        total = order.calculate_total_amount()
+        return Response({'group_order_number': order.group_order_number, 'total_amount': total})
+
+
+class GroupOrderItemViewSet(viewsets.ModelViewSet):
+    queryset = GroupOrderItem.objects.select_related('group_order', 'stock_item')
+    serializer_class = GroupOrderItemSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['group_order', 'stock_item']
+
+
+# ─────────────────────────────────────────────
+# BranchTransfer
+# ─────────────────────────────────────────────
+
+class BranchTransferViewSet(viewsets.ModelViewSet):
+    """
+    Manage inter-branch transfers (IBT).
+
+    Status transitions via dedicated actions:
+      POST /branch-transfers/{pk}/approve/
+      POST /branch-transfers/{pk}/dispatch/
+      POST /branch-transfers/{pk}/receive/
+      POST /branch-transfers/{pk}/cancel/
+    """
+    queryset = BranchTransfer.objects.select_related(
+        'from_branch', 'to_branch',
+        'requested_by', 'approved_by', 'dispatched_by', 'received_by'
+    ).prefetch_related('items__stock_item')
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['from_branch', 'to_branch', 'status', 'transfer_type']
+    ordering_fields = ['requested_date']
+    ordering = ['-requested_date']
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return BranchTransferListSerializer
+        return BranchTransferSerializer
+
+    def _transition(self, pk, allowed_from, new_status, timestamp_field, user_field):
+        transfer = self.get_object()
+        if transfer.status not in allowed_from:
+            return Response(
+                {'error': f"Cannot transition from '{transfer.status}' to '{new_status}'."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        transfer.status = new_status
+        setattr(transfer, timestamp_field, timezone.now())
+        setattr(transfer, user_field, self.request.user)
+        transfer.save(update_fields=['status', timestamp_field, user_field])
+        return Response(BranchTransferSerializer(transfer).data)
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        return self._transition(pk, ['PENDING'], 'APPROVED', 'approved_date', 'approved_by')
+
+    @action(detail=True, methods=['post'])
+    def dispatch(self, request, pk=None):
+        return self._transition(pk, ['APPROVED'], 'DISPATCHED', 'dispatched_date', 'dispatched_by')
+
+    @action(detail=True, methods=['post'])
+    def receive(self, request, pk=None):
+        """
+        Mark transfer as received. Optionally accepts per-item received quantities
+        in body: { "items": [ { "id": <BranchTransferItemId>, "quantity_received": <n> } ] }
+        """
+        transfer = self.get_object()
+        if transfer.status not in ('DISPATCHED', 'IN_TRANSIT'):
+            return Response(
+                {'error': f"Cannot receive a transfer with status '{transfer.status}'."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        item_data = request.data.get('items', [])
+        for entry in item_data:
+            try:
+                ti = transfer.items.get(id=entry['id'])
+                ti.quantity_received = entry['quantity_received']
+                ti.save()
+            except (BranchTransferItem.DoesNotExist, KeyError):
+                pass
+        transfer.status = 'RECEIVED'
+        transfer.received_date = timezone.now()
+        transfer.received_by = request.user
+        transfer.save(update_fields=['status', 'received_date', 'received_by'])
+        return Response(BranchTransferSerializer(transfer).data)
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        transfer = self.get_object()
+        if transfer.status in ('COMPLETED', 'CANCELLED'):
+            return Response(
+                {'error': f"Cannot cancel a transfer with status '{transfer.status}'."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        transfer.status = 'CANCELLED'
+        transfer.save(update_fields=['status'])
+        return Response({'message': 'Transfer cancelled.', 'transfer_number': transfer.transfer_number})
+
+
+class BranchTransferItemViewSet(viewsets.ModelViewSet):
+    queryset = BranchTransferItem.objects.select_related('transfer', 'stock_item')
+    serializer_class = BranchTransferItemSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['transfer', 'stock_item']
+
+
+# ─────────────────────────────────────────────
+# BranchTransferInvoice
+# ─────────────────────────────────────────────
+
+class BranchTransferInvoiceViewSet(viewsets.ModelViewSet):
+    queryset = BranchTransferInvoice.objects.select_related('transfer')
+    serializer_class = BranchTransferInvoiceSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['status', 'invoice_date']
+    ordering_fields = ['invoice_date']
+    ordering = ['-invoice_date']
+
+    @action(detail=True, methods=['post'])
+    def issue(self, request, pk=None):
+        invoice = self.get_object()
+        if invoice.status != 'DRAFT':
+            return Response({'error': 'Only DRAFT invoices can be issued.'}, status=status.HTTP_400_BAD_REQUEST)
+        invoice.status = 'ISSUED'
+        invoice.save(update_fields=['status'])
+        return Response(BranchTransferInvoiceSerializer(invoice).data)
+
+    @action(detail=True, methods=['post'])
+    def mark_paid(self, request, pk=None):
+        invoice = self.get_object()
+        if invoice.status != 'ISSUED':
+            return Response({'error': 'Only ISSUED invoices can be marked as paid.'}, status=status.HTTP_400_BAD_REQUEST)
+        invoice.status = 'PAID'
+        invoice.save(update_fields=['status'])
+        return Response(BranchTransferInvoiceSerializer(invoice).data)

@@ -33,11 +33,22 @@ export const debtorsApi = {
      * List all debtor accounts with filters
      */
     list: async (filters?: DebtorFilters) => {
-      const response = await api.get<PaginatedResponse<DebtorAccount>>(
-        ENDPOINTS.DEBTORS.ACCOUNTS,
-        { params: filters }
-      );
-      return response.data;
+      try {
+        console.log('Debtors filters:', filters);
+        const response = await api.get<PaginatedResponse<DebtorAccount>>(
+          ENDPOINTS.DEBTORS.ACCOUNTS,
+          { params: filters }
+        );
+        return response.data;
+      } catch (error: any) {
+    // Log the error details for debugging
+    if (error.response) {
+      console.error('API error:', error.response.status, error.response.data);
+        } else {
+          console.error('API error:', error.message);
+        }
+        throw error;
+      }
     },
 
     /**
@@ -123,11 +134,12 @@ export const debtorsApi = {
   summary: {
     /**
      * Get overall debtors summary and analytics
+     * @param cutoff_date - Optional cutoff date for age analysis (YYYY-MM-DD)
      */
-    get: async (filters?: AgeAnalysisFilters) => {
+    get: async (cutoff_date?: string) => {
       const response = await api.get<DebtorsSummary>(
-        ENDPOINTS.DEBTORS.ACCOUNTS,
-        { params: filters }
+        ENDPOINTS.DEBTORS.SUMMARY,
+        { params: cutoff_date ? { cutoff_date } : undefined }
       );
       return response.data;
     },

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { creditorsApi } from '@/lib/creditorsApi';
-import type { CreditorAccount } from '@/lib/types/creditors';
+import type { CreditorAccount, CreditorCreateData } from '@/lib/types/creditors';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,9 +17,11 @@ export default function CreditorAccountFormPage() {
   const isNew = accountId === 'new';
 
   const [formData, setFormData] = useState<Partial<CreditorAccount>>({
-    account_type: 'BBF',
+    account_category: 'B',
     credit_terms: 30,
-    payment_discount_percent: 0,
+    payment_terms_days: 30,
+    prompt_payment_discount_percent: 0,
+    update_selling_price_on_receipt: false,
   });
 
   const { data: account, isLoading } = useQuery({
@@ -29,8 +31,34 @@ export default function CreditorAccountFormPage() {
   });
 
   const mutations = useMutation({
-    mutationFn: (data: Partial<CreditorAccount>) =>
-      isNew ? creditorsApi.accounts.create(data) : creditorsApi.accounts.update(accountId, data),
+    mutationFn: (data: Partial<CreditorAccount>) => {
+      const createData: CreditorCreateData = {
+        supplier_number: data.supplier_number || '',
+        name: data.name || '',
+        contact_person: data.contact_person,
+        telephone: data.telephone1,
+        fax: data.fax,
+        email: data.email,
+        physical_address_line1: data.physical_address_line1,
+        physical_address_line2: data.physical_address_line2,
+        physical_address_line3: data.physical_address_line3,
+        postal_address_line1: data.postal_address_line1,
+        postal_address_line2: data.postal_address_line2,
+        postal_address_line3: data.postal_address_line3,
+        our_account_number: data.our_account_number,
+        credit_terms: data.credit_terms,
+        payment_terms_days: data.payment_terms_days,
+        account_category: data.account_category,
+        sales_area: data.sales_area,
+        update_selling_price_on_receipt: data.update_selling_price_on_receipt,
+        prompt_payment_discount_percent: data.prompt_payment_discount_percent,
+        bank_name: data.bank_name,
+        branch_code: data.branch_code,
+        account_number: data.account_number,
+        is_active: data.is_active,
+      };
+      return isNew ? creditorsApi.accounts.create(createData) : creditorsApi.accounts.update(accountId, data);
+    },
     onSuccess: () => {
       router.push('/dashboard/admin/creditors/maintenance/accounts');
     },
@@ -73,8 +101,8 @@ export default function CreditorAccountFormPage() {
               <label className="block text-sm font-medium mb-1">Account Number</label>
               <Input
                 type="text"
-                value={formData.account_number || ''}
-                onChange={(e) => setFormData({ ...formData, account_number: e.target.value })}
+                value={formData.supplier_number || ''}
+                onChange={(e) => setFormData({ ...formData, supplier_number: e.target.value })}
                 placeholder="Auto-allocated via Page Down"
                 disabled={!isNew}
               />
@@ -91,12 +119,12 @@ export default function CreditorAccountFormPage() {
             <div>
               <label className="block text-sm font-medium mb-1">Account Type</label>
               <select
-                value={formData.account_type || 'BBF'}
-                onChange={(e) => setFormData({ ...formData, account_type: e.target.value })}
+                value={formData.account_category || 'B'}
+                onChange={(e) => setFormData({ ...formData, account_category: e.target.value as 'B' | 'O' | '' })}
                 className="w-full border border-gray-300 rounded px-3 py-2"
               >
-                <option value="BBF">Balance Brought Forward</option>
-                <option value="OPEN_ITEM">Open Item</option>
+                <option value="B">Balance Brought Forward</option>
+                <option value="O">Open Item</option>
               </select>
             </div>
             <div>
@@ -117,8 +145,8 @@ export default function CreditorAccountFormPage() {
             <div className="md:col-span-2">
               <label className="block text-sm font-medium mb-1">Physical Address</label>
               <textarea
-                value={formData.physical_address || ''}
-                onChange={(e) => setFormData({ ...formData, physical_address: e.target.value })}
+                value={formData.physical_address_line1 || ''}
+                onChange={(e) => setFormData({ ...formData, physical_address_line1: e.target.value })}
                 className="w-full border border-gray-300 rounded px-3 py-2"
                 rows={3}
               />
@@ -126,8 +154,8 @@ export default function CreditorAccountFormPage() {
             <div className="md:col-span-2">
               <label className="block text-sm font-medium mb-1">Postal Address</label>
               <textarea
-                value={formData.postal_address || ''}
-                onChange={(e) => setFormData({ ...formData, postal_address: e.target.value })}
+                value={formData.postal_address_line1 || ''}
+                onChange={(e) => setFormData({ ...formData, postal_address_line1: e.target.value })}
                 className="w-full border border-gray-300 rounded px-3 py-2"
                 rows={3}
               />
@@ -136,8 +164,8 @@ export default function CreditorAccountFormPage() {
               <label className="block text-sm font-medium mb-1">Telephone</label>
               <Input
                 type="tel"
-                value={formData.telephone || ''}
-                onChange={(e) => setFormData({ ...formData, telephone: e.target.value })}
+                value={formData.telephone1 || ''}
+                onChange={(e) => setFormData({ ...formData, telephone1: e.target.value })}
               />
             </div>
             <div>
@@ -184,8 +212,8 @@ export default function CreditorAccountFormPage() {
               <Input
                 type="number"
                 step="0.01"
-                value={formData.payment_discount_percent || 0}
-                onChange={(e) => setFormData({ ...formData, payment_discount_percent: parseFloat(e.target.value) })}
+                value={formData.prompt_payment_discount_percent || 0}
+                onChange={(e) => setFormData({ ...formData, prompt_payment_discount_percent: parseFloat(e.target.value) })}
               />
             </div>
           </div>
@@ -215,8 +243,8 @@ export default function CreditorAccountFormPage() {
               <label className="block text-sm font-medium mb-1">Account Number</label>
               <Input
                 type="text"
-                value={formData.bank_account_number || ''}
-                onChange={(e) => setFormData({ ...formData, bank_account_number: e.target.value })}
+                value={formData.account_number || ''}
+                onChange={(e) => setFormData({ ...formData, account_number: e.target.value })}
               />
             </div>
           </div>
@@ -228,8 +256,8 @@ export default function CreditorAccountFormPage() {
             <input
               type="checkbox"
               id="update_price"
-              checked={formData.update_selling_price_on_grn || false}
-              onChange={(e) => setFormData({ ...formData, update_selling_price_on_grn: e.target.checked })}
+              checked={formData.update_selling_price_on_receipt || false}
+              onChange={(e) => setFormData({ ...formData, update_selling_price_on_receipt: e.target.checked })}
               className="w-4 h-4"
             />
             <label htmlFor="update_price" className="text-sm font-medium">
