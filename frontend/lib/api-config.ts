@@ -259,6 +259,7 @@ export const ENDPOINTS = {
     CASH_RETURNS: `${API_V1_BASE}/pos/cash-returns/`,
     CASH_A_CHEQUE: `${API_V1_BASE}/pos/cash-a-cheque/`,
     TRANSACTION_QUERIES: `${API_V1_BASE}/pos/transaction-queries/`,
+    INVOICES: `${API_V1_BASE}/pos/invoices/`,
   },
 
   // ===== SETTINGS =====

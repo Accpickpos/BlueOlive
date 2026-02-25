@@ -1,0 +1,81 @@
+﻿services:
+  backend:
+    build:
+      context: ./backend/core
+    container_name: blueolive-backend
+    command: >
+      sh -c "
+      python manage.py migrate &&
+      python manage.py create_dev_tenant --slug dev &&
+      python manage.py runserver 0.0.0.0:8000
+      "
+    volumes:
+      - ./backend/core:/app
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/core/.env
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  celery:
+    build:
+      context: ./backend/core
+    container_name: blueolive-celery
+    command: celery -A core worker --loglevel=info
+    volumes:
+      - ./backend/core:/app
+    env_file:
+      - ./backend/core/.env
+    depends_on:
+      - backend
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: blueolive-frontend
+    working_dir: /app
+    command: sh -c "npm run dev"
+    env_file:
+      - ./frontend/.env
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: blueolive-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: blueolive-postgres
+    restart: unless-stopped
+    env_file:
+      - ./backend/core/.env
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+  redis_data:

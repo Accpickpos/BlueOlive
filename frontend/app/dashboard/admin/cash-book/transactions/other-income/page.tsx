@@ -48,8 +48,8 @@ export default function OtherIncomeEntryPage() {
         cashBookApi.otherIncome.list(),
       ]);
       setCategories(categoriesRes.results || []);
-      setTransactions(transactionsRes.results || []);
-      calculateTotals(transactionsRes.results || []);
+      setTransactions((transactionsRes.results || []) as OtherIncomeEntry[]);
+      calculateTotals((transactionsRes.results || []) as OtherIncomeEntry[]);
     } catch (err) {
       setError('Failed to load data');
       console.error(err);

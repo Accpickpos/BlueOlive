@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getShops, updateShop, deleteShop, api } from '@/lib/api';
+import { useAuthContext } from '@/lib/AuthContext';
 import { Edit2, Trash2, Plus, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import AddShopModal from './AddShopModal';
 import EditShopModal from './EditShopModal';
@@ -22,6 +23,7 @@ interface ShopsListPanelProps {
 }
 
 export default function ShopsListPanel({ refreshKey }: ShopsListPanelProps) {
+  const { refetchShops } = useAuthContext();
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -129,6 +131,8 @@ export default function ShopsListPanel({ refreshKey }: ShopsListPanelProps) {
     try {
       await deleteShop(id);
       setShops(shops.filter((s) => s.id !== id));
+      // Also refresh the AuthContext accessible shops list
+      refetchShops();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to delete shop');
     } finally {
@@ -143,6 +147,8 @@ export default function ShopsListPanel({ refreshKey }: ShopsListPanelProps) {
 
   const handleEditSuccess = () => {
     fetchShops();
+    // Also refresh the AuthContext accessible shops list
+    refetchShops();
     setShowEditModal(false);
     setEditingShop(null);
   };
@@ -272,6 +278,8 @@ export default function ShopsListPanel({ refreshKey }: ShopsListPanelProps) {
         onSuccess={() => {
           setShowAddModal(false);
           fetchShops();
+          // Also refresh the AuthContext accessible shops list
+          refetchShops();
         }}
       />
 

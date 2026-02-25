@@ -590,6 +590,10 @@ class InvoiceLine(TimeStampedModel):
         unique_together = [['invoice', 'line_number']]
         verbose_name = 'Invoice Line'
         verbose_name_plural = 'Invoice Lines'
+        indexes = [
+            models.Index(fields=['stock_code'], name='idx_invline_stock'),
+            models.Index(fields=['invoice', 'stock_code'], name='idx_invline_inv_stock'),
+        ]
     
     def __str__(self):
         return f"{self.invoice.invoice_number} - Line {self.line_number}: {self.description}"
@@ -767,6 +771,10 @@ class Tender(TimeStampedModel):
     
     class Meta:
         ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['tender_type']),
+            models.Index(fields=['cash_sale', 'tender_type'], name='idx_receipt_tender'),
+        ]
     
     def __str__(self):
         return f"{self.tender_type} - {self.amount}"

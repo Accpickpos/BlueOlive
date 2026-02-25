@@ -34,23 +34,37 @@ export default function CashSalesPage() {
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    fetchCashSales();
-  }, [statusFilter, currentPage]);
+    if (!authLoading && user) {
+      fetchCashSales();
+    }
+  }, [user, authLoading, statusFilter, currentPage]);
 
   const fetchCashSales = async () => {
     setLoading(true);
     try {
-      // Demo data
-      setTimeout(() => {
-        setCashSales([
-          { id: 1, reference: 'CS-001', customer: 'Walk-in Customer', items: 3, amount: 450.00, payment_method: 'cash', date: new Date().toISOString(), status: 'completed' },
-          { id: 2, reference: 'CS-002', customer: 'Walk-in Customer', items: 2, amount: 250.00, payment_method: 'card', date: new Date(Date.now() - 3600000).toISOString(), status: 'completed' },
-        ]);
-      }, 300);
+      // Actually call the API to fetch cash sales
+      const response = await posAPI.listCashSales();
+      
+      // Transform API response to match frontend structure
+      const salesData = response.results || [];
+      setCashSales(salesData.map((sale: any) => ({
+        id: sale.id,
+        reference: sale.sale_number,
+        customer: sale.customer_name || 'Walk-in Customer',
+        items: sale.line_count || 0,
+        // Ensure amount is a number (API returns Decimal as string)
+        total: Number(sale.total_amount) || 0,
+        amount: Number(sale.total_amount) || 0,
+        payment_method: 'cash', // Will be determined from tenders
+        date: sale.sale_date,
+        status: sale.is_cancelled ? 'cancelled' : 'completed',
+        change: Number(sale.change_given) || 0,
+      })));
     } catch (error) {
       console.error('Error fetching cash sales:', error);
+      setCashSales([]);
     } finally {
-      setTimeout(() => setLoading(false), 400);
+      setLoading(false);
     }
   };
 
@@ -152,7 +166,11 @@ export default function CashSalesPage() {
                 <TableBody>
                   {cashSales.map((sale) => (
                     <TableRow key={sale.id}>
-                      <TableCell className="font-medium">{sale.reference}</TableCell>
+                      <TableCell className="font-medium">
+                        <Link href={`/dashboard/pos/cash-sales/${sale.id}`} className="text-blue-600 hover:text-blue-700">
+                          {sale.reference}
+                        </Link>
+                      </TableCell>
                       <TableCell>{new Date(sale.date).toLocaleDateString()}</TableCell>
                       <TableCell className="text-right font-medium">
                         R{sale.total?.toFixed(2) || '0.00'}
@@ -170,9 +188,9 @@ export default function CashSalesPage() {
                         </span>
                       </TableCell>
                       <TableCell className="text-right space-x-2">
-                        <button className="text-blue-600 hover:text-blue-700">
+                        <Link href={`/dashboard/pos/cash-sales/${sale.id}`} className="text-blue-600 hover:text-blue-700">
                           <Eye className="w-4 h-4" />
-                        </button>
+                        </Link>
                         <button className="text-green-600 hover:text-green-700">
                           <Printer className="w-4 h-4" />
                         </button>

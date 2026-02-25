@@ -13,22 +13,32 @@ import type { DebtorAccount } from '@/lib/types/debtors';
 
 export default function AccountsPage() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filters, setFilters] = useState({
-    blocked: false as boolean | undefined,
-    is_active: true,
-  });
+  const [filterType, setFilterType] = useState<'all' | 'active' | 'blocked'>('all');
   const [page, setPage] = useState(1);
 
   const { data: response, isLoading, error } = useQuery({
-    queryKey: ['debtors-accounts', searchTerm, filters, page],
-    queryFn: () =>
-      debtorsApi.accounts.list({
+    queryKey: ['debtors-accounts', searchTerm, filterType, page],
+    queryFn: () => {
+      // Map frontend filter names to backend expected names
+      // Active: is_active=True, block_flag NOT in blocked states ['1','2','3','Y']
+      // Blocked: block_flag IN blocked states ['1','2','3','Y']
+      const apiFilters: any = {
         search: searchTerm || undefined,
-        is_active: filters.is_active,
-        blocked: filters.blocked,
         page,
         page_size: 20,
-      }),
+      };
+      
+      // Add filters based on filter type
+      if (filterType === 'active') {
+        apiFilters.is_active = true;
+        apiFilters.block_flag__in = ['0', 'N'];
+      } else if (filterType === 'blocked') {
+        apiFilters.block_flag__in = ['1', '2', '3', 'Y'];
+      }
+      // For 'all' - no filters
+      
+      return debtorsApi.accounts.list(apiFilters);
+    },
     staleTime: 2 * 60 * 1000,
   });
 
@@ -83,29 +93,38 @@ export default function AccountsPage() {
 
           <div className="flex gap-2">
             <Button
-              variant={!filters.blocked ? 'default' : 'outline'}
+              variant={filterType === 'all' ? 'default' : 'outline'}
               onClick={() => {
-                setFilters({ ...filters, blocked: false });
+                setFilterType('all');
+                setPage(1);
+              }}
+            >
+              All
+            </Button>
+            <Button
+              variant={filterType === 'active' ? 'default' : 'outline'}
+              onClick={() => {
+                setFilterType('active');
                 setPage(1);
               }}
             >
               Active
             </Button>
             <Button
-              variant={filters.blocked ? 'default' : 'outline'}
+              variant={filterType === 'blocked' ? 'default' : 'outline'}
               onClick={() => {
-                setFilters({ ...filters, blocked: true });
+                setFilterType('blocked');
                 setPage(1);
               }}
             >
               Blocked
             </Button>
-            {(searchTerm || filters.blocked) && (
+            {(searchTerm || filterType !== 'all') && (
               <Button
                 variant="outline"
                 onClick={() => {
                   setSearchTerm('');
-                  setFilters({ blocked: false, is_active: true });
+                  setFilterType('all');
                   setPage(1);
                 }}
               >

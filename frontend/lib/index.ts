@@ -2,9 +2,10 @@
  * API Index
  * 
  * Central export point for all API modules
- * This allows easy importing: import { debtorsApi, creditorsApi } from '@/lib/api'
+ * This allows easy importing: import { debtorsApi, creditorsApi } from '@/lib'
  */
 
+// API Modules
 export { authApi } from './authApi';
 export { tenantsApi } from './tenantsApi';
 export { debtorsApi } from './debtorsApi';
@@ -26,10 +27,6 @@ export {
 export { purchaseOrdersApi } from './purchaseOrdersApi';
 export { posAPI, usePOSAPI } from './posApi';
 export { settingsApi, default } from './settingsApi';
-
-// Export API Clients
-// Note: Clients are now created locally in hooks if needed
-// The main APIs are: creditorsApi, debtorsApi, stockApi, etc.
 
 // Export Creditors Hooks
 export {
@@ -53,3 +50,8 @@ export { ENDPOINTS, API_BASE_URL, API_V1_BASE, buildApiUrl } from './api-config'
 
 // Export axios instance
 export { api, isAuthenticated, clearAuthData, fetchCSRFToken } from './api';
+
+// Re-export from subdirectories for convenient access
+export * from './utils';
+export * from './hooks';
+export * from './types';

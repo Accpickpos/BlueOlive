@@ -32,6 +32,18 @@ interface AnalysisResult {
   model_type: string;
 }
 
+interface ImportProgress {
+  status: 'started' | 'processing' | 'complete' | 'error';
+  total: number;
+  processed: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  error_count?: number;
+  message?: string;
+  errors?: string[];
+}
+
 interface ImportResult {
   success: boolean;
   model_type: string;
@@ -530,6 +542,7 @@ export default function ImportDataPage() {
   // Import
   const [importMode, setImportMode] = useState<ImportMode>('create_or_update');
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -637,6 +650,7 @@ export default function ImportDataPage() {
     setLoading(true);
     setError(null);
     setImportResult(null);
+    setImportProgress(null);
 
     try {
       const form = new FormData();
@@ -647,13 +661,70 @@ export default function ImportDataPage() {
       form.append('model_type', dataType);
       form.append('mode', importMode);
 
-      const res = await api.post<ImportResult>(ENDPOINTS.SAAS_ADMIN.IMPORT_EXECUTE, form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      // Use fetch with streaming response
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_BASE}${ENDPOINTS.SAAS_ADMIN.IMPORT_EXECUTE}`, {
+        method: 'POST',
+        body: form,
+        credentials: 'include',
       });
-      setImportResult(res.data);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Import failed: ${response.status}`);
+      }
+
+      // Read streaming response
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      if (!reader) {
+        throw new Error('Failed to read response');
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (line.trim()) {
+            try {
+              const progress: ImportProgress = JSON.parse(line);
+              setImportProgress(progress);
+
+              if (progress.status === 'complete') {
+                // Convert to ImportResult format
+                setImportResult({
+                  success: true,
+                  model_type: dataType,
+                  tenant: '',
+                  shop: '',
+                  schema: '',
+                  total_rows: progress.total,
+                  created: progress.created,
+                  updated: progress.updated,
+                  skipped: progress.skipped,
+                  errors: [],
+                  message: `Import complete: ${progress.created} created, ${progress.updated} updated, ${progress.skipped} skipped`,
+                });
+              } else if (progress.status === 'error') {
+                throw new Error(progress.message || 'Import failed');
+              }
+            } catch (e) {
+              // Ignore parse errors for incomplete lines
+            }
+          }
+        }
+      }
+
       setStep('done');
     } catch (err: any) {
-      setError(err?.response?.data?.error || 'Import failed');
+      setError(err?.message || err?.response?.data?.error || 'Import failed');
       setStep('map');
     } finally {
       setLoading(false);
@@ -1148,6 +1219,33 @@ export default function ImportDataPage() {
                 Reset
               </button>
             </div>
+
+            {/* Progress bar during import */}
+            {step === 'importing' && importProgress && (
+              <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-blue-900">
+                    {importProgress.status === 'started' && 'Starting import...'}
+                    {importProgress.status === 'processing' && 'Importing data...'}
+                    {importProgress.status === 'complete' && 'Import complete!'}
+                  </span>
+                  <span className="text-sm text-blue-700">
+                    {importProgress.processed} / {importProgress.total} rows
+                  </span>
+                </div>
+                <div className="w-full bg-blue-200 rounded-full h-3">
+                  <div
+                    className="bg-blue-600 h-3 rounded-full transition-all duration-300"
+                    style={{ width: `${Math.round((importProgress.processed / importProgress.total) * 100)}%` }}
+                  />
+                </div>
+                <div className="flex justify-between mt-2 text-xs text-blue-700">
+                  <span>Created: {importProgress.created}</span>
+                  <span>Updated: {importProgress.updated}</span>
+                  <span>Skipped: {importProgress.skipped}</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
