@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# Build outputs
+.next/
+out/
+build/
+
+# Environment files (CRITICAL - never commit secrets)
+.env
+.env.local
+.env.production
+.env*.local
+backend/core/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+.venv/
+
+# Django
+*.log
+logs/
+staticfiles/media/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+.coverage
+
+# Misc
+*.pem
+*.key
