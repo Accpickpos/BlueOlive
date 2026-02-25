@@ -18,6 +18,8 @@
     depends_on:
       - postgres
       - redis
+    networks:
+      - blueolive_network
     restart: unless-stopped
 
   celery:
@@ -40,7 +42,7 @@
       context: ./frontend
     container_name: blueolive-frontend
     working_dir: /app
-    command: sh -c "npm run dev"
+    command: sh -c "NODE_OPTIONS='--max-old-space-size=4096' npm run dev"
     env_file:
       - ./frontend/.env
     volumes:
@@ -50,6 +52,8 @@
       - "3000:3000"
     depends_on:
       - backend
+    networks:
+      - blueolive_network
     restart: unless-stopped
 
   redis:
@@ -57,6 +61,8 @@
     container_name: blueolive-redis
     ports:
       - "6379:6379"
+    networks:
+      - blueolive_network
     volumes:
       - redis_data:/data
     restart: unless-stopped
@@ -73,9 +79,15 @@
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       - "5432:5432"
+    networks:
+      - blueolive_network
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  blueolive_network:
+    driver: bridge

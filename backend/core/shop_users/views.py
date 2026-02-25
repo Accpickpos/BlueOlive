@@ -150,7 +150,17 @@ class TenantTokenView(APIView):
                 max_age=int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()),
                 secure=is_secure,
                 httponly=True,
-                samesite='Lax',
+                samesite='None',  # Allow cross-origin for frontend/backend on different ports
+                path='/',
+            )
+            
+            response.set_cookie(
+                key='refresh_token',
+                value=refresh_token,
+                max_age=int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()),
+                secure=is_secure,
+                httponly=True,
+                samesite='None',  # Allow cross-origin for frontend/backend on different ports
                 path='/',
             )
             
