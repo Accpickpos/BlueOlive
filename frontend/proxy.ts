@@ -20,8 +20,11 @@ export async function proxy(request: NextRequest) {
   
   if (isDashboardPath) {
     try {
-      // Make a server-side request to check user profile
-      const apiBase = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
+      // Use the Docker service name for server-side requests
+      // NEXT_PUBLIC_API_BASE is for browser, but server-side needs internal Docker network
+      const apiBase = process.env.NEXT_PUBLIC_API_BASE?.includes('localhost') 
+        ? 'http://blueolive-backend:8000' 
+        : (process.env.NEXT_PUBLIC_API_BASE || 'http://blueolive-backend:8000');
       const response = await fetch(`${apiBase}/api/v1/users/auth/profile/`, {
         headers: {
           'Cookie': request.headers.get('cookie') || '',

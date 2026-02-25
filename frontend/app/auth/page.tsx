@@ -119,11 +119,17 @@ export default function AuthPage() {
         setMessage('Account created successfully! Redirecting to dashboard...');
         setMessageType('success');
         
-        // Refetch user profile to update AuthContext
-        await refetch();
+        // Try to refetch user profile, but redirect anyway even if it fails
+        try {
+          await refetch();
+        } catch (e) {
+          console.warn('Refetch failed, proceeding with redirect anyway');
+        }
         
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        router.push('/dashboard');
+        // Redirect to dashboard after a short delay
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 1500);
       }
     } catch (error: any) {
       const errorMsg = 

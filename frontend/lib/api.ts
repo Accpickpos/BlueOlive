@@ -127,7 +127,7 @@ export async function fetchCSRFToken(): Promise<string> {
 export const api: AxiosInstance = axios.create({
   baseURL: API_BASE,
   withCredentials: true, // Include cookies in cross-origin requests
-  timeout: 60000, // 60 second timeout
+  timeout: 180000, // 3 minute timeout for tenant creation migrations
 });
 
 // Track if we're currently refreshing token to avoid infinite loops
