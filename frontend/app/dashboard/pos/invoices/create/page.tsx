@@ -30,6 +30,7 @@ import {
   AccountInfoCard,
   TotalsSummary,
 } from '@/components/pos/form-components';
+import { DebtorPicker, StockItemPicker } from '@/components/pos';
 
 export default function CreateInvoice() {
   const { user, isLoading: authLoading } = useAuth();
@@ -61,12 +62,14 @@ export default function CreateInvoice() {
   // Line items
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [currentItem, setCurrentItem] = useState<Partial<LineItem>>({
+    stock_code: '',
     item_code: '',
     description: '',
     quantity: 0,
+    unit_price: 0,
     selling_price: 0,
     discount_percentage: 0,
-    tax_code: 'STANDARD',
+    tax_code: 1,
     cost_price: 0,
   });
   const [stocks, setStocks] = useState<any[]>([]);
@@ -156,23 +159,25 @@ export default function CreateInvoice() {
     }
 
     const newItem: LineItem = {
-      item_code: currentItem.item_code || '',
+      stock_code: currentItem.item_code || currentItem.stock_code || '',
       description: currentItem.description || '',
       quantity: currentItem.quantity || 0,
-      selling_price: currentItem.selling_price || 0,
+      unit_price: currentItem.selling_price || currentItem.unit_price || 0,
       discount_percentage: currentItem.discount_percentage || 0,
-      tax_code: (currentItem.tax_code as 'ZERO' | 'STANDARD' | 'REDUCED') || 'STANDARD',
+      tax_code: (currentItem.tax_code as 'ZERO' | 'STANDARD' | 'REDUCED' | number) || 1,
       cost_price: currentItem.cost_price || 0,
     };
 
     setLineItems([...lineItems, newItem]);
     setCurrentItem({
+      stock_code: '',
       item_code: '',
       description: '',
       quantity: 0,
+      unit_price: 0,
       selling_price: 0,
       discount_percentage: 0,
-      tax_code: 'STANDARD',
+      tax_code: 1,
       cost_price: 0,
     });
     setError(null);
@@ -190,7 +195,7 @@ export default function CreateInvoice() {
     let totalTax = 0;
 
     lineItems.forEach((item) => {
-      const itemSubtotal = item.quantity * item.selling_price;
+      const itemSubtotal = item.quantity * (item.unit_price || item.selling_price || 0);
       const discount = itemSubtotal * ((item.discount_percentage || 0) / 100);
       const afterDiscount = itemSubtotal - discount;
       const taxRate = item.tax_code === 'STANDARD' ? 0.15 : item.tax_code === 'REDUCED' ? 0.05 : 0;
@@ -220,18 +225,39 @@ export default function CreateInvoice() {
       setLoading(true);
       setError(null);
 
+      // Convert line items to backend format
+      const formattedLineItems = lineItems.map(item => ({
+        stock_code: item.stock_code || item.item_code || '',
+        description: item.description || '',
+        quantity: item.quantity || 0,
+        unit_price: item.unit_price || item.selling_price || 0,
+        discount_percentage: item.discount_percentage || 0,
+        tax_code: typeof item.tax_code === 'number' ? item.tax_code : 1,
+        cost_price: item.cost_price || 0,
+      }));
+
+      // Generate invoice number (max 20 characters)
+      const timestamp = Date.now().toString().slice(-10); // 10 digits
+      const tempInvoiceNumber = `INV${timestamp}`; // 13 chars
+
       const invoiceData: InvoiceCreateData = {
-        debtor_account_number: selectedDebtor.account_number,
+        debtor_account_number: selectedDebtor?.account_number,
+        invoice_number: tempInvoiceNumber,
         invoice_date: headerData.invoice_date,
-        delivery_date: headerData.delivery_date || undefined,
-        delivery_details: headerData.delivery_details || undefined,
-        reg_make_names: headerData.reg_make_names || undefined,
-        credit_card: headerData.credit_card || undefined,
-        order_number: headerData.order_number || undefined,
-        customer_ref: headerData.customer_ref || undefined,
-        sman_area: headerData.sman_area || undefined,
-        line_items: lineItems,
+        line_items: formattedLineItems,
       };
+
+      // Only add optional fields if they have values
+      if (headerData.delivery_date) invoiceData.delivery_date = headerData.delivery_date;
+      if (headerData.delivery_details) invoiceData.delivery_details = headerData.delivery_details;
+      if (headerData.reg_make_names) invoiceData.reg_make_names = headerData.reg_make_names;
+      if (headerData.credit_card) invoiceData.credit_card = headerData.credit_card;
+      if (headerData.order_number) invoiceData.order_number = headerData.order_number;
+      if (headerData.customer_ref) invoiceData.customer_ref = headerData.customer_ref;
+      if (headerData.sman_area) invoiceData.sman_area = headerData.sman_area;
+
+      // Debug: Log the data being sent
+      console.log('Invoice data:', JSON.stringify(invoiceData, null, 2));
 
       await posAPI.createInvoice(invoiceData);
       setSuccess('Invoice created successfully!');
@@ -302,48 +328,18 @@ export default function CreateInvoice() {
             <CardContent className="space-y-4">
               {/* Debtor Search */}
               <div className="space-y-2">
-                <label className="text-sm font-medium">Account Number or Name</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                  <Input
-                    placeholder="Search debtors..."
-                    value={debtorSearch}
-                    onChange={(e) => handleDebtorSearch(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
+                <label className="text-sm font-medium">Select Customer</label>
+                <DebtorPicker
+                  onSelect={(debtor) => setSelectedDebtor({
+                    account_number: debtor.account_number,
+                    name: debtor.name,
+                    balance: debtor.balance,
+                    credit_limit: debtor.credit_limit,
+                  })}
+                  label="Customer"
+                  placeholder="Search customers..."
+                />
               </div>
-
-              {/* Debtors List */}
-              {debtors.length > 0 && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Available Debtors</label>
-                  <div className="border rounded-lg overflow-hidden">
-                    {debtors.map((debtor) => (
-                      <div
-                        key={debtor.account_number}
-                        onClick={() => setSelectedDebtor(debtor)}
-                        className={`p-4 cursor-pointer border-b last:border-b-0 transition ${
-                          selectedDebtor?.account_number === debtor.account_number
-                            ? 'bg-blue-50 border-l-4 border-blue-600'
-                            : 'hover:bg-slate-50'
-                        }`}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-semibold text-slate-900">{debtor.account_number}</p>
-                            <p className="text-sm text-slate-600">{debtor.name}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-semibold text-slate-900">R{debtor.balance.toFixed(2)}</p>
-                            <p className="text-xs text-slate-500">Balance</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* Selected Debtor Info */}
               {selectedDebtor && (
@@ -492,39 +488,24 @@ export default function CreateInvoice() {
               <CardContent className="space-y-4">
                 {/* Stock Search */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Stock Code or Description</label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                    <Input
-                      placeholder="Search products..."
-                      onChange={(e) => handleStockSearch(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-
-                  {/* Stock suggestions dropdown */}
-                  {stocks.length > 0 && (
-                    <div className="border rounded-lg overflow-hidden bg-white">
-                      {stocks.map((stock) => (
-                        <div
-                          key={stock.item_code}
-                          onClick={() => handleSelectStock(stock)}
-                          className="p-3 cursor-pointer border-b last:border-b-0 hover:bg-blue-50 transition"
-                        >
-                          <div className="flex justify-between">
-                            <div>
-                              <p className="font-medium text-slate-900">{stock.item_code}</p>
-                              <p className="text-sm text-slate-600">{stock.description}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="font-semibold text-slate-900">R{stock.selling_price}</p>
-                              <p className="text-xs text-slate-500">QOH: {stock.quantity_on_hand}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <label className="text-sm font-medium">Select Product</label>
+                  <StockItemPicker
+                    onSelect={(item) => {
+                      setCurrentItem({
+                        stock_code: item.stock_code,
+                        item_code: item.stock_code,
+                        description: item.description,
+                        unit_price: item.selling_price,
+                        selling_price: item.selling_price,
+                        cost_price: item.cost_price,
+                        tax_code: typeof item.tax_code === 'number' ? item.tax_code : (item.tax_code_detail?.code === 'STANDARD' ? 1 : item.tax_code_detail?.code === 'REDUCED' ? 2 : 0),
+                        quantity: 1,
+                        discount_percentage: 0,
+                      });
+                    }}
+                    label="Product"
+                    placeholder="Search products..."
+                  />
                 </div>
 
                 {/* Item Details Grid */}
@@ -605,18 +586,18 @@ export default function CreateInvoice() {
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Tax Code</label>
                     <select
-                      value={currentItem.tax_code || 'STANDARD'}
+                      value={currentItem.tax_code || 1}
                       onChange={(e) =>
                         setCurrentItem({
                           ...currentItem,
-                          tax_code: e.target.value as 'ZERO' | 'STANDARD' | 'REDUCED',
+                          tax_code: parseInt(e.target.value) || 1,
                         })
                       }
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="ZERO">Zero (0%)</option>
-                      <option value="STANDARD">Standard (15%)</option>
-                      <option value="REDUCED">Reduced (5%)</option>
+                      <option value={0}>Zero (0%)</option>
+                      <option value={1}>Standard (15%)</option>
+                      <option value={2}>Reduced (5%)</option>
                     </select>
                   </div>
                 </div>
@@ -654,7 +635,7 @@ export default function CreateInvoice() {
                       </thead>
                       <tbody>
                         {lineItems.map((item, index) => {
-                          const subtotal = item.quantity * item.selling_price;
+                          const subtotal = item.quantity * (item.unit_price || item.selling_price || 0);
                           const discountAmount = subtotal * ((item.discount_percentage || 0) / 100);
                           const taxRate = item.tax_code === 'STANDARD' ? 0.15 : item.tax_code === 'REDUCED' ? 0.05 : 0;
                           const tax = (subtotal - discountAmount) * taxRate;
@@ -665,7 +646,7 @@ export default function CreateInvoice() {
                               <td className="px-4 py-2">{item.item_code}</td>
                               <td className="px-4 py-2">{item.description}</td>
                               <td className="px-4 py-2 text-center">{item.quantity}</td>
-                              <td className="px-4 py-2 text-right">R{item.selling_price.toFixed(2)}</td>
+                              <td className="px-4 py-2 text-right">R{(item.unit_price || item.selling_price || 0).toFixed(2)}</td>
                               <td className="px-4 py-2 text-right">{item.discount_percentage}%</td>
                               <td className="px-4 py-2 text-right">R{tax.toFixed(2)}</td>
                               <td className="px-4 py-2 text-right font-semibold">R{total.toFixed(2)}</td>
@@ -770,7 +751,7 @@ export default function CreateInvoice() {
                   <h3 className="font-semibold text-slate-900 mb-3">Items ({lineItems.length})</h3>
                   <div className="border rounded-lg overflow-hidden">
                     {lineItems.map((item, index) => {
-                      const subtotal = item.quantity * item.selling_price;
+                      const subtotal = item.quantity * (item.unit_price || item.selling_price || 0);
                       const discountAmount = subtotal * ((item.discount_percentage || 0) / 100);
                       const taxRate = item.tax_code === 'STANDARD' ? 0.15 : item.tax_code === 'REDUCED' ? 0.05 : 0;
                       const tax = (subtotal - discountAmount) * taxRate;
@@ -785,7 +766,7 @@ export default function CreateInvoice() {
                             <div>
                               <p className="font-medium text-slate-900">{item.item_code}</p>
                               <p className="text-sm text-slate-600">{item.description}</p>
-                              <p className="text-xs text-slate-500">{item.quantity} × R{item.selling_price.toFixed(2)}</p>
+                              <p className="text-xs text-slate-500">{item.quantity} × R{(item.unit_price || item.selling_price || 0).toFixed(2)}</p>
                             </div>
                             <p className="font-semibold text-slate-900">R{total.toFixed(2)}</p>
                           </div>

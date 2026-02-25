@@ -50,7 +50,13 @@ class CashSaleLineSerializer(serializers.ModelSerializer):
             'vat_amount', 'cost_price', 'line_profit', 'available_prices',
             'price_validation'
         ]
+        extra_kwargs = {
+            'line_number': {'required': False},
+        }
         read_only_fields = ['line_total', 'vat_amount', 'line_profit', 'available_prices', 'price_validation']
+    
+    def to_internal_value(self, data):
+        return super().to_internal_value(data)
     
     def get_available_prices(self, obj):
         """Get available price levels from StockItem."""
@@ -183,14 +189,28 @@ class CashSaleCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = CashSale
         fields = [
-            'sale_number', 'sale_date', 'customer_name', 'delivery_address',
+            'id', 'sale_number', 'sale_date', 'customer_name', 'delivery_address',
             'telephone', 'order_number', 'job_card_number', 'sales_area',
             'cashier', 'station_number', 'cash_tendered', 'vat_number',
             'lines', 'tenders'
         ]
     
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Make all fields optional for creation
+        for field_name in self.fields:
+            if self.fields[field_name].required:
+                self.fields[field_name].required = False
+    
+    def validate(self, attrs):
+        return super().validate(attrs)
+    
     def validate_sale_number(self, value):
-        """Validate unique sale number."""
+        """Validate or generate sale number."""
+        if not value:
+            # Generate a unique sale number
+            import uuid
+            value = f"CS-{uuid.uuid4().hex[:8].upper()}"
         if CashSale.objects.filter(sale_number=value).exists():
             raise serializers.ValidationError("Sale number already exists.")
         return value
@@ -204,6 +224,15 @@ class CashSaleCreateSerializer(serializers.ModelSerializer):
     @db_transaction.atomic
     def create(self, validated_data):
         """Create cash sale with lines and tenders, validating prices."""
+        # Generate sale_number if not provided
+        if not validated_data.get('sale_number'):
+            import uuid
+            sale_number = f"CS-{uuid.uuid4().hex[:8].upper()}"
+            # Ensure unique
+            while CashSale.objects.filter(sale_number=sale_number).exists():
+                sale_number = f"CS-{uuid.uuid4().hex[:8].upper()}"
+            validated_data['sale_number'] = sale_number
+        
         lines_data = validated_data.pop('lines')
         tenders_data = validated_data.pop('tenders', [])
         
@@ -684,6 +713,7 @@ class InvoiceListSerializer(serializers.ModelSerializer):
     """Serializer for invoice list view."""
     
     debtor_name = serializers.CharField(source='debtor.dname', read_only=True)
+    debtor_account_number = serializers.CharField(source='debtor.account_number', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     
     class Meta:
@@ -695,6 +725,7 @@ class InvoiceListSerializer(serializers.ModelSerializer):
             'due_date',
             'debtor',
             'debtor_name',
+            'debtor_account_number',
             'total_amount',
             'amount_paid',
             'balance_due',
@@ -772,6 +803,8 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
 class InvoiceCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer for creating/updating invoice."""
     
+    # Accept debtor_account_number and convert to debtor ID
+    debtor_account_number = serializers.CharField(write_only=True, required=False)
     lines = InvoiceLineSerializer(many=True, required=False, write_only=True)
     
     class Meta:
@@ -781,6 +814,7 @@ class InvoiceCreateUpdateSerializer(serializers.ModelSerializer):
             'invoice_date',
             'due_date',
             'debtor',
+            'debtor_account_number',  # Frontend uses this
             'delivery_name',
             'delivery_address_line1',
             'delivery_address_line2',
@@ -804,6 +838,16 @@ class InvoiceCreateUpdateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Create invoice with line items."""
         lines_data = validated_data.pop('lines', [])
+        
+        # Handle debtor_account_number -> debtor conversion
+        debtor_account_number = validated_data.pop('debtor_account_number', None)
+        if debtor_account_number and not validated_data.get('debtor'):
+            from apps.debtors.models import Debtor
+            try:
+                debtor = Debtor.objects.get(account_number=debtor_account_number)
+                validated_data['debtor'] = debtor
+            except Debtor.DoesNotExist:
+                raise serializers.ValidationError({'debtor_account_number': f'Debtor with account number {debtor_account_number} not found'})
         
         with db_transaction.atomic():
             invoice = Invoice.objects.create(**validated_data)

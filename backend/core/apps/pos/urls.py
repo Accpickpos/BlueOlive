@@ -19,6 +19,7 @@ router.register(r'credit-notes', views.CreditNoteViewSet, basename='credit-note'
 router.register(r'cash-returns', views.CashReturnViewSet, basename='cash-return')
 router.register(r'cash-a-cheque', views.CashAChequeViewSet, basename='cash-a-cheque')
 router.register(r'transaction-queries', views.TransactionQueryViewSet, basename='transaction-query')
+router.register(r'invoices', views.InvoiceViewSet, basename='invoice')
 
 app_name = 'point_of_sale'
 

@@ -47,6 +47,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime
 
 from django.db import connections, transaction
+from django.http import StreamingHttpResponse
 from rest_framework import status
 from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.parsers import MultiPartParser
@@ -218,20 +219,7 @@ DEPARTMENT_CSV_TO_MODEL_FIELD_MAP = {
     'DEPT':       'number',
     'DEPTNAME':   'name',
     'SLSMTD':     'sales_mtd',
-    'SLS1':       'sales_month_1',
-    'SLS2':       'sales_month_2',
-    'SLS3':       'sales_month_3',
-    'SLS4':       'sales_month_4',
-    'SLS5':       'sales_month_5',
-    'SLS6':       'sales_month_6',
-    'SLS7':       'sales_month_7',
-    'SLS8':       'sales_month_8',
-    'SLS9':       'sales_month_9',
-    'SLS10':      'sales_month_10',
-    'SLS11':      'sales_month_11',
-    'SLS12':      'sales_month_12',
-    'SERIALTRAC': 'serial_tracking',
-    'CHARGSCRAP': 'charge_scrap',
+    'SLSYTD':     'sales_ytd',
 }
 
 # debtran.csv AND dtran.csv both map to DebtorTransaction.
@@ -520,6 +508,8 @@ INTEGER_FIELDS = {
     'this_transaction_number',
     # ExpenseCategoryTransaction
     'tax_indicator',
+    # StockItem
+    'bin_number', 'station_number',
 }
 
 DATE_FIELDS = {
@@ -719,13 +709,19 @@ def _uoc(manager, lookup, defaults, mode):
       via bulk_create of a single object (which skips all save() overrides).
     - update path: QuerySet.update(**defaults) — pure SQL, no Python hooks.
     """
+    from django.db import IntegrityError
+    
     if mode == 'create_only':
         if manager.filter(**lookup).exists():
             return 'skipped'
         # bulk_create bypasses all save() overrides including full_clean()
-        obj = manager.model(**lookup, **defaults)
-        manager.bulk_create([obj])
-        return 'created'
+        try:
+            obj = manager.model(**lookup, **defaults)
+            manager.bulk_create([obj])
+            return 'created'
+        except IntegrityError:
+            # Record was created by another process between check and create
+            return 'skipped'
 
     elif mode == 'update_only':
         rows = manager.filter(**lookup).update(**defaults)
@@ -737,9 +733,15 @@ def _uoc(manager, lookup, defaults, mode):
             qs.update(**defaults)
             return 'updated'
         else:
-            obj = manager.model(**lookup, **defaults)
-            manager.bulk_create([obj])
-            return 'created'
+            try:
+                obj = manager.model(**lookup, **defaults)
+                manager.bulk_create([obj])
+                return 'created'
+            except IntegrityError:
+                # Record was created by another process between check and create
+                # Try to update instead
+                rows = manager.filter(**lookup).update(**defaults)
+                return 'updated' if rows else 'skipped'
 
 
 # ============================================================
@@ -956,56 +958,89 @@ def import_csv(request):
     rows = list(reader)
     total = len(rows)
 
-    try:
-        with transaction.atomic(using=db_alias):
-            for row_num, row in enumerate(rows, start=2):
-                try:
-                    record = {}
-                    for csv_col, model_field in mappings.items():
-                        idx = header_idx.get(csv_col)
-                        if idx is not None and idx < len(row):
-                            record[model_field] = _parse_value(row[idx], model_field)
+    # Progress report interval (every N rows)
+    progress_interval = max(10, total // 20)  # ~20 progress updates
 
-                    required_val = record.get(required_field)
-                    if required_val is None or required_val == '':
-                        errors_list.append(f"Row {row_num}: Missing {required_field} — skipped")
-                        skipped += 1
-                        continue
+    def generate_progress():
+        """Generator that yields progress updates as JSON lines."""
+        nonlocal created, updated, skipped, errors_list
+        
+        # Yield initial progress
+        yield json.dumps({
+            'status': 'started',
+            'total': total,
+            'processed': 0,
+            'created': 0,
+            'updated': 0,
+            'skipped': 0,
+        }) + '\n'
 
-                    result = import_fn(db_alias, record, mode, **extra_kwargs)
+        try:
+            with transaction.atomic(using=db_alias):
+                for row_num, row in enumerate(rows, start=2):
+                    try:
+                        record = {}
+                        for csv_col, model_field in mappings.items():
+                            idx = header_idx.get(csv_col)
+                            if idx is not None and idx < len(row):
+                                record[model_field] = _parse_value(row[idx], model_field)
 
-                    if result == 'created':   created += 1
-                    elif result == 'updated': updated += 1
-                    else:                     skipped += 1
+                        required_val = record.get(required_field)
+                        if required_val is None or required_val == '':
+                            errors_list.append(f"Row {row_num}: Missing {required_field} — skipped")
+                            skipped += 1
+                            continue
 
-                except Exception as e:
-                    errors_list.append(f"Row {row_num}: {e}")
-                    if len(errors_list) > 50:
-                        errors_list.append("... too many errors, stopping")
-                        break
+                        result = import_fn(db_alias, record, mode, **extra_kwargs)
 
-    except Exception as e:
-        clear_current()
-        return Response(
-            {'error': f'Import failed (transaction rolled back): {e}', 'errors': errors_list},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
-    finally:
-        clear_current()
+                        if result == 'created':
+                            created += 1
+                        elif result == 'updated':
+                            updated += 1
+                        else:
+                            skipped += 1
 
-    return Response({
-        'success': True,
-        'model_type': model_type,
-        'tenant': tenant.name,
-        'shop': shop.name,
-        'schema': shop.schema_name,
-        'total_rows': total,
-        'created': created,
-        'updated': updated,
-        'skipped': skipped,
-        'errors': errors_list,
-        'message': f'Import complete: {created} created, {updated} updated, {skipped} skipped',
-    })
+                    except Exception as e:
+                        errors_list.append(f"Row {row_num}: {e}")
+                        if len(errors_list) > 50:
+                            errors_list.append("... too many errors, stopping")
+                            break
+
+                    # Yield progress update every N rows
+                    if (row_num - 1) % progress_interval == 0:
+                        yield json.dumps({
+                            'status': 'processing',
+                            'total': total,
+                            'processed': row_num - 1,
+                            'created': created,
+                            'updated': updated,
+                            'skipped': skipped,
+                        }) + '\n'
+
+                # Yield completion status
+                yield json.dumps({
+                    'status': 'complete',
+                    'total': total,
+                    'processed': total,
+                    'created': created,
+                    'updated': updated,
+                    'skipped': skipped,
+                    'error_count': len(errors_list),
+                }) + '\n'
+
+        except Exception as e:
+            yield json.dumps({
+                'status': 'error',
+                'message': f'Import failed: {e}',
+                'errors': errors_list[:50],  # Limit errors in response
+            }) + '\n'
+        finally:
+            clear_current()
+
+    return StreamingHttpResponse(
+        generate_progress(),
+        content_type='application/x-ndjson'
+    )
 
 
 # ============================================================
@@ -1063,8 +1098,32 @@ def _import_department_record(db_alias, record, mode, **_):
     dept_number = record.get('number')
     if not dept_number:
         return 'skipped'
+    
+    dept_name = record.get('name')
     defaults = {k: v for k, v in record.items() if k != 'number' and v is not None}
-    return _uoc(SalesDepartment.objects.using(db_alias), {'number': dept_number}, defaults, mode)
+    
+    # SalesDepartment has BOTH number AND name as unique fields.
+    # We need to check for existing department by name first to avoid
+    # unique constraint violation on the name field.
+    manager = SalesDepartment.objects.using(db_alias)
+    
+    if dept_name:
+        # Check if a department with this name already exists
+        existing_by_name = manager.filter(name=dept_name).first()
+        if existing_by_name:
+            # If found by name but different number, update or skip based on mode
+            if existing_by_name.number != int(dept_number):
+                if mode == 'create_only':
+                    return 'skipped'
+                # Update the existing department (by name)
+                existing_by_name.number = int(dept_number)
+                for key, value in defaults.items():
+                    setattr(existing_by_name, key, value)
+                existing_by_name.save(using=db_alias)
+                return 'updated'
+    
+    # Proceed with normal lookup by number
+    return _uoc(manager, {'number': dept_number}, defaults, mode)
 
 
 def _resolve_debtor(db_alias, dno_val):

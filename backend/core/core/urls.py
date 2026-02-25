@@ -20,6 +20,10 @@ from django.urls import path, include, re_path
 from django.views.generic import TemplateView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+
+from .views import health
+
+
 # Health check endpoints
 from core.health_checks import health, ready, metrics
 
@@ -39,6 +43,8 @@ from apps.messaging.urls import urlpatterns as messaging_urls
 
 class LoginRequiredTemplateView(LoginRequiredMixin, TemplateView):
     pass
+
+
 
 # API v1 routes - All endpoints versioned under /api/v1/
 v1_api_patterns = [
@@ -65,6 +71,8 @@ v1_api_patterns = [
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+
+    path("", health, name='home'),
     
     # Health Checks (Priority: HIGH - for monitoring and orchestration)
     path('health/', health, name='health'),
@@ -99,8 +107,8 @@ urlpatterns = [
     path('api/messaging/', include(messaging_urls)),
     
     # Template views for SPA
-    path('', TemplateView.as_view(template_name='index.html'), name='home'),
-    path('home/', TemplateView.as_view(template_name='home.html'), name='tenant_home'),
-    path('login/', TemplateView.as_view(template_name='login.html'), name='login'),
-    path('dashboard/', LoginRequiredTemplateView.as_view(template_name='dashboard.html'), name='dashboard'),
+    # path('', TemplateView.as_view(template_name='index.html'), name='home'),
+    # path('home/', TemplateView.as_view(template_name='home.html'), name='tenant_home'),
+    # path('login/', TemplateView.as_view(template_name='login.html'), name='login'),
+    # path('dashboard/', LoginRequiredTemplateView.as_view(template_name='dashboard.html'), name='dashboard'),
 ]

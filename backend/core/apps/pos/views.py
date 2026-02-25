@@ -12,7 +12,8 @@ from datetime import date
 from .models import (
     ReceiptOnAccount, CreditNote, CashReturn,
     CashACheque, TransactionQuery,
-    CashSale, Laybye, Quotation, JobCard, Payout, Repair, CashControl
+    CashSale, Laybye, Quotation, JobCard, Payout, Repair, CashControl,
+    Invoice, InvoiceLine
 )
 
 from .serializers import (
@@ -24,7 +25,9 @@ from .serializers import (
     CashControlSerializer, CashControlSummarySerializer, ReceiptOnAccountSerializer,
     CreditNoteListSerializer, CreditNoteDetailSerializer, CreditNoteCreateSerializer,
     CashReturnSerializer, CashReturnCreateSerializer,
-    CashAChequeSerializer, TransactionQuerySerializer
+    CashAChequeSerializer, TransactionQuerySerializer,
+    InvoiceListSerializer, InvoiceDetailSerializer, InvoiceCreateUpdateSerializer,
+    InvoiceLineSerializer
 )
 from .services import (
     CashSaleService, LaybyeService, QuotationService, RepairService
@@ -45,6 +48,7 @@ class CashSaleViewSet(viewsets.ModelViewSet):
     """
     queryset = CashSale.objects.all()
     permission_classes = [IsAuthenticated]
+    lookup_field = 'sale_number'  # Allow lookup by sale_number instead of pk
     filter_backends = [DjangoFilterBackend]
     filterset_class = CashSaleFilter
     ordering_fields = ['sale_date', 'sale_time', 'total_amount']
@@ -57,6 +61,17 @@ class CashSaleViewSet(viewsets.ModelViewSet):
         elif self.action == 'create':
             return CashSaleCreateSerializer
         return CashSaleDetailSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Create a cash sale and return the detail serializer for response."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save()
+        
+        # Use detail serializer for response to properly serialize nested data
+        response_serializer = CashSaleDetailSerializer(instance)
+        headers = self.get_success_headers(response_serializer.data)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
     
     def get_queryset(self):
         """Optimize queryset."""
@@ -1000,3 +1015,158 @@ class TransactionQueryViewSet(viewsets.ModelViewSet):
                 {'error': 'User not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
+
+
+class InvoiceViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for customer invoices.
+    
+    Actions:
+    - list, create, retrieve, update, destroy
+    - post: Post invoice to accounts
+    - cancel: Cancel invoice
+    - void: Void posted invoice
+    - apply-payment: Apply payment to invoice
+    """
+    queryset = Invoice.objects.all()
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'invoice_number'  # Allow lookup by invoice_number instead of pk
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['status', 'invoice_date', 'debtor', 'is_posted']
+    ordering_fields = ['invoice_date', 'invoice_number', 'total_amount']
+    ordering = ['-invoice_date', '-invoice_number']
+    
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action."""
+        if self.action == 'list':
+            return InvoiceListSerializer
+        elif self.action in ['create', 'update', 'partial_update']:
+            return InvoiceCreateUpdateSerializer
+        return InvoiceDetailSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Create an invoice and return the detail serializer for response."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save()
+        
+        # Use detail serializer for response to properly serialize nested data
+        response_serializer = InvoiceDetailSerializer(instance)
+        headers = self.get_success_headers(response_serializer.data)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
+    def get_queryset(self):
+        """Optimize queryset."""
+        queryset = super().get_queryset()
+        if self.action == 'list':
+            queryset = queryset.select_related('debtor')
+        elif self.action == 'retrieve':
+            # Note: sales_area is a CharField, not a ForeignKey, so cannot use select_related
+            queryset = queryset.select_related('debtor').prefetch_related('lines')
+        return queryset
+    
+    def perform_create(self, serializer):
+        """Set default values on create."""
+        # Generate invoice number if not provided
+        if not serializer.validated_data.get('invoice_number'):
+            from django.utils import timezone
+            from datetime import timedelta
+            today = timezone.now().date()
+            count = Invoice.objects.filter(invoice_date=today).count() + 1
+            invoice_number = f"INV-{today.year}{today.month:02d}{today.day:02d}-{count:05d}"
+            serializer.save(invoice_number=invoice_number)
+        # If invoice_number is provided, the serializer has already created the invoice
+    
+    @action(detail=True, methods=['post'])
+    def post(self, request, pk=None):
+        """Post invoice to accounts."""
+        invoice = self.get_object()
+        
+        try:
+            invoice.post_to_accounts()
+            return Response({
+                'status': 'success',
+                'message': f'Invoice {invoice.invoice_number} posted successfully',
+                'invoice': InvoiceDetailSerializer(invoice).data
+            })
+        except ValueError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Cancel invoice."""
+        invoice = self.get_object()
+        
+        try:
+            invoice.cancel()
+            return Response({
+                'status': 'success',
+                'message': f'Invoice {invoice.invoice_number} cancelled'
+            })
+        except ValueError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=True, methods=['post'])
+    def void(self, request, pk=None):
+        """Void posted invoice."""
+        invoice = self.get_object()
+        
+        try:
+            invoice.void()
+            return Response({
+                'status': 'success',
+                'message': f'Invoice {invoice.invoice_number} voided'
+            })
+        except ValueError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=True, methods=['post'])
+    def apply_payment(self, request, pk=None):
+        """Apply payment to invoice."""
+        invoice = self.get_object()
+        amount = request.data.get('amount')
+        payment_date = request.data.get('payment_date')
+        
+        if not amount:
+            return Response(
+                {'error': 'amount is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            from decimal import Decimal
+            amount = Decimal(str(amount))
+            
+            if payment_date:
+                from datetime import datetime
+                payment_date = datetime.strptime(payment_date, '%Y-%m-%d').date()
+            
+            invoice.apply_payment(amount, payment_date)
+            return Response({
+                'status': 'success',
+                'message': f'Payment of {amount} applied to invoice {invoice.invoice_number}',
+                'invoice': InvoiceDetailSerializer(invoice).data
+            })
+        except ValueError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=False, methods=['get'])
+    def next_number(self, request):
+        """Get next invoice number."""
+        from django.utils import timezone
+        today = timezone.now().date()
+        count = Invoice.objects.filter(invoice_date=today).count() + 1
+        invoice_number = f"INV-{today.year}{today.month:02d}{today.day:02d}-{count:05d}"
+        return Response({'invoice_number': invoice_number})

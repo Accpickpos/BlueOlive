@@ -22,10 +22,7 @@ export default function DebtorsList({ onRefresh }: DebtorsListProps) {
   const [selectedDebtor, setSelectedDebtor] = useState<DebtorAccount | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filters, setFilters] = useState({
-    blocked: false as boolean | undefined,
-    is_active: true,
-  });
+  const [filterType, setFilterType] = useState<'all' | 'active' | 'blocked'>('all');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
 
@@ -44,13 +41,27 @@ export default function DebtorsList({ onRefresh }: DebtorsListProps) {
     setLoading(true);
     setError(null);
     try {
-      const data = await debtorsApi.accounts.list({
+      // Map frontend filter names to backend expected names
+      // Active: is_active=True, block_flag NOT in blocked states ['1','2','3','Y']
+      // Blocked: block_flag IN blocked states ['1','2','3','Y']
+      const apiFilters: any = {
         search: debouncedSearch || undefined,
-        is_active: filters.is_active,
-        blocked: filters.blocked,
         page,
         page_size: 20,
-      });
+      };
+      
+      // Add filters based on filter type
+      if (filterType === 'active') {
+        apiFilters.is_active = true;
+        // block_flag '0' = Active, 'N' = Active Legacy
+        apiFilters.block_flag__in = ['0', 'N']; 
+      } else if (filterType === 'blocked') {
+        // block_flag '1' = Credit Hold, '2' = Closed, '3' = No Delivery, 'Y' = Blocked
+        apiFilters.block_flag__in = ['1', '2', '3', 'Y'];
+      }
+      // For 'all' - no filters
+      
+      const data = await debtorsApi.accounts.list(apiFilters);
       
       // Handle both direct array and paginated response
       if (Array.isArray(data)) {
@@ -78,7 +89,7 @@ export default function DebtorsList({ onRefresh }: DebtorsListProps) {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, filters, page]);
+  }, [debouncedSearch, filterType, page]);
 
   useEffect(() => {
     loadDebtors();
@@ -119,7 +130,7 @@ export default function DebtorsList({ onRefresh }: DebtorsListProps) {
   };
 
   const totalPages = Math.ceil(total / 20);
-  const hasActiveFilters = Boolean(debouncedSearch || filters.blocked);
+  const hasActiveFilters = Boolean(debouncedSearch || filterType !== 'all');
 
   return (
     <div className="space-y-6">
@@ -128,7 +139,7 @@ export default function DebtorsList({ onRefresh }: DebtorsListProps) {
         <Card className="p-6">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold">
-              {selectedDebtor ? `Edit Debtor: ${selectedDebtor.dname}` : 'New Debtor'}
+              {selectedDebtor ? `Edit Debtor: ${selectedDebtor.name}` : 'New Debtor'}
             </h2>
             <button
               onClick={() => {
@@ -180,18 +191,27 @@ export default function DebtorsList({ onRefresh }: DebtorsListProps) {
 
               <div className="flex gap-2 flex-wrap">
                 <Button
-                  variant={!filters.blocked ? 'default' : 'outline'}
+                  variant={filterType === 'all' ? 'default' : 'outline'}
                   onClick={() => {
-                    setFilters({ ...filters, blocked: false });
+                    setFilterType('all');
+                    setPage(1);
+                  }}
+                >
+                  All
+                </Button>
+                <Button
+                  variant={filterType === 'active' ? 'default' : 'outline'}
+                  onClick={() => {
+                    setFilterType('active');
                     setPage(1);
                   }}
                 >
                   Active
                 </Button>
                 <Button
-                  variant={filters.blocked ? 'default' : 'outline'}
+                  variant={filterType === 'blocked' ? 'default' : 'outline'}
                   onClick={() => {
-                    setFilters({ ...filters, blocked: true });
+                    setFilterType('blocked');
                     setPage(1);
                   }}
                 >
@@ -202,7 +222,7 @@ export default function DebtorsList({ onRefresh }: DebtorsListProps) {
                     variant="outline"
                     onClick={() => {
                       setSearchQuery('');
-                      setFilters({ blocked: false, is_active: true });
+                      setFilterType('all');
                       setPage(1);
                     }}
                   >
@@ -259,16 +279,16 @@ export default function DebtorsList({ onRefresh }: DebtorsListProps) {
                   <tbody>
                     {debtors.map((debtor) => (
                       <tr key={debtor.id} className="border-b hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 font-medium">{debtor.dno}</td>
-                        <td className="px-4 py-3">{debtor.dname}</td>
-                        <td className="px-4 py-3 text-gray-600">{debtor.dcontact || '-'}</td>
-                        <td className="px-4 py-3 text-gray-600">{debtor.darea_name || '-'}</td>
+                        <td className="px-4 py-3 font-medium">{debtor.customer_number}</td>
+                        <td className="px-4 py-3">{debtor.name}</td>
+                        <td className="px-4 py-3 text-gray-600">{debtor.contact_person || '-'}</td>
+                        <td className="px-4 py-3 text-gray-600">{debtor.area_code ?? '-'}</td>
                         <td className="px-4 py-3 text-right font-semibold text-blue-600">
                           ${debtor.total_balance?.toLocaleString('en-US', { maximumFractionDigits: 2 })}
                         </td>
-                        <td className="px-4 py-3 text-right">${debtor.dclimit?.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-right">${debtor.credit_limit?.toLocaleString()}</td>
                         <td className="px-4 py-3 text-center">
-                          {debtor.blockflag ? (
+                          {debtor.is_blocked_flag ? (
                             <Badge className="bg-red-500">Blocked</Badge>
                           ) : debtor.is_active ? (
                             <Badge className="bg-green-500">Active</Badge>
@@ -294,7 +314,7 @@ export default function DebtorsList({ onRefresh }: DebtorsListProps) {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleDelete(debtor.id, debtor.dname)}
+                              onClick={() => handleDelete(debtor.id, debtor.name)}
                               title="Delete debtor"
                             >
                               <Trash2 className="w-4 h-4 text-red-600" />

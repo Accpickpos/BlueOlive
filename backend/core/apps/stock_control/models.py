@@ -174,6 +174,9 @@ class StockItem(models.Model):
             models.Index(fields=['description']),
             models.Index(fields=['supplier', 'supplier_code']),
             models.Index(fields=['department']),
+            models.Index(fields=['is_active']),
+            models.Index(fields=['bin_number']),
+            models.Index(fields=['is_active', 'department'], name='idx_stock_active_dept'),
         ]
 
     def __str__(self):
@@ -495,6 +498,8 @@ class StockTransaction(models.Model):
             models.Index(fields=['transaction_type']),
             models.Index(fields=['transaction_date']),
             models.Index(fields=['transaction_number']),
+            models.Index(fields=['debtor', 'transaction_date'], name='idx_stock_debtor_date'),
+            models.Index(fields=['supplier', 'transaction_date'], name='idx_stock_supplier_date'),
         ]
 
     def __str__(self):

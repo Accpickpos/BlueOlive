@@ -20,17 +20,23 @@ import { api } from './api';
 import { ENDPOINTS } from './api-config';
 
 export interface LineItem {
-  item_code: string;
+  // Primary field names (backend compatible)
+  stock_code: string;  // Backend expects 'stock_code' not 'item_code'
   description: string;
   quantity: number;
-  selling_price: number;
+  unit_price: number;
   discount_percentage?: number;
-  tax_code: 'ZERO' | 'STANDARD' | 'REDUCED';
+  tax_code: number | string; // 0 = ZERO, 1 = STANDARD (14%), 2 = REDUCED, or 'ZERO', 'STANDARD', 'REDUCED'
   cost_price?: number;
+  
+  // Alternative field names (used in some components)
+  item_code?: string;
+  selling_price?: number;
 }
 
 export interface InvoiceCreateData {
-  debtor_account_number: string;
+  debtor_account_number: string;  // Backend expects 'debtor_account_number' which is converted to debtor ID
+  invoice_number?: string;  // Backend may require this
   invoice_date: string; // YYYY-MM-DD
   delivery_date?: string; // YYYY-MM-DD
   delivery_details?: string;
@@ -45,16 +51,24 @@ export interface InvoiceCreateData {
 
 export interface CashSaleCreateData {
   sale_date: string; // YYYY-MM-DD
-  line_items: LineItem[];
+  lines: LineItem[];  // Backend expects 'lines' not 'line_items'
   tenders: TenderData[];
   notes?: string;
 }
 
 export interface TenderData {
-  tender_type: 'CASH' | 'CHEQUE' | 'CREDIT_CARD' | 'EFT';
+  // Backend tender_type choices: CASH, CHEQUE, VOUCHER, SPEEDPOINT, EFT
+  tender_type: 'CASH' | 'CHEQUE' | 'VOUCHER' | 'SPEEDPOINT' | 'EFT';
   amount: number;
-  cheque_number?: string;
-  bank?: string;
+  // Backend field names: drawer_name, bank_name, bank_account, id_number, telephone
+  drawer_name?: string;  // Was 'cheque_number'
+  bank_name?: string;   // Was 'bank'
+  bank_account?: string;
+  id_number?: string;
+  telephone?: string;
+  // For speedpoint
+  card_type?: string;
+  authorization_code?: string;
 }
 
 export interface ReceiptCreateData {
@@ -139,33 +153,66 @@ class POSTransactionAPI {
       console.error('=== POS API ERROR ===');
       console.error('Error:', error);
       console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
       
       if (error.response?.data?.detail) {
         throw new Error(error.response.data.detail);
       }
       if (error.response?.data) {
-        throw new Error(JSON.stringify(error.response.data));
+        // Format validation errors nicely
+        const errors = error.response.data;
+        console.error('Full error data:', JSON.stringify(errors, null, 2));
+        if (typeof errors === 'object') {
+          // Handle nested serializer errors (like {lines: [{...}]})
+          const errorMessages = Object.entries(errors).map(([key, value]) => {
+            if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'object') {
+              // Nested error - could be lines validation
+              return `${key}: ${JSON.stringify(value)}`;
+            }
+            return `${key}: ${Array.isArray(value) ? value.join(', ') : JSON.stringify(value)}`;
+          }).join('; ');
+          throw new Error(errorMessages);
+        }
+        throw new Error(JSON.stringify(errors));
       }
       throw error;
     }
   }
 
   // ============================================================
-  // INVOICE ENDPOINTS (from debtors app)
+  // HEALTH CHECK
+  // ============================================================
+
+  /**
+   * Health check to verify API connectivity
+   * @returns Promise<boolean> - true if API is reachable
+   */
+  async healthCheck(): Promise<boolean> {
+    try {
+      await this.request('GET', '/health/');
+      return true;
+    } catch {
+      // If health endpoint doesn't exist, consider API reachable
+      return true;
+    }
+  }
+
+  // ============================================================
+  // INVOICE ENDPOINTS (POS app)
   // ============================================================
 
   /**
    * Create new invoice
    */
   async createInvoice(data: InvoiceCreateData): Promise<TransactionResponse> {
-    return this.request('POST', ENDPOINTS.DEBTORS.TRANSACTIONS, data);
+    return this.request('POST', ENDPOINTS.POS.INVOICES, data);
   }
 
   /**
    * Get invoice by ID
    */
   async getInvoice(invoiceId: string | number): Promise<TransactionResponse> {
-    return this.request('GET', `${ENDPOINTS.DEBTORS.TRANSACTIONS}${invoiceId}/`);
+    return this.request('GET', `${ENDPOINTS.POS.INVOICES}${invoiceId}/`);
   }
 
   /**
@@ -178,7 +225,7 @@ class POSTransactionAPI {
     to_date?: string;
     page?: number;
   }): Promise<{ results: TransactionResponse[]; count: number; next?: string; previous?: string }> {
-    let endpoint = ENDPOINTS.DEBTORS.TRANSACTIONS;
+    let endpoint = ENDPOINTS.POS.INVOICES;
     if (filters) {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => {
@@ -195,21 +242,64 @@ class POSTransactionAPI {
    * Update invoice
    */
   async updateInvoice(invoiceId: string | number, data: Partial<InvoiceCreateData>): Promise<TransactionResponse> {
-    return this.request('PUT', `${ENDPOINTS.DEBTORS.TRANSACTIONS}${invoiceId}/`, data);
+    return this.request('PUT', `${ENDPOINTS.POS.INVOICES}${invoiceId}/`, data);
   }
 
   /**
    * Partially update invoice
    */
   async partialUpdateInvoice(invoiceId: string | number, data: Partial<InvoiceCreateData>): Promise<TransactionResponse> {
-    return this.request('PATCH', `${ENDPOINTS.DEBTORS.TRANSACTIONS}${invoiceId}/`, data);
+    return this.request('PATCH', `${ENDPOINTS.POS.INVOICES}${invoiceId}/`, data);
   }
 
   /**
    * Delete invoice
    */
   async deleteInvoice(invoiceId: string | number): Promise<void> {
-    await this.request('DELETE', `${ENDPOINTS.DEBTORS.TRANSACTIONS}${invoiceId}/`);
+    await this.request('DELETE', `${ENDPOINTS.POS.INVOICES}${invoiceId}/`);
+  }
+
+  /**
+   * Post invoice to accounts
+   */
+  async postInvoice(invoiceId: string | number): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.INVOICES}${invoiceId}/post/`);
+  }
+
+  /**
+   * Cancel invoice
+   */
+  async cancelInvoice(invoiceId: string | number): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.INVOICES}${invoiceId}/cancel/`);
+  }
+
+  /**
+   * Apply payment to invoice
+   */
+  async applyPaymentToInvoice(invoiceId: string | number, amount: number, paymentDate?: string): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.INVOICES}${invoiceId}/apply_payment/`, { amount, payment_date: paymentDate });
+  }
+
+  // ============================================================
+  // DEBTOR SEARCH (for invoice creation)
+  // ============================================================
+
+  /**
+   * Search debtors by name or account number
+   */
+  async searchDebtors(query: string): Promise<{ results: any[]; count: number }> {
+    return this.request('GET', `${ENDPOINTS.DEBTORS.ACCOUNTS}?search=${encodeURIComponent(query)}&limit=20`);
+  }
+
+  // ============================================================
+  // STOCK SEARCH (for invoice line items)
+  // ============================================================
+
+  /**
+   * Search stock items by code or description
+   */
+  async searchStock(query: string): Promise<{ results: any[]; count: number }> {
+    return this.request('GET', `${ENDPOINTS.STOCK_CONTROL.STOCK_ITEMS}?search=${encodeURIComponent(query)}&limit=20`);
   }
 
   // ============================================================

@@ -35,7 +35,7 @@ class TenantSerializer(serializers.ModelSerializer):
             'db_name': {'required': False},
             'db_user': {'required': False, 'default': 'postgres'},
             'db_password': {'required': False, 'write_only': True},  # Now optional
-            'db_host': {'required': False, 'default': 'localhost'},
+            'db_host': {'required': False, 'default': 'postgres'},
             'db_port': {'required': False, 'default': 5432},
             'created_at': {'read_only': True},
         }

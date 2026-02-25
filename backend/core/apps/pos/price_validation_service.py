@@ -52,9 +52,9 @@ class PriceValidationService:
             'selling_price_1': stock_item.selling_price_1,
             'selling_price_2': stock_item.selling_price_2,
             'selling_price_3': stock_item.selling_price_3,
-            'markup_percent_1': stock_item.markup_percent_1,
-            'markup_percent_2': stock_item.markup_percent_2,
-            'markup_percent_3': stock_item.markup_percent_3,
+            'markup_percent_1': stock_item.markup_1,  # Fixed: was markup_percent_1
+            'markup_percent_2': stock_item.markup_2,  # Fixed: was markup_percent_2
+            'markup_percent_3': stock_item.markup_3,  # Fixed: was markup_percent_3
             'cost_price': stock_item.cost_price,
             'maximum_discount': stock_item.maximum_discount_percent,
             'stock_item': stock_item,

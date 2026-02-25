@@ -295,14 +295,15 @@ DATABASES = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.environ.get('DB_NAME', 'blue_olive'),
         "USER": os.environ.get('DB_USER', 'postgres'),
-        "PASSWORD": os.environ.get('DB_PASSWORD', 'change-me'),
-        "HOST": os.environ.get('DB_HOST', 'localhost'),
-        "PORT": os.environ.get('DB_PORT', '5432'),
+        "PASSWORD": os.environ.get('DB_PASSWORD'),
+        "HOST": os.environ.get('DB_HOST'),
+        "PORT": os.environ.get('DB_PORT'),
         # Short-lived connections by default; allow long for pooling if used
         "CONN_MAX_AGE": 0,
     },
     # Other tenant DBs are added to DATABASES at runtime by tenancy.utils
 }
+
 
 DATABASE_ROUTERS = ["tenancy.db_router.TenantDatabaseRouter"]
 

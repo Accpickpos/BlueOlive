@@ -50,7 +50,7 @@ export default function BankReconciliationPage() {
         cashBookApi.transactions.list(),
       ]);
       setReconciliations(reconciliationsRes.results || []);
-      setTransactions(transactionsRes.results || []);
+      setTransactions((transactionsRes.results || []) as CashBookTransaction[]);
     } catch (err) {
       setError('Failed to load data');
       console.error(err);

@@ -399,7 +399,7 @@ export default function CreateReceipt() {
                     {tenders.map((tender, index) => (
                       <div key={index} className="flex justify-between text-sm">
                         <span className="text-slate-600">
-                          {tender.tender_type}: {tender.tender_type === 'CHEQUE' && tender.cheque_number && `#${tender.cheque_number}`}
+                          {tender.tender_type}: {tender.tender_type === 'CHEQUE' && tender.drawer_name && `#${tender.drawer_name}`}
                         </span>
                         <span className="font-medium">R{tender.amount.toFixed(2)}</span>
                       </div>

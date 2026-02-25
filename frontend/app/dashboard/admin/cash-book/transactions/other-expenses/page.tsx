@@ -50,8 +50,8 @@ export default function OtherExpensesEntryPage() {
         cashBookApi.otherExpenses.list(),
       ]);
       setCategories(categoriesRes.results || []);
-      setTransactions(transactionsRes.results || []);
-      calculateTotals(transactionsRes.results || []);
+      setTransactions((transactionsRes.results || []) as OtherExpenseEntry[]);
+      calculateTotals((transactionsRes.results || []) as OtherExpenseEntry[]);
     } catch (err) {
       setError('Failed to load data');
       console.error(err);

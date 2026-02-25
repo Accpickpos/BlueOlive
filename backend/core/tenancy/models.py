@@ -35,7 +35,7 @@ class Tenant(models.Model):
     db_name = models.CharField(max_length=200)
     db_user = models.CharField(max_length=200, default='postgres')
     db_password = EncryptedCharField(max_length=200)  # Encrypted field
-    db_host = models.CharField(max_length=200, default='localhost')
+    db_host = models.CharField(max_length=200, default='postgres')
     db_port = models.IntegerField(default=5432)
     is_active = models.BooleanField(default=True, help_text="Whether this tenant is active")
     created_at = models.DateTimeField(auto_now_add=True)

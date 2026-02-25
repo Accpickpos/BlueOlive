@@ -422,24 +422,24 @@ export function TenderRow({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground">
-                Cheque Number
+                Drawer Name
               </label>
               <Input
-                value={tender.cheque_number || ""}
-                onChange={(e) => onUpdate("cheque_number", e.target.value)}
+                value={tender.drawer_name || ""}  // Use 'drawer_name' for backend
+                onChange={(e) => onUpdate("drawer_name", e.target.value)}  // Use 'drawer_name'
                 className="mt-1"
-                placeholder="Cheque #"
+                placeholder="Drawer name"
               />
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground">
-                Drawer Name
+                Bank Name
               </label>
               <Input
-                value={tender.drawer || ""}
-                onChange={(e) => onUpdate("drawer", e.target.value)}
+                value={tender.bank_name || ""}  // Use 'bank_name' for backend
+                onChange={(e) => onUpdate("bank_name", e.target.value)}  // Use 'bank_name'
                 className="mt-1"
-                placeholder="Drawer name"
+                placeholder="Bank name"
               />
             </div>
           </div>
