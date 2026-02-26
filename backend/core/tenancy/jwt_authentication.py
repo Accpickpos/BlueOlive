@@ -51,7 +51,17 @@ class TenantJWTAuthentication(JWTAuthentication):
         # Fall back to Authorization header (API clients)
         if settings.DEBUG:
             logger.debug("No cookie token, checking Authorization header")
-        return super().get_raw_token(request)
+        
+        # Manually extract from header to avoid super() issues
+        auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+        if not auth_header:
+            return None
+        
+        parts = auth_header.split()
+        if len(parts) != 2 or parts[0].lower() != 'bearer':
+            return None
+        
+        return parts[1].encode('utf-8')
     
     def _validate_csrf(self, request):
         """

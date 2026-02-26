@@ -299,7 +299,9 @@ DATABASES = {
         "HOST": os.environ.get('DB_HOST'),
         "PORT": os.environ.get('DB_PORT'),
         # Short-lived connections by default; allow long for pooling if used
-        "CONN_MAX_AGE": 0,
+        # CONN_MAX_AGE: 0 = no pooling (close after each request)
+        # CONN_MAX_AGE: 60 = keep connection alive for 60 seconds (recommended for production)
+        "CONN_MAX_AGE": int(os.environ.get('CONN_MAX_AGE', '60')),
     },
     # Other tenant DBs are added to DATABASES at runtime by tenancy.utils
 }

@@ -13,6 +13,7 @@ import {
   Package, AlertTriangle 
 } from 'lucide-react';
 import Link from 'next/link';
+import { Pagination } from '@/components/ui/pagination';
 
 export default function StockItemsMaintenancePage() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -142,14 +143,11 @@ export default function StockItemsMaintenancePage() {
             <p className="text-sm text-gray-600">
               Showing {((page - 1) * 20) + 1} to {Math.min(page * 20, stockItems.count)} of {stockItems.count}
             </p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(page - 1)}>
-                Previous
-              </Button>
-              <Button variant="outline" size="sm" disabled={page >= Math.ceil(stockItems.count / 20)} onClick={() => setPage(page + 1)}>
-                Next
-              </Button>
-            </div>
+            <Pagination
+              currentPage={page}
+              totalPages={Math.ceil(stockItems.count / 20)}
+              onPageChange={setPage}
+            />
           </div>
         )}
       </Card>
