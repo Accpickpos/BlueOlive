@@ -172,6 +172,10 @@ GET     /system-config/                    - Get system configuration
 PUT     /system-config/                    - Update configuration (full)
 PATCH   /system-config/                    - Update configuration (partial)
 POST    /system-config/advance_period/     - Advance to next accounting period
+ POST    /system-config/run_day_end/        - Run day-end process (manual)
+ POST    /system-config/run_month_end/      - Run month-end process (manual)
+ POST    /system-config/run_year_end/       - Run year-end process (manual)
+ GET     /system-config/period_end_status/  - Get period-end status & scheduling
 
 DEPARTMENT MONTHLY STATS (/department-stats/)
 ---------------------------------------------

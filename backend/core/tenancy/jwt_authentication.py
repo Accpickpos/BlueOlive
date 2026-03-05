@@ -311,7 +311,7 @@ class TenantJWTAuthentication(JWTAuthentication):
         
         token_tenant_id = validated_token.get('tenant_id')
         token_tenant_slug = validated_token.get('tenant_slug')
-        token_shop_id = validated_token.get('shop_id')  # DEBUG: Check for shop_id
+        token_shop_id = validated_token.get('current_shop_id')  # Check for current_shop_id (from CustomTokenObtainPairSerializer)
         
         if settings.DEBUG:
             logger.debug(f"[JWT] token_tenant_id={token_tenant_id}, token_tenant_slug={token_tenant_slug}, token_shop_id={token_shop_id}")
@@ -344,7 +344,7 @@ class TenantJWTAuthentication(JWTAuthentication):
             user = ShopUser.objects.using(tenant.db_alias).get(id=user_id)
             
             # DEBUG: Set shop_id from token onto user object for middleware to use
-            token_shop_id = validated_token.get('shop_id')
+            token_shop_id = validated_token.get('current_shop_id')
             if token_shop_id:
                 user.current_shop_id = token_shop_id
                 if settings.DEBUG:

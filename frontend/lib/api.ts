@@ -1,7 +1,8 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import { ENDPOINTS } from './api-config';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE 
+  || (process.env.NODE_ENV === 'production' ? 'http://blueolive-backend:8000' : 'http://localhost:8000');
 const POS_API_BASE = process.env.NEXT_PUBLIC_POS_API_BASE || 'http://localhost:8001';
 
 /**
@@ -29,6 +30,15 @@ export function clearAuthData(): void {
   // Reset all auth-related state on logout
   // Cookies are cleared by backend on logout endpoint
   csrfToken = null;
+  
+  // Clear shop context from localStorage
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('currentShopId');
+    localStorage.removeItem('currentShop');
+    localStorage.removeItem('shops');
+    localStorage.removeItem('tenant');
+  }
+  
   // Note: do not set isLoggingOut here - only set it in logout() function
   // Setting it here blocks token refresh from retrying on subsequent 401 errors
 }
@@ -169,9 +179,13 @@ api.interceptors.request.use(async (config) => {
   const tenant = typeof window !== 'undefined' ? localStorage.getItem('tenant') : null;
   if (tenant) {
     config.headers['X-Tenant'] = tenant;
-  } else {
-    // Use default tenant if no tenant in localStorage
-    config.headers['X-Tenant'] = 'dev';
+  }
+  // Note: Removed hardcoded 'dev' fallback - let backend return 404 if no tenant
+  
+  // Add shop ID header if available
+  const shopId = typeof window !== 'undefined' ? localStorage.getItem('currentShopId') : null;
+  if (shopId) {
+    config.headers['X-Shop-ID'] = shopId;
   }
   
   // Add CSRF token for mutating requests (POST, PUT, PATCH, DELETE)
@@ -464,7 +478,7 @@ export async function createTenant(tenantData: any): Promise<AxiosResponse> {
 // ========================================
 
 export async function getSuppliers(): Promise<any[]> {
-  const res = await apiRequest('/api/v1/creditors/suppliers/');
+  const res = await apiRequest('/api/v1/creditors/creditors/');
   if (Array.isArray(res.data)) {
     return res.data;
   }
@@ -472,12 +486,12 @@ export async function getSuppliers(): Promise<any[]> {
 }
 
 export async function getSupplier(id: number): Promise<any> {
-  const res = await apiRequest(`/api/v1/creditors/suppliers/${id}/`);
+  const res = await apiRequest(`/api/v1/creditors/creditors/${id}/`);
   return res.data;
 }
 
 export async function createSupplier(supplierData: any): Promise<any> {
-  const res = await apiRequest('/api/v1/creditors/suppliers/', {
+  const res = await apiRequest('/api/v1/creditors/creditors/', {
     method: 'POST',
     data: supplierData,
   });
@@ -485,7 +499,7 @@ export async function createSupplier(supplierData: any): Promise<any> {
 }
 
 export async function updateSupplier(id: number, supplierData: any): Promise<any> {
-  const res = await apiRequest(`/api/v1/creditors/suppliers/${id}/`, {
+  const res = await apiRequest(`/api/v1/creditors/creditors/${id}/`, {
     method: 'PATCH',
     data: supplierData,
   });
@@ -493,7 +507,7 @@ export async function updateSupplier(id: number, supplierData: any): Promise<any
 }
 
 export async function deleteSupplier(id: number): Promise<void> {
-  await apiRequest(`/api/v1/creditors/suppliers/${id}/`, {
+  await apiRequest(`/api/v1/creditors/creditors/${id}/`, {
     method: 'DELETE',
   });
 }

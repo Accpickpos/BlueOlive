@@ -45,8 +45,8 @@ export default function ReceivingStockForm({ onComplete }: ReceivingStockFormPro
 
   const fetchSuppliers = async () => {
     try {
-      const suppliers = await listSuppliers();
-      setSuppliers(suppliers);
+      const suppliers = await listSuppliers() as any;
+      setSuppliers(suppliers.results || []);
     } catch (err) {
       console.error('Error fetching suppliers:', err);
     }
@@ -113,7 +113,7 @@ export default function ReceivingStockForm({ onComplete }: ReceivingStockFormPro
         })),
       };
 
-      const response = await creditorsApi.grn.create(payload);
+      const response = await creditorsApi.grns.create(payload as any);
 
       if (!response) {
         throw new Error('Failed to create transaction');

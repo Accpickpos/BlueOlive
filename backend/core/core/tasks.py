@@ -11,6 +11,8 @@ from celery import shared_task
 from django.core.mail import send_mail
 from django.conf import settings
 from core.resilience import retry_with_backoff
+from datetime import date, timedelta
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -169,3 +171,146 @@ def cleanup_old_tasks():
     except Exception as exc:
         logger.error(f"Cleanup task failed: {str(exc)}")
         return {'status': 'failed', 'error': str(exc)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PERIOD END TASKS - Day-End, Month-End, Year-End
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _check_period_end_enabled(process_type: str) -> bool:
+    """
+    Check if the given period-end process is enabled in system configuration.
+    
+    Args:
+        process_type: 'day_end', 'month_end', or 'year_end'
+        
+    Returns:
+        True if the process is enabled, False otherwise
+    """
+    try:
+        from apps.settings.models import SystemConfiguration
+        config = SystemConfiguration.objects.first()
+        if not config:
+            logger.warning(f"No SystemConfiguration found, {process_type} will run anyway")
+            return True
+        
+        if process_type == 'day_end':
+            return config.enable_auto_day_end
+        elif process_type == 'month_end':
+            return config.enable_auto_month_end
+        elif process_type == 'year_end':
+            return config.enable_auto_year_end
+        return True
+    except Exception as e:
+        logger.warning(f"Error checking {process_type} config: {e}, running anyway")
+        return True
+
+
+@shared_task(bind=True, max_retries=3)
+@retry_with_backoff(max_retries=3)
+def run_day_end_task(self, process_date: str = None, shop_id: int = None):
+    """
+    Execute day-end process.
+    
+    Args:
+        process_date: Date string (YYYY-MM-DD) to process, defaults to yesterday
+        shop_id: Optional shop ID to filter by
+    """
+    # Check if day-end is enabled
+    if not _check_period_end_enabled('day_end'):
+        logger.info("Day-end process is disabled in configuration, skipping")
+        return {'status': 'skipped', 'message': 'Day-end is disabled in configuration'}
+    
+    try:
+        from apps.settings.period_end_services import DayEndService
+        from datetime import datetime
+        
+        if process_date:
+            process_date = datetime.strptime(process_date, '%Y-%m-%d').date()
+        else:
+            process_date = date.today() - timedelta(days=1)
+        
+        logger.info(f"Running day-end task for {process_date}")
+        
+        result = DayEndService.run_day_end(process_date=process_date, shop_id=shop_id)
+        
+        logger.info(f"Day-end task completed: {result.message}")
+        return result.to_dict()
+        
+    except Exception as exc:
+        logger.error(f"Day-end task failed: {str(exc)}")
+        raise self.retry(exc=exc, countdown=2 ** self.request.retries)
+
+
+@shared_task(bind=True, max_retries=3)
+@retry_with_backoff(max_retries=3)
+def run_month_end_task(self, process_date: str = None, advance_period: bool = True):
+    """
+    Execute month-end process.
+    
+    Args:
+        process_date: Date string (YYYY-MM-DD) for month-end, defaults to last month
+        advance_period: Whether to advance the accounting period
+    """
+    # Check if month-end is enabled
+    if not _check_period_end_enabled('month_end'):
+        logger.info("Month-end process is disabled in configuration, skipping")
+        return {'status': 'skipped', 'message': 'Month-end is disabled in configuration'}
+    
+    try:
+        from apps.settings.period_end_services import MonthEndService
+        from datetime import datetime
+        
+        if process_date:
+            process_date = datetime.strptime(process_date, '%Y-%m-%d').date()
+        else:
+            # Default to last month
+            today = date.today()
+            if today.month == 1:
+                process_date = date(today.year - 1, 12, 1)
+            else:
+                process_date = date(today.year, today.month - 1, 1)
+        
+        logger.info(f"Running month-end task for {process_date}")
+        
+        result = MonthEndService.run_month_end(process_date=process_date, advance_period=advance_period)
+        
+        logger.info(f"Month-end task completed: {result.message}")
+        return result.to_dict()
+        
+    except Exception as exc:
+        logger.error(f"Month-end task failed: {str(exc)}")
+        raise self.retry(exc=exc, countdown=2 ** self.request.retries)
+
+
+@shared_task(bind=True, max_retries=3)
+@retry_with_backoff(max_retries=3)
+def run_year_end_task(self, process_year: int = None, advance_year: bool = True):
+    """
+    Execute year-end process.
+    
+    Args:
+        process_year: Year to process, defaults to previous year
+        advance_year: Whether to advance the financial year
+    """
+    # Check if year-end is enabled
+    if not _check_period_end_enabled('year_end'):
+        logger.info("Year-end process is disabled in configuration, skipping")
+        return {'status': 'skipped', 'message': 'Year-end is disabled in configuration'}
+    
+    try:
+        from apps.settings.period_end_services import YearEndService
+        
+        if process_year is None:
+            process_year = date.today().year - 1
+        
+        logger.info(f"Running year-end task for {process_year}")
+        
+        result = YearEndService.run_year_end(process_year=process_year, advance_year=advance_year)
+        
+        logger.info(f"Year-end task completed: {result.message}")
+        return result.to_dict()
+        
+    except Exception as exc:
+        logger.error(f"Year-end task failed: {str(exc)}")
+        raise self.retry(exc=exc, countdown=2 ** self.request.retries)

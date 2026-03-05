@@ -284,41 +284,36 @@ class DebtorCreateUpdateSerializer(serializers.ModelSerializer):
 class DebtorTransactionSerializer(serializers.ModelSerializer):
     """Serializer for debtor transactions (DEBTRAN)."""
     
-    debtor_name = serializers.CharField(
-        source='customer_number.name',
-        read_only=True
-    )
-    debtor_account = serializers.CharField(
-        source='customer_number.customer_number',
-        read_only=True
-    )
-    dtype_display = serializers.CharField(
-        source='get_dtype_display',
-        read_only=True
-    )
-    
+    # FIX: DebtorTransaction uses 'debtor' FK and proper field names
+    debtor_name = serializers.CharField(source='debtor.name', read_only=True)
+    debtor_account = serializers.CharField(source='debtor.customer_number', read_only=True)
+    dtype_display = serializers.CharField(source='get_transaction_type_display', read_only=True)
+
     class Meta:
         model = DebtorTransaction
         fields = [
-            'customer_number',
+            'id',
+            'debtor',
             'debtor_account',
             'debtor_name',
-            'dtrano',
-            'dtype',
+            'transaction_number',
+            'transaction_type',
             'dtype_display',
-            'dtdate',
-            'time',
-            'dtsub',
-            'dtgst',
-            'dttot',
-            'dtaxstat',
-            'source',
-            'ordno',
-            'custref',
-            'del1',
-            'del2',
-            'del3',
-            'del4',
+            'transaction_date',
+            'transaction_time',
+            'subtotal',
+            'vat_amount',
+            'total_amount',
+            'vat_status',
+            'source_station',
+            'order_number',
+            'customer_reference',
+            'description_line1',
+            'description_line2',
+            'description_line3',
+            'description_line4',
+            'is_allocated',
+            'status',
             'created_at',
         ]
         read_only_fields = ['created_at']
@@ -326,30 +321,20 @@ class DebtorTransactionSerializer(serializers.ModelSerializer):
 
 class DebteopenSerializer(serializers.ModelSerializer):
     """Serializer for open item transactions (DEBTOPEN)."""
-    
-    debtor_name = serializers.CharField(
-        source='customer_number.name',
-        read_only=True
-    )
-    debtor_account = serializers.CharField(
-        source='customer_number.customer_number',
-        read_only=True
-    )
-    type_display = serializers.CharField(
-        source='get_type_display',
-        read_only=True
-    )
-    ageflag_display = serializers.CharField(
-        source='get_ageflag_display',
-        read_only=True
-    )
+
+    # FIX: Debtopen uses 'dno' FK, not 'customer_number'
+    debtor_name = serializers.CharField(source='dno.name', read_only=True)
+    debtor_account = serializers.CharField(source='dno.customer_number', read_only=True)
+    type_display = serializers.CharField(source='get_type_display', read_only=True)
+    ageflag_display = serializers.CharField(source='get_ageflag_display', read_only=True)
     allocated_amount = serializers.SerializerMethodField()
     is_fully_allocated = serializers.SerializerMethodField()
     
     class Meta:
         model = Debtopen
         fields = [
-            'customer_number',
+            'id',
+            'dno',
             'debtor_account',
             'debtor_name',
             'dtrano',
@@ -376,60 +361,54 @@ class DebteopenSerializer(serializers.ModelSerializer):
 
 class DpdcSerializer(serializers.ModelSerializer):
     """Serializer for post-dated cheques (DPDC)."""
-    
-    debtor_name = serializers.CharField(
-        source='customer_number.name',
-        read_only=True
-    )
-    debtor_account = serializers.CharField(
-        source='customer_number.customer_number',
-        read_only=True
-    )
-    status_display = serializers.CharField(
-        source='get_status_display',
-        read_only=True
-    )
+
+    # FIX: removed non-existent 'reference' field (Dpdc model has no cheque number field)
+    # FIX: debtor_account uses 'customer_number' Python attr, not db_column 'dno'
+    debtor = serializers.IntegerField(source='dno.id', read_only=True)
+    debtor_name = serializers.CharField(source='dno.name', read_only=True)
+    debtor_account = serializers.CharField(source='dno.customer_number', read_only=True)
+    cheque_date = serializers.DateField(source='date', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    is_processed = serializers.SerializerMethodField()
     is_active = serializers.SerializerMethodField()
     
     class Meta:
         model = Dpdc
         fields = [
-            'customer_number',
+            'id',
+            'debtor',
             'debtor_account',
             'debtor_name',
-            'date',
+            'cheque_date',
             'amount',
             'status',
             'status_display',
             'is_active',
+            'is_processed',
             'created_at',
         ]
         read_only_fields = ['created_at']
     
     def get_is_active(self, obj):
         return obj.status == 'A'
+    
+    def get_is_processed(self, obj):
+        return obj.status == 'P'
 
 
 class DebtorAuditSerializer(serializers.ModelSerializer):
     """Serializer for debtor audit records (DEBTORAUD)."""
-    
-    debtor_account = serializers.CharField(
-        source='customer_number.customer_number',
-        read_only=True
-    )
-    type_display = serializers.CharField(
-        source='get_type_display',
-        read_only=True
-    )
-    thistype_display = serializers.CharField(
-        source='get_thistype_display',
-        read_only=True
-    )
+
+    # FIX: DebtorAudit uses 'dno' FK, not 'customer_number'
+    debtor_account = serializers.CharField(source='dno.customer_number', read_only=True)
+    type_display = serializers.CharField(source='get_type_display', read_only=True)
+    thistype_display = serializers.CharField(source='get_thistype_display', read_only=True)
     
     class Meta:
         model = DebtorAudit
         fields = [
-            'customer_number',
+            'id',
+            'dno',
             'debtor_account',
             'dtrano',
             'type',
@@ -522,12 +501,12 @@ class DebtranListSerializer(serializers.ModelSerializer):
     class Meta:
         model = DebtorTransaction
         fields = [
-            'dtrano',
-            'dtype',
-            'dtdate',
-            'dtsub',
-            'dtgst',
-            'dttot',
+            'transaction_number',
+            'transaction_type',
+            'transaction_date',
+            'subtotal',
+            'vat_amount',
+            'total_amount',
         ]
 
 

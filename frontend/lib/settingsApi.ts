@@ -50,12 +50,20 @@ export interface IncomeCategory {
 }
 
 export interface ExpenseCategory {
-  id?: number;
-  code: string;
+  id: number;
+  category_number: string;
+  number?: string;
   name: string;
   description?: string;
+  category_type?: string;
   is_active: boolean;
+  transaction_count?: number;
+  total_amount?: number;
+  total_tax?: number;
+  total_mtd?: number;
+  total_ytd?: number;
   created_at?: string;
+  updated_at?: string;
   [key: string]: any;
 }
 

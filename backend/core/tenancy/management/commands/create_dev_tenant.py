@@ -68,6 +68,55 @@ class Command(BaseCommand):
             self.stdout.write(f"  Slug: {tenant.slug}")
             self.stdout.write(f"  Database: {tenant.db_name}")
 
+            # Verify database exists and is accessible
+            self.stdout.write("\nVerifying database exists...")
+            import psycopg2
+            from psycopg2 import OperationalError
+            
+            # Use default DB settings for verification (handles Docker vs local)
+            default_db = settings.DATABASES['default']
+            db_host = default_db['HOST']
+            db_port = default_db['PORT']
+            
+            try:
+                conn = psycopg2.connect(
+                    host=db_host,
+                    port=db_port,
+                    user=default_db['USER'],
+                    password=default_db['PASSWORD'],
+                    dbname=tenant.db_name
+                )
+                conn.close()
+                self.stdout.write(self.style.SUCCESS(
+                    f"[OK] Database '{tenant.db_name}' exists and is accessible."
+                ))
+            except OperationalError as e:
+                self.stdout.write(self.style.ERROR(
+                    f"[FAIL] Database '{tenant.db_name}' does not exist or is not accessible!"
+                ))
+                self.stdout.write(f"   Error: {str(e)}")
+                self.stdout.write("   Creating database and setting up tenant...")
+                
+                # Create database
+                from tenancy.utils import provision_tenant
+                superuser_conn_info = {
+                    'host': db_host,
+                    'port': db_port,
+                    'dbname': 'postgres',
+                    'user': default_db['USER'],
+                    'password': default_db['PASSWORD'],
+                }
+                try:
+                    provision_tenant(tenant, superuser_conn_info)
+                    self.stdout.write(self.style.SUCCESS(
+                        f"[OK] Database '{tenant.db_name}' created and provisioned!"
+                    ))
+                except Exception as db_error:
+                    self.stdout.write(self.style.ERROR(
+                        f"Failed to create database: {str(db_error)}"
+                    ))
+                    return
+
             if not skip_existing:
                 # Only prompt if explicitly running interactively
                 try:
@@ -90,15 +139,15 @@ class Command(BaseCommand):
                     name=name,
                     slug=slug,
                     db_name=db_name,
-                    db_host='postgres',
-                    db_port=5432,
-                    db_user='postgres',
+                    db_host=settings.DATABASES['default']['HOST'],
+                    db_port=settings.DATABASES['default']['PORT'],
+                    db_user=settings.DATABASES['default']['USER'],
                     db_password=db_password,
                     is_active=True
                 )
 
                 self.stdout.write(self.style.SUCCESS(
-                    f"✓ Tenant created: {tenant.name}"
+                    f"[OK] Tenant created: {tenant.name}"
                 ))
 
             except Exception as e:
@@ -123,31 +172,138 @@ class Command(BaseCommand):
             self.stdout.write("\nCreating default shop...")
 
             shop_name = f"{name} - Main Shop"
-            shop_slug = "main"
+            shop_code = "MS001"
             schema_name = "shop_main"
 
-            if Shop.objects.filter(tenant=tenant, slug=shop_slug).exists():
+            if Shop.objects.filter(tenant=tenant, code=shop_code).exists():
+                existing_shop = Shop.objects.filter(tenant=tenant, code=shop_code).first()
                 self.stdout.write(self.style.WARNING(
-                    f"Shop '{shop_slug}' already exists for this tenant, skipping."
+                    f"Shop '{shop_code}' already exists for this tenant."
                 ))
+                # Check if schema needs to be created/migrated
+                schema_name = existing_shop.schema_name
+                from tenancy.shop_manager import create_shop_schema
+                try:
+                    self.stdout.write(f"Ensuring shop schema '{schema_name}' exists and is migrated...")
+                    create_shop_schema(tenant, schema_name)
+                    self.stdout.write(self.style.SUCCESS(
+                        f"[OK] Shop schema verified and migrated"
+                    ))
+                except Exception as schema_error:
+                    self.stdout.write(self.style.WARNING(
+                        f"Schema may already exist or migration failed: {str(schema_error)}"
+                    ))
             else:
                 try:
                     shop = Shop.objects.create(
                         tenant=tenant,
                         name=shop_name,
-                        slug=shop_slug,
+                        code=shop_code,
                         schema_name=schema_name,
-                        is_active=True
+                        is_active=True,
+                        is_head_office=True
                     )
 
                     self.stdout.write(self.style.SUCCESS(
-                        f"✓ Shop created: {shop.name}"
+                        f"[OK] Shop created: {shop.name}"
+                    ))
+
+                    # CRITICAL: Create the shop schema and migrate shop apps
+                    from tenancy.shop_manager import create_shop_schema
+                    self.stdout.write(f"Creating shop schema '{schema_name}' and migrating shop apps...")
+                    create_shop_schema(tenant, schema_name)
+                    self.stdout.write(self.style.SUCCESS(
+                        f"[OK] Shop schema created and migrated"
                     ))
 
                 except Exception as e:
                     self.stdout.write(self.style.ERROR(
                         f"Failed to create shop: {str(e)}"
                     ))
+
+        # Create admin user for the tenant (required for login)
+        self.stdout.write("\nCreating admin user...")
+        from django.contrib.auth.hashers import make_password
+        from shop_users.models import ShopUser
+        from tenancy.utils import register_tenant_connection
+        from tenancy.shop_manager import migrate_tenant_database
+        
+        # Ensure database exists and is accessible before proceeding
+        import psycopg2
+        from psycopg2 import OperationalError
+        
+        default_db = settings.DATABASES['default']
+        db_host = default_db['HOST']
+        db_port = default_db['PORT']
+        
+        try:
+            conn = psycopg2.connect(
+                host=db_host,
+                port=db_port,
+                user=default_db['USER'],
+                password=default_db['PASSWORD'],
+                dbname=tenant.db_name
+            )
+            conn.close()
+        except OperationalError:
+            self.stdout.write(self.style.WARNING(
+                f"Database '{tenant.db_name}' not accessible. Creating and provisioning..."
+            ))
+            from tenancy.utils import provision_tenant
+            superuser_conn_info = {
+                'host': db_host,
+                'port': db_port,
+                'dbname': 'postgres',
+                'user': default_db['USER'],
+                'password': default_db['PASSWORD'],
+            }
+            try:
+                provision_tenant(tenant, superuser_conn_info)
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(
+                    f"Failed to provision tenant database: {str(e)}"
+                ))
+                return
+        
+        try:
+            # Register tenant connection
+            register_tenant_connection(tenant)
+            
+            # Run migrations to ensure shop_users table exists
+            migrate_tenant_database(tenant)
+            
+            # Check if user already exists
+            admin_username = f"admin@{slug}"
+            if ShopUser.objects.using(tenant.db_alias).filter(username=admin_username).exists():
+                self.stdout.write(self.style.WARNING(
+                    f"Admin user '{admin_username}' already exists, skipping."
+                ))
+            else:
+                # Create admin user
+                admin_user = ShopUser.objects.using(tenant.db_alias).create(
+                    username=admin_username,
+                    email=admin_username,
+                    first_name='Admin',
+                    password=make_password('admin123'),  # Default password - CHANGE IN PRODUCTION
+                    is_staff=True,
+                    is_superuser=False,
+                    role='ADMIN',
+                    tenant_id=tenant.id,
+                    is_active=True,
+                )
+                self.stdout.write(self.style.SUCCESS(
+                    f"[OK] Admin user created: {admin_username}"
+                ))
+                self.stdout.write(self.style.WARNING(
+                    f"  Default password: admin123 (CHANGE IN PRODUCTION!)"
+                ))
+                
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(
+                f"Failed to create admin user: {str(e)}"
+            ))
+            import traceback
+            traceback.print_exc()
 
         # Print access instructions
         self.stdout.write("\n" + "="*80)

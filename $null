@@ -1,0 +1,7 @@
+Invoke-WebRequest : {"detail":"Authentication credentials were not provided."}
+At line:1 char:2
++ (Invoke-WebRequest -Uri 'http://localhost:8000/api/debtors/' -Method  ...
++  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (System.Net.HttpWebRequest:HttpWebRequest) [Invoke-WebRequest], WebExc 
+   eption
+    + FullyQualifiedErrorId : WebCmdletWebResponseException,Microsoft.PowerShell.Commands.InvokeWebRequestCommand

@@ -64,7 +64,7 @@ export default function TransactionsEnquiry() {
         params.append('types', selectedTypes.join(','));
       }
 
-      const response = await apiRequest(`/api/debtors/transactions/?${params}`);
+      const response = await apiRequest(`/api/v1/debtors/transactions/?${params}`);
       const responseData = (response as any).data || (response as any);
       const txns = responseData.results || responseData;
       

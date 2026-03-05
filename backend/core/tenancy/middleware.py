@@ -302,13 +302,20 @@ class TenantMiddleware:
         3. Development headers/query (DEBUG mode only)
         4. Default shop fallback
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         shop = None
+        
+        # DEBUG: Log the tenant details
+        logger.debug(f"[_identify_shop] Starting with tenant={tenant.name}, tenant.shops.count={tenant.shops.count()}")
         
         # Method 1: From authenticated user's context
         if hasattr(request, 'user') and request.user.is_authenticated:
             # Get shop from user's current context (could be from JWT claims)
             shop_id = getattr(request.user, 'current_shop_id', None)
             if shop_id:
+                logger.debug(f"[_identify_shop] User has current_shop_id={shop_id}")
                 try:
                     shop = Shop.objects.get(
                         tenant=tenant,
@@ -327,6 +334,7 @@ class TenantMiddleware:
             try:
                 session_shop_id = request.session.get('current_shop_id')
                 if session_shop_id:
+                    logger.debug(f"[_identify_shop] Session has current_shop_id={session_shop_id}")
                     shop = Shop.objects.get(
                         tenant=tenant,
                         id=session_shop_id,
@@ -348,17 +356,22 @@ class TenantMiddleware:
         # Method 4: Default shop fallback
         if not shop:
             default_shop_enabled = getattr(settings, 'USE_DEFAULT_SHOP', False)
-            if settings.DEBUG:
-                logger.debug(f"[TenantMiddleware] USE_DEFAULT_SHOP={default_shop_enabled}, current shop={shop}")
+            logger.debug(f"[_identify_shop] USE_DEFAULT_SHOP={default_shop_enabled}, current shop={shop}")
             if default_shop_enabled:
                 # Query from default database (Shop model is in main DB)
+                logger.debug(f"[_identify_shop] Attempting to get default shop for tenant={tenant.name}")
                 shop = Shop.objects.using('default').filter(
                     tenant=tenant, 
                     is_active=True
                 ).first()
+                if shop:
+                    logger.debug(f"[_identify_shop] Found default shop: {shop.name} (schema: {shop.schema_name})")
+                else:
+                    logger.warning(f"[_identify_shop] No default shop found for tenant {tenant.name}")
                 if shop and settings.DEBUG:
                     logger.debug(f"[TenantMiddleware] Using default shop: {shop.subdomain or shop.name} (schema: {shop.schema_name})")
         
+        logger.debug(f"[_identify_shop] Final shop result: {shop.name if shop else None}")
         return shop
     
     def _identify_shop_dev(self, request, tenant):

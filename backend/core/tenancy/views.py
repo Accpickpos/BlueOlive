@@ -3,8 +3,9 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
-from .models import Tenant, Shop
-from .serializers import TenantSerializer, ShopSerializer
+from datetime import date
+from .models import Tenant, Shop, ShopConfiguration
+from .serializers import TenantSerializer, ShopSerializer, ShopConfigurationSerializer
 from tenancy.tenant_context import get_current_tenant
 from tenancy.permissions import IsAdmin, IsTenantMember, CanCreateTenant
 import logging
@@ -428,4 +429,64 @@ def get_current_shop(request):
             {'error': 'Current shop not found or inactive'},
             status=status.HTTP_404_NOT_FOUND
         )
+
+
+class ShopConfigurationViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for per-shop period-end configuration.
+    
+    Endpoints:
+    - GET /shop-config/ - List all shop configurations
+    - POST /shop-config/ - Create configuration for a shop
+    - GET /shop-config/{id}/ - Get configuration details
+    - PATCH /shop-config/{id}/ - Update configuration
+    - GET /shop-config/by-shop/{shop_id}/ - Get config for specific shop
+    """
+    queryset = ShopConfiguration.objects.using('default').all()
+    serializer_class = ShopConfigurationSerializer
+    lookup_field = 'pk'
+    
+    def get_queryset(self):
+        return ShopConfiguration.objects.using('default').all()
+    
+    @action(detail=False, methods=['get'], url_path='by-shop/(?P<shop_id>[^/.]+)')
+    def by_shop(self, request, shop_id=None):
+        """Get configuration for a specific shop"""
+        try:
+            config = ShopConfiguration.objects.using('default').get(shop_id=shop_id)
+            serializer = self.get_serializer(config)
+            return Response(serializer.data)
+        except ShopConfiguration.DoesNotExist:
+            return Response(
+                {'error': 'Configuration not found for this shop'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
+    @action(detail=False, methods=['get'])
+    def current_shop_config(self, request):
+        """Get configuration for the current shop (from session/user)"""
+        from tenancy.tenant_context import get_current_shop_id
+        shop_id = get_current_shop_id(request)
+        
+        if not shop_id:
+            return Response(
+                {'error': 'No shop selected'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        config, created = ShopConfiguration.objects.using('default').get_or_create(
+            shop_id=shop_id,
+            defaults={
+                'current_financial_year': date.today().year,
+                'current_period': 1
+            }
+        )
+        serializer = self.get_serializer(config)
+        return Response(serializer.data)
+    
+    def perform_create(self, serializer):
+        serializer.save()
+    
+    def perform_update(self, serializer):
+        serializer.save()
 

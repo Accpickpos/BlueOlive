@@ -183,6 +183,26 @@ def tenant_login(request):
                 status=status.HTTP_403_FORBIDDEN
             )
         
+        # Set default shop in session - get user's accessible shops
+        try:
+            accessible_shops = user.get_active_shops()
+            if accessible_shops:
+                # Set first accessible shop as current
+                default_shop = accessible_shops[0]
+                request.session['current_shop_id'] = default_shop.id
+                request.session['current_shop_schema'] = default_shop.schema_name
+                # Also set on user object for immediate use
+                user.current_shop_id = default_shop.id
+                # Re-register tenant connection with the correct shop schema
+                register_tenant_connection(tenant, shop=default_shop)
+            else:
+                default_shop = None
+                accessible_shops = []
+        except Exception as e:
+            logger.warning(f"Could not set default shop for user {user.id}: {e}")
+            default_shop = None
+            accessible_shops = []
+        
         # Generate tokens
         refresh = RefreshToken.for_user(user)
         
@@ -193,6 +213,10 @@ def tenant_login(request):
         refresh['username'] = user.username
         refresh['email'] = user.email
         refresh['role'] = user.role
+        # Add current_shop_id to token (consistent with CustomTokenObtainPairSerializer)
+        if default_shop:
+            refresh['current_shop_id'] = default_shop.id
+            refresh['current_shop_schema'] = default_shop.schema_name
         
         return Response({
             'refresh': str(refresh),
@@ -210,7 +234,16 @@ def tenant_login(request):
                 'name': tenant.name,
                 'slug': tenant.slug,
                 'subdomain': tenant.subdomain,
-            }
+            },
+            'shop': {
+                'id': default_shop.id,
+                'name': default_shop.name,
+                'schema_name': default_shop.schema_name
+            } if default_shop else None,
+            'accessible_shops': [
+                {'id': s.id, 'name': s.name, 'schema_name': s.schema_name}
+                for s in accessible_shops
+            ] if accessible_shops else []
         }, status=status.HTTP_200_OK)
         
     except Exception as e:

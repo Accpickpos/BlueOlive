@@ -1,9 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { login, fetchCSRFToken } from '@/lib/api';
+import { login, fetchCSRFToken, getTenantShops } from '@/lib/api';
 import { useAuthContext } from '@/lib/AuthContext';
+import { setTenant, setShops, setCurrentShop, type Shop } from '@/lib/shopContext';
+
+interface LoginUser {
+  id: number;
+  username: string;
+  role: string;
+  is_superuser: boolean;
+  is_admin: boolean;
+}
 
 export default function LoginPage() {
   const [subdomain, setSubdomain] = useState('');
@@ -12,8 +20,7 @@ export default function LoginPage() {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [messageType, setMessageType] = useState<'error' | 'success'>('error');
-  const router = useRouter();
-  const { refetch } = useAuthContext();
+  const { setUser } = useAuthContext();
 
   // Pre-fetch CSRF token on page load
   useEffect(() => {
@@ -35,19 +42,55 @@ export default function LoginPage() {
     }
 
     try {
+      console.log('Attempting login with:', { subdomain, username });
       const response = await login(subdomain, username, password);
+      console.log('Login response:', response);
+      console.log('Login response data:', response.data);
       
       if (response.status === 200) {
+        console.log('Login successful!');
         setMessage('Login successful! Redirecting...');
         setMessageType('success');
         
-        // Refetch user profile to update AuthContext
-        await refetch();
+        // Store tenant in localStorage for API requests
+        setTenant(subdomain);
+        console.log('Stored tenant in localStorage:', subdomain);
         
-        await new Promise(resolve => setTimeout(resolve, 500));
-        router.push('/dashboard');
+        // Fetch shops for the tenant and store them
+        try {
+          const shops = await getTenantShops(subdomain);
+          setShops(shops);
+          console.log('Stored shops in localStorage:', shops.length);
+          
+          // Set the first shop as current if available
+          if (shops.length > 0) {
+            setCurrentShop(shops[0]);
+            console.log('Set current shop:', shops[0].name);
+          }
+        } catch (shopError) {
+          console.warn('Failed to fetch shops after login:', shopError);
+        }
+        
+        // Set user directly from login response to bypass profile fetch issues
+        const userData: LoginUser = response.data.user;
+        const user = {
+          id: userData.id,
+          username: userData.username,
+          email: userData.username, // Use username as email fallback
+          role: userData.role,
+          is_superuser: userData.is_superuser,
+          is_admin: userData.is_admin,
+          tenant_id: null,
+        };
+        setUser(user);
+        console.log('Set user in AuthContext:', user);
+        
+        // Force redirect using window.location for reliability
+        console.log('Attempting redirect to /dashboard');
+        window.location.href = '/dashboard';
       }
     } catch (error: any) {
+      console.error('Login error:', error);
       const errorMsg = 
         error?.response?.data?.detail || 
         error?.message ||

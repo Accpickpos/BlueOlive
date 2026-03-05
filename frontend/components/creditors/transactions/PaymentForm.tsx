@@ -32,8 +32,8 @@ export default function PaymentForm({ onComplete }: PaymentFormProps) {
 
   const fetchSuppliers = async () => {
     try {
-      const suppliers = await listSuppliers();
-      setSuppliers(suppliers);
+      const suppliers = await listSuppliers() as any;
+      setSuppliers(suppliers.results || []);
     } catch (err) {
       console.error('Error fetching suppliers:', err);
     }
@@ -68,7 +68,7 @@ export default function PaymentForm({ onComplete }: PaymentFormProps) {
         settlement_discount: parseFloat(formData.settlement_discount.toString()),
       };
 
-      const response = await creditorsApi.payments.create(payload);
+      const response = await creditorsApi.payments.create(payload as any);
 
       if (!response) {
         throw new Error('Failed to create payment');

@@ -36,7 +36,7 @@ export default function BatchReceiptPostingForm() {
 
   const loadDebtors = async () => {
     try {
-      const response = await apiRequest('/api/debtors/');
+      const response = await apiRequest('/api/v1/debtors/');
       if ((response as any).results) {
         setDebtors((response as any).results);
       }
@@ -117,7 +117,7 @@ export default function BatchReceiptPostingForm() {
       }
 
       const transactionPromises = validReceipts.map(receipt =>
-        apiRequest('/api/debtors/transactions/', {
+        apiRequest('/api/v1/debtors/transactions/', {
           method: 'POST',
           body: {
             debtor_id: receipt.debtor_id,

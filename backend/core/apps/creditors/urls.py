@@ -18,6 +18,7 @@ from .views import (
     ExpenseCategoryTransactionViewSet,
     SupplierPaymentOrderViewSet,
     CreditorTransactionLineViewSet,
+    OutstandingBalanceViewSet,
 )
 
 # ============================================================================
@@ -42,6 +43,7 @@ router.register(r'expense_monthly',       ExpenseCategoryMonthlyBalanceViewSet, 
 router.register(r'expense_transactions',  ExpenseCategoryTransactionViewSet,    basename='expense-transaction')
 router.register(r'payment_orders',        SupplierPaymentOrderViewSet,          basename='payment-order')
 router.register(r'transaction_lines',     CreditorTransactionLineViewSet,       basename='transaction-line')
+router.register(r'outstanding-balances', OutstandingBalanceViewSet,             basename='outstanding-balance')
 
 # ============================================================================
 # NESTED ROUTERS

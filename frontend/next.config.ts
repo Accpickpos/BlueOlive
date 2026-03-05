@@ -20,6 +20,11 @@ const nextConfig: NextConfig = {
       '@radix-ui/react-slot',
       'recharts',
     ],
+    // Reduce memory usage in development
+    optimizeCss: true,
+    // Limit the number of parallel builds
+    workerThreads: false,
+    cpus: 1,
   },
   
   // Enable compression
@@ -37,38 +42,13 @@ const nextConfig: NextConfig = {
     ],
   },
   
-  // Ensure proper chunk handling in development
+  // Reduce page cache for memory efficiency in dev
   onDemandEntries: {
-    // Keep pages in memory for longer during dev
-    maxInactiveAge: 60 * 1000, // 1 minute
-    pagesBufferLength: 5,
+    maxInactiveAge: 30 * 1000, // 30 seconds
+    pagesBufferLength: 2,
   },
   
-  // Webpack configuration for bundle optimization
-  webpack: (config, { isServer }) => {
-    // Optimize moment.js imports if used - redirect to dayjs for smaller bundle
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      moment: 'dayjs',
-    };
-    
-    // Only run on client-side builds
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        net: false,
-        tls: false,
-      };
-    }
-    
-    return config;
-  },
-  
-  // Enable React strict mode for development (helps catch issues early)
-  reactStrictMode: true,
-  
-  // Powered by header - disable for security
+  // Disable x-powered-by header
   poweredByHeader: false,
   
   // Generate ETags for better caching

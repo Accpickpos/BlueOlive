@@ -45,25 +45,27 @@ export const ENDPOINTS = {
 
   // ===== DEBTORS =====
   DEBTORS: {
-    ACCOUNTS: `${API_V1_BASE}/debtors/debtors/`,
+    ACCOUNTS: `${API_V1_BASE}/debtors/`,
     TRANSACTIONS: `${API_V1_BASE}/debtors/transactions/`,
     OPEN_ITEMS: `${API_V1_BASE}/debtors/open-items/`,
     POST_DATED_CHEQUES: `${API_V1_BASE}/debtors/post-dated-cheques/`,
     AUDIT: `${API_V1_BASE}/debtors/audit/`,
     SALES_AREAS: `${API_V1_BASE}/debtors/sales-areas/`,
+    TOP_ACCOUNTS: `${API_V1_BASE}/debtors/top-accounts/`,
+    AGE_ANALYSIS_LIST: `${API_V1_BASE}/debtors/age-analysis/`,
 
     // Special Actions (using template literals for dynamic IDs)
-    AGE_ANALYSIS: (dno: string) => `${API_V1_BASE}/debtors/debtors/${dno}/age_analysis/`,
-    DEBTOR_TRANSACTIONS: (dno: string) => `${API_V1_BASE}/debtors/debtors/${dno}/transactions/`,
-    BALANCE_DETAILS: (dno: string) => `${API_V1_BASE}/debtors/debtors/${dno}/balance_details/`,
-    BLOCK_ACCOUNT: (dno: string) => `${API_V1_BASE}/debtors/debtors/${dno}/block/`,
-    UNBLOCK_ACCOUNT: (dno: string) => `${API_V1_BASE}/debtors/debtors/${dno}/unblock/`,
-    SUMMARY: `${API_V1_BASE}/debtors/debtors/summary/`,
+    AGE_ANALYSIS: (dno: string) => `${API_V1_BASE}/debtors/${dno}/age_analysis/`,
+    DEBTOR_TRANSACTIONS: (dno: string) => `${API_V1_BASE}/debtors/${dno}/transactions/`,
+    BALANCE_DETAILS: (dno: string) => `${API_V1_BASE}/debtors/${dno}/balance_details/`,
+    BLOCK_ACCOUNT: (dno: string) => `${API_V1_BASE}/debtors/${dno}/block/`,
+    UNBLOCK_ACCOUNT: (dno: string) => `${API_V1_BASE}/debtors/${dno}/unblock/`,
+    SUMMARY: `${API_V1_BASE}/debtors/summary/`,
   },
 
   // ===== CREDITORS =====
   CREDITORS: {
-    BASE: `${API_V1_BASE}/creditors/`,
+    BASE: `${API_V1_BASE}/creditors/creditors/`,
     ACCOUNTS: `${API_V1_BASE}/creditors/creditors/`,
     TRANSACTIONS: `${API_V1_BASE}/creditors/transactions/`,
     CREDIT_TERMS: `${API_V1_BASE}/creditors/credit-terms/`,
@@ -80,6 +82,8 @@ export const ENDPOINTS = {
     // Expense categories
     EXPENSE_MONTHLY: `${API_V1_BASE}/creditors/expense_monthly/`,
     EXPENSE_TRANSACTIONS: `${API_V1_BASE}/creditors/expense_transactions/`,
+    // Alias for expense categories (uses settings endpoint)
+    EXPENSE_CATEGORIES: `${API_V1_BASE}/settings/expense-categories/`,
     
     // Dynamic endpoints for specific creditor actions
     AGED_BALANCES: (id: string | number) => `${API_V1_BASE}/creditors/creditors/${id}/aged_balances/`,
@@ -130,6 +134,10 @@ export const ENDPOINTS = {
     PAYMENT_ORDERS: `${API_V1_BASE}/creditors/payment_orders/`,
     PAYMENT_ORDERS_PENDING: `${API_V1_BASE}/creditors/payment_orders/pending/`,
     PROCESS_PAYMENT_ORDER: (id: string | number) => `${API_V1_BASE}/creditors/payment_orders/${id}/process/`,
+    
+    // Outstanding balances endpoints
+    OUTSTANDING_BALANCES: `${API_V1_BASE}/creditors/outstanding-balances/`,
+    OUTSTANDING_BALANCE_CAPTURE: `${API_V1_BASE}/creditors/outstanding-balances/capture/`,
   },
 
   // ===== CASH BOOK =====
@@ -285,6 +293,11 @@ export const ENDPOINTS = {
     MESSAGES: (conversationId: number) => `${API_V1_BASE}/messaging/conversations/${conversationId}/messages/`,
     SEND: (conversationId: number) => `${API_V1_BASE}/messaging/conversations/${conversationId}/send/`,
     MARK_READ: (conversationId: number) => `${API_V1_BASE}/messaging/conversations/${conversationId}/mark_read/`,
+    UPLOAD_ATTACHMENT: (conversationId: number) => `${API_V1_BASE}/messaging/conversations/${conversationId}/upload_attachment/`,
+    NOTIFICATIONS: `${API_V1_BASE}/messaging/notifications/`,
+    NOTIFICATION_UNREAD_COUNT: `${API_V1_BASE}/messaging/notifications/unread_count/`,
+    NOTIFICATION_MARK_READ: (id: number) => `${API_V1_BASE}/messaging/notifications/${id}/mark_read/`,
+    NOTIFICATION_MARK_ALL_READ: `${API_V1_BASE}/messaging/notifications/mark_all_read/`,
   },
 } as const;
 

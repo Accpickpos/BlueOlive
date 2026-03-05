@@ -42,7 +42,7 @@ export default function CreditNotesPage() {
     try {
       // Demo data
       setTimeout(() => {
-        setNotes([
+        setCreditNotes([
           { id: 1, reference: 'CN-001', invoice_ref: 'INV-001', customer: 'John Smith', amount: 500.00, reason: 'Damaged items', date: new Date(Date.now() - 86400000).toISOString(), status: 'approved' },
           { id: 2, reference: 'CN-002', invoice_ref: 'INV-003', customer: 'ABC Trading', amount: 250.00, reason: 'Wrong quantity', date: new Date(Date.now() - 172800000).toISOString(), status: 'posted' },
         ]);

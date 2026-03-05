@@ -26,7 +26,7 @@ export interface CreditorAccount {
   name:            string;           // SUPNAME C(30)
   // Contact
   contact_person?: string;           // SUPCONT C(20)
-  telephone1?:      string;           // SUPTEL C(15)
+  telephone?:      string;           // SUPTEL C(15)
   fax?:            string;           // SUPFAX C(15)
   email?:          string;           // EMAIL C(60)
   // Physical address
@@ -684,16 +684,21 @@ export interface CreditorsSummary {
 export interface ExpenseCategory {
   id:               number;
   category_number:  string;
+  number?:          string;
   name:             string;
+  category_type?:   string;
+  is_active?:       boolean;
   transaction_count?: number;
   total_amount?:      number;
   total_tax?:         number;
+  total_mtd?:         number;
+  total_ytd?:         number;
   created_at?:        string;
   updated_at?:        string;
 }
 
 export interface ExpenseCategoryCreateData
-  extends Omit<ExpenseCategory, 'id' | 'transaction_count' | 'total_amount' | 'total_tax' | 'created_at' | 'updated_at'> {}
+  extends Omit<ExpenseCategory, 'id' | 'transaction_count' | 'total_amount' | 'total_tax' | 'total_mtd' | 'total_ytd' | 'created_at' | 'updated_at'> {}
 
 export interface ExpenseCategoryFilters {
   search?:     string;
@@ -702,6 +707,47 @@ export interface ExpenseCategoryFilters {
   start_date?: string;
   end_date?:   string;
   ordering?:   string;
+}
+
+// ── Outstanding Balance types ───────────────────────────────────────────────
+export interface OutstandingBalance {
+  id: number;
+  creditor: number;
+  creditor_name?: string;
+  supplier_number?: string;
+  supplier_account_number?: string;
+  transaction_number?: string;
+  transaction_date?: string;
+  balance: number;
+  balance_current?: number;
+  balance_30_days?: number;
+  balance_60_days?: number;
+  balance_90_days?: number;
+  balance_120_days?: number;
+  balance_150_days?: number;
+  balance_180_days?: number;
+  original_amount?: number;
+  balance_due?: number;
+  age_period?: number;
+  capture_date?: string;
+  as_at_date: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface OutstandingBalanceCaptureData {
+  creditor: number;
+  supplier_account_number?: string;
+  capture_date?: string;
+  as_at_date: string;
+  balance: number;
+  balance_current?: number;
+  balance_30_days?: number;
+  balance_60_days?: number;
+  balance_90_days?: number;
+  balance_120_days?: number;
+  balance_150_days?: number;
+  balance_180_days?: number;
 }
 
 // ── Legacy Transaction type — kept for backward compat with existing hooks ──

@@ -2,6 +2,7 @@
 from django.db import models
 from django.core import signing
 from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 
 class EncryptedCharField(models.CharField):
@@ -139,6 +140,105 @@ class Shop(models.Model):
             self.subdomain = subdomain
         
         super().save(*args, **kwargs)
+
+
+class ShopConfiguration(models.Model):
+    """
+    Per-shop configuration for period-end processes.
+    Stored in the tenant database (public), not in shop schemas.
+    """
+    shop = models.OneToOneField(
+        Shop,
+        on_delete=models.CASCADE,
+        related_name='configuration'
+    )
+    
+    # === PERIOD END TRACKING ===
+    last_day_end_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date of last successful day-end process"
+    )
+    last_month_end_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date of last successful month-end process"
+    )
+    last_year_end_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date of last successful year-end process"
+    )
+    
+    # === AUTOMATED SCHEDULING SETTINGS ===
+    # Day-end scheduling
+    enable_auto_day_end = models.BooleanField(
+        default=False,
+        help_text="Enable automatic day-end process"
+    )
+    day_end_time = models.TimeField(
+        default='23:59',
+        help_text="Time to run automatic day-end (HH:MM)"
+    )
+    day_end_day_of_week = models.JSONField(
+        default=list,
+        help_text="Days of week to run day-end [0=Mon, 6=Sun]"
+    )
+    
+    # Month-end scheduling
+    enable_auto_month_end = models.BooleanField(
+        default=False,
+        help_text="Enable automatic month-end process"
+    )
+    month_end_day = models.PositiveIntegerField(
+        default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(28)],
+        help_text="Day of month to run month-end (1-28)"
+    )
+    month_end_time = models.TimeField(
+        default='23:00',
+        help_text="Time to run automatic month-end (HH:MM)"
+    )
+    
+    # Year-end scheduling
+    enable_auto_year_end = models.BooleanField(
+        default=False,
+        help_text="Enable automatic year-end process"
+    )
+    year_end_month = models.PositiveIntegerField(
+        default=12,
+        validators=[MinValueValidator(1), MaxValueValidator(12)],
+        help_text="Month to run year-end (1-12)"
+    )
+    year_end_day = models.PositiveIntegerField(
+        default=31,
+        validators=[MinValueValidator(1), MaxValueValidator(31)],
+        help_text="Day of month to run year-end"
+    )
+    year_end_time = models.TimeField(
+        default='22:00',
+        help_text="Time to run automatic year-end (HH:MM)"
+    )
+    
+    # === ACCOUNTING PERIOD ===
+    current_financial_year = models.PositiveIntegerField(
+        default=2024,
+        help_text="Current financial year (e.g., 2024)"
+    )
+    current_period = models.PositiveIntegerField(
+        default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(12)],
+        help_text="Current accounting period (1-12)"
+    )
+    
+    class Meta:
+        db_table = 'shop_configuration'
+        verbose_name = 'Shop Configuration'
+        verbose_name_plural = 'Shop Configurations'
+    
+    def __str__(self):
+        return f"Config - {self.shop.name}"
+
 
 # Import AuditLog from audit.py to make it accessible
 from tenancy.audit import AuditLog  # noqa: E402, F401

@@ -154,7 +154,7 @@ export default function ExpenseCategoriesPage() {
               </tr>
             </thead>
             <tbody>
-              {categories?.results?.map((category: ExpenseCategory) => (
+              {categories?.map((category: ExpenseCategory) => (
                 <tr key={category.id} className="border-b hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium">{category.category_number}</td>
                   <td className="px-4 py-3">{category.name}</td>
@@ -195,7 +195,7 @@ export default function ExpenseCategoriesPage() {
           </table>
         </div>
 
-        {(!categories?.results || categories.results.length === 0) && (
+        {(!categories || categories.length === 0) && (
           <div className="text-center py-8 text-gray-500">
             No expense categories found. Click "New Category" to create one.
           </div>

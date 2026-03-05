@@ -1,6 +1,6 @@
 # tenancy/serializers.py
 from rest_framework import serializers
-from .models import Tenant, Shop
+from .models import Tenant, Shop, ShopConfiguration
 from shop_users.models import ShopUser
 from django.utils.text import slugify
 import uuid
@@ -271,3 +271,42 @@ class ShopSerializer(serializers.ModelSerializer):
             validated_data['schema_name'] = schema_name
         
         return super().update(instance, validated_data)
+
+
+class ShopConfigurationSerializer(serializers.ModelSerializer):
+    """
+    Serializer for per-shop period-end configuration.
+    """
+    shop_name = serializers.CharField(source='shop.name', read_only=True)
+    
+    class Meta:
+        model = ShopConfiguration
+        fields = [
+            'id',
+            'shop',
+            'shop_name',
+            # Period end tracking
+            'last_day_end_date',
+            'last_month_end_date',
+            'last_year_end_date',
+            # Scheduling settings
+            'enable_auto_day_end',
+            'day_end_time',
+            'day_end_day_of_week',
+            'enable_auto_month_end',
+            'month_end_day',
+            'month_end_time',
+            'enable_auto_year_end',
+            'year_end_month',
+            'year_end_day',
+            'year_end_time',
+            # Accounting period
+            'current_financial_year',
+            'current_period',
+        ]
+        read_only_fields = [
+            'id',
+            'last_day_end_date',
+            'last_month_end_date',
+            'last_year_end_date',
+        ]

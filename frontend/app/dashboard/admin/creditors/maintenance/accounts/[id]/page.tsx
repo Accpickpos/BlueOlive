@@ -36,7 +36,7 @@ export default function CreditorAccountFormPage() {
         supplier_number: data.supplier_number || '',
         name: data.name || '',
         contact_person: data.contact_person,
-        telephone: data.telephone1,
+        telephone: data.telephone,
         fax: data.fax,
         email: data.email,
         physical_address_line1: data.physical_address_line1,
@@ -164,8 +164,8 @@ export default function CreditorAccountFormPage() {
               <label className="block text-sm font-medium mb-1">Telephone</label>
               <Input
                 type="tel"
-                value={formData.telephone1 || ''}
-                onChange={(e) => setFormData({ ...formData, telephone1: e.target.value })}
+                value={formData.telephone || ''}
+                onChange={(e) => setFormData({ ...formData, telephone: e.target.value })}
               />
             </div>
             <div>

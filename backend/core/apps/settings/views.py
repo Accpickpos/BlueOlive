@@ -649,6 +649,167 @@ class SystemConfigurationViewSet(viewsets.ModelViewSet):
             return Response({
                 'error': f'Failed to seed all data: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # PERIOD END ACTIONS - Day-End, Month-End, Year-End
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    @action(detail=False, methods=['post'])
+    def run_day_end(self, request):
+        """
+        Run day-end process manually.
+        
+        POST /api/v1/settings/system-config/run_day_end/
+        
+        Query params:
+        - process_date: Date string (YYYY-MM-DD), defaults to yesterday
+        - shop_id: Optional shop ID to filter by
+        - async: Run as background task (true/false), defaults to true
+        """
+        process_date = request.data.get('process_date')
+        shop_id = request.data.get('shop_id')
+        run_async = request.data.get('async', True)
+        
+        if process_date:
+            try:
+                process_date = datetime.strptime(process_date, '%Y-%m-%d').date()
+            except ValueError:
+                return Response(
+                    {'error': 'Invalid date format. Use YYYY-MM-DD'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        if run_async:
+            from core.tasks import run_day_end_task
+            task = run_day_end_task.delay(
+                process_date=str(process_date) if process_date else None,
+                shop_id=shop_id
+            )
+            return Response({
+                'message': 'Day-end process started in background',
+                'task_id': task.id
+            }, status=status.HTTP_202_ACCEPTED)
+        else:
+            from .period_end_services import DayEndService
+            result = DayEndService.run_day_end(process_date=process_date, shop_id=shop_id)
+            return Response(result.to_dict(), status=status.HTTP_200_OK if result.success else status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['post'])
+    def run_month_end(self, request):
+        """
+        Run month-end process manually.
+        
+        POST /api/v1/settings/system-config/run_month_end/
+        
+        Query params:
+        - process_date: Date string (YYYY-MM-DD), defaults to last month
+        - advance_period: Whether to advance accounting period (true/false), defaults to true
+        - async: Run as background task (true/false), defaults to true
+        """
+        process_date = request.data.get('process_date')
+        advance_period = request.data.get('advance_period', True)
+        run_async = request.data.get('async', True)
+        
+        if process_date:
+            try:
+                process_date = datetime.strptime(process_date, '%Y-%m-%d').date()
+            except ValueError:
+                return Response(
+                    {'error': 'Invalid date format. Use YYYY-MM-DD'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        if run_async:
+            from core.tasks import run_month_end_task
+            task = run_month_end_task.delay(
+                process_date=str(process_date) if process_date else None,
+                advance_period=advance_period
+            )
+            return Response({
+                'message': 'Month-end process started in background',
+                'task_id': task.id
+            }, status=status.HTTP_202_ACCEPTED)
+        else:
+            from .period_end_services import MonthEndService
+            result = MonthEndService.run_month_end(process_date=process_date, advance_period=advance_period)
+            return Response(result.to_dict(), status=status.HTTP_200_OK if result.success else status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['post'])
+    def run_year_end(self, request):
+        """
+        Run year-end process manually.
+        
+        POST /api/v1/settings/system-config/run_year_end/
+        
+        Query params:
+        - process_year: Year (YYYY), defaults to previous year
+        - advance_year: Whether to advance financial year (true/false), defaults to true
+        - async: Run as background task (true/false), defaults to true
+        """
+        process_year = request.data.get('process_year')
+        advance_year = request.data.get('advance_year', True)
+        run_async = request.data.get('async', True)
+        
+        if process_year:
+            try:
+                process_year = int(process_year)
+            except ValueError:
+                return Response(
+                    {'error': 'Invalid year. Use YYYY format'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        if run_async:
+            from core.tasks import run_year_end_task
+            task = run_year_end_task.delay(
+                process_year=process_year,
+                advance_year=advance_year
+            )
+            return Response({
+                'message': 'Year-end process started in background',
+                'task_id': task.id
+            }, status=status.HTTP_202_ACCEPTED)
+        else:
+            from .period_end_services import YearEndService
+            result = YearEndService.run_year_end(process_year=process_year, advance_year=advance_year)
+            return Response(result.to_dict(), status=status.HTTP_200_OK if result.success else status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['get'])
+    def period_end_status(self, request):
+        """
+        Get period-end status and scheduling configuration.
+        
+        GET /api/v1/settings/system-config/period_end_status/
+        """
+        config = self.get_object()
+        
+        return Response({
+            'last_day_end_date': str(config.last_day_end_date) if config.last_day_end_date else None,
+            'last_month_end_date': str(config.last_month_end_date) if config.last_month_end_date else None,
+            'last_year_end_date': str(config.last_year_end_date) if config.last_year_end_date else None,
+            'scheduling': {
+                'day_end': {
+                    'enabled': config.enable_auto_day_end,
+                    'time': str(config.day_end_time) if config.day_end_time else None,
+                    'days_of_week': config.day_end_day_of_week
+                },
+                'month_end': {
+                    'enabled': config.enable_auto_month_end,
+                    'day': config.month_end_day,
+                    'time': str(config.month_end_time) if config.month_end_time else None
+                },
+                'year_end': {
+                    'enabled': config.enable_auto_year_end,
+                    'month': config.year_end_month,
+                    'day': config.year_end_day,
+                    'time': str(config.year_end_time) if config.year_end_time else None
+                }
+            },
+            'current_period': {
+                'period': config.current_period,
+                'year': config.current_financial_year
+            }
+        })
 
 
 # ═══════════════════════════════════════════════════════════════════════════

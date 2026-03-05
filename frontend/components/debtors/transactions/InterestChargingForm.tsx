@@ -37,7 +37,7 @@ export default function InterestChargingForm() {
 
   const loadDebtors = async () => {
     try {
-      const response = await apiRequest('/api/debtors/');
+      const response = await apiRequest('/api/v1/debtors/');
       if ((response as any).results) {
         setDebtors((response as any).results);
       }
@@ -86,7 +86,7 @@ export default function InterestChargingForm() {
       const interestAmount = calculateInterest();
       
       const response = await apiRequest(
-        '/api/debtors/transactions/',
+        '/api/v1/debtors/transactions/',
         {
           method: 'POST',
           body: {

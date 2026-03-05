@@ -1,6 +1,7 @@
 'use client';
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { apiRequest } from './api';
+import { setTenant, setShops, setCurrentShop, getTenant } from './shopContext';
 
 export interface Shop {
   id: number;
@@ -25,6 +26,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  setUser: (user: User | null) => void;
   refetch: () => Promise<void>;
   // Shop-related properties
   currentShop: Shop | null;
@@ -80,6 +82,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await apiRequest('/api/v1/tenants/my-shops/');
       const shops = response.data as Shop[];
       setAccessibleShops(shops || []);
+      
+      // Store shops in localStorage for API calls
+      if (shops && shops.length > 0) {
+        // Convert AuthContext Shop to shopContext Shop format
+        const shopsForStorage = shops.map(shop => ({
+          id: shop.id,
+          name: shop.name,
+          slug: shop.schema_name,
+          tenant_id: 0, // Will be set from tenant
+          is_active: true,
+        }));
+        setShops(shopsForStorage);
+        
+        // Also store tenant from first shop's schema_name if not already set
+        const existingTenant = getTenant();
+        if (!existingTenant && shops[0].schema_name) {
+          setTenant(shops[0].schema_name);
+        }
+      }
       
       // Find current shop
       const current = shops?.find((s: Shop) => s.is_current);
@@ -177,6 +198,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     isAuthenticated: user !== null,
     isAdmin: user?.is_admin || false,
+    setUser,
     refetch,
     currentShop,
     accessibleShops,

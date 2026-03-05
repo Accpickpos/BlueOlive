@@ -102,7 +102,7 @@ export default function CreditorAccountDetailPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Telephone:</span>
-              <span className="font-bold">{account.telephone1 || 'N/A'}</span>
+              <span className="font-bold">{account.telephone || 'N/A'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Email:</span>

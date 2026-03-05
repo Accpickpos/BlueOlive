@@ -1068,6 +1068,103 @@ class SupplierPaymentOrder(TimeStampedModel):
 
 
 # ============================================================================
+# OUTSTANDING BALANCE CAPTURE
+# Stores manually captured supplier outstanding balances for reporting
+# ============================================================================
+
+class OutstandingBalance(TimeStampedModel):
+    """
+    Manually captured supplier outstanding balance for reconciliation.
+    Used for balance capture feature in creditors maintenance.
+    """
+
+    creditor = models.ForeignKey(
+        Creditor, on_delete=models.CASCADE, related_name='outstanding_balances',
+        help_text="Supplier/Creditor this balance belongs to"
+    )
+    
+    # Capture details
+    capture_date = models.DateField(help_text="Date when balance was captured")
+    as_at_date = models.DateField(help_text="Balance as at this date")
+    
+    # Balance amounts
+    balance = models.DecimalField(
+        max_digits=15, decimal_places=2, default=0,
+        help_text="Total outstanding balance"
+    )
+    balance_current = models.DecimalField(
+        max_digits=15, decimal_places=2, default=0,
+        help_text="Current (0-30 days)"
+    )
+    balance_30_days = models.DecimalField(
+        max_digits=15, decimal_places=2, default=0,
+        help_text="30 days overdue"
+    )
+    balance_60_days = models.DecimalField(
+        max_digits=15, decimal_places=2, default=0,
+        help_text="60 days overdue"
+    )
+    balance_90_days = models.DecimalField(
+        max_digits=15, decimal_places=2, default=0,
+        help_text="90 days overdue"
+    )
+    balance_120_days = models.DecimalField(
+        max_digits=15, decimal_places=2, default=0,
+        help_text="120 days overdue"
+    )
+    balance_150_days = models.DecimalField(
+        max_digits=15, decimal_places=2, default=0,
+        help_text="150 days overdue"
+    )
+    balance_180_days = models.DecimalField(
+        max_digits=15, decimal_places=2, default=0,
+        help_text="180+ days overdue"
+    )
+    
+    # Optional reference info
+    supplier_account_number = models.CharField(
+        max_length=15, blank=True,
+        help_text="Supplier's account number reference"
+    )
+    transaction_number = models.CharField(
+        max_length=20, blank=True,
+        help_text="Transaction reference number"
+    )
+    transaction_date = models.DateField(
+        null=True, blank=True,
+        help_text="Transaction date if applicable"
+    )
+    original_amount = models.DecimalField(
+        max_digits=15, decimal_places=2, null=True, blank=True,
+        help_text="Original invoice amount"
+    )
+    balance_due = models.DecimalField(
+        max_digits=15, decimal_places=2, null=True, blank=True,
+        help_text="Balance currently due"
+    )
+    age_period = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Age period in days"
+    )
+    
+    # Notes
+    notes = models.TextField(blank=True, help_text="Optional notes")
+
+    class Meta:
+        db_table = 'creditor_outstanding_balances'
+        ordering = ['-capture_date', '-as_at_date']
+        indexes = [
+            models.Index(fields=['creditor', 'capture_date']),
+            models.Index(fields=['as_at_date']),
+        ]
+        verbose_name = 'Outstanding Balance'
+        verbose_name_plural = 'Outstanding Balances'
+
+    def __str__(self):
+        return f"Outstanding {self.creditor.name} - R{self.balance} as at {self.as_at_date}"
+
+
+# ============================================================================
 # CREDITOR TRANSACTION LINE (Generic, ContentType polymorphism)
 # ============================================================================
 

@@ -2,6 +2,25 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 /**
+ * Get the API base URL based on the environment
+ * - In local development: use localhost:8000
+ * - In Docker/production: use blueolive-backend:8000
+ */
+function getApiBaseUrl(request: NextRequest): string {
+  // Check if we're running locally by checking the origin
+  const origin = request.headers.get('origin') || '';
+  const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
+  
+  // Use environment variable if set, otherwise determine based on origin
+  if (process.env.NEXT_PUBLIC_API_BASE) {
+    return process.env.NEXT_PUBLIC_API_BASE;
+  }
+  
+  // Default based on whether request is from localhost
+  return isLocalhost ? 'http://localhost:8000' : 'http://blueolive-backend:8000';
+}
+
+/**
  * Middleware to protect routes from unauthorized access
  * Admin routes are protected by AdminRoute component on client-side
  * Regular dashboard routes are protected here
@@ -20,11 +39,9 @@ export async function proxy(request: NextRequest) {
   
   if (isDashboardPath) {
     try {
-      // Use the Docker service name for server-side requests
-      // NEXT_PUBLIC_API_BASE is for browser, but server-side needs internal Docker network
-      const apiBase = process.env.NEXT_PUBLIC_API_BASE?.includes('localhost') 
-        ? 'http://blueolive-backend:8000' 
-        : (process.env.NEXT_PUBLIC_API_BASE || 'http://blueolive-backend:8000');
+      const apiBase = getApiBaseUrl(request);
+      console.log('Middleware: Checking auth, using API:', apiBase);
+      
       const response = await fetch(`${apiBase}/api/v1/users/auth/profile/`, {
         headers: {
           'Cookie': request.headers.get('cookie') || '',
@@ -34,15 +51,19 @@ export async function proxy(request: NextRequest) {
 
       if (!response.ok) {
         // User is not authenticated, redirect to login
+        console.log('Middleware: Auth check failed with status:', response.status);
         return NextResponse.redirect(new URL('/auth', request.url));
       }
 
       // User is authenticated, allow access
+      console.log('Middleware: Auth check passed');
       return NextResponse.next();
     } catch (error) {
       console.error('Middleware auth check failed:', error);
-      // On error, redirect to login for safety
-      return NextResponse.redirect(new URL('/auth', request.url));
+      // On error, allow the request through - the client-side ProtectedRoute will handle auth
+      // This is better than blocking access when the backend is unreachable
+      console.log('Middleware: Allowing request through due to error');
+      return NextResponse.next();
     }
   }
 

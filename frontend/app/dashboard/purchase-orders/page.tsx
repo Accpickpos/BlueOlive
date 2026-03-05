@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import dynamic from 'next/dynamic';
 import {
   PlusCircle,
   FileText,
@@ -14,27 +13,11 @@ import {
   BarChart3,
 } from 'lucide-react';
 
-// Lazy load heavy components
-const OrderStatusBadge = dynamic(
-  () => import('@/components/purchase-orders/common/OrderStatusBadge'),
-  { ssr: false, loading: () => <span className="animate-pulse bg-gray-200 h-5 w-16 rounded"></span> }
-);
-
-const OrderSummaryCard = dynamic(
-  () => import('@/components/purchase-orders/common/OrderSummaryCard'),
-  { ssr: false, loading: () => <div className="animate-pulse bg-gray-200 h-24 rounded-lg"></div> }
-);
-
-// Lazy load heavy form/report components
-const PurchaseOrderWizard = dynamic(
-  () => import('@/components/purchase-orders/transactions/PurchaseOrderWizard'),
-  { ssr: false, loading: () => <div className="flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div> }
-);
-
-const OutstandingByDelivery = dynamic(
-  () => import('@/components/purchase-orders/enquiries/OutstandingByDelivery'),
-  { ssr: false }
-);
+// Import components directly
+import { OrderStatusBadge } from '@/components/purchase-orders/common/OrderStatusBadge';
+import { OrderSummaryCard } from '@/components/purchase-orders/common/OrderSummaryCard';
+import { PurchaseOrderWizard } from '@/components/purchase-orders/transactions/PurchaseOrderWizard';
+import { OutstandingByDelivery } from '@/components/purchase-orders/enquiries/OutstandingByDelivery';
 
 import purchaseOrdersApi from '@/lib/purchaseOrdersApi';
 import type { PurchaseOrder } from '@/lib/types/purchaseOrders';

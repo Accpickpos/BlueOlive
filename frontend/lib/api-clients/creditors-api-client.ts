@@ -266,7 +266,7 @@ export class CreditorsApiClient {
    * Get all GRNs
    */
   async getGrns(params: QueryParams = {}): Promise<PaginatedResponse<any>> {
-    const url = buildApiUrl(ENDPOINTS.CREDITORS.GRN) + this.buildQueryString(params);
+    const url = buildApiUrl(ENDPOINTS.CREDITORS.GRNS) + this.buildQueryString(params);
 
     const response = await fetch(url, {
       method: 'GET',
@@ -280,7 +280,7 @@ export class CreditorsApiClient {
    * Get a specific GRN by ID
    */
   async getGrnById(id: string | number): Promise<any> {
-    const url = buildApiUrl(`${ENDPOINTS.CREDITORS.GRN}${id}/`);
+    const url = buildApiUrl(`${ENDPOINTS.CREDITORS.GRNS}${id}/`);
 
     const response = await fetch(url, {
       method: 'GET',
@@ -294,7 +294,7 @@ export class CreditorsApiClient {
    * Create a new GRN
    */
   async createGrn(data: any): Promise<any> {
-    const url = buildApiUrl(ENDPOINTS.CREDITORS.GRN);
+    const url = buildApiUrl(ENDPOINTS.CREDITORS.GRNS);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -309,7 +309,7 @@ export class CreditorsApiClient {
    * Update a GRN
    */
   async updateGrn(id: string | number, data: any): Promise<any> {
-    const url = buildApiUrl(`${ENDPOINTS.CREDITORS.GRN}${id}/`);
+    const url = buildApiUrl(`${ENDPOINTS.CREDITORS.GRNS}${id}/`);
 
     const response = await fetch(url, {
       method: 'PATCH',

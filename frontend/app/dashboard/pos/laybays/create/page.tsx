@@ -37,7 +37,7 @@ export default function CreateLaybyePage() {
   };
 
   const outstandingBalance =
-    parseFloat(formData.total_amount || 0) - parseFloat(formData.paid_amount || 0);
+    parseFloat(String(formData.total_amount) || '0') - parseFloat(String(formData.paid_amount) || '0');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,7 +58,7 @@ export default function CreateLaybyePage() {
       const laybayData = {
         ...formData,
         total_amount: parseFloat(formData.total_amount),
-        paid_amount: parseFloat(formData.paid_amount || 0),
+        paid_amount: parseFloat(String(formData.paid_amount)) || 0,
       };
 
       // API call would go here

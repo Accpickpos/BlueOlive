@@ -116,7 +116,7 @@ export default function DebtorsReportsPage() {
     setError(null);
     try {
       const response = await api.post(
-        '/api/debtors/reports/generate/',
+        '/api/v1/debtors/reports/generate/',
         { ...filters, reportType: selectedReport },
         {
           headers: {
@@ -135,7 +135,7 @@ export default function DebtorsReportsPage() {
   const downloadReport = async (format: 'pdf' | 'csv') => {
     try {
       const response = await api.post(
-        `/api/debtors/reports/generate/`,
+        `/api/v1/debtors/reports/generate/`,
         { ...filters, reportType: selectedReport, format },
         {
           responseType: 'blob',

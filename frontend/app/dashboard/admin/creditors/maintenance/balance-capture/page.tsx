@@ -28,7 +28,7 @@ export default function BalanceCapturePageComponent() {
 
   const updateMutation = useMutation({
     mutationFn: (data: any) =>
-      creditorsApi.accounts.updateBalance(selectedAccount!.id, data),
+      creditorsApi.outstandingBalances.update(selectedAccount!.id, data),
     onSuccess: () => {
       setSelectedAccount(null);
       setBalanceData({ balance_brought_forward: 0, effective_date: new Date().toISOString().split('T')[0] });
@@ -85,9 +85,9 @@ export default function BalanceCapturePageComponent() {
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">{account.account_number} - {account.name}</p>
+                      <p className="font-medium">{account.supplier_number} - {account.name}</p>
                       <p className="text-xs text-gray-600">
-                        Type: {account.account_type} | Current Balance: R {account.balance?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
+                        Type: {account.account_category === 'B' ? 'BBF' : account.account_category === 'O' ? 'Open Item' : 'Unknown'} | Current Balance: R {account.total_outstanding_balance?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
                       </p>
                     </div>
                     <span className="text-blue-600">→</span>
@@ -107,8 +107,8 @@ export default function BalanceCapturePageComponent() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Selected Account</p>
-                <p className="text-lg font-bold">{selectedAccount.account_number} - {selectedAccount.name}</p>
-                <p className="text-xs text-gray-600 mt-1">Type: {selectedAccount.account_type}</p>
+                <p className="text-lg font-bold">{selectedAccount.supplier_number} - {selectedAccount.name}</p>
+                <p className="text-xs text-gray-600 mt-1">Type: {selectedAccount.account_category === 'B' ? 'BBF' : selectedAccount.account_category === 'O' ? 'Open Item' : 'Unknown'}</p>
               </div>
               <Button
                 variant="outline"
@@ -151,7 +151,7 @@ export default function BalanceCapturePageComponent() {
                 <p className="text-xs text-gray-600 mt-1">The opening balance as at the effective date</p>
               </div>
 
-              {selectedAccount.account_type === 'OPEN_ITEM' && (
+              {selectedAccount.account_category === 'O' && (
                 <div className="p-4 bg-amber-50 border border-amber-200 rounded">
                   <p className="text-sm text-amber-800">
                     <strong>Note:</strong> For Open Item accounts, you may also need to record individual open items in the Transactions section.
