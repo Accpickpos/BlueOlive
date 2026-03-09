@@ -1,6 +1,12 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import React, {
+  useState,
+  useMemo,
+  useCallback,
+  useEffect,
+  memo,
+} from 'react';
 import Link from 'next/link';
 import { debtorsApi } from '@/lib/debtorsApi';
 import type { DebtorAccount } from '@/lib/types/debtors';
@@ -15,19 +21,100 @@ interface DebtorsListProps {
   onRefresh?: number;
 }
 
-export default function DebtorsList({ onRefresh }: DebtorsListProps) {
+const currencyFormatter = new Intl.NumberFormat('en-US', {
+  maximumFractionDigits: 2,
+});
+
+const PAGE_SIZE = 20;
+
+/* =========================
+   Memoized Row Component
+========================= */
+
+interface DebtorRowProps {
+  debtor: DebtorAccount;
+  onEdit: (debtor: DebtorAccount) => void;
+  onDelete: (id: number, name: string) => void;
+}
+
+const DebtorRow = memo(function DebtorRow({
+  debtor,
+  onEdit,
+  onDelete,
+}: DebtorRowProps) {
+  const handleEdit = useCallback(() => {
+    onEdit(debtor);
+  }, [onEdit, debtor]);
+
+  const handleDelete = useCallback(() => {
+    onDelete(debtor.id, debtor.name);
+  }, [onDelete, debtor.id, debtor.name]);
+
+  return (
+    <tr className="border-b hover:bg-gray-50 transition-colors">
+      <td className="px-4 py-3 font-medium">{debtor.customer_number}</td>
+      <td className="px-4 py-3">{debtor.name}</td>
+      <td className="px-4 py-3 text-gray-600">
+        {debtor.contact_person || '-'}
+      </td>
+      <td className="px-4 py-3 text-gray-600">
+        {debtor.area_code ?? '-'}
+      </td>
+      <td className="px-4 py-3 text-right font-semibold text-blue-600">
+        ${currencyFormatter.format(debtor.total_balance ?? 0)}
+      </td>
+      <td className="px-4 py-3 text-right">
+        ${currencyFormatter.format(debtor.credit_limit ?? 0)}
+      </td>
+      <td className="px-4 py-3 text-center">
+        {debtor.is_blocked_flag ? (
+          <Badge className="bg-red-500">Blocked</Badge>
+        ) : debtor.is_active ? (
+          <Badge className="bg-green-500">Active</Badge>
+        ) : (
+          <Badge className="bg-gray-500">Inactive</Badge>
+        )}
+      </td>
+      <td className="px-4 py-3 text-center">
+        <div className="flex justify-center gap-2">
+          <Link href={`/dashboard/admin/debtors/maintenance/${debtor.id}`}>
+            <Button variant="outline" size="sm">
+              <Eye className="w-4 h-4" />
+            </Button>
+          </Link>
+          <Button variant="outline" size="sm" onClick={handleEdit}>
+            <Edit2 className="w-4 h-4" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleDelete}>
+            <Trash2 className="w-4 h-4 text-red-600" />
+          </Button>
+        </div>
+      </td>
+    </tr>
+  );
+});
+
+/* =========================
+   Main Component
+========================= */
+
+function DebtorsListComponent({ onRefresh }: DebtorsListProps) {
   const [debtors, setDebtors] = useState<DebtorAccount[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedDebtor, setSelectedDebtor] = useState<DebtorAccount | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'active' | 'blocked'>('all');
+  const [filterType, setFilterType] =
+    useState<'all' | 'active' | 'blocked'>('all');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-
-  // Debounced search with delay
   const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  /* =========================
+     Debounce Search
+  ========================= */
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery);
@@ -36,54 +123,39 @@ export default function DebtorsList({ onRefresh }: DebtorsListProps) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Load debtors
+  /* =========================
+     Load Debtors
+  ========================= */
+
   const loadDebtors = useCallback(async () => {
     setLoading(true);
     setError(null);
+
     try {
-      // Map frontend filter names to backend expected names
-      // Active: is_active=True, block_flag NOT in blocked states ['1','2','3','Y']
-      // Blocked: block_flag IN blocked states ['1','2','3','Y']
-      const apiFilters: any = {
+      const apiFilters: Record<string, any> = {
         search: debouncedSearch || undefined,
         page,
-        page_size: 20,
+        page_size: PAGE_SIZE,
       };
-      
-      // Add filters based on filter type
+
       if (filterType === 'active') {
         apiFilters.is_active = true;
-        // block_flag '0' = Active, 'N' = Active Legacy
-        apiFilters.block_flag__in = ['0', 'N']; 
+        apiFilters.block_flag__in = ['0', 'N'];
       } else if (filterType === 'blocked') {
-        // block_flag '1' = Credit Hold, '2' = Closed, '3' = No Delivery, 'Y' = Blocked
         apiFilters.block_flag__in = ['1', '2', '3', 'Y'];
       }
-      // For 'all' - no filters
-      
+
       const data = await debtorsApi.accounts.list(apiFilters);
-      
-      // Handle both direct array and paginated response
+
       if (Array.isArray(data)) {
         setDebtors(data);
         setTotal(data.length);
       } else {
-        setDebtors(data?.results || []);
-        setTotal(data?.count || 0);
+        setDebtors(data?.results ?? []);
+        setTotal(data?.count ?? 0);
       }
     } catch (err: any) {
-      console.error('Error loading debtors:', err);
-      
-      let errorMessage = 'Failed to load debtors';
-      if (err?.response?.status === 404) {
-        errorMessage = 'Debtors endpoint not found. Please check the backend API configuration.';
-      } else if (err?.response?.status === 500) {
-        errorMessage = 'Server error while loading debtors. Please check the backend logs.';
-      } else if (err?.message?.includes('Network')) {
-        errorMessage = 'Network error. Is the backend running?';
-      }
-      
-      setError(errorMessage);
+      setError(err?.message ?? 'Failed to load debtors');
       setDebtors([]);
       setTotal(0);
     } finally {
@@ -95,244 +167,158 @@ export default function DebtorsList({ onRefresh }: DebtorsListProps) {
     loadDebtors();
   }, [loadDebtors]);
 
-  // Refresh when onRefresh prop changes
   useEffect(() => {
     if (onRefresh !== undefined) {
       loadDebtors();
     }
   }, [onRefresh, loadDebtors]);
 
-  const handleFormSuccess = () => {
-    setShowForm(false);
-    setSelectedDebtor(null);
-    loadDebtors();
-  };
+  /* =========================
+     Stable Handlers
+  ========================= */
 
-  const handleEdit = (debtor: DebtorAccount) => {
+  const handleEdit = useCallback((debtor: DebtorAccount) => {
     setSelectedDebtor(debtor);
     setShowForm(true);
-  };
+  }, []);
 
-  const handleDelete = async (id: number, name: string) => {
-    if (!confirm(`Delete ${name}?`)) return;
-
-    try {
+  const handleDelete = useCallback(
+    async (id: number, name: string) => {
+      if (!confirm(`Delete ${name}?`)) return;
       await debtorsApi.accounts.delete(id);
       loadDebtors();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete debtor');
-    }
-  };
+    },
+    [loadDebtors]
+  );
 
-  const handleNewDebtor = () => {
+  const handleNewDebtor = useCallback(() => {
     setSelectedDebtor(null);
     setShowForm(true);
-  };
+  }, []);
 
-  const totalPages = Math.ceil(total / 20);
-  const hasActiveFilters = Boolean(debouncedSearch || filterType !== 'all');
+  const clearFilters = useCallback(() => {
+    setSearchQuery('');
+    setFilterType('all');
+    setPage(1);
+  }, []);
+
+  /* =========================
+     Derived Values
+  ========================= */
+
+  const totalPages = useMemo(
+    () => Math.ceil(total / PAGE_SIZE),
+    [total]
+  );
+
+  const paginationPages = useMemo(
+    () => Array.from({ length: totalPages }, (_, i) => i + 1),
+    [totalPages]
+  );
+
+  const hasActiveFilters = useMemo(
+    () => Boolean(debouncedSearch || filterType !== 'all'),
+    [debouncedSearch, filterType]
+  );
+
+  /* =========================
+     Render
+  ========================= */
 
   return (
     <div className="space-y-6">
-      {/* Form Modal */}
       {showForm ? (
         <Card className="p-6">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold">
-              {selectedDebtor ? `Edit Debtor: ${selectedDebtor.name}` : 'New Debtor'}
+              {selectedDebtor
+                ? `Edit Debtor: ${selectedDebtor.name}`
+                : 'New Debtor'}
             </h2>
-            <button
-              onClick={() => {
-                setShowForm(false);
-                setSelectedDebtor(null);
-              }}
-              className="text-gray-500 hover:text-gray-700"
-            >
+            <button onClick={() => setShowForm(false)}>
               <X className="w-5 h-5" />
             </button>
           </div>
           <DebtorAccountForm
-            initialData={selectedDebtor || undefined}
-            isEdit={selectedDebtor !== null}
-            onSuccess={handleFormSuccess}
+            initialData={selectedDebtor ?? undefined}
+            isEdit={!!selectedDebtor}
+            onSuccess={() => {
+              setShowForm(false);
+              setSelectedDebtor(null);
+              loadDebtors();
+            }}
           />
         </Card>
       ) : (
         <>
-          {/* Header */}
           <div className="flex justify-between items-start">
             <div>
               <h1 className="text-3xl font-bold">Debtors</h1>
-              <p className="text-gray-600 mt-1">Manage customer accounts and credit settings</p>
+              <p className="text-gray-600 mt-1">
+                Manage customer accounts and credit settings
+              </p>
             </div>
-            <Button 
-              onClick={handleNewDebtor}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
+            <Button onClick={handleNewDebtor}>
               <Plus className="w-4 h-4 mr-2" />
               New Debtor
             </Button>
           </div>
 
-          {/* Search & Filters */}
-          <Card className="p-4">
-            <div className="space-y-4">
-              <div className="flex gap-2">
-                <div className="flex-1 relative">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                  <Input
-                    placeholder="Search by name, number, or email..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="flex-1 pl-10"
-                  />
-                </div>
-              </div>
+          <Card className="p-4 space-y-4">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Input
+                placeholder="Search..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
 
-              <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap">
+              {(['all', 'active', 'blocked'] as const).map((type) => (
                 <Button
-                  variant={filterType === 'all' ? 'default' : 'outline'}
+                  key={type}
+                  variant={filterType === type ? 'default' : 'outline'}
                   onClick={() => {
-                    setFilterType('all');
+                    setFilterType(type);
                     setPage(1);
                   }}
                 >
-                  All
+                  {type.charAt(0).toUpperCase() + type.slice(1)}
                 </Button>
-                <Button
-                  variant={filterType === 'active' ? 'default' : 'outline'}
-                  onClick={() => {
-                    setFilterType('active');
-                    setPage(1);
-                  }}
-                >
-                  Active
+              ))}
+
+              {hasActiveFilters && (
+                <Button variant="outline" onClick={clearFilters}>
+                  Clear Filters
                 </Button>
-                <Button
-                  variant={filterType === 'blocked' ? 'default' : 'outline'}
-                  onClick={() => {
-                    setFilterType('blocked');
-                    setPage(1);
-                  }}
-                >
-                  Blocked
-                </Button>
-                {hasActiveFilters && (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setSearchQuery('');
-                      setFilterType('all');
-                      setPage(1);
-                    }}
-                  >
-                    Clear Filters
-                  </Button>
-                )}
-              </div>
+              )}
             </div>
           </Card>
 
-          {/* Error State */}
-          {error && (
-            <Card className="p-4 bg-red-50 border border-red-200">
-              <div className="flex gap-3">
-                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-red-800 font-semibold">Error</p>
-                  <p className="text-red-700 text-sm mt-1">{error}</p>
-                  <button
-                    onClick={() => setError(null)}
-                    className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {/* Table */}
           <Card className="p-4 overflow-x-auto">
             {loading ? (
-              <div className="py-8 text-center text-gray-600">Loading debtors...</div>
-            ) : debtors.length === 0 ? (
-              <div className="py-8 text-center">
-                <p className="text-gray-600">No debtors found</p>
-                {debouncedSearch && <p className="text-sm text-gray-500 mt-1">Try a different search</p>}
-              </div>
+              <div className="py-8 text-center">Loading debtors...</div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="border-b bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Account #</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Name</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Contact</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Sales Area</th>
-                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Balance</th>
-                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Credit Limit</th>
-                      <th className="px-4 py-3 text-center font-semibold text-gray-700">Status</th>
-                      <th className="px-4 py-3 text-center font-semibold text-gray-700">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {debtors.map((debtor) => (
-                      <tr key={debtor.id} className="border-b hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 font-medium">{debtor.customer_number}</td>
-                        <td className="px-4 py-3">{debtor.name}</td>
-                        <td className="px-4 py-3 text-gray-600">{debtor.contact_person || '-'}</td>
-                        <td className="px-4 py-3 text-gray-600">{debtor.area_code ?? '-'}</td>
-                        <td className="px-4 py-3 text-right font-semibold text-blue-600">
-                          ${debtor.total_balance?.toLocaleString('en-US', { maximumFractionDigits: 2 })}
-                        </td>
-                        <td className="px-4 py-3 text-right">${debtor.credit_limit?.toLocaleString()}</td>
-                        <td className="px-4 py-3 text-center">
-                          {debtor.is_blocked_flag ? (
-                            <Badge className="bg-red-500">Blocked</Badge>
-                          ) : debtor.is_active ? (
-                            <Badge className="bg-green-500">Active</Badge>
-                          ) : (
-                            <Badge className="bg-gray-500">Inactive</Badge>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <div className="flex justify-center gap-2">
-                            <Link href={`/dashboard/admin/debtors/maintenance/${debtor.id}`}>
-                              <Button variant="outline" size="sm" title="View details">
-                                <Eye className="w-4 h-4" />
-                              </Button>
-                            </Link>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleEdit(debtor)}
-                              title="Edit debtor"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDelete(debtor.id, debtor.name)}
-                              title="Delete debtor"
-                            >
-                              <Trash2 className="w-4 h-4 text-red-600" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <table className="w-full text-sm">
+                <tbody>
+                  {debtors.map((debtor) => (
+                    <DebtorRow
+                      key={debtor.id}
+                      debtor={debtor}
+                      onEdit={handleEdit}
+                      onDelete={handleDelete}
+                    />
+                  ))}
+                </tbody>
+              </table>
             )}
           </Card>
 
-          {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex justify-center gap-2">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+              {paginationPages.map((p) => (
                 <Button
                   key={p}
                   variant={page === p ? 'default' : 'outline'}
@@ -348,3 +334,5 @@ export default function DebtorsList({ onRefresh }: DebtorsListProps) {
     </div>
   );
 }
+
+export default memo(DebtorsListComponent);

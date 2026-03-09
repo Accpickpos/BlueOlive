@@ -835,19 +835,28 @@ class InvoiceCreateUpdateSerializer(serializers.ModelSerializer):
             'lines',
         ]
     
+    def to_internal_value(self, data):
+        """Convert debtor_account_number to debtor before validation."""
+        # Call parent first to get all validated data
+        ret = super().to_internal_value(data)
+        
+        # Handle debtor_account_number -> debtor conversion
+        debtor_account_number = data.get('debtor_account_number')
+        if debtor_account_number:
+            from apps.debtors.models import Debtor
+            try:
+                debtor = Debtor.objects.get(customer_number=debtor_account_number)
+                ret['debtor'] = debtor
+            except Debtor.DoesNotExist:
+                raise serializers.ValidationError({'debtor_account_number': f'Debtor with account number {debtor_account_number} not found'})
+            except ValueError:
+                raise serializers.ValidationError({'debtor_account_number': 'Invalid account number format'})
+        
+        return ret
+    
     def create(self, validated_data):
         """Create invoice with line items."""
         lines_data = validated_data.pop('lines', [])
-        
-        # Handle debtor_account_number -> debtor conversion
-        debtor_account_number = validated_data.pop('debtor_account_number', None)
-        if debtor_account_number and not validated_data.get('debtor'):
-            from apps.debtors.models import Debtor
-            try:
-                debtor = Debtor.objects.get(account_number=debtor_account_number)
-                validated_data['debtor'] = debtor
-            except Debtor.DoesNotExist:
-                raise serializers.ValidationError({'debtor_account_number': f'Debtor with account number {debtor_account_number} not found'})
         
         with db_transaction.atomic():
             invoice = Invoice.objects.create(**validated_data)

@@ -43,7 +43,7 @@ export default function DebtorBalancePage({ params }: { params: Promise<{ id: st
   const fetchDebtor = async () => {
     try {
       setLoading(true);
-      const response = await apiRequest(`/api/debtors/${debtorId}/`);
+      const response = await apiRequest(`/api/v1/debtors/${debtorId}/`);
       setDebtor(response.data || response);
     } catch (err: any) {
       console.error('Failed to load debtor:', err);

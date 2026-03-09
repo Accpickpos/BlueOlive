@@ -42,15 +42,20 @@ class SchemaMiddleware:
                 # Get the tenant database connection
                 db_alias = tenant.db_alias
                 
+                # DEBUG: Log the database configuration
+                logger.debug(f"[SchemaMiddleware] db_alias={db_alias}, available dbs={list(connections.databases.keys())}")
+                
                 # Set the search_path to include shop schema
                 try:
                     conn = connections[db_alias]
+                    logger.debug(f"[SchemaMiddleware] Connection found: {conn.settings_dict.get('NAME')}")
                     with conn.cursor() as cursor:
                         # Set search_path: shop schema first, then public schema
                         cursor.execute(f"SET search_path TO {shop_schema}, public")
                         logger.debug(f"Set search_path to: {shop_schema}, public")
                 except Exception as e:
                     logger.warning(f"Failed to set search_path: {str(e)}")
+                    logger.debug(f"[SchemaMiddleware] Available database aliases: {list(connections.databases.keys())}")
             else:
                 # DEBUG: Log why we're not setting search_path
                 if not shop_schema:

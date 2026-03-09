@@ -19,6 +19,9 @@ def register_tenant_connection(tenant, shop=None):
         shop: Optional Shop object. If provided, uses this shop's schema.
               If not provided, falls back to tenant.shops.first() for backward compatibility.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     alias = tenant.db_alias
     # Use credentials from settings, not from tenant object
     # This allows old tenants with incorrect db_password to still work
@@ -27,8 +30,15 @@ def register_tenant_connection(tenant, shop=None):
     # Get the shop's schema name - use provided shop or fall back to first shop
     # This ensures proper multi-shop data isolation within a tenant
     if shop is None:
+        logger.debug(f"[register_tenant_connection] No shop provided, getting first shop for tenant {tenant.name}")
         shop = tenant.shops.first()
+    
+    if shop is None:
+        logger.warning(f"[register_tenant_connection] No shop found for tenant {tenant.name}!")
+    
     shop_schema = shop.schema_name if shop else "public"  # Fallback to public if no shop
+    
+    logger.debug(f"[register_tenant_connection] Tenant: {tenant.name}, Shop: {shop.name if shop else None}, Schema: {shop_schema}, DB: {tenant.db_name}")
     
     # CRITICAL: shop_users table is ALWAYS in public schema, not the shop schema
     # So we must prioritize public in search_path for authentication to work
@@ -56,6 +66,8 @@ def register_tenant_connection(tenant, shop=None):
     settings.DATABASES[alias] = db_config
     # Ensure connection handler sees it
     connections.databases[alias] = db_config
+    
+    logger.debug(f"[register_tenant_connection] Connection registered: alias={alias}, db={tenant.db_name}, search_path=public,{shop_schema}")
 
 def create_tenant_database_postgres(tenant, superuser_conn_info):
     """

@@ -8,7 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
-from django.db.models import Q, Sum, Count
+from django.db.models import Q, Sum, Count, F
 from django.db.models.functions import TruncMonth
 from datetime import date, timedelta
 from decimal import Decimal
@@ -28,7 +28,7 @@ from .serializers import (
 )
 from .filters import DebtorFilter, DebtorTransactionFilter
 from .permissions import (
-    HasDebtorPermission, CanModifyDebtor, CanPostInvoice, 
+    HasDebtorPermission, CanModifyDebtor, CanPostInvoice,
     CanChargeInterest
 )
 from apps.common.permissions import BaseModelPermission, CanPostTransaction
@@ -37,90 +37,49 @@ from apps.common.permissions import BaseModelPermission, CanPostTransaction
 class DebtorViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing debtors (customers) - DMAST table.
-    
-    Provides CRUD operations plus actions:
-    - age_analysis: Age analysis for debtor
-    - transactions: Get debtor transactions
-    - summary: Get all debtors summary
-    - block: Block debtor account
-    - unblock: Unblock debtor account
-    
-    Permissions:
-    - List/Retrieve: All authenticated users
-    - Create/Update/Delete: ADMIN and MANAGER roles only
     """
     queryset = Debtor.objects.all()
     permission_classes = [IsAuthenticated, HasDebtorPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = DebtorFilter
     search_fields = ['customer_number', 'name', 'short_name', 'contact_person']
     ordering_fields = ['customer_number', 'name', 'balance_current', 'created_at']
     ordering = ['customer_number']
-    
+
     def get_serializer_class(self):
-        """Return appropriate serializer based on action."""
         if self.action == 'list':
             return DebtorListSerializer
         elif self.action in ['create', 'update', 'partial_update']:
             return DebtorCreateUpdateSerializer
         return DebtorDetailSerializer
-    
-    @action(detail=True, methods=['get'])
-    def age_analysis(self, request, pk=None):
-        """Get age analysis for a debtor."""
-        try:
-            debtor = self.get_object()
-            data = {
-                'dno': debtor.customer_number,
-                'dname': debtor.name,
-                'dcontact': debtor.contact_person,
-                'dtel': debtor.phone,
-                'dclimit': debtor.credit_limit,
-                'current': debtor.balance_current,
-                'days_30': debtor.balance_30_days,
-                'days_60': debtor.balance_60_days,
-                'days_90': debtor.balance_90_days,
-                'days_120': debtor.balance_120_days,
-                'days_150': debtor.balance_150_days,
-                'days_180': debtor.balance_180_days,
-                'total_balance': debtor.get_total_balance(),
-                'overdue_balance': debtor.get_overdue_balance(),
-                'ddatlpd': debtor.last_payment_date,
-                'damtlpd': debtor.last_payment_amount,
-            }
-            serializer = AgeAnalysisSerializer(data)
-            return Response(serializer.data)
-        except Exception as e:
-            return Response(
-                {'status': 'error', 'message': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    
+
     @action(detail=True, methods=['get'])
     def transactions(self, request, pk=None):
         """Get all transactions for a debtor (DEBTRAN)."""
         try:
             debtor = self.get_object()
-            
+
             start_date = request.query_params.get('start_date')
             end_date = request.query_params.get('end_date')
-            dtype = request.query_params.get('dtype')
-            
-            transactions = DebtorTransaction.objects.filter(customer_number=debtor)
-            
+            transaction_type = request.query_params.get('transaction_type')
+
+            # FIX: use 'debtor' FK and correct field names from DebtorTransaction model
+            transactions = DebtorTransaction.objects.filter(debtor=debtor)
+
             if start_date:
-                transactions = transactions.filter(dtdate__gte=start_date)
+                transactions = transactions.filter(transaction_date__gte=start_date)
             if end_date:
-                transactions = transactions.filter(dtdate__lte=end_date)
-            if dtype:
-                transactions = transactions.filter(dtype=dtype)
-            
-            transactions = transactions.order_by('-dtdate')
-            
+                transactions = transactions.filter(transaction_date__lte=end_date)
+            if transaction_type:
+                transactions = transactions.filter(transaction_type=transaction_type)
+
+            transactions = transactions.order_by('-transaction_date')
+
             page = self.paginate_queryset(transactions)
             if page is not None:
                 serializer = DebtorTransactionSerializer(page, many=True)
                 return self.get_paginated_response(serializer.data)
-            
+
             serializer = DebtorTransactionSerializer(transactions, many=True)
             return Response(serializer.data)
         except Exception as e:
@@ -128,17 +87,18 @@ class DebtorViewSet(viewsets.ModelViewSet):
                 {'status': 'error', 'message': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
+
     @action(detail=False, methods=['get'])
     def summary(self, request):
         """Get summary statistics for all debtors."""
         try:
             debtors = self.get_queryset()
-            
+
             total_debtors = debtors.count()
             active_debtors = debtors.filter(is_active=True).count()
-            blocked_debtors = debtors.filter(block_flag='Y').count()
-            
+            # FIX: block_flag values for blocked accounts are '1','2','3','Y' per model
+            blocked_debtors = debtors.filter(block_flag__in=['1', '2', '3', 'Y']).count()
+
             aggregates = debtors.aggregate(
                 total_balance=Sum('balance_current'),
                 current_balance=Sum('balance_current'),
@@ -146,23 +106,25 @@ class DebtorViewSet(viewsets.ModelViewSet):
                 d60_total=Sum('balance_60_days'),
                 d90_total=Sum('balance_90_days'),
             )
-            
+
+            overdue_120_plus = sum([
+                debtors.aggregate(Sum('balance_120_days'))['balance_120_days__sum'] or Decimal('0.00'),
+                debtors.aggregate(Sum('balance_150_days'))['balance_150_days__sum'] or Decimal('0.00'),
+                debtors.aggregate(Sum('balance_180_days'))['balance_180_days__sum'] or Decimal('0.00'),
+            ])
+
             data = {
                 'total_debtors': total_debtors,
                 'active_debtors': active_debtors,
                 'blocked_debtors': blocked_debtors,
-                'total_balance': aggregates['total_balance'] or Decimal('0.00'),
-                'current_balance': aggregates['current_balance'] or Decimal('0.00'),
-                'overdue_30': aggregates['d30_total'] or Decimal('0.00'),
-                'overdue_60': aggregates['d60_total'] or Decimal('0.00'),
-                'overdue_90': aggregates['d90_total'] or Decimal('0.00'),
-                'overdue_120_plus': sum([
-                    debtors.aggregate(Sum('balance_120_days'))['balance_120_days__sum'] or Decimal('0.00'),
-                    debtors.aggregate(Sum('balance_150_days'))['balance_150_days__sum'] or Decimal('0.00'),
-                    debtors.aggregate(Sum('balance_180_days'))['balance_180_days__sum'] or Decimal('0.00'),
-                ]),
+                'total_balance': float(aggregates['total_balance'] or Decimal('0.00')),
+                'current_balance': float(aggregates['current_balance'] or Decimal('0.00')),
+                'overdue_30': float(aggregates['d30_total'] or Decimal('0.00')),
+                'overdue_60': float(aggregates['d60_total'] or Decimal('0.00')),
+                'overdue_90': float(aggregates['d90_total'] or Decimal('0.00')),
+                'overdue_120_plus': float(overdue_120_plus),
             }
-            
+
             serializer = DebtorSummarySerializer(data)
             return Response(serializer.data)
         except Exception as e:
@@ -170,14 +132,13 @@ class DebtorViewSet(viewsets.ModelViewSet):
                 {'status': 'error', 'message': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
+
     @action(detail=True, methods=['post'])
     def block(self, request, pk=None):
         """Block a debtor account."""
         try:
             debtor = self.get_object()
             debtor.set_blocked(True)
-            
             return Response({
                 'status': 'success',
                 'message': f'Debtor {debtor.customer_number} blocked successfully'
@@ -187,14 +148,13 @@ class DebtorViewSet(viewsets.ModelViewSet):
                 {'status': 'error', 'message': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
+
     @action(detail=True, methods=['post'])
     def unblock(self, request, pk=None):
         """Unblock a debtor account."""
         try:
             debtor = self.get_object()
             debtor.set_blocked(False)
-            
             return Response({
                 'status': 'success',
                 'message': f'Debtor {debtor.customer_number} unblocked successfully'
@@ -204,13 +164,12 @@ class DebtorViewSet(viewsets.ModelViewSet):
                 {'status': 'error', 'message': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
+
     @action(detail=True, methods=['get'])
     def balance_details(self, request, pk=None):
         """Get detailed balance breakdown for debtor."""
         try:
             debtor = self.get_object()
-            
             balance_data = {
                 'customer_number': debtor.customer_number,
                 'name': debtor.name,
@@ -227,7 +186,7 @@ class DebtorViewSet(viewsets.ModelViewSet):
                 'total_balance': float(debtor.get_total_balance()),
                 'available_credit': float(debtor.credit_limit - debtor.get_total_balance()),
                 'credit_utilization_pct': float(
-                    (debtor.get_total_balance() / debtor.credit_limit * 100) 
+                    (debtor.get_total_balance() / debtor.credit_limit * 100)
                     if debtor.credit_limit > 0 else 0
                 ),
                 'is_blocked': debtor.is_blocked(),
@@ -248,34 +207,218 @@ class DebtorViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    @action(detail=False, methods=['get'], url_path='age-analysis')
+    def age_analysis(self, request):
+        """Get age analysis summary for all debtors."""
+        try:
+            debtors = self.get_queryset()
+
+            aggregates = debtors.aggregate(
+                total_current=Sum('balance_current'),
+                total_30=Sum('balance_30_days'),
+                total_60=Sum('balance_60_days'),
+                total_90=Sum('balance_90_days'),
+                total_120=Sum('balance_120_days'),
+                total_150=Sum('balance_150_days'),
+                total_180=Sum('balance_180_days'),
+            )
+
+            total_balance = sum([
+                aggregates['total_current'] or Decimal('0.00'),
+                aggregates['total_30'] or Decimal('0.00'),
+                aggregates['total_60'] or Decimal('0.00'),
+                aggregates['total_90'] or Decimal('0.00'),
+                aggregates['total_120'] or Decimal('0.00'),
+                aggregates['total_150'] or Decimal('0.00'),
+                aggregates['total_180'] or Decimal('0.00'),
+            ])
+
+            def calc_pct(value):
+                if total_balance > 0:
+                    return float(value or 0) / float(total_balance) * 100
+                return 0
+
+            data = {
+                'cutoff_date': request.query_params.get('cutoff_date') or str(date.today()),
+                'total_balance': float(total_balance),
+                'buckets': [
+                    {'label': 'Current', 'amount': float(aggregates['total_current'] or 0), 'percentage': calc_pct(aggregates['total_current'])},
+                    {'label': '1-30 Days', 'amount': float(aggregates['total_30'] or 0), 'percentage': calc_pct(aggregates['total_30'])},
+                    {'label': '31-60 Days', 'amount': float(aggregates['total_60'] or 0), 'percentage': calc_pct(aggregates['total_60'])},
+                    {'label': '61-90 Days', 'amount': float(aggregates['total_90'] or 0), 'percentage': calc_pct(aggregates['total_90'])},
+                    {'label': '90+ Days', 'amount': float((aggregates['total_120'] or 0) + (aggregates['total_150'] or 0) + (aggregates['total_180'] or 0)), 'percentage': calc_pct((aggregates['total_120'] or 0) + (aggregates['total_150'] or 0) + (aggregates['total_180'] or 0))},
+                ],
+            }
+
+            return Response(data)
+        except Exception as e:
+            return Response(
+                {'status': 'error', 'message': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['get'], url_path='top-accounts')
+    def top_accounts(self, request):
+        """Get top debtor accounts by balance."""
+        try:
+            limit = int(request.query_params.get('limit', 10))
+            sort_by = request.query_params.get('sort_by', 'balance')
+
+            debtors = self.get_queryset()
+
+            if sort_by == 'balance':
+                debtors = debtors.order_by('-balance_current')[:limit]
+            elif sort_by == 'overdue':
+                debtors = debtors.annotate(
+                    overdue=F('balance_30_days') + F('balance_60_days') + F('balance_90_days') + F('balance_120_days') + F('balance_150_days') + F('balance_180_days')
+                ).order_by('-overdue')[:limit]
+            else:
+                debtors = debtors.order_by('-sales_year')[:limit]
+
+            results = [{
+                'id': d.id,
+                'customer_number': d.customer_number,
+                'name': d.name,
+                'balance_current': float(d.balance_current),
+                'total_balance': float(d.total_balance),
+                'overdue_balance': float(d.overdue_balance),
+                'credit_limit': float(d.credit_limit),
+            } for d in debtors]
+
+            return Response(results)
+        except Exception as e:
+            return Response(
+                {'status': 'error', 'message': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['get'])
+    def invoices(self, request):
+        """Get invoice records for debtors."""
+        import logging
+        logger = logging.getLogger(__name__)
+        try:
+            debtor_id = request.query_params.get('debtor')
+            start_date = request.query_params.get('start_date')
+            end_date = request.query_params.get('end_date')
+            
+            # Handle limit parameter with proper error handling
+            limit_param = request.query_params.get('limit', '100')
+            try:
+                limit = int(limit_param)
+            except (ValueError, TypeError):
+                limit = 100
+            limit = min(max(limit, 1), 1000)  # Clamp between 1 and 1000
+
+            logger.info(f"Fetching invoices with debtor_id={debtor_id}, start={start_date}, end={end_date}, limit={limit}")
+
+            # FIX: use correct field names from DebtorTransaction model
+            invoices = DebtorTransaction.objects.filter(transaction_type='IN')
+
+            if debtor_id:
+                invoices = invoices.filter(debtor_id=debtor_id)
+            if start_date:
+                invoices = invoices.filter(transaction_date__gte=start_date)
+            if end_date:
+                invoices = invoices.filter(transaction_date__lte=end_date)
+
+            invoices = invoices.order_by('-transaction_date')[:limit]
+
+            serializer = DebtorTransactionSerializer(invoices, many=True)
+            return Response(serializer.data)
+        except Exception as e:
+            logger.error(f"Error fetching invoices: {str(e)}", exc_info=True)
+            return Response(
+                {'status': 'error', 'message': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'])
+    def convert_category(self, request, pk=None):
+        """Convert debtor to a different category."""
+        try:
+            debtor = self.get_object()
+            new_category = request.data.get('category')
+
+            if not new_category:
+                return Response(
+                    {'error': 'Category is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            debtor.account_type = new_category
+            debtor.save(update_fields=['account_type'])
+
+            return Response({
+                'status': 'success',
+                'message': f'Debtor {debtor.customer_number} converted to category {new_category}'
+            })
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['get'])
+    def sales_history(self, request, pk=None):
+        """Get sales history for a debtor."""
+        try:
+            debtor = self.get_object()
+
+            start_date = request.query_params.get('start_date')
+            end_date = request.query_params.get('end_date')
+
+            # FIX: use correct FK and field names
+            transactions = DebtorTransaction.objects.filter(debtor=debtor)
+
+            if start_date:
+                transactions = transactions.filter(transaction_date__gte=start_date)
+            if end_date:
+                transactions = transactions.filter(transaction_date__lte=end_date)
+
+            monthly_sales = transactions.filter(
+                transaction_type__in=['IN', 'CS']
+            ).annotate(
+                month=TruncMonth('transaction_date')
+            ).values('month').annotate(
+                total_sales=Sum('total_amount'),
+                transaction_count=Count('id')
+            ).order_by('month')
+
+            results = [{
+                'month': item['month'].strftime('%Y-%m') if item['month'] else None,
+                'total_sales': float(item['total_sales'] or 0),
+                'transaction_count': item['transaction_count'],
+            } for item in monthly_sales]
+
+            return Response(results)
+        except Exception as e:
+            return Response(
+                {'status': 'error', 'message': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
 
 class DebtorTransactionViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for debtor transactions (DEBTRAN).
-    Read-only as transactions are created through posting processes.
-    
-    Provides actions:
-    - summary: Get transaction summary by type
-    - monthly_trends: Get monthly transaction trends
     """
     queryset = DebtorTransaction.objects.all()
     serializer_class = DebtorTransactionSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_class = DebtorTransactionFilter
+    # FIX: use correct field names from DebtorTransaction model
     ordering_fields = ['transaction_date', 'total_amount']
     ordering = ['-transaction_date']
-    
+
     def get_queryset(self):
-        """Optimize queryset."""
-        return super().get_queryset().select_related('customer_number')
-    
+        # FIX: select_related uses correct FK name 'debtor'
+        return super().get_queryset().select_related('debtor')
+
     @action(detail=False, methods=['get'])
     def summary(self, request):
-        """
-        Get transaction summary by type.
-        Returns count and total amount for each transaction type.
-        """
+        """Get transaction summary by type."""
         try:
             summary = self.get_queryset().values('transaction_type').annotate(
                 count=Count('id'),
@@ -287,13 +430,10 @@ class DebtorTransactionViewSet(viewsets.ReadOnlyModelViewSet):
                 {'status': 'error', 'message': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
+
     @action(detail=False, methods=['get'])
     def monthly_trends(self, request):
-        """
-        Get monthly transaction trends for the past year.
-        Returns count and total for each transaction type by month.
-        """
+        """Get monthly transaction trends for the past year."""
         try:
             trends = self.get_queryset().filter(
                 transaction_date__gte=date.today() - timedelta(days=365)
@@ -309,13 +449,10 @@ class DebtorTransactionViewSet(viewsets.ReadOnlyModelViewSet):
                 {'status': 'error', 'message': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
+
     @action(detail=False, methods=['get'])
     def aging_summary(self, request):
-        """
-        Get aging summary for all outstanding transactions.
-        Groups outstanding amounts by age bucket.
-        """
+        """Get aging summary for all outstanding transactions."""
         try:
             aging = DebtorTransaction.objects.aging_analysis()
             return Response(aging)
@@ -324,18 +461,16 @@ class DebtorTransactionViewSet(viewsets.ReadOnlyModelViewSet):
                 {'status': 'error', 'message': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
+
     @action(detail=False, methods=['get'])
     def debtor_summary(self, request):
-        """
-        Get summary of outstanding balance by debtor.
-        Useful for AR dashboard and collection follow-up.
-        """
+        """Get summary of outstanding balance by debtor."""
         try:
+            # FIX: use correct FK 'debtor' and field names
             summary = self.get_queryset().filter(
                 transaction_type__in=['IN', 'CS'],
                 is_allocated=False
-            ).values('customer_number', 'customer_number__name').annotate(
+            ).values('debtor', 'debtor__name').annotate(
                 outstanding=Sum('total_amount'),
                 transaction_count=Count('id')
             ).order_by('-outstanding')
@@ -350,20 +485,20 @@ class DebtorTransactionViewSet(viewsets.ReadOnlyModelViewSet):
 class DebteopenViewSet(viewsets.ModelViewSet):
     """
     ViewSet for open item transactions (DEBTOPEN).
-    Tracks individual open item postings for debtor accounts.
     """
     queryset = Debtopen.objects.all()
     serializer_class = DebteopenSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['customer_number', 'type', 'posted', 'ageflag']
+    # FIX: 'customer_number' → 'dno' to match Debtopen model FK
+    filterset_fields = ['dno', 'type', 'posted', 'ageflag']
     ordering_fields = ['date', 'total']
     ordering = ['-date']
-    
+
     def get_queryset(self):
-        """Optimize queryset."""
-        return super().get_queryset().select_related('customer_number')
-    
+        # FIX: select_related uses correct FK name 'dno'
+        return super().get_queryset().select_related('dno')
+
     @action(detail=False, methods=['get'])
     def outstanding(self, request):
         """Get all outstanding open items."""
@@ -372,12 +507,12 @@ class DebteopenViewSet(viewsets.ModelViewSet):
                 balancedue__gt=0,
                 posted='Y'
             )
-            
+
             page = self.paginate_queryset(outstanding)
             if page is not None:
                 serializer = DebteopenSerializer(page, many=True)
                 return self.get_paginated_response(serializer.data)
-            
+
             serializer = DebteopenSerializer(outstanding, many=True)
             return Response(serializer.data)
         except Exception as e:
@@ -385,33 +520,33 @@ class DebteopenViewSet(viewsets.ModelViewSet):
                 {'status': 'error', 'message': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
+
     @action(detail=True, methods=['post'])
     def allocate(self, request, pk=None):
         """Allocate payment against open item."""
         try:
-            debtor = self.get_object()
+            open_item = self.get_object()
             allocation_amount = Decimal(str(request.data.get('amount', 0)))
-            
+
             if allocation_amount <= 0:
                 return Response(
                     {'status': 'error', 'message': 'Allocation amount must be greater than zero'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
-            if allocation_amount > debtor.balancedue:
+
+            if allocation_amount > open_item.balancedue:
                 return Response(
                     {'status': 'error', 'message': 'Allocation cannot exceed balance due'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
-            debtor.balancedue -= allocation_amount
-            debtor.save(update_fields=['balancedue'])
-            
+
+            open_item.balancedue -= allocation_amount
+            open_item.save(update_fields=['balancedue'])
+
             return Response({
                 'status': 'success',
                 'message': 'Payment allocated successfully',
-                'new_balance': float(debtor.balancedue)
+                'new_balance': float(open_item.balancedue)
             })
         except Exception as e:
             return Response(
@@ -428,25 +563,25 @@ class DpdcViewSet(viewsets.ModelViewSet):
     serializer_class = DpdcSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['customer_number', 'status', 'date']
+    # 'dno' is correct — matches Dpdc model FK
+    filterset_fields = ['dno', 'status', 'date']
     ordering_fields = ['date', 'amount']
     ordering = ['date']
-    
+
     def get_queryset(self):
-        """Optimize queryset."""
-        return super().get_queryset().select_related('customer_number')
-    
+        return super().get_queryset().select_related('dno')
+
     @action(detail=False, methods=['get'])
     def active(self, request):
         """Get all active post-dated cheques."""
         try:
             active = self.get_queryset().filter(status='A')
-            
+
             page = self.paginate_queryset(active)
             if page is not None:
                 serializer = DpdcSerializer(page, many=True)
                 return self.get_paginated_response(serializer.data)
-            
+
             serializer = DpdcSerializer(active, many=True)
             return Response(serializer.data)
         except Exception as e:
@@ -454,24 +589,21 @@ class DpdcViewSet(viewsets.ModelViewSet):
                 {'status': 'error', 'message': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
+
     @action(detail=False, methods=['get'])
     def due_today(self, request):
         """Get PDCs due today."""
         try:
             today = date.today()
-            pdcs = self.get_queryset().filter(
-                date=today,
-                status='A'
-            )
-            
+            pdcs = self.get_queryset().filter(date=today, status='A')
+
             if not pdcs.exists():
                 return Response({
                     'status': 'no_data',
-                    'message': f'No post-dated cheques due today',
+                    'message': 'No post-dated cheques due today',
                     'data': []
                 })
-            
+
             serializer = DpdcSerializer(pdcs, many=True)
             return Response(serializer.data)
         except Exception as e:
@@ -479,29 +611,54 @@ class DpdcViewSet(viewsets.ModelViewSet):
                 {'status': 'error', 'message': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
+
     @action(detail=True, methods=['post'])
     def process(self, request, pk=None):
         """Mark cheque as processed."""
         try:
             pdc = self.get_object()
-            
+
             if pdc.status == 'P':
                 return Response(
                     {'status': 'error', 'message': 'PDC already processed'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             pdc.status = 'P'
             pdc.save(update_fields=['status'])
-            
-            return Response({
-                'status': 'success',
-                'message': 'PDC marked as processed'
-            })
+
+            return Response({'status': 'success', 'message': 'PDC marked as processed'})
         except Exception as e:
             return Response(
                 {'status': 'error', 'message': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Cancel a post-dated cheque."""
+        try:
+            pdc = self.get_object()
+
+            if pdc.status == 'C':
+                return Response(
+                    {'error': 'PDC already cancelled'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if pdc.status == 'P':
+                return Response(
+                    {'error': 'Cannot cancel a processed PDC'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            pdc.status = 'C'
+            pdc.save(update_fields=['status'])
+
+            return Response({'status': 'success', 'message': 'PDC cancelled successfully'})
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -509,19 +666,19 @@ class DpdcViewSet(viewsets.ModelViewSet):
 class DebtorAuditViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for debtor audit records (DEBTORAUD).
-    Read-only for audit trail purposes.
     """
     queryset = DebtorAudit.objects.all()
     serializer_class = DebtorAuditSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['customer_number', 'type', 'date']
+    # FIX: 'customer_number' → 'dno' to match DebtorAudit model FK
+    filterset_fields = ['dno', 'type', 'date']
     ordering_fields = ['date']
     ordering = ['-date']
-    
+
     def get_queryset(self):
-        """Optimize queryset."""
-        return super().get_queryset().select_related('customer_number')
+        # FIX: select_related uses correct FK name 'dno'
+        return super().get_queryset().select_related('dno')
 
 
 class DareaViewSet(viewsets.ModelViewSet):
@@ -538,36 +695,11 @@ class DareaViewSet(viewsets.ModelViewSet):
 class DocumentSearchViewSet(viewsets.ViewSet):
     """
     Unified document search endpoint for Stockfinder API integration.
-    
-    Searches across:
-    - Invoices
-    - Credit Notes
-    - Cash Sales
-    - Purchase Orders
-    - Job Cards
-    
-    Supports filtering by:
-    - Document type (invoice, credit_note, cash_sale, purchase_order, job_card)
-    - Document number
-    - Date range
-    - Debtor/Customer
-    - Status
     """
     permission_classes = [IsAuthenticated]
-    
+
     @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):
-        """
-        Unified document search.
-        
-        Query Parameters:
-        - type: Document type (invoice, credit_note, cash_sale, purchase_order, job_card, all)
-        - number: Document number or partial match
-        - date_from: Start date (YYYY-MM-DD)
-        - date_to: End date (YYYY-MM-DD)
-        - debtor_id: Debtor number
-        - status: Document status
-        """
         try:
             doc_type = request.query_params.get('type', 'all').lower()
             doc_number = request.query_params.get('number', '').strip()
@@ -575,7 +707,7 @@ class DocumentSearchViewSet(viewsets.ViewSet):
             date_to = request.query_params.get('date_to')
             debtor_id = request.query_params.get('debtor_id')
             doc_status = request.query_params.get('status')
-            
+
             results = {
                 'invoices': [],
                 'credit_notes': [],
@@ -584,42 +716,23 @@ class DocumentSearchViewSet(viewsets.ViewSet):
                 'job_cards': [],
                 'total_documents': 0
             }
-            
-            # Build date filters
-            date_filters = {}
-            if date_from:
-                date_filters['date_gte'] = date_from
-            if date_to:
-                date_filters['date_lte'] = date_to
-            
-            # Search Invoices
+
             if doc_type in ['invoice', 'all']:
                 invoices = Invoice.objects.all()
-                
                 if doc_number:
                     invoices = invoices.filter(invoice_number__icontains=doc_number)
-                
                 if debtor_id:
                     invoices = invoices.filter(debtor__customer_number=debtor_id)
-                
                 if doc_status:
                     invoices = invoices.filter(status=doc_status)
-                
-                if date_from and date_to:
-                    invoices = invoices.filter(
-                        invoice_date__gte=date_from,
-                        invoice_date__lte=date_to
-                    )
-                elif date_from:
+                if date_from:
                     invoices = invoices.filter(invoice_date__gte=date_from)
-                elif date_to:
+                if date_to:
                     invoices = invoices.filter(invoice_date__lte=date_to)
-                
                 invoices = invoices.select_related('debtor').values(
                     'id', 'invoice_number', 'invoice_date', 'debtor__name',
                     'total_amount', 'status'
                 )[:50]
-                
                 results['invoices'] = [
                     {
                         'document_id': inv['id'],
@@ -632,32 +745,21 @@ class DocumentSearchViewSet(viewsets.ViewSet):
                     }
                     for inv in invoices
                 ]
-            
-            # Search Credit Notes
+
             if doc_type in ['credit_note', 'all']:
                 credit_notes = CreditNote.objects.all()
-                
                 if doc_number:
                     credit_notes = credit_notes.filter(credit_number__icontains=doc_number)
-                
                 if debtor_id:
                     credit_notes = credit_notes.filter(debtor_account=debtor_id)
-                
-                if date_from and date_to:
-                    credit_notes = credit_notes.filter(
-                        credit_date__gte=date_from,
-                        credit_date__lte=date_to
-                    )
-                elif date_from:
+                if date_from:
                     credit_notes = credit_notes.filter(credit_date__gte=date_from)
-                elif date_to:
+                if date_to:
                     credit_notes = credit_notes.filter(credit_date__lte=date_to)
-                
                 credit_notes = credit_notes.values(
                     'id', 'credit_number', 'credit_date', 'customer_name',
                     'total_amount', 'is_posted'
                 )[:50]
-                
                 results['credit_notes'] = [
                     {
                         'document_id': cn['id'],
@@ -670,29 +772,19 @@ class DocumentSearchViewSet(viewsets.ViewSet):
                     }
                     for cn in credit_notes
                 ]
-            
-            # Search Cash Sales
+
             if doc_type in ['cash_sale', 'all']:
                 cash_sales = CashSale.objects.all()
-                
                 if doc_number:
                     cash_sales = cash_sales.filter(sale_number__icontains=doc_number)
-                
-                if date_from and date_to:
-                    cash_sales = cash_sales.filter(
-                        sale_date__gte=date_from,
-                        sale_date__lte=date_to
-                    )
-                elif date_from:
+                if date_from:
                     cash_sales = cash_sales.filter(sale_date__gte=date_from)
-                elif date_to:
+                if date_to:
                     cash_sales = cash_sales.filter(sale_date__lte=date_to)
-                
                 cash_sales = cash_sales.values(
                     'id', 'sale_number', 'sale_date', 'customer_name',
                     'total_amount', 'is_posted'
                 )[:50]
-                
                 results['cash_sales'] = [
                     {
                         'document_id': cs['id'],
@@ -705,32 +797,21 @@ class DocumentSearchViewSet(viewsets.ViewSet):
                     }
                     for cs in cash_sales
                 ]
-            
-            # Search Purchase Orders
+
             if doc_type in ['purchase_order', 'all']:
                 purchase_orders = PurchaseOrder.objects.all()
-                
                 if doc_number:
                     purchase_orders = purchase_orders.filter(po_number__icontains=doc_number)
-                
                 if doc_status:
                     purchase_orders = purchase_orders.filter(status=doc_status)
-                
-                if date_from and date_to:
-                    purchase_orders = purchase_orders.filter(
-                        po_date__gte=date_from,
-                        po_date__lte=date_to
-                    )
-                elif date_from:
+                if date_from:
                     purchase_orders = purchase_orders.filter(po_date__gte=date_from)
-                elif date_to:
+                if date_to:
                     purchase_orders = purchase_orders.filter(po_date__lte=date_to)
-                
                 purchase_orders = purchase_orders.select_related('supplier').values(
                     'id', 'po_number', 'po_date', 'supplier__cname',
                     'total_amount', 'status'
                 )[:50]
-                
                 results['purchase_orders'] = [
                     {
                         'document_id': po['id'],
@@ -743,32 +824,21 @@ class DocumentSearchViewSet(viewsets.ViewSet):
                     }
                     for po in purchase_orders
                 ]
-            
-            # Search Job Cards
+
             if doc_type in ['job_card', 'all']:
                 job_cards = JobCard.objects.all()
-                
                 if doc_number:
                     job_cards = job_cards.filter(job_number__icontains=doc_number)
-                
                 if doc_status:
                     job_cards = job_cards.filter(status=doc_status)
-                
-                if date_from and date_to:
-                    job_cards = job_cards.filter(
-                        job_date__gte=date_from,
-                        job_date__lte=date_to
-                    )
-                elif date_from:
+                if date_from:
                     job_cards = job_cards.filter(job_date__gte=date_from)
-                elif date_to:
+                if date_to:
                     job_cards = job_cards.filter(job_date__lte=date_to)
-                
                 job_cards = job_cards.values(
                     'id', 'job_number', 'job_date', 'customer_name',
                     'total_amount', 'status'
                 )[:50]
-                
                 results['job_cards'] = [
                     {
                         'document_id': jc['id'],
@@ -781,8 +851,7 @@ class DocumentSearchViewSet(viewsets.ViewSet):
                     }
                     for jc in job_cards
                 ]
-            
-            # Calculate total documents
+
             results['total_documents'] = (
                 len(results['invoices']) +
                 len(results['credit_notes']) +
@@ -790,9 +859,9 @@ class DocumentSearchViewSet(viewsets.ViewSet):
                 len(results['purchase_orders']) +
                 len(results['job_cards'])
             )
-            
+
             return Response(results)
-        
+
         except Exception as e:
             return Response(
                 {'status': 'error', 'message': str(e)},

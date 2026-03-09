@@ -712,6 +712,22 @@ class SystemConfigurationSerializer(serializers.ModelSerializer):
             'ageing_periods',
             'current_financial_year',
             'current_period',
+            # Period end tracking
+            'last_day_end_date',
+            'last_month_end_date',
+            'last_year_end_date',
+            # Scheduling settings
+            'enable_auto_day_end',
+            'day_end_time',
+            'day_end_day_of_week',
+            'enable_auto_month_end',
+            'month_end_day',
+            'month_end_time',
+            'enable_auto_year_end',
+            'year_end_month',
+            'year_end_day',
+            'year_end_time',
+            # Other settings
             'enable_negative_stock',
             'auto_post_transactions',
             'charge_interest_on_overdue',
@@ -727,6 +743,9 @@ class SystemConfigurationSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id',
             'default_tax_code_details',
+            'last_day_end_date',
+            'last_month_end_date',
+            'last_year_end_date',
             'created_at',
             'updated_at',
             'created_by',

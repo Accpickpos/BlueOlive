@@ -26,7 +26,7 @@ export default function SalesAnalysis({ debtorId }: SalesAnalysisProps) {
   const loadSalesAnalysis = async () => {
     try {
       // Get transactions for this debtor - filter by debtor_id in query params
-      const response = await apiRequest(`/api/debtors/transactions/?debtor=${debtorId}`);
+      const response = await apiRequest(`/api/v1/debtors/transactions/?debtor=${debtorId}`);
       
       if ((response as any).results) {
         processSalesData((response as any).results);

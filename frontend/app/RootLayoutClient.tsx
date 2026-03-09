@@ -12,7 +12,7 @@ export function RootLayoutClient({ children }: { children: ReactNode }) {
       <AuthProvider>
         <ChunkErrorHandler>
           <div className="flex-1 flex flex-col">
-            <Navbar />
+            {/* <Navbar /> */}
             <main className="p-6">{children}</main>
           </div>
         </ChunkErrorHandler>

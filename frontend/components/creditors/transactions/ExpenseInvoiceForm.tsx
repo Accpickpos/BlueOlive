@@ -56,9 +56,12 @@ export default function ExpenseInvoiceForm({ onComplete }: ExpenseInvoiceFormPro
   const fetchExpenseCategories = async () => {
     try {
       const categories = await listExpenseCategories();
-      setExpenseCategories(categories);
+      // Handle paginated response - extract results if available, otherwise use as-is
+      const categoriesData = categories?.results ?? categories;
+      setExpenseCategories(Array.isArray(categoriesData) ? categoriesData : []);
     } catch (err) {
       console.error('Error fetching expense categories:', err);
+      setExpenseCategories([]);
     }
   };
 

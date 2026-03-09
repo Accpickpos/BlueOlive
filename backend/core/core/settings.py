@@ -376,6 +376,10 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Media files (user uploads)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
 # Logging - Environment-configurable
 # Supports both text and JSON output based on LOG_FORMAT setting
 # Use 'json' for production (integrates with ELK, Splunk, CloudWatch)
@@ -525,10 +529,31 @@ CELERY_TASK_ROUTING = {
 }
 
 # Celery beat schedule (periodic tasks)
+# NOTE: Period-end tasks are controlled via SystemConfiguration settings.
+# The schedules below run but check the database config before executing.
+# Enable via SystemConfiguration.enable_auto_day_end, enable_auto_month_end, enable_auto_year_end
+
+from celery.schedules import crontab
+
 CELERY_BEAT_SCHEDULE = {
     'cleanup-old-tasks': {
         'task': 'core.tasks.cleanup_old_tasks',
         'schedule': 86400.0,  # Every 24 hours
+    },
+    # Day-End Task - runs daily at 23:59 (11:59 PM)
+    'day-end-process': {
+        'task': 'core.tasks.run_day_end_task',
+        'schedule': crontab(hour=23, minute=59),  # Daily at 11:59 PM
+    },
+    # Month-End Task - runs on 1st of each month at 23:00
+    'month-end-process': {
+        'task': 'core.tasks.run_month_end_task',
+        'schedule': crontab(hour=23, minute=0, day_of_month=1),  # 1st of month at 11 PM
+    },
+    # Year-End Task - runs on December 31st at 22:00
+    'year-end-process': {
+        'task': 'core.tasks.run_year_end_task',
+        'schedule': crontab(hour=22, minute=0, month_of_year=12, day_of_month=31),  # Dec 31 at 10 PM
     },
 }
 

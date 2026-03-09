@@ -1,13 +1,20 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { debtorsApi } from '@/lib/debtorsApi';
 import { apiRequest } from '@/lib/api';
+
+interface DebtorOption {
+  id: number;
+  name: string;
+  account: string;
+}
 
 interface PDCRecord {
   id: number;
   debtor_id: number;
   debtor_name: string;
-  cheque_number: string;
+  debtor_account: string;
   amount: number;
   pdc_date: string;
   posting_date: string;
@@ -33,39 +40,76 @@ export default function CancelRemovePDCForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [loadingPDCs, setLoadingPDCs] = useState(true);
+  const [loadingPDCs, setLoadingPDCs] = useState(false);
+  const [debtors, setDebtors] = useState<DebtorOption[]>([]);
+  const [selectedDebtorId, setSelectedDebtorId] = useState<number | null>(null);
+  const [loadingDebtors, setLoadingDebtors] = useState(true);
+
 
   useEffect(() => {
-    loadPDCRecords();
+    // Load debtors for selection
+    const fetchDebtors = async () => {
+      setLoadingDebtors(true);
+      try {
+        const response = await debtorsApi.accounts.list();
+        const options = response.results
+          ? response.results.map((d: any) => ({
+              id: d.id,
+              name: d.name,
+              account: d.account_number || '',
+            }))
+          : [];
+        setDebtors(options);
+      } catch (err) {
+        setError('Failed to load debtors.');
+      } finally {
+        setLoadingDebtors(false);
+      }
+    };
+    fetchDebtors();
   }, []);
 
-  const loadPDCRecords = async () => {
+  useEffect(() => {
+    if (selectedDebtorId) {
+      loadPDCRecords(selectedDebtorId);
+    } else {
+      setPdcRecords([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDebtorId]);
+
+  const loadPDCRecords = async (debtorId: number) => {
+    setLoadingPDCs(true);
     try {
-      // Load unprocessed PDC records - try without query param first to debug
-      const response = await apiRequest('/api/debtors/post-dated-cheques/');
+      const response = await debtorsApi.pdcs.list(debtorId);
       let pdcs: PDCRecord[] = [];
-      
-      if ((response as any).results) {
-        // Filter for unprocessed PDCs on frontend
-        pdcs = (response as any).results
-          .filter((pdc: any) => !pdc.is_processed)
-          .map((pdc: any) => ({
-            id: pdc.id,
-            debtor_id: pdc.debtor,
-            debtor_name: pdc.debtor_name || `Debtor ${pdc.debtor}`,
-            cheque_number: pdc.reference,
-            amount: parseFloat(pdc.amount),
-            pdc_date: pdc.cheque_date,
-            posting_date: pdc.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
-          }));
+      const mapPdc = (pdc: any): PDCRecord => ({
+        id: pdc.id,
+        debtor_id: pdc.debtor,
+        debtor_name: pdc.debtor_name || `Debtor ${pdc.debtor_account || pdc.debtor}`,
+        debtor_account: pdc.debtor_account || '',
+        amount: parseFloat(pdc.amount),
+        pdc_date: pdc.cheque_date,
+        posting_date: pdc.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+      });
+      if (response.results) {
+        pdcs = response.results
+          .filter((pdc: any) => pdc.is_active === true)
+          .map(mapPdc);
       } else if (Array.isArray(response)) {
-        pdcs = response.filter(p => !p.is_processed);
+        pdcs = (response as any[])
+          .filter((pdc: any) => pdc.is_active === true)
+          .map(mapPdc);
       }
-      
       setPdcRecords(pdcs);
-    } catch (err) {
+      setError(pdcs.length === 0 ? 'No post-dated cheques found for this debtor.' : '');
+    } catch (err: any) {
       console.error('Failed to load PDC records:', err);
-      // For now, show empty list if endpoint doesn't exist
+      if (err?.response?.status === 404) {
+        setError('No post-dated cheques found or this operation is not supported.');
+      } else {
+        setError('Failed to load post-dated cheques.');
+      }
       setPdcRecords([]);
     } finally {
       setLoadingPDCs(false);
@@ -74,14 +118,15 @@ export default function CancelRemovePDCForm() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-
+    setFormData(prev => ({ ...prev, [name]: value }));
     if (name === 'pdc_id') {
       const pdc = pdcRecords.find(p => p.id === parseInt(value));
       setSelectedPDC(pdc || null);
+    }
+    if (name === 'debtor_id') {
+      setSelectedDebtorId(value ? parseInt(value) : null);
+      setFormData(prev => ({ ...prev, pdc_id: 0 }));
+      setSelectedPDC(null);
     }
   };
 
@@ -98,8 +143,8 @@ export default function CancelRemovePDCForm() {
         return;
       }
 
-      const response = await apiRequest(
-        `/api/debtors/post-dated-cheques/${formData.pdc_id}/cancel/`,
+      await apiRequest(
+        `/api/v1/debtors/post-dated-cheques/${formData.pdc_id}/cancel/`,
         {
           method: 'POST',
           body: {
@@ -110,7 +155,7 @@ export default function CancelRemovePDCForm() {
         }
       );
 
-      setSuccess(`PDC (Cheque #${selectedPDC?.cheque_number}) cancelled successfully`);
+      setSuccess(`PDC #${selectedPDC?.id} for ${selectedPDC?.debtor_name} cancelled successfully`);
       setFormData({
         pdc_id: 0,
         cancellation_reason: 'CUSTOMER_REQUEST',
@@ -118,7 +163,9 @@ export default function CancelRemovePDCForm() {
         notes: '',
       });
       setSelectedPDC(null);
-      loadPDCRecords();
+      if (selectedDebtorId) {
+        loadPDCRecords(selectedDebtorId);
+      }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to cancel PDC');
     } finally {
@@ -149,10 +196,30 @@ export default function CancelRemovePDCForm() {
         </div>
       )}
 
-      {/* Info Alert */}
       <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
         <p className="font-medium mb-1">⚠️ Warning</p>
         <p>Cancelling a PDC will reverse the transaction. Ensure you have the correct authorization before proceeding.</p>
+      </div>
+
+      {/* Debtor Selection */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Select Debtor <span className="text-red-500">*</span>
+        </label>
+        <select
+          name="debtor_id"
+          value={selectedDebtorId ?? ''}
+          onChange={handleChange}
+          disabled={loadingDebtors}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+        >
+          <option value="">{loadingDebtors ? 'Loading debtors...' : 'Select a debtor...'}</option>
+          {debtors.map(debtor => (
+            <option key={debtor.id} value={debtor.id}>
+              {debtor.name} {debtor.account ? `(${debtor.account})` : ''}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* PDC Selection */}
@@ -164,39 +231,43 @@ export default function CancelRemovePDCForm() {
           name="pdc_id"
           value={formData.pdc_id}
           onChange={handleChange}
-          disabled={loadingPDCs}
+          disabled={loadingPDCs || !selectedDebtorId}
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
         >
-          <option value="">Select a PDC...</option>
+          <option value="">{!selectedDebtorId ? 'Select a debtor first...' : loadingPDCs ? 'Loading PDCs...' : 'Select a PDC...'}</option>
           {pdcRecords.map(pdc => (
             <option key={pdc.id} value={pdc.id}>
-              {pdc.debtor_name} - Cheque #{pdc.cheque_number} - R{pdc.amount.toFixed(2)} ({pdc.pdc_date})
+              PDC #{pdc.id} — R{pdc.amount.toFixed(2)} ({pdc.pdc_date})
             </option>
           ))}
         </select>
-        {pdcRecords.length === 0 && !loadingPDCs && (
-          <p className="text-xs text-gray-500 mt-2">No pending PDCs available</p>
+        {pdcRecords.length === 0 && !loadingPDCs && selectedDebtorId && (
+          <p className="text-xs text-gray-500 mt-2">No active PDCs available to cancel for this debtor</p>
         )}
       </div>
 
       {/* PDC Details */}
       {selectedPDC && (
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <p className="text-gray-600">Debtor:</p>
               <p className="font-medium">{selectedPDC.debtor_name}</p>
             </div>
             <div>
-              <p className="text-gray-600">Cheque Number:</p>
-              <p className="font-medium">{selectedPDC.cheque_number}</p>
+              <p className="text-gray-600">Account:</p>
+              <p className="font-medium">{selectedPDC.debtor_account || '—'}</p>
+            </div>
+            <div>
+              <p className="text-gray-600">PDC Reference:</p>
+              <p className="font-medium">PDC #{selectedPDC.id}</p>
             </div>
             <div>
               <p className="text-gray-600">Amount:</p>
               <p className="font-medium">R{selectedPDC.amount.toFixed(2)}</p>
             </div>
             <div>
-              <p className="text-gray-600">PDC Date:</p>
+              <p className="text-gray-600">Cheque Date:</p>
               <p className="font-medium">{selectedPDC.pdc_date}</p>
             </div>
             <div>
@@ -255,7 +326,7 @@ export default function CancelRemovePDCForm() {
         />
       </div>
 
-      {/* Submit Button */}
+      {/* Submit */}
       <div className="flex gap-3 pt-4">
         <button
           type="submit"

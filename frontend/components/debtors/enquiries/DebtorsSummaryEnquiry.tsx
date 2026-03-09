@@ -27,14 +27,14 @@ export default function DebtorsSummaryEnquiry() {
 
       // Fetch summary data
       const summaryResponse = await apiRequest(
-        `/api/debtors/summary/?${params}`
+        `/api/v1/debtors/summary/?${params}`
       );
       const summaryData = (summaryResponse as any).data || summaryResponse;
       setSummary(summaryData);
 
       // Fetch age analysis data
       const ageResponse = await apiRequest(
-        `/api/debtors/age-analysis/?${params}`
+        `/api/v1/debtors/age-analysis/?${params}`
       );
       const ageData = (ageResponse as any).data || ageResponse;
       setAgeAnalysis(ageData);

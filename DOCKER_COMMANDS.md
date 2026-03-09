@@ -67,3 +67,30 @@ docker restart blueolive-backend
 # Check if a service is responding
 curl http://localhost:8000/api/v1/users/auth/profile/
 curl http://localhost:3000
+
+## Memory Issues (ENOMEM)
+If you encounter ENOMEM errors, try the following:
+
+### 1. Increase Docker Desktop/Engine memory limits
+- **Docker Desktop (Windows/Mac)**: Settings > Resources > Memory (allocate at least 6GB)
+- **Docker Engine (Linux)**: Edit `/etc/docker/daemon.json` and add `"default-shm-size": "4g"`
+
+### 2. Rebuild containers with new memory limits
+```bash
+docker-compose down
+docker-compose build --no-cache frontend
+docker-compose up -d
+```
+
+### 3. Clear Docker cache
+```bash
+docker system prune -a
+```
+
+### 4. Check container memory usage
+```bash
+docker stats
+```
+
+### 5. Run frontend in production mode (less memory intensive)
+Edit docker-compose.yml and change the frontend command to use `npm run start` instead of `npm run dev`

@@ -875,6 +875,73 @@ class SystemConfiguration(TimeStampedModel):
         help_text="Current accounting period (1-12)"
     )
     
+    # === PERIOD END TRACKING ===
+    last_day_end_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date of last successful day-end process"
+    )
+    last_month_end_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date of last successful month-end process"
+    )
+    last_year_end_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date of last successful year-end process"
+    )
+    
+    # === AUTOMATED SCHEDULING SETTINGS ===
+    # Day-end scheduling
+    enable_auto_day_end = models.BooleanField(
+        default=False,
+        help_text="Enable automatic day-end process"
+    )
+    day_end_time = models.TimeField(
+        default='23:59',
+        help_text="Time to run automatic day-end (HH:MM)"
+    )
+    day_end_day_of_week = models.JSONField(
+        default=list,
+        help_text="Days of week to run day-end [0=Mon, 6=Sun]"
+    )
+    
+    # Month-end scheduling
+    enable_auto_month_end = models.BooleanField(
+        default=False,
+        help_text="Enable automatic month-end process"
+    )
+    month_end_day = models.PositiveIntegerField(
+        default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(28)],
+        help_text="Day of month to run month-end (1-28)"
+    )
+    month_end_time = models.TimeField(
+        default='23:00',
+        help_text="Time to run automatic month-end (HH:MM)"
+    )
+    
+    # Year-end scheduling
+    enable_auto_year_end = models.BooleanField(
+        default=False,
+        help_text="Enable automatic year-end process"
+    )
+    year_end_month = models.PositiveIntegerField(
+        default=12,
+        validators=[MinValueValidator(1), MaxValueValidator(12)],
+        help_text="Month to run year-end (1-12)"
+    )
+    year_end_day = models.PositiveIntegerField(
+        default=31,
+        validators=[MinValueValidator(1), MaxValueValidator(31)],
+        help_text="Day of month to run year-end"
+    )
+    year_end_time = models.TimeField(
+        default='22:00',
+        help_text="Time to run automatic year-end (HH:MM)"
+    )
+    
     # === ACCOUNTING SETTINGS ===
     enable_negative_stock = models.BooleanField(
         default=False,

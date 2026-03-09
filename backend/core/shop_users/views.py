@@ -142,7 +142,10 @@ class TenantTokenView(APIView):
             })
 
             # Set httpOnly cookies (secure, not accessible to JavaScript)
+            # In DEBUG mode (local dev), use samesite='Lax' because samesite='None' requires HTTPS
+            # In production, use samesite='None' for cross-origin cookie support
             is_secure = not settings.DEBUG
+            samesite = 'Lax' if settings.DEBUG else 'None'
             
             response.set_cookie(
                 key='access_token',
@@ -150,7 +153,7 @@ class TenantTokenView(APIView):
                 max_age=int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()),
                 secure=is_secure,
                 httponly=True,
-                samesite='None',  # Allow cross-origin for frontend/backend on different ports
+                samesite=samesite,
                 path='/',
             )
             
@@ -160,17 +163,7 @@ class TenantTokenView(APIView):
                 max_age=int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()),
                 secure=is_secure,
                 httponly=True,
-                samesite='None',  # Allow cross-origin for frontend/backend on different ports
-                path='/',
-            )
-            
-            response.set_cookie(
-                key='refresh_token',
-                value=refresh_token,
-                max_age=int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()),
-                secure=is_secure,
-                httponly=True,
-                samesite='Lax',
+                samesite=samesite,
                 path='/',
             )
 
@@ -311,8 +304,10 @@ class LogoutView(APIView):
             )
             
             # Clear cookies
-            response.delete_cookie('access_token', path='/')
-            response.delete_cookie('refresh_token', path='/')
+            # Use same samesite setting as when cookie was set
+            samesite = 'Lax' if settings.DEBUG else 'None'
+            response.delete_cookie('access_token', path='/', samesite=samesite)
+            response.delete_cookie('refresh_token', path='/', samesite=samesite)
             
             return response
             
@@ -323,8 +318,9 @@ class LogoutView(APIView):
                 {'detail': 'Logout successful'},
                 status=status.HTTP_200_OK
             )
-            response.delete_cookie('access_token', path='/')
-            response.delete_cookie('refresh_token', path='/')
+            samesite = 'Lax' if settings.DEBUG else 'None'
+            response.delete_cookie('access_token', path='/', samesite=samesite)
+            response.delete_cookie('refresh_token', path='/', samesite=samesite)
             return response
 
 

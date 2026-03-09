@@ -68,22 +68,30 @@ def setup_tenant_database(sender, instance, created, **kwargs):
 @receiver(post_save, sender=Shop)
 def setup_shop_schema(sender, instance, created, **kwargs):
     """
-    Queue async schema setup when a new shop is created.
-    This returns immediately without blocking, allowing the API to respond quickly.
-    The actual schema creation happens asynchronously via Celery.
+    Synchronously create shop schema and run migrations when a new shop is created.
+    This ensures the schema and tables are ready immediately, preventing race conditions
+    where APIs are called before the shop's database tables exist.
     """
     if not created:
         return
     
     shop = instance
+    tenant = shop.tenant
     
-    logger.info(f"🚀 Queueing async schema setup for shop: {shop.name} ({shop.schema_name})")
+    logger.info(f"🚀 Setting up schema for shop: {shop.name} ({shop.schema_name})")
     
-    # Queue the async task
-    from tenancy.tasks import setup_shop_schema_async
-    setup_shop_schema_async.delay(shop.id)
-    
-    logger.info(f"✅ Async setup task queued for shop: {shop.name}")
+    try:
+        from tenancy.shop_manager import create_shop_schema
+        create_shop_schema(tenant, shop.schema_name)
+        
+        # Update shop status to ready
+        Shop.objects.filter(pk=shop.pk).update(setup_status='ready')
+        logger.info(f"✅ Schema setup complete for shop: {shop.name}")
+    except Exception as e:
+        logger.error(f"❌ Failed to setup schema for shop {shop.name}: {str(e)}")
+        logger.exception(e)
+        # Update shop status to failed
+        Shop.objects.filter(pk=shop.pk).update(setup_status='failed')
 
 
 

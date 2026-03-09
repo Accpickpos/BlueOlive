@@ -30,7 +30,7 @@ export default function TopAccountsEnquiry() {
       if (salesman) params.append('salesman', salesman);
       if (area) params.append('area', area);
 
-      const response = await apiRequest(`/api/debtors/top-accounts/?${params}`);
+      const response = await apiRequest(`/api/v1/debtors/top-accounts/?${params}`);
       const responseData = (response as any).data || (response as any);
       const accounts = responseData.results || responseData;
       

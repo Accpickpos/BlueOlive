@@ -50,7 +50,7 @@ export default function CreditJournalForm() {
       }
 
       const response = await apiRequest(
-        '/api/debtors/transactions/',
+        '/api/v1/debtors/transactions/',
         {
           method: 'POST',
           body: {

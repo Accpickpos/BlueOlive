@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Loader, Package, Tags, TrendingUp, History, 
   FileText, ArrowDown, ArrowUp, Box, 
-  Settings, Activity, DollarSign, Layers
+  Settings, Activity, DollarSign, Layers, TrendingDown, Users
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -178,6 +178,9 @@ export default function StockControlOverviewPage() {
               { href: '/dashboard/admin/stock-control/reports/variance', icon: Activity, color: 'red', title: 'Stock Variance', desc: 'Count discrepancies' },
               { href: '/dashboard/admin/stock-control/reports/reorder', icon: Box, color: 'amber', title: 'Re-Order Report', desc: 'Low stock alerts' },
               { href: '/dashboard/admin/stock-control/reports/gross-profit', icon: DollarSign, color: 'green', title: 'Gross Profit', desc: 'Profitability analysis' },
+              { href: '/dashboard/admin/stock-control/reports/slow-movers', icon: TrendingDown, color: 'purple', title: 'Slow Movers', desc: 'Low sales activity' },
+              { href: '/dashboard/admin/stock-control/reports/department', icon: Layers, color: 'indigo', title: 'Department', desc: 'Sales by department' },
+              { href: '/dashboard/admin/stock-control/reports/area', icon: Users, color: 'cyan', title: 'Area/Salesman', desc: 'Sales by area' },
             ].map((item) => (
               <Link key={item.href} href={item.href}>
                 <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer h-full">

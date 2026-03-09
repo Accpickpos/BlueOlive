@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { isAuthenticated, logout } from "@/lib/api";
 import { useAuthContext } from "@/lib/AuthContext";
 import ShopSelector from "@/components/ShopSelector";
+import NotificationBell from "@/components/NotificationBell";
 
 export default function Navbar() {
   const router = useRouter();
@@ -72,6 +73,9 @@ export default function Navbar() {
             {/* Shop Selector - only shows if user has access to multiple shops */}
             <ShopSelector />
             
+            {/* Notification Bell */}
+            <NotificationBell />
+            
             <span className="text-sm text-gray-600">{user && user.username}</span>
             <button
               onClick={handleLogout}
@@ -84,7 +88,7 @@ export default function Navbar() {
         )}
         {!isLoggedIn && (
           <>
-            <Bell className="h-5 w-5 cursor-pointer text-gray-500" />
+            <NotificationBell />
             <User className="h-6 w-6 cursor-pointer text-gray-500" />
           </>
         )}

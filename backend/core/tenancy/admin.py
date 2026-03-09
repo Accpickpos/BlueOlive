@@ -3,10 +3,12 @@ from django.contrib import admin
 from django.conf import settings
 from tenancy.models import Tenant
 from tenancy.models import Shop
+from tenancy.models import ShopConfiguration
 from tenancy.audit import AuditLog
 from tenancy.utils import provision_tenant
 from tenancy.shop_manager import create_shop_schema
 from tenancy.utils import register_tenant_connection
+
 
 @admin.register(Tenant)
 class TenantAdmin(admin.ModelAdmin):
@@ -48,6 +50,37 @@ class ShopAdmin(admin.ModelAdmin):
         - Run migrations for that schema
         """
         super().save_model(request, obj, form, change)
+
+
+@admin.register(ShopConfiguration)
+class ShopConfigurationAdmin(admin.ModelAdmin):
+    """Admin for per-shop period-end configuration"""
+    list_display = ('shop', 'enable_auto_day_end', 'enable_auto_month_end', 
+                   'enable_auto_year_end', 'current_period', 'current_financial_year')
+    list_filter = ('enable_auto_day_end', 'enable_auto_month_end', 'enable_auto_year_end')
+    search_fields = ('shop__name', 'shop__tenant__name')
+    raw_id_fields = ('shop',)
+    
+    fieldsets = (
+        ('Shop', {
+            'fields': ('shop',)
+        }),
+        ('Period End Tracking', {
+            'fields': ('last_day_end_date', 'last_month_end_date', 'last_year_end_date')
+        }),
+        ('Day-End Settings', {
+            'fields': ('enable_auto_day_end', 'day_end_time', 'day_end_day_of_week')
+        }),
+        ('Month-End Settings', {
+            'fields': ('enable_auto_month_end', 'month_end_day', 'month_end_time')
+        }),
+        ('Year-End Settings', {
+            'fields': ('enable_auto_year_end', 'year_end_month', 'year_end_day', 'year_end_time')
+        }),
+        ('Accounting Period', {
+            'fields': ('current_financial_year', 'current_period')
+        }),
+    )
 
 
 @admin.register(AuditLog)

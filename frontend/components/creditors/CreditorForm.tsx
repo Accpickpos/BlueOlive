@@ -16,7 +16,7 @@ export default function CreditorForm({ creditor, onSuccess, onCancel }: Creditor
   const [error, setError] = useState<string | null>(null);
   const [creditTermsOptions, setCreditTermsOptions] = useState<CreditTermsOption[]>([]);
   
-  const [formData, setFormData] = useState<SupplierCreateData>({
+  const [formData, setFormData] = useState<Record<string, any>>({
     supplier_number: '',
     account_number: '',
     name: '',
@@ -31,7 +31,7 @@ export default function CreditorForm({ creditor, onSuccess, onCancel }: Creditor
     postal_address_line3: '',
     postal_city: '',
     postal_postal_code: '',
-    telephone1: '',
+    telephone: '',
     telephone2: '',
     fax: '',
     email: '',
@@ -51,36 +51,37 @@ export default function CreditorForm({ creditor, onSuccess, onCancel }: Creditor
   // Load existing creditor data if editing
   useEffect(() => {
     if (creditor) {
+      const c = creditor as any;
       setFormData({
-        supplier_number: creditor.supplier_number || '',
-        account_number: creditor.account_number || creditor.supplier_number || '',
-        name: creditor.name || '',
-        short_name: creditor.short_name || '',
-        physical_address_line1: creditor.physical_address_line1 || '',
-        physical_address_line2: creditor.physical_address_line2 || '',
-        physical_address_line3: creditor.physical_address_line3 || '',
-        physical_city: creditor.physical_city || '',
-        physical_postal_code: creditor.physical_postal_code || '',
-        postal_address_line1: creditor.postal_address_line1 || '',
-        postal_address_line2: creditor.postal_address_line2 || '',
-        postal_address_line3: creditor.postal_address_line3 || '',
-        postal_city: creditor.postal_city || '',
-        postal_postal_code: creditor.postal_postal_code || '',
-        telephone1: creditor.telephone1 || '',
-        telephone2: creditor.telephone2 || '',
-        fax: creditor.fax || '',
-        email: creditor.email || '',
-        contact_person: creditor.contact_person || '',
-        account_type: creditor.account_type || 'BBF',
-        our_account_number: creditor.our_account_number || '',
-        update_selling_price_on_receipt: creditor.update_selling_price_on_receipt || false,
-        credit_terms: creditor.credit_terms || undefined,
-        prompt_payment_discount_percent: creditor.prompt_payment_discount_percent || 0,
-        bank_name: creditor.bank_name || '',
-        bank_branch_code: creditor.bank_branch_code || '',
-        bank_account_number: creditor.bank_account_number || '',
-        vat_number: creditor.vat_number || '',
-        is_active: creditor.is_active !== false,
+        supplier_number: c.supplier_number || '',
+        account_number: c.account_number || c.supplier_number || '',
+        name: c.name || '',
+        short_name: c.short_name || '',
+        physical_address_line1: c.physical_address_line1 || '',
+        physical_address_line2: c.physical_address_line2 || '',
+        physical_address_line3: c.physical_address_line3 || '',
+        physical_city: c.physical_city || '',
+        physical_postal_code: c.physical_postal_code || '',
+        postal_address_line1: c.postal_address_line1 || '',
+        postal_address_line2: c.postal_address_line2 || '',
+        postal_address_line3: c.postal_address_line3 || '',
+        postal_city: c.postal_city || '',
+        postal_postal_code: c.postal_postal_code || '',
+        telephone: c.telephone || '',
+        telephone2: c.telephone2 || '',
+        fax: c.fax || '',
+        email: c.email || '',
+        contact_person: c.contact_person || '',
+        account_type: c.account_type || 'BBF',
+        our_account_number: c.our_account_number || '',
+        update_selling_price_on_receipt: c.update_selling_price_on_receipt || false,
+        credit_terms: c.credit_terms || undefined,
+        prompt_payment_discount_percent: c.prompt_payment_discount_percent || 0,
+        bank_name: c.bank_name || '',
+        bank_branch_code: c.branch_code || '',
+        bank_account_number: c.account_number || '',
+        vat_number: c.vat_number || '',
+        is_active: c.is_active !== false,
       });
     }
   }, [creditor]);
@@ -102,7 +103,7 @@ export default function CreditorForm({ creditor, onSuccess, onCancel }: Creditor
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
     
-    setFormData(prev => {
+    setFormData((prev: Record<string, any>) => {
       let newValue: any;
       
       if (type === 'checkbox') {
@@ -315,8 +316,8 @@ export default function CreditorForm({ creditor, onSuccess, onCancel }: Creditor
             </label>
             <input
               type="tel"
-              name="telephone1"
-              value={formData.telephone1}
+              name="telephone"
+              value={formData.telephone}
               onChange={handleInputChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
             />

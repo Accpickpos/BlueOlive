@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Supplier, useCreditorsAPI } from '@/lib/creditorsApi';
 import CreditorForm from './CreditorForm';
-import { Edit2, Trash2, Plus } from 'lucide-react';
+import CreditorsFilters from './CreditorsFilters';
+import CreditorsTable from './CreditorsTable';
+import CreditorsPagination from './CreditorsPagination';
 
 export default function CreditorsMaintenance() {
   const api = useCreditorsAPI();
@@ -15,31 +17,38 @@ export default function CreditorsMaintenance() {
   const [showForm, setShowForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterActive, setFilterActive] = useState<boolean | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [pageSize] = useState(20);
 
   // Load creditors
-  const loadCreditors = async () => {
+  const loadCreditors = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      console.log('Loading creditors with filters:', { searchQuery, filterActive });
+      console.log('Loading creditors with filters:', { searchQuery, filterActive, page });
       const data = await api.listSuppliers({
         search: searchQuery || undefined,
         is_active: filterActive !== null ? filterActive : undefined,
+        page,
+        page_size: pageSize,
       });
       console.log('Creditors list response:', data);
-      console.log('data.results:', data);
-      setCreditors(Array.isArray(data) ? data : []);
+      // Handle paginated response - data.results contains the array
+      const creditorsArray = data?.results || data;
+      setCreditors(Array.isArray(creditorsArray) ? creditorsArray : []);
+      setTotal(data?.count || 0);
     } catch (err) {
       console.error('Error loading creditors:', err);
       setError(err instanceof Error ? err.message : 'Failed to load creditors');
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchQuery, filterActive, page, pageSize, api]);
 
   useEffect(() => {
     loadCreditors();
-  }, []);
+  }, [loadCreditors]);
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
@@ -83,7 +92,7 @@ export default function CreditorsMaintenance() {
   };
 
   const handleApplyFilters = () => {
-    loadCreditors();
+    setPage(1); // Reset to first page when filters change - useEffect will auto-trigger loadCreditors
   };
 
   return (
@@ -128,159 +137,32 @@ export default function CreditorsMaintenance() {
         </div>
       ) : (
         <>
-          {/* Search and Filters */}
-          <div className="bg-white rounded-lg shadow p-6 space-y-4">
-            <div className="flex gap-4 flex-wrap">
-              <div className="flex-1 min-w-[250px]">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Search Creditors
-                </label>
-                <input
-                  type="text"
-                  placeholder="Search by name or account number..."
-                  value={searchQuery}
-                  onChange={handleSearch}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
+          {/* CreditorsFilters */}
+          <CreditorsFilters
+            searchQuery={searchQuery}
+            filterActive={filterActive}
+            onSearchChange={handleSearch}
+            onFilterChange={handleFilterChange}
+            onApplyFilters={handleApplyFilters}
+            onNewCreditor={handleNewCreditor}
+          />
 
-              <div className="w-40">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Status
-                </label>
-                <select
-                  value={filterActive === null ? 'all' : filterActive ? 'active' : 'inactive'}
-                  onChange={(e) => handleFilterChange(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="all">All</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
+          {/* CreditorsTable */}
+          <CreditorsTable
+            creditors={creditors}
+            loading={loading}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onNewCreditor={handleNewCreditor}
+          />
 
-              <div className="flex gap-2 items-end">
-                <button
-                  onClick={handleApplyFilters}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-                >
-                  Apply Filters
-                </button>
-                <button
-                  onClick={handleNewCreditor}
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium flex items-center gap-2"
-                >
-                  <Plus size={20} />
-                  New Creditor
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Creditors Table */}
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            {loading ? (
-              <div className="p-6 text-center text-gray-500">
-                Loading creditors...
-              </div>
-            ) : creditors.length === 0 ? (
-              <div className="p-6 text-center text-gray-500">
-                <p>No creditors found.</p>
-                <button
-                  onClick={handleNewCreditor}
-                  className="mt-4 text-blue-600 hover:text-blue-800 underline font-medium"
-                >
-                  Create the first creditor
-                </button>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Account #
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Name
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Short Name
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Email
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Phone
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Balance
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {creditors.map((creditor) => (
-                      <tr key={creditor.account_number} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {creditor.account_number}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {creditor.name}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {creditor.short_name || '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {creditor.email || '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {creditor.telephone1 || '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
-                          {typeof creditor.total_balance === 'number'
-                            ? `R${creditor.total_balance.toFixed(2)}`
-                            : '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <span
-                            className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                              creditor.is_active
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-red-100 text-red-800'
-                            }`}
-                          >
-                            {creditor.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                          <button
-                            onClick={() => handleEdit(creditor)}
-                            className="text-blue-600 hover:text-blue-900 inline-flex items-center gap-1"
-                          >
-                            <Edit2 size={16} />
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDelete(Number(creditor.account_number))}
-                            className="text-red-600 hover:text-red-900 inline-flex items-center gap-1"
-                          >
-                            <Trash2 size={16} />
-                            Delete
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          {/* CreditorsPagination */}
+          <CreditorsPagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+          />
         </>
       )}
     </div>

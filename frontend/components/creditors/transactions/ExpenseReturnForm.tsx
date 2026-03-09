@@ -45,8 +45,8 @@ export default function ExpenseReturnForm({ onComplete }: ExpenseReturnFormProps
 
   const fetchSuppliers = async () => {
     try {
-      const suppliers = await listSuppliers();
-      setSuppliers(suppliers);
+      const suppliers = await listSuppliers() as any;
+      setSuppliers(suppliers.results || []);
     } catch (err) {
       console.error('Error fetching suppliers:', err);
     }
@@ -55,7 +55,9 @@ export default function ExpenseReturnForm({ onComplete }: ExpenseReturnFormProps
   const fetchExpenseCategories = async () => {
     try {
       const categories = await listExpenseCategories();
-      setExpenseCategories(categories);
+      // Handle paginated response - extract results if available, otherwise use as-is
+      const categoriesData = categories?.results ?? categories;
+      setExpenseCategories(Array.isArray(categoriesData) ? categoriesData : []);
     } catch (err) {
       console.error('Error fetching expense categories:', err);
     }
@@ -122,7 +124,7 @@ export default function ExpenseReturnForm({ onComplete }: ExpenseReturnFormProps
         })),
       };
 
-      const response = await creditorsApi.invoices.create(payload);
+      const response = await creditorsApi.invoices.create(payload as any);
 
       if (!response) {
         throw new Error('Failed to create transaction');

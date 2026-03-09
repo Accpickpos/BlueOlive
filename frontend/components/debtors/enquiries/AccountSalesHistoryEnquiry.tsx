@@ -39,7 +39,7 @@ export default function AccountSalesHistoryEnquiry() {
       const params = new URLSearchParams();
       params.append('start_date', startDate);
       params.append('end_date', endDate);
-      const response = await apiRequest(`/api/debtors/${accountNumber}/sales-history/?${params}`);
+      const response = await apiRequest(`/api/v1/debtors/${accountNumber}/sales-history/?${params}`);
       const responseData = (response as any).data || (response as any);
       setAccountData(responseData);
     } catch (err) {

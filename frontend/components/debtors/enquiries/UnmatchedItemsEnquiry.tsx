@@ -29,7 +29,7 @@ export default function UnmatchedItemsEnquiry() {
   const loadUnmatchedItems = async () => {
     try {
       // Load all debtors with their transactions and filter unmatched (Open Item)
-      const response = await apiRequest('/api/debtors/');
+      const response = await apiRequest('/api/v1/debtors/');
       let debtors = (response as any).results || response;
       
       // Ensure debtors is an array
@@ -43,7 +43,7 @@ export default function UnmatchedItemsEnquiry() {
       for (const debtor of debtors) {
         if (debtor.account_category === 'O') { // Open Item type
           try {
-            const txResponse = await apiRequest(`/api/debtors/transactions/?debtor=${debtor.id}`);
+            const txResponse = await apiRequest(`/api/v1/debtors/transactions/?debtor=${debtor.id}`);
             const transactions = (txResponse as any).results || txResponse || [];
             
             // Filter unmatched transactions (those with outstanding balance)

@@ -46,25 +46,23 @@ export default function OutstandingBalanceMaintenance() {
         end_date: endDate || undefined,
       });
       console.log('Outstanding balances response:', data);
-      
       const balanceItems = Array.isArray(data) ? data : (data?.items || []);
       setBalances(balanceItems);
       setTotalOutstanding(data?.total_outstanding || '0.00');
-      
-      // If no data, check if endpoint is available
       if (balanceItems.length === 0) {
         console.warn('No outstanding balance data returned');
       }
     } catch (err: any) {
       console.error('Failed to load balances:', err);
-      // Check if it's a database/table issue
-      if (err.message?.includes('500') || err.message?.includes('table')) {
+      if (err?.response?.status === 404) {
         setError('Outstanding Balance feature is not yet available. The backend endpoint is still being implemented.');
-      } else if (err.response?.status === 404) {
+      } else if (err.message?.includes('500') || err.message?.includes('table')) {
         setError('Outstanding Balance feature is not yet available. The backend endpoint is still being implemented.');
       } else {
         setError('Failed to load outstanding balances');
       }
+      setBalances([]);
+      setTotalOutstanding('0.00');
     } finally {
       setLoading(false);
     }

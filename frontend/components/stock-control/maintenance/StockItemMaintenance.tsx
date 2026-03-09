@@ -5,6 +5,7 @@ import { ArrowLeft, Plus, Search, Edit2, Trash2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuthContext } from '@/lib/AuthContext';
+import { Pagination } from '@/components/ui/pagination';
 
 interface Supplier {
   id: number;
@@ -60,6 +61,9 @@ export default function StockItemMaintenance({ onBack }: StockItemMaintenancePro
   const [loadingDeps, setLoadingDeps] = useState(true);
   const [depsError, setDepsError] = useState<string>('');
   const [vatRate, setVatRate] = useState<number>(15);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [pageSize] = useState(20);
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading: authLoading } = useAuthContext();
 
@@ -131,10 +135,19 @@ export default function StockItemMaintenance({ onBack }: StockItemMaintenancePro
 
   // Fetch stock items
   const { data: stockItems = [], isLoading, error: stockError } = useQuery({
-    queryKey: ['stock-items'],
+    queryKey: ['stock-items', page, pageSize, searchTerm],
     queryFn: async () => {
       try {
-        const response = await api.get('/api/stock-control/stock-items/');
+        const params: Record<string, any> = { page, page_size: pageSize };
+        
+        // Add search parameter if provided
+        if (searchTerm) {
+          params.search = searchTerm;
+        }
+        
+        const response = await api.get('/api/stock-control/stock-items/', { params });
+        // Handle paginated response
+        setTotal(response.data.count || 0);
         return response.data.results || response.data || [];
       } catch (err: any) {
         // If endpoint doesn't exist (404), return empty array instead of failing
@@ -263,10 +276,13 @@ export default function StockItemMaintenance({ onBack }: StockItemMaintenancePro
     mutation.mutate(formData);
   };
 
-  const filteredItems = stockItems.filter((item: StockItem) =>
-    (item.stock_code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-    (item.description?.toLowerCase() || '').includes(searchTerm.toLowerCase())
-  );
+  const totalPages = Math.ceil(total / pageSize);
+
+  // Reset to page 1 when search term changes
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+    setPage(1); // Reset to first page when searching
+  };
 
   return (
     <div className="space-y-6">
@@ -586,7 +602,7 @@ export default function StockItemMaintenance({ onBack }: StockItemMaintenancePro
         <input
           type="text"
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={handleSearchChange}
           placeholder="Search by stock code or description..."
           className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg"
         />
@@ -629,12 +645,12 @@ export default function StockItemMaintenance({ onBack }: StockItemMaintenancePro
               <tr>
                 <td colSpan={10} className="px-6 py-4 text-center text-red-500">Error loading stock items. The backend endpoint may not be configured.</td>
               </tr>
-            ) : filteredItems.length === 0 ? (
+            ) : stockItems.length === 0 ? (
               <tr>
                 <td colSpan={10} className="px-6 py-4 text-center text-gray-500">No stock items found</td>
               </tr>
             ) : (
-              filteredItems.map((item: StockItem) => (
+              stockItems.map((item: StockItem) => (
                 <tr key={item.stock_code} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{item.stock_code}</td>
                   <td className="px-6 py-4 text-gray-600">{item.description}</td>
@@ -664,6 +680,20 @@ export default function StockItemMaintenance({ onBack }: StockItemMaintenancePro
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {total > 0 && (
+        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-white rounded-b-lg">
+          <p className="text-sm text-gray-600">
+            Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, total)} of {total} items
+          </p>
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
+        </div>
+      )}
     </div>
   );
 }

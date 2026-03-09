@@ -84,8 +84,8 @@ export function DebtorPicker({
   };
 
   const handleSelect = (debtor: any) => {
-    // Handle different field name formats from API
-    const accountNum = debtor.account_number || debtor.accountNumber || debtor.id || '';
+    // Handle different field name formats from API (customer_number is the actual field from backend)
+    const accountNum = debtor.customer_number || debtor.account_number || debtor.accountNumber || debtor.id || '';
     const selectData = {
       account_number: accountNum,
       name: debtor.name || debtor.name || '',

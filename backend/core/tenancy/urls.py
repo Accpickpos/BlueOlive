@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     TenantViewSet, 
     ShopViewSet, 
+    ShopConfigurationViewSet,
     current_tenant, 
     tenant_shops, 
     all_shops,
@@ -16,6 +17,7 @@ router = DefaultRouter()
 # Register viewsets with empty prefixes since path() calls set the prefix
 router.register(r'', TenantViewSet, basename='tenant')
 router.register(r'shops', ShopViewSet, basename='shop')
+router.register(r'shop-config', ShopConfigurationViewSet, basename='shop-config')
 
 urlpatterns = [
     # Specific paths MUST come BEFORE the router to avoid being caught as pk

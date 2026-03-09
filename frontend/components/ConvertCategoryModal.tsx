@@ -47,7 +47,7 @@ export default function ConvertCategoryModal({
     setError(null);
 
     try {
-      const result = await apiRequest(`/api/debtors/${debtorId}/convert-category/`, {
+      const result = await apiRequest(`/api/v1/debtors/${debtorId}/convert-category/`, {
         method: 'POST',
         body: {
           new_category: selectedCategory,

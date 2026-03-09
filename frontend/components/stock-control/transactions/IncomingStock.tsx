@@ -65,7 +65,7 @@ export default function IncomingStock({ onBack }: IncomingStockProps) {
     queryKey: ['suppliers'],
     queryFn: async () => {
       try {
-        const response = await api.get('/api/creditors/suppliers/');
+        const response = await api.get('/api/v1/creditors/creditors/');
         console.log('Suppliers response:', response);
         return response.data.results || response.data;
       } catch (error) {

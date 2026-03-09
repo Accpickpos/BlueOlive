@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { login, signup, fetchCSRFToken } from '@/lib/api';
+import { login, signup, fetchCSRFToken, getTenantShops } from '@/lib/api';
 import { useAuthContext } from '@/lib/AuthContext';
+import { setTenant, setShops, setCurrentShop } from '@/lib/shopContext';
 import { ArrowLeft, BarChart3 } from 'lucide-react';
 
 export default function AuthPage() {
@@ -56,6 +57,22 @@ export default function AuthPage() {
       if (response.status === 200) {
         setMessage('Login successful! Redirecting...');
         setMessageType('success');
+        
+        // Store tenant in localStorage for API requests
+        setTenant(loginData.subdomain);
+        
+        // Fetch shops for the tenant and store them
+        try {
+          const shops = await getTenantShops(loginData.subdomain);
+          setShops(shops);
+          
+          // Set the first shop as current if available
+          if (shops.length > 0) {
+            setCurrentShop(shops[0]);
+          }
+        } catch (shopError) {
+          console.warn('Failed to fetch shops after login:', shopError);
+        }
         
         // Refetch user profile to update AuthContext
         await refetch();

@@ -41,8 +41,8 @@ export default function RFCForm({ onComplete }: RFCFormProps) {
 
   const fetchSuppliers = async () => {
     try {
-      const suppliers = await listSuppliers();
-      setSuppliers(suppliers);
+      const suppliers = await listSuppliers() as any;
+      setSuppliers(suppliers.results || []);
     } catch (err) {
       console.error('Error fetching suppliers:', err);
     }

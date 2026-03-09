@@ -15,6 +15,7 @@ from .models import (
     ExpenseCategoryTransaction,
     SupplierPaymentOrder,
     CreditorTransactionLine,
+    OutstandingBalance,
 )
 
 
@@ -32,6 +33,12 @@ class CreditorListSerializer(serializers.ModelSerializer):
             'account_category', 'total_outstanding_balance', 'is_active',
         ]
         read_only_fields = ['id', 'total_outstanding_balance']
+
+    def to_representation(self, instance):
+        """Add alias for total_balance for frontend compatibility."""
+        ret = super().to_representation(instance)
+        ret['total_balance'] = ret['total_outstanding_balance']
+        return ret
 
 
 class CreditorSerializer(serializers.ModelSerializer):
@@ -373,7 +380,7 @@ class SupplierLedgerEntrySerializer(serializers.ModelSerializer):
             'reference', 'grn_number', 'station', 'created_by_user',
         ]
         # Ledger entries are imported — nothing should be edited through the API
-        read_only_fields = '__all__'
+        read_only_fields = []
 
 
 # ============================================================================
@@ -445,7 +452,7 @@ class OpenItemAuditSerializer(serializers.ModelSerializer):
             'transaction_date', 'amount',
             'audit_timestamp', 'audit_notes',
         ]
-        read_only_fields = '__all__'
+        read_only_fields = []
 
 
 # ============================================================================
@@ -633,4 +640,44 @@ class CreditorAgedBalanceSummarySerializer(serializers.ModelSerializer):
             'balance_90_days', 'balance_120_days', 'balance_150_days', 'balance_180_days',
             'total_outstanding_balance',
         ]
-        read_only_fields = '__all__'
+        read_only_fields = []
+
+
+# ============================================================================
+# OUTSTANDING BALANCE CAPTURE
+# ============================================================================
+
+class OutstandingBalanceSerializer(serializers.ModelSerializer):
+    creditor_name = serializers.StringRelatedField(source='creditor', read_only=True)
+
+    class Meta:
+        model  = OutstandingBalance
+        fields = [
+            'id', 'creditor', 'creditor_name',
+            'capture_date', 'as_at_date',
+            'balance', 'balance_current', 'balance_30_days', 'balance_60_days',
+            'balance_90_days', 'balance_120_days', 'balance_150_days', 'balance_180_days',
+            'supplier_account_number', 'transaction_number', 'transaction_date',
+            'original_amount', 'balance_due', 'age_period',
+            'notes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class OutstandingBalanceCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating/updating outstanding balances."""
+
+    class Meta:
+        model  = OutstandingBalance
+        fields = [
+            'creditor', 'capture_date', 'as_at_date',
+            'balance', 'balance_current', 'balance_30_days', 'balance_60_days',
+            'balance_90_days', 'balance_120_days', 'balance_150_days', 'balance_180_days',
+            'supplier_account_number', 'transaction_number', 'transaction_date',
+            'original_amount', 'balance_due', 'age_period', 'notes',
+        ]
+
+    def validate_balance(self, value):
+        if value is None:
+            return 0
+        return value

@@ -28,7 +28,7 @@ export default function PostDatedChequeListingEnquiry() {
     try {
       const params = new URLSearchParams();
       params.append('sort', sortBy === 'account' ? 'account_number' : 'post_date');
-      const response = await apiRequest(`/api/debtors/post-dated-cheques/?${params}`);
+      const response = await apiRequest(`/api/v1/debtors/post-dated-cheques/?${params}`);
       const responseData = (response as any).data || (response as any);
       const pdcs = responseData.results || responseData;
       if (Array.isArray(pdcs)) {

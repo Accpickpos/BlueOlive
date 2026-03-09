@@ -22,6 +22,7 @@ from .models import (
     ExpenseCategoryTransaction,
     SupplierPaymentOrder,
     CreditorTransactionLine,
+    OutstandingBalance,
 )
 from .serializers import (
     CreditorListSerializer, CreditorSerializer, CreditorAgedBalanceSummarySerializer,
@@ -38,6 +39,8 @@ from .serializers import (
     ExpenseCategoryTransactionSerializer,
     SupplierPaymentOrderSerializer,
     CreditorTransactionLineSerializer,
+    OutstandingBalanceSerializer,
+    OutstandingBalanceCreateSerializer,
 )
 
 
@@ -726,3 +729,57 @@ class CreditorTransactionLineViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends    = [DjangoFilterBackend]
     filterset_fields   = ['content_type', 'object_id', 'stock_item', 'expense_category']
+
+
+# ============================================================================
+# OUTSTANDING BALANCE CAPTURE
+# ============================================================================
+
+class OutstandingBalanceViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for managing supplier outstanding balances.
+    
+    Endpoints:
+      GET    /outstanding-balances/           - List all outstanding balances
+      POST   /outstanding-balances/           - Create new outstanding balance
+      GET    /outstanding-balances/{id}/      - Get single outstanding balance
+      PUT    /outstanding-balances/{id}/      - Update outstanding balance
+      PATCH  /outstanding-balances/{id}/      - Partial update
+      DELETE /outstanding-balances/{id}/      - Delete outstanding balance
+      
+    Filtering:
+      ?creditor={id}    - Filter by creditor
+      ?as_at_date={date} - Filter by as_at_date
+    """
+
+    queryset = OutstandingBalance.objects.select_related('creditor').all()
+    permission_classes = [IsAuthenticated]
+    filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields   = ['creditor', 'as_at_date', 'capture_date']
+    search_fields      = ['creditor__name', 'creditor__supplier_number', 'supplier_account_number', 'transaction_number']
+    ordering_fields    = ['capture_date', 'as_at_date', 'balance', 'created_at']
+    ordering           = ['-capture_date', '-as_at_date']
+
+    def get_serializer_class(self):
+        if self.action in ['create', 'update', 'partial_update']:
+            return OutstandingBalanceCreateSerializer
+        return OutstandingBalanceSerializer
+
+    def perform_create(self, serializer):
+        """Set capture_date to today if not provided."""
+        if not serializer.validated_data.get('capture_date'):
+            from django.utils import timezone
+            serializer.save(capture_date=timezone.now().date())
+        else:
+            serializer.save()
+
+    @action(detail=False, methods=['post'], url_path='capture')
+    def capture_balance(self, request):
+        """
+        Capture a new outstanding balance.
+        This is an alias for create that matches the frontend's capture endpoint.
+        """
+        serializer = OutstandingBalanceCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

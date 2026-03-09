@@ -18,6 +18,8 @@ from django.contrib import admin
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import path, include, re_path
 from django.views.generic import TemplateView
+from django.conf import settings
+from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 
@@ -31,7 +33,7 @@ from core.health_checks import health, ready, metrics
 from core.versioning import api_version_info, version_detail
 
 # Import routers from business apps
-from apps.debtors.urls import router as debtors_router
+from apps.debtors.urls import  debtors_router
 from apps.creditors.urls import urlpatterns as creditors_urls
 from apps.cash_book.urls import router as cash_book_router
 from apps.stock_control.urls import router as stock_control_router
@@ -112,3 +114,7 @@ urlpatterns = [
     # path('login/', TemplateView.as_view(template_name='login.html'), name='login'),
     # path('dashboard/', LoginRequiredTemplateView.as_view(template_name='dashboard.html'), name='dashboard'),
 ]
+
+# Serve media files in development
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -1,7 +1,7 @@
 /**
  * useMessaging Hook
  * React Query hooks for messaging functionality
- * Manages conversations, messages, and related operations
+ * Manages conversations, messages, notifications, and related operations
  */
 
 'use client';
@@ -14,6 +14,11 @@ import {
   getMessages,
   sendMessage,
   markConversationRead,
+  uploadAttachment,
+  getNotifications,
+  getUnreadNotificationCount,
+  markNotificationRead,
+  markAllNotificationsRead,
 } from '../messagingApi';
 import type { CreateConversationPayload, SendMessagePayload } from '../types/messaging';
 
@@ -25,6 +30,8 @@ const QUERY_KEYS = {
   conversations: ['conversations'] as const,
   conversation: (id: number) => ['conversations', id] as const,
   messages: (conversationId: number) => ['messages', conversationId] as const,
+  notifications: ['notifications'] as const,
+  unreadCount: ['unreadNotificationCount'] as const,
 };
 
 /**
@@ -79,7 +86,7 @@ export function useCreateConversation() {
 }
 
 /**
- * Hook to send a message to a conversation
+ * Hook to send a message to a conversation (supports file attachments)
  */
 export function useSendMessage(conversationId: number | null) {
   const queryClient = useQueryClient();
@@ -91,6 +98,8 @@ export function useSendMessage(conversationId: number | null) {
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.messages(conversationId) });
         // Also invalidate conversations list to update last_message
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.conversations });
+        // Update unread notification count
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.unreadCount });
       }
     },
   });
@@ -109,6 +118,76 @@ export function useMarkRead(conversationId: number | null) {
       if (conversationId) {
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.messages(conversationId) });
       }
+      // Update notification count
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.unreadCount });
+    },
+  });
+}
+
+/**
+ * Hook to upload attachment to a message
+ */
+export function useUploadAttachment(conversationId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ messageId, files }: { messageId: number; files: File[] }) =>
+      uploadAttachment(conversationId!, messageId, files),
+    onSuccess: () => {
+      if (conversationId) {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.messages(conversationId) });
+      }
+    },
+  });
+}
+
+/**
+ * Hook to fetch notifications
+ */
+export function useNotifications() {
+  return useQuery({
+    queryKey: QUERY_KEYS.notifications,
+    queryFn: getNotifications,
+    refetchInterval: 30000, // Poll every 30s for new notifications
+    staleTime: 5000,
+  });
+}
+
+/**
+ * Hook to get unread notification count
+ */
+export function useUnreadNotificationCount() {
+  return useQuery({
+    queryKey: QUERY_KEYS.unreadCount,
+    queryFn: getUnreadNotificationCount,
+    refetchInterval: 10000, // Poll every 10s
+    staleTime: 5000,
+  });
+}
+
+/**
+ * Hook to mark a notification as read
+ */
+export function useMarkNotificationRead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (notificationId: number) => markNotificationRead(notificationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.notifications });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.unreadCount });
+    },
+  });
+}
+
+/**
+ * Hook to mark all notifications as read
+ */
+export function useMarkAllNotificationsRead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => markAllNotificationsRead(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.notifications });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.unreadCount });
     },
   });
 }
