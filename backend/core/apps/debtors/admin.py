@@ -11,43 +11,43 @@ class DebtorAdmin(admin.ModelAdmin):
     """Admin interface for Debtor model (DMAST table)."""
     
     list_display = [
-        'customer_number', 'name', 'balance_current', 
-        'credit_limit', 'is_active'
+        'dno', 'dname', 'dcrnt', 
+        'dclimit', 'is_active'
     ]
     list_filter = [
-        'block_flag', 'interest_flag', 'account_type', 'is_active', 'created_at'
+        'blockflag', 'dintflag', 'acctype', 'is_active', 'created_at'
     ]
-    search_fields = ['customer_number', 'name', 'short_name', 'phone', 'email']
+    search_fields = ['dno', 'dname', 'dsname', 'dtel', 'email']
     readonly_fields = [
-        'balance_current', 'balance_30_days', 'balance_60_days', 
-        'balance_90_days', 'balance_120_days', 'balance_150_days', 
-        'balance_180_days', 'last_payment_date', 'last_payment_amount',
+        'dcrnt', 'd30', 'd60', 
+        'd90', 'd120', 'd150', 
+        'd180', 'ddatlpd', 'damtlpd',
         'created_at', 'updated_at'
     ]
     
     fieldsets = (
         ('Account Identification', {
-            'fields': ('customer_number', 'name', 'short_name', 'contact_person', 'email')
+            'fields': ('dno', 'dname', 'dsname', 'dcontact', 'email')
         }),
         ('Contact Details', {
-            'fields': ('phone', 'phone2', 'fax')
+            'fields': ('dtel', 'dtel2', 'dfax')
         }),
         ('Postal Address', {
-            'fields': ('address_line1', 'address_line2', 'address_line3', 'postal_code'),
+            'fields': ('dadd1', 'dadd2', 'dadd3', 'dpcode'),
             'classes': ('collapse',)
         }),
         ('Business Details', {
-            'fields': ('area_code', 'account_type', 'price_level', 'payment_terms')
+            'fields': ('darea', 'acctype', 'price', 'terms')
         }),
         ('Discount & Credit', {
             'fields': (
-                'discount_percentage', 'prompt_payment_discount',
-                'credit_limit'
+                'ddiscper', 'pdisc',
+                'dclimit'
             )
         }),
         ('Account Control Flags', {
             'fields': (
-                'block_flag', 'interest_flag', 'positive_balance_only'
+                'blockflag', 'dintflag', 'dposbal'
             )
         }),
         ('Balance & Aging', {

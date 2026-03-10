@@ -158,20 +158,29 @@ class CashBookTransactionService:
         if audit_type not in CashBookTransactionService.AUDIT_TYPE_GL_MAPPING:
             raise ValidationError(f'Invalid audit type: {audit_type}')
         
-        # Generate transaction number (per spec CBTRANO - 6 numeric)
-        transaction_number = CashBookTransactionService._generate_transaction_number(
-            transaction_type, transaction_date
-        )
-        
-        # Calculate VAT and total
-        vat_service = CashBookVATService()
-        tax_amount = vat_service.calculate_tax_amount(
-            value_excl_vat, tax_code, is_inclusive=False
-        )
-        total_incl_vat = vat_service.calculate_total_incl_vat(value_excl_vat, tax_amount)
-        
-        # Create transaction
+        # Generate transaction number and create transaction in a single atomic block
+        # This prevents race conditions in transaction number generation
         with db_transaction.atomic():
+            # Lock rows for this transaction type/date combination to prevent duplicates
+            locked_transactions = CashBookTransaction.objects.select_for_update().filter(
+                transaction_date=transaction_date,
+                transaction_type=transaction_type
+            )
+            # Get count within the lock scope
+            count = locked_transactions.count()
+            
+            # Format: YYYYMMDD + 2-digit sequence (supports up to 99 per day)
+            seq_num = str(count + 1).zfill(2)
+            transaction_number = f"{transaction_date.strftime('%Y%m%d')}{seq_num}"
+            
+            # Calculate VAT and total
+            vat_service = CashBookVATService()
+            tax_amount = vat_service.calculate_tax_amount(
+                value_excl_vat, tax_code, is_inclusive=False
+            )
+            total_incl_vat = vat_service.calculate_total_incl_vat(value_excl_vat, tax_amount)
+            
+            # Create transaction
             txn = CashBookTransaction.objects.create(
                 transaction_type=transaction_type,
                 transaction_number=transaction_number,
@@ -200,7 +209,7 @@ class CashBookTransactionService:
     def _generate_transaction_number(transaction_type: str, txn_date: date) -> str:
         """
         Generate unique transaction number (per spec CBTRANO - 6 numeric)
-        Format: YYYYMMDD-NNNNN (padded to 6 digits)
+        Format: YYYYMMDDNNNN (8-digit date + 4-digit sequence)
         """
         date_part = txn_date.strftime('%Y%m%d')
         
@@ -210,8 +219,8 @@ class CashBookTransactionService:
             transaction_type=transaction_type
         ).count()
         
-        # Format: YYYYMMDD + 2-digit sequence (supports up to 99 per day)
-        seq_num = str(count + 1).zfill(2)
+        # Format: YYYYMMDD + 4-digit sequence (supports up to 9,999 per day)
+        seq_num = str(count + 1).zfill(4)
         return f"{date_part}{seq_num}"
     
     @staticmethod

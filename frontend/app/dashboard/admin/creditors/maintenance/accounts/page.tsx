@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { creditorsApi } from '@/lib/creditorsApi';
 import type { CreditorAccount } from '@/lib/types/creditors';
 import { Card } from '@/components/ui/card';
@@ -13,6 +13,7 @@ import Link from 'next/link';
 export default function CreditorAccountsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
+  const queryClient = useQueryClient();
 
   const { data: accounts, isLoading } = useQuery({
     queryKey: ['creditor-accounts', searchTerm, page],
@@ -23,6 +24,19 @@ export default function CreditorAccountsPage() {
         search: searchTerm || undefined,
       }),
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => creditorsApi.accounts.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['creditor-accounts'] });
+    },
+  });
+
+  const handleDelete = (id: number) => {
+    if (window.confirm('Are you sure you want to delete this creditor account?')) {
+      deleteMutation.mutate(id);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -118,10 +132,7 @@ export default function CreditorAccountsPage() {
                         size="sm"
                         variant="destructive"
                         className="w-8 h-8 p-0"
-                        onClick={() => {
-                          // TODO: Implement delete handler
-                          console.log('Delete:', account.id);
-                        }}
+                        onClick={() => handleDelete(account.id)}
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>

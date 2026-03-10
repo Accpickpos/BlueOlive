@@ -1,382 +1,353 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useAuth } from '@/lib/useAuth';
-import Link from 'next/link';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/api';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import {
-  Package,
-  Plus,
-  CheckCircle,
-  AlertCircle,
-  TrendingDown,
-  Eye,
-  Download,
-  Search,
-  Filter,
-  BarChart3,
-  Layers,
-} from 'lucide-react';
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Plus, Search, Loader2, ArrowLeft, Package } from 'lucide-react';
+import Link from 'next/link';
 
-interface StockConsolidation {
+interface StockItem {
   id: number;
-  consolidation_number: string;
-  consolidation_date: string;
-  items_consolidated: number;
-  total_units: number;
-  total_value: number;
-  status: 'in_progress' | 'completed' | 'cancelled';
-  from_branches?: string;
-  to_branch?: string;
-  created_by: string;
-  completed_date?: string;
+  item_code: string;
+  description: string;
+  barcode?: string;
+  category?: string;
+  current_stock: number;
+  unit_cost: number;
+  unit_price: number;
 }
 
+interface Consolidation {
+  id: number;
+  consolidation_number: string;
+  status: string;
+  source_location: string;
+  target_location: string;
+  total_items: number;
+  created_at: string;
+  completed_at?: string;
+}
+
+const statusColors: Record<string, string> = {
+  PENDING: 'bg-yellow-500',
+  IN_PROGRESS: 'bg-blue-500',
+  COMPLETED: 'bg-green-500',
+  CANCELLED: 'bg-red-500',
+};
+
 export default function StockConsolidationPage() {
-  const { user, isLoading } = useAuth();
-  const [consolidations, setConsolidations] = useState<StockConsolidation[]>([]);
-  const [filteredConsolidations, setFilteredConsolidations] = useState<StockConsolidation[]>([]);
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isItemsDialogOpen, setIsItemsDialogOpen] = useState(false);
+  const [selectedConsolidation, setSelectedConsolidation] = useState<Consolidation | null>(null);
+  const [formData, setFormData] = useState({
+    source_location: '',
+    target_location: '',
+    notes: '',
+  });
 
-  useEffect(() => {
-    const fetchConsolidations = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        // TODO: Replace with actual API call
-        // const response = await fetch(`/api/stock-consolidation?branch=${user?.branch_id}`);
-        // const data = await response.json();
-        // setConsolidations(data);
-        setConsolidations([]);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load stock consolidations');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const { data: consolidations, isLoading } = useQuery({
+    queryKey: ['stock-consolidations', searchTerm],
+    queryFn: () => apiRequest('/api/v1/stock-control/consolidations/'),
+    select: (response) => response.data.results || response.data,
+  });
 
-    if (user?.id) {
-      fetchConsolidations();
-    }
-  }, [user?.id]);
+  const { data: locations } = useQuery({
+    queryKey: ['locations'],
+    queryFn: () => apiRequest('/api/v1/stock-control/locations/'),
+    select: (response) => response.data.results || response.data,
+  });
 
-  // Filter consolidations based on search and status
-  useEffect(() => {
-    let filtered = consolidations;
+  const { data: consolidationItems } = useQuery({
+    queryKey: ['consolidation-items', selectedConsolidation?.id],
+    queryFn: () => apiRequest(`/api/v1/stock-control/consolidations/${selectedConsolidation?.id}/items/`),
+    enabled: !!selectedConsolidation,
+    select: (response) => response.data.results || response.data,
+  });
 
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter((c) => c.status === statusFilter);
-    }
+  const createMutation = useMutation({
+    mutationFn: (data: typeof formData) =>
+      apiRequest('/api/v1/stock-control/consolidations/', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock-consolidations'] });
+      setIsDialogOpen(false);
+      setFormData({ source_location: '', target_location: '', notes: '' });
+    },
+  });
 
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (c) =>
-          c.consolidation_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          c.created_by.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
+  const completeMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest(`/api/v1/stock-control/consolidations/${id}/complete/`, {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock-consolidations'] });
+      setIsItemsDialogOpen(false);
+    },
+  });
 
-    setFilteredConsolidations(filtered);
-  }, [consolidations, searchTerm, statusFilter]);
+  const filteredConsolidations = consolidations?.filter((cons: Consolidation) =>
+    cons.consolidation_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    cons.source_location?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    cons.target_location?.toLowerCase().includes(searchTerm.toLowerCase())
+  ) || [];
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <div className="h-12 w-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-600 font-medium">Loading stock consolidations...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3 text-red-700">
-              <AlertCircle className="h-5 w-5" />
-              <p>Not authenticated</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'in_progress':
-        return 'bg-blue-100 text-blue-800';
-      case 'completed':
-        return 'bg-green-100 text-green-800';
-      case 'cancelled':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return '-';
+    return new Date(dateStr).toLocaleDateString();
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'in_progress':
-        return <Layers className="h-4 w-4" />;
-      case 'completed':
-        return <CheckCircle className="h-4 w-4" />;
-      case 'cancelled':
-        return <AlertCircle className="h-4 w-4" />;
-      default:
-        return null;
+  const handleCreateConsolidation = () => {
+    if (!formData.source_location || !formData.target_location) return;
+    if (formData.source_location === formData.target_location) {
+      alert('Source and destination locations must be different');
+      return;
     }
+    createMutation.mutate(formData);
   };
 
-  const totalConsolidatedValue = consolidations.reduce((sum, c) => sum + c.total_value, 0);
-  const totalUnitsConsolidated = consolidations.reduce((sum, c) => sum + c.total_units, 0);
+  const handleViewItems = (consolidation: Consolidation) => {
+    setSelectedConsolidation(consolidation);
+    setIsItemsDialogOpen(true);
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-start">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Stock Consolidation</h1>
-          <p className="text-gray-600 mt-1">Consolidate and manage stock across branches</p>
-        </div>
-        <Link href="/dashboard/stock-consolidation/create">
-          <Button className="bg-blue-600 hover:bg-blue-700">
-            <Plus className="h-4 w-4 mr-2" />
-            New Consolidation
+      <div className="flex items-center gap-4">
+        <Link href="/dashboard">
+          <Button variant="outline" size="sm">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
           </Button>
         </Link>
+        <div>
+          <h1 className="text-3xl font-bold">Stock Consolidation</h1>
+          <p className="text-gray-600 mt-1">Consolidate stock from multiple locations</p>
+        </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Consolidations</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-gray-900">{consolidations.length}</div>
-            <p className="text-xs text-gray-500 mt-1">All time</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">In Progress</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-blue-600">
-              {consolidations.filter((c) => c.status === 'in_progress').length}
-            </div>
-            <p className="text-xs text-gray-500 mt-1">Active consolidations</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Completed</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-green-600">
-              {consolidations.filter((c) => c.status === 'completed').length}
-            </div>
-            <p className="text-xs text-gray-500 mt-1">Finalized</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Value</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-purple-600">
-              R {totalConsolidatedValue.toLocaleString('en-ZA', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
-            </div>
-            <p className="text-xs text-gray-500 mt-1">Stock value</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Additional Stats */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <BarChart3 className="h-5 w-5" />
-            Consolidation Summary
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Total Units Consolidated</p>
-              <p className="text-2xl font-bold text-gray-900">{totalUnitsConsolidated.toLocaleString()}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Average Units Per Consolidation</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {consolidations.length > 0
-                  ? (totalUnitsConsolidated / consolidations.length).toFixed(0)
-                  : 0}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Average Value Per Consolidation</p>
-              <p className="text-2xl font-bold text-gray-900">
-                R{' '}
-                {consolidations.length > 0
-                  ? (totalConsolidatedValue / consolidations.length).toLocaleString('en-ZA', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })
-                  : '0.00'}
-              </p>
-            </div>
+      <Card className="p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Input
+              placeholder="Search by consolidation number, location..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
           </div>
-        </CardContent>
-      </Card>
+          <Button
+            onClick={() => setIsDialogOpen(true)}
+            className="ml-4"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            New Consolidation
+          </Button>
+        </div>
 
-      {/* Filters and Search */}
-      <Card>
-        <CardHeader>
-          <div className="flex gap-4 items-end">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search by consolidation number, user..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="all">All Statuses</option>
-                <option value="in_progress">In Progress</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
+        {isLoading ? (
+          <div className="text-center py-8">
+            <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+            <p className="text-gray-500 mt-2">Loading consolidations...</p>
           </div>
-        </CardHeader>
-      </Card>
-
-      {/* Consolidations Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Consolidations</CardTitle>
-          <CardDescription>{filteredConsolidations.length} consolidations found</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading && (
-            <div className="text-center py-8">
-              <div className="h-8 w-8 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-2" />
-              <p className="text-slate-600">Loading...</p>
-            </div>
-          )}
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-              {error}
-            </div>
-          )}
-          {!loading && filteredConsolidations.length === 0 && (
-            <div className="text-center py-8 text-gray-500">
-              <Layers className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-              <p>No stock consolidations found</p>
-              <Link href="/dashboard/stock-consolidation/create">
-                <Button variant="outline" className="mt-4">
-                  Create your first consolidation
-                </Button>
-              </Link>
-            </div>
-          )}
-          {!loading && filteredConsolidations.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">
-                      Consolidation #
-                    </th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Date</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Items</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Units</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Value</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Status</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Created By</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredConsolidations.map((consolidation) => (
-                    <tr key={consolidation.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-4 text-sm font-medium text-gray-900">
-                        {consolidation.consolidation_number}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">
-                        {new Date(consolidation.consolidation_date).toLocaleDateString()}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">
-                        {consolidation.items_consolidated}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">
-                        {consolidation.total_units.toLocaleString()}
-                      </td>
-                      <td className="py-3 px-4 text-sm font-medium text-gray-900">
-                        R {consolidation.total_value.toLocaleString('en-ZA', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span
-                          className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(
-                            consolidation.status
-                          )}`}
+        ) : filteredConsolidations.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <Package className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+            <p>No consolidations found. Click "New Consolidation" to create one.</p>
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Consolidation #</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead>Target</TableHead>
+                <TableHead className="text-center">Items</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead>Completed</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredConsolidations.map((cons: Consolidation) => (
+                <TableRow key={cons.id}>
+                  <TableCell className="font-medium">{cons.consolidation_number}</TableCell>
+                  <TableCell>{cons.source_location}</TableCell>
+                  <TableCell>{cons.target_location}</TableCell>
+                  <TableCell className="text-center">{cons.total_items}</TableCell>
+                  <TableCell>
+                    <Badge className={statusColors[cons.status] || 'bg-gray-500'}>
+                      {cons.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{formatDate(cons.created_at)}</TableCell>
+                  <TableCell>{formatDate(cons.completed_at)}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleViewItems(cons)}
+                      >
+                        View Items
+                      </Button>
+                      {cons.status === 'IN_PROGRESS' && (
+                        <Button
+                          size="sm"
+                          onClick={() => completeMutation.mutate(cons.id)}
                         >
-                          {getStatusIcon(consolidation.status)}
-                          {consolidation.status.replace('_', ' ').charAt(0).toUpperCase() +
-                            consolidation.status.slice(1).replace('_', ' ')}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">
-                        {consolidation.created_by}
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex gap-2">
-                          <Link href={`/dashboard/stock-consolidation/${consolidation.id}`}>
-                            <Button size="sm" variant="outline">
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </Link>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
+                          Complete
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </Card>
+
+      {/* Create Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>New Stock Consolidation</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Source Location</label>
+              <Select
+                value={formData.source_location}
+                onValueChange={(value) => setFormData({ ...formData, source_location: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select source location" />
+                </SelectTrigger>
+                <SelectContent>
+                  {locations?.map((loc: any) => (
+                    <SelectItem key={loc.location_code} value={loc.location_code}>
+                      {loc.location_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Target Location</label>
+              <Select
+                value={formData.target_location}
+                onValueChange={(value) => setFormData({ ...formData, target_location: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select target location" />
+                </SelectTrigger>
+                <SelectContent>
+                  {locations?.map((loc: any) => (
+                    <SelectItem key={loc.location_code} value={loc.location_code}>
+                      {loc.location_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Notes</label>
+              <Input
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                placeholder="Optional notes"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateConsolidation}
+              disabled={createMutation.isPending || !formData.source_location || !formData.target_location}
+            >
+              {createMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : null}
+              Create Consolidation
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Items Dialog */}
+      <Dialog open={isItemsDialogOpen} onOpenChange={setIsItemsDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Consolidation Items - {selectedConsolidation?.consolidation_number}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {consolidationItems?.length === 0 ? (
+              <p className="text-gray-500 text-center py-4">No items in this consolidation</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item Code</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="text-right">Quantity</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {consolidationItems?.map((item: any) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-medium">{item.item_code}</TableCell>
+                      <TableCell>{item.description}</TableCell>
+                      <TableCell className="text-right">{item.quantity}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsItemsDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,0 +1,116 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint:
+    name: Lint & Security
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-lint-${{ hashFiles('backend/core/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-lint-
+
+      - name: Install dependencies
+        run: |
+          pip install flake8 black isort bandit safety
+
+      - name: Run Black (check only)
+        run: |
+          black --check --diff backend/core --extend-exclude=migrations,__pycache__
+
+      - name: Run isort (check only)
+        run: |
+          isort --check-only --diff backend/core --extend-skip=migrations,__pycache__
+
+      - name: Run flake8
+        run: |
+          flake8 backend/core --max-line-length=120 --extend-ignore=E501,F401 --exclude=migrations,__pycache__,"$null"
+
+      - name: Run Bandit security scan
+        run: |
+          bandit -r backend/core -x backend/core/migrations --confidence-level medium
+
+      - name: Run Safety check
+        run: |
+          safety check --file=backend/core/requirements.txt || true
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_blueolive
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-test-${{ hashFiles('backend/core/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-test-
+
+      - name: Install dependencies
+        run: |
+          cd backend/core
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-django pytest-xdist
+
+      - name: Run pytest
+        env:
+          DB_NAME: test_blueolive
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_HOST: localhost
+          DB_PORT: 5432
+          SECRET_KEY: test-secret-key-for-ci
+          DEBUG: 'False'
+          ALLOWED_HOSTS: localhost,127.0.0.1
+          CACHE_BACKEND: locmem
+        run: |
+          pytest --cov=. --cov-report=xml --cov-report=term-missing --tb=short -v --ignore=migrations
+
+      - name: Upload coverage to Codecov
+        if: success()
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: blueolive-backend

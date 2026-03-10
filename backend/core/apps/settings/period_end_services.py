@@ -323,12 +323,16 @@ class MonthEndService:
             )
     
     @staticmethod
+    @transaction.atomic
     def _age_debtor_balances() -> Dict:
         """Age debtor balances by one period"""
         try:
             from apps.debtors.services import DebtorService
             
             # Use the existing debtor aging service
+            # Note: DebtorService.age_balances() is already decorated with @transaction.atomic
+            # Additional wrapping here ensures the entire period-end operation can be rolled back
+            # if this step fails
             count = DebtorService.age_balances()
             
             return {
@@ -338,6 +342,7 @@ class MonthEndService:
                 'data': {'debtors_aged': count}
             }
         except Exception as e:
+            logger.error(f"Debtor aging failed: {str(e)}")
             return {
                 'operation': 'debtor_aging',
                 'success': False,

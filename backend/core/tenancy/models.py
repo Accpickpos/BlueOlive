@@ -3,6 +3,8 @@ from django.db import models
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.conf import settings
+from django.utils import timezone
 
 
 class EncryptedCharField(models.CharField):
@@ -27,12 +29,248 @@ class EncryptedCharField(models.CharField):
             return value
         return signing.dumps(str(value))
 
+
+# ============================================================================
+# SUBSCRIPTION MODELS
+# ============================================================================
+
+class SubscriptionPlan(models.Model):
+    """
+    Pricing tiers for tenant subscriptions.
+    Defines what features and limits each plan has.
+    """
+    BILLING_PERIOD_CHOICES = [
+        (30, 'Monthly'),
+        (90, 'Quarterly'),
+        (365, 'Yearly'),
+    ]
+    
+    name = models.CharField(max_length=100, help_text="Plan name (e.g., Starter, Professional)")
+    slug = models.SlugField(unique=True, help_text="URL-friendly plan identifier")
+    description = models.TextField(blank=True, help_text="Plan description")
+    
+    # Pricing
+    price = models.DecimalField(max_digits=10, decimal_places=2, help_text="Price in ZAR")
+    currency = models.CharField(max_length=3, default='ZAR', help_text="Currency code (ISO 4217)")
+    setup_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="One-time setup fee")
+    billing_period_days = models.PositiveIntegerField(choices=BILLING_PERIOD_CHOICES, default=30, help_text="Billing cycle in days")
+    
+    # Limits
+    max_shops = models.PositiveIntegerField(default=1, help_text="Maximum number of shops allowed")
+    max_users = models.PositiveIntegerField(default=5, help_text="Maximum number of users allowed")
+    max_invoices_per_month = models.PositiveIntegerField(default=100, help_text="Maximum invoices per month")
+    
+    # Features (JSON field for feature flags)
+    features = models.JSONField(
+        default=dict,
+        help_text="Feature flags as JSON (e.g., {\"pos\": true, \"debtors\": true})"
+    )
+    
+    # Settings
+    is_active = models.BooleanField(default=True, help_text="Whether this plan is available for new subscriptions")
+    is_trial = models.BooleanField(default=False, help_text="Is this a free trial plan?")
+    sort_order = models.PositiveIntegerField(default=0, help_text="Display order in pricing tables")
+    
+    # Stripe Integration
+    stripe_price_id = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Stripe price ID for this plan (cached after first use)"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'subscription_plans'
+        verbose_name = 'Subscription Plan'
+        verbose_name_plural = 'Subscription Plans'
+        ordering = ['sort_order', 'price']
+    
+    def __str__(self):
+        return f"{self.name} (R{self.price}/{self.get_billing_period_days_display()})"
+
+
+class Subscription(models.Model):
+    """
+    Active subscription for a tenant.
+    Tracks the subscription status, billing period, and limits.
+    """
+    STATUS_CHOICES = [
+        ('TRIAL', 'Trial'),
+        ('ACTIVE', 'Active'),
+        ('PAST_DUE', 'Past Due'),
+        ('CANCELLED', 'Cancelled'),
+        ('EXPIRED', 'Expired'),
+        ('SUSPENDED', 'Suspended'),
+    ]
+    
+    tenant = models.OneToOneField(
+        'Tenant',
+        on_delete=models.CASCADE,
+        related_name='subscription'
+    )
+    plan = models.ForeignKey(
+        SubscriptionPlan,
+        on_delete=models.PROTECT,
+        related_name='subscriptions'
+    )
+    
+    # Status
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='TRIAL')
+    
+    # Dates
+    start_date = models.DateField(help_text="Subscription start date")
+    end_date = models.DateField(help_text="Subscription end date (current billing period)")
+    trial_end_date = models.DateField(null=True, blank=True, help_text="Free trial end date")
+    cancelled_at = models.DateTimeField(null=True, blank=True, help_text="When subscription was cancelled")
+    
+    # Auto-renewal
+    auto_renew = models.BooleanField(default=True, help_text="Auto-renew subscription at end of period")
+    
+    # Usage tracking
+    current_period_start = models.DateField(null=True, blank=True)
+    current_period_end = models.DateField(null=True, blank=True)
+    invoices_this_period = models.PositiveIntegerField(default=0)
+    
+    # Gateway integration
+    gateway_customer_id = models.CharField(max_length=200, blank=True, help_text="Payment gateway customer ID")
+    gateway_subscription_id = models.CharField(max_length=200, blank=True, help_text="Payment gateway subscription ID")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'subscriptions'
+        verbose_name = 'Subscription'
+        verbose_name_plural = 'Subscriptions'
+    
+    def __str__(self):
+        return f"{self.tenant.name} - {self.plan.name} ({self.get_status_display()})"
+    
+    @property
+    def is_active(self):
+        """Check if subscription is currently active (not expired, not cancelled)."""
+        return self.status in ['TRIAL', 'ACTIVE', 'PAST_DUE']
+    
+    @property
+    def is_trial(self):
+        """Check if subscription is in trial period."""
+        if self.status == 'TRIAL' and self.trial_end_date:
+            return timezone.now().date() <= self.trial_end_date
+        return False
+    
+    @property
+    def is_expired(self):
+        """Check if subscription has expired."""
+        return timezone.now().date() > self.end_date
+    
+    @property
+    def days_remaining(self):
+        """Days remaining in current billing period."""
+        if self.is_expired:
+            return 0
+        delta = self.end_date - timezone.now().date()
+        return max(0, delta.days)
+    
+    @property
+    def can_access(self):
+        """Check if tenant can access the system based on subscription."""
+        if self.status == 'SUSPENDED':
+            return False
+        if self.status == 'EXPIRED':
+            return False
+        return True
+
+
+class SubscriptionPayment(models.Model):
+    """
+    Payment records for tenant subscriptions.
+    Tracks all payment attempts and their status.
+    """
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('PROCESSING', 'Processing'),
+        ('SUCCEEDED', 'Succeeded'),
+        ('FAILED', 'Failed'),
+        ('REFUNDED', 'Refunded'),
+        ('VOIDED', 'Voided'),
+    ]
+    
+    PAYMENT_METHOD_CHOICES = [
+        ('CREDIT_CARD', 'Credit Card'),
+        ('DEBIT_CARD', 'Debit Card'),
+        ('EFT', 'Electronic Funds Transfer'),
+        ('PAYFAST', 'PayFast'),
+        ('STRIPE', 'Stripe'),
+        ('YOCO', 'Yoco'),
+        ('MANUAL', 'Manual Payment'),
+    ]
+    
+    subscription = models.ForeignKey(
+        Subscription,
+        on_delete=models.CASCADE,
+        related_name='payments'
+    )
+    
+    # Amount
+    amount = models.DecimalField(max_digits=10, decimal_places=2, help_text="Payment amount in ZAR")
+    currency = models.CharField(max_length=3, default='ZAR')
+    
+    # Payment details
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    
+    # Gateway reference
+    gateway_payment_id = models.CharField(max_length=200, blank=True, help_text="Payment gateway transaction ID")
+    gateway_reference = models.CharField(max_length=200, blank=True, help_text="Payment gateway reference")
+    gateway_response = models.JSONField(default=dict, blank=True, help_text="Full gateway response")
+    
+    # Dates
+    paid_at = models.DateTimeField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
+    
+    # Description
+    description = models.CharField(max_length=500, blank=True)
+    
+    # Invoice
+    invoice_number = models.CharField(max_length=50, blank=True, help_text="Invoice/receipt number")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'subscription_payments'
+        verbose_name = 'Subscription Payment'
+        verbose_name_plural = 'Subscription Payments'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"R{self.amount} - {self.get_status_display()} - {self.subscription.tenant.name}"
+
+
 class Tenant(models.Model):
     name = models.CharField(max_length=200, unique=True)  # Company name
     slug = models.SlugField(unique=True)
     subdomain = models.CharField(max_length=100, unique=True, default='default', help_text="Subdomain for tenant access, e.g., 'tenant1'")
+    
+    # Company Information (tenant-level)
+    company_name = models.CharField(max_length=200, blank=True, help_text="Company name for documents")
+    company_address = models.TextField(blank=True, help_text="Company address for documents")
     phone = models.CharField(max_length=20, default='')
     email = models.EmailField(max_length=150, default='')
+    vat_number = models.CharField(max_length=50, blank=True, help_text="VAT registration number")
+    registration_number = models.CharField(max_length=50, blank=True, help_text="Company registration number")
+    
+    # Financial Settings (tenant-level)
+    currency_symbol = models.CharField(max_length=10, default='R', help_text="Currency symbol")
+    currency_code = models.CharField(max_length=3, default='ZAR', help_text="Currency code (ISO 4217)")
+    decimal_places = models.PositiveIntegerField(default=2, help_text="Decimal places for currency")
+    default_interest_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0, help_text="Default interest rate (%)")
+    charge_interest_on_overdue = models.BooleanField(default=False, help_text="Charge interest on overdue accounts")
+    financial_year_start_month = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1), MaxValueValidator(12)], help_text="Month the financial year starts (1-12)")
+    
+    # Database settings
     db_name = models.CharField(max_length=200)
     db_user = models.CharField(max_length=200, default='postgres')
     db_password = EncryptedCharField(max_length=200)  # Encrypted field
@@ -41,6 +279,24 @@ class Tenant(models.Model):
     is_active = models.BooleanField(default=True, help_text="Whether this tenant is active")
     created_at = models.DateTimeField(auto_now_add=True)
     tenant_control = models.BooleanField(default=True)
+    
+    # Payment Gateway Settings
+    preferred_gateway = models.CharField(
+        max_length=20,
+        blank=True,
+        choices=[('payfast', 'PayFast'), ('stripe', 'Stripe')],
+        help_text="Preferred payment gateway for this tenant"
+    )
+    country = models.CharField(
+        max_length=2,
+        blank=True,
+        help_text="ISO 2-letter country code (e.g., ZA, US) - used for payment gateway selection"
+    )
+    stripe_customer_id = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Stripe customer ID for this tenant"
+    )
 
     class Meta:
         verbose_name = "Tenant"
@@ -87,6 +343,12 @@ class Shop(models.Model):
         blank=True,
         null=True,
         help_text="Shop phone number"
+    )
+    logo = models.ImageField(
+        upload_to='shop_logos/',
+        blank=True,
+        null=True,
+        help_text="Shop logo for invoices and PDFs"
     )
     schema_name = models.CharField(max_length=100, unique=True)
     subdomain = models.CharField(max_length=100, blank=True, help_text="Subdomain for shop access, e.g., 'downtown'")

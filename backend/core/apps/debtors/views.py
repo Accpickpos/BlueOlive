@@ -42,9 +42,9 @@ class DebtorViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasDebtorPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = DebtorFilter
-    search_fields = ['customer_number', 'name', 'short_name', 'contact_person']
-    ordering_fields = ['customer_number', 'name', 'balance_current', 'created_at']
-    ordering = ['customer_number']
+    search_fields = ['dno', 'dname', 'dsname', 'dcontact']
+    ordering_fields = ['dno', 'dname', 'dcrnt', 'created_at']
+    ordering = ['dno']
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -100,11 +100,11 @@ class DebtorViewSet(viewsets.ModelViewSet):
             blocked_debtors = debtors.filter(block_flag__in=['1', '2', '3', 'Y']).count()
 
             aggregates = debtors.aggregate(
-                total_balance=Sum('balance_current'),
-                current_balance=Sum('balance_current'),
-                d30_total=Sum('balance_30_days'),
-                d60_total=Sum('balance_60_days'),
-                d90_total=Sum('balance_90_days'),
+                total_balance=Sum('dcrnt'),
+                current_balance=Sum('dcrnt'),
+                d30_total=Sum('d30'),
+                d60_total=Sum('d60'),
+                d90_total=Sum('d90'),
             )
 
             overdue_120_plus = sum([
@@ -172,22 +172,22 @@ class DebtorViewSet(viewsets.ModelViewSet):
             debtor = self.get_object()
             balance_data = {
                 'customer_number': debtor.customer_number,
-                'name': debtor.name,
-                'credit_limit': float(debtor.credit_limit),
+                'name': debtor.dname,
+                'credit_limit': float(debtor.dclimit),
                 'balance_breakdown': {
-                    'current': float(debtor.balance_current),
-                    '30_days': float(debtor.balance_30_days),
-                    '60_days': float(debtor.balance_60_days),
-                    '90_days': float(debtor.balance_90_days),
-                    '120_days': float(debtor.balance_120_days),
-                    '150_days': float(debtor.balance_150_days),
-                    '180_days': float(debtor.balance_180_days),
+                    'current': float(debtor.dcrnt),
+                    '30_days': float(debtor.d30),
+                    '60_days': float(debtor.d60),
+                    '90_days': float(debtor.d90),
+                    '120_days': float(debtor.d120),
+                    '150_days': float(debtor.d150),
+                    '180_days': float(debtor.d180),
                 },
-                'total_balance': float(debtor.get_total_balance()),
-                'available_credit': float(debtor.credit_limit - debtor.get_total_balance()),
+                'total_balance': float(debtor.total_balance),
+                'available_credit': float(debtor.dclimit - debtor.total_balance),
                 'credit_utilization_pct': float(
-                    (debtor.get_total_balance() / debtor.credit_limit * 100)
-                    if debtor.credit_limit > 0 else 0
+                    (debtor.total_balance / debtor.dclimit * 100)
+                    if debtor.dclimit > 0 else 0
                 ),
                 'is_blocked': debtor.is_blocked(),
                 'is_active': debtor.is_active,
@@ -214,13 +214,13 @@ class DebtorViewSet(viewsets.ModelViewSet):
             debtors = self.get_queryset()
 
             aggregates = debtors.aggregate(
-                total_current=Sum('balance_current'),
-                total_30=Sum('balance_30_days'),
-                total_60=Sum('balance_60_days'),
-                total_90=Sum('balance_90_days'),
-                total_120=Sum('balance_120_days'),
-                total_150=Sum('balance_150_days'),
-                total_180=Sum('balance_180_days'),
+                total_current=Sum('dcrnt'),
+                total_30=Sum('d30'),
+                total_60=Sum('d60'),
+                total_90=Sum('d90'),
+                total_120=Sum('d120'),
+                total_150=Sum('d150'),
+                total_180=Sum('d180'),
             )
 
             total_balance = sum([
@@ -267,22 +267,22 @@ class DebtorViewSet(viewsets.ModelViewSet):
             debtors = self.get_queryset()
 
             if sort_by == 'balance':
-                debtors = debtors.order_by('-balance_current')[:limit]
+                debtors = debtors.order_by('-dcrnt')[:limit]
             elif sort_by == 'overdue':
                 debtors = debtors.annotate(
-                    overdue=F('balance_30_days') + F('balance_60_days') + F('balance_90_days') + F('balance_120_days') + F('balance_150_days') + F('balance_180_days')
+                    overdue=F('d30') + F('d60') + F('d90') + F('d120') + F('d150') + F('d180')
                 ).order_by('-overdue')[:limit]
             else:
-                debtors = debtors.order_by('-sales_year')[:limit]
+                debtors = debtors.order_by('-dsalesy')[:limit]
 
             results = [{
                 'id': d.id,
-                'customer_number': d.customer_number,
-                'name': d.name,
-                'balance_current': float(d.balance_current),
+                'customer_number': d.dno,
+                'name': d.dname,
+                'balance_current': float(d.dcrnt),
                 'total_balance': float(d.total_balance),
                 'overdue_balance': float(d.overdue_balance),
-                'credit_limit': float(d.credit_limit),
+                'credit_limit': float(d.dclimit),
             } for d in debtors]
 
             return Response(results)
@@ -346,8 +346,8 @@ class DebtorViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            debtor.account_type = new_category
-            debtor.save(update_fields=['account_type'])
+            debtor.acctype = new_category
+            debtor.save(update_fields=['acctype'])
 
             return Response({
                 'status': 'success',

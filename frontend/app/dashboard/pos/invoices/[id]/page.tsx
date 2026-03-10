@@ -7,7 +7,18 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Printer, Share2, Loader2 } from 'lucide-react';
+import { ArrowLeft, Printer, Share2, Loader2, Mail } from 'lucide-react';
+import { printInvoice, emailInvoice } from '@/lib/printUtils';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export default function InvoiceDetail() {
   const { user, isLoading: authLoading } = useAuth();
@@ -18,6 +29,10 @@ export default function InvoiceDetail() {
   const [invoice, setInvoice] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailAddress, setEmailAddress] = useState('');
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
 
   const invoiceId = params?.id as string;
 
@@ -39,6 +54,30 @@ export default function InvoiceDetail() {
       setError(err.message || 'Failed to load invoice');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleEmailInvoice = async () => {
+    if (!emailAddress || !invoice) return;
+    
+    setSendingEmail(true);
+    try {
+      const result = await emailInvoice(invoice, emailAddress);
+      if (result.success) {
+        setEmailSent(true);
+        setTimeout(() => {
+          setEmailDialogOpen(false);
+          setEmailSent(false);
+          setEmailAddress('');
+        }, 2000);
+      } else {
+        alert(result.message);
+      }
+    } catch (err: any) {
+      console.error('Error sending email:', err);
+      alert(err.message || 'Failed to send email');
+    } finally {
+      setSendingEmail(false);
     }
   };
 
@@ -119,11 +158,11 @@ export default function InvoiceDetail() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => printInvoice(invoice)}>
               <Printer className="h-4 w-4 mr-2" />
               Print
             </Button>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => setEmailDialogOpen(true)}>
               <Share2 className="h-4 w-4 mr-2" />
               Share
             </Button>
@@ -237,6 +276,59 @@ export default function InvoiceDetail() {
           </Card>
         )}
       </div>
+
+      {/* Email Dialog */}
+      <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Email Invoice</DialogTitle>
+            <DialogDescription>
+              Enter the email address to send this invoice to.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="email" className="text-right">
+                Email
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="customer@example.com"
+                value={emailAddress}
+                onChange={(e) => setEmailAddress(e.target.value)}
+                className="col-span-3"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleEmailInvoice} 
+              disabled={!emailAddress || sendingEmail}
+            >
+              {sendingEmail ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Sending...
+                </>
+              ) : emailSent ? (
+                <>
+                  <Mail className="h-4 w-4 mr-2" />
+                  Sent!
+                </>
+              ) : (
+                <>
+                  <Mail className="h-4 w-4 mr-2" />
+                  Send Email
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
