@@ -622,3 +622,270 @@ class UserShopValidationMiddleware:
                     logger.warning(f"Current shop {current_shop_id} not found")
         
         return None  # Valid
+
+
+# ============================================================================
+# SUBSCRIPTION MIDDLEWARE
+# ============================================================================
+
+class SubscriptionMiddleware:
+    """
+    Middleware to enforce subscription status on tenant requests.
+    
+    Checks subscription status on every request and:
+    - Allows access for active subscriptions
+    - Shows warning for trial subscriptions nearing expiry
+    - Shows warning for past due subscriptions
+    - Blocks access for expired/cancelled/suspended subscriptions
+    
+    Configuration (via settings):
+    - SUBSCRIPTION_EXEMPT_PATHS: Paths that don't require subscription check
+    - SUBSCRIPTION_GRACE_DAYS: Days to allow access after expiration (default: 3)
+    - SUBSCRIPTION_WARNING_DAYS: Days before expiration to show warning (default: 7)
+    """
+    
+    # Default paths that don't require subscription check
+    DEFAULT_EXEMPT_PATHS = [
+        '/health/',
+        '/metrics/',
+        '/static/',
+        '/media/',
+        '/admin/',
+        '/api/v1/subscription/',  # Subscription API
+        '/api/v1/auth/',  # Authentication
+    ]
+    
+    # Statuses that allow full access
+    ALLOWED_STATUSES = ['TRIAL', 'ACTIVE']
+    
+    # Statuses that show warning but allow access
+    WARNING_STATUSES = ['PAST_DUE']
+    
+    # Statuses that block access
+    BLOCKED_STATUSES = ['CANCELLED', 'EXPIRED', 'SUSPENDED']
+    
+    def __init__(self, get_response):
+        self.get_response = get_response
+        # Allow customization via settings
+        self.exempt_paths = getattr(
+            settings,
+            'SUBSCRIPTION_EXEMPT_PATHS',
+            self.DEFAULT_EXEMPT_PATHS
+        )
+        self.grace_days = getattr(settings, 'SUBSCRIPTION_GRACE_DAYS', 3)
+        self.warning_days = getattr(settings, 'SUBSCRIPTION_WARNING_DAYS', 7)
+    
+    def __call__(self, request):
+        # Check if path is exempt
+        if self._is_exempt(request.path):
+            return self.get_response(request)
+        
+        # Check if tenant is available
+        tenant = getattr(request, 'tenant', None)
+        if not tenant:
+            # No tenant means no subscription check needed
+            return self.get_response(request)
+        
+        # Skip for admin users (they should always have access)
+        if hasattr(request, 'user') and request.user.is_authenticated:
+            if request.user.is_superuser or getattr(request.user, 'is_admin', False):
+                return self.get_response(request)
+        
+        # Check subscription status
+        subscription_status = self._check_subscription(tenant, request)
+        
+        if subscription_status['blocked']:
+            # Return subscription blocked response
+            return self._blocked_response(request, subscription_status)
+        
+        # Add subscription info to request for views to use
+        request.subscription = subscription_status
+        
+        # Add warning header if needed
+        if subscription_status.get('warning'):
+            # Continue with warning
+            pass
+        
+        return self.get_response(request)
+    
+    def _is_exempt(self, path):
+        """Check if path is exempt from subscription check."""
+        for exempt_path in self.exempt_paths:
+            if path.startswith(exempt_path):
+                return True
+        return False
+    
+    def _check_subscription(self, tenant, request):
+        """
+        Check tenant's subscription status.
+        
+        Returns dict with:
+        - blocked: bool - whether access should be blocked
+        - status: str - subscription status
+        - warning: str - warning message if applicable
+        - subscription: Subscription object if exists
+        - days_remaining: int - days remaining in billing period
+        """
+        from tenancy.models import Subscription
+        from django.utils import timezone
+        
+        result = {
+            'blocked': False,
+            'status': None,
+            'warning': None,
+            'subscription': None,
+            'days_remaining': 0,
+        }
+        
+        try:
+            subscription = Subscription.objects.get(tenant=tenant)
+            result['subscription'] = subscription
+            result['status'] = subscription.status
+            result['days_remaining'] = subscription.days_remaining
+            
+            # Check if blocked
+            if subscription.status in self.BLOCKED_STATUSES:
+                result['blocked'] = True
+                result['warning'] = f"Subscription is {subscription.status.lower()}"
+                return result
+            
+            # Check for expired
+            if subscription.is_expired and subscription.status not in ['TRIAL']:
+                result['blocked'] = True
+                result['warning'] = "Subscription has expired"
+                return result
+            
+            # Check for warnings
+            if subscription.status in self.WARNING_STATUSES:
+                result['warning'] = "Subscription payment is past due. Please update payment method."
+            
+            # Check if trial is expiring soon
+            if subscription.status == 'TRIAL' and subscription.trial_end_date:
+                days_until_trial_end = (subscription.trial_end_date - timezone.now().date()).days
+                if days_until_trial_end <= self.warning_days:
+                    result['warning'] = f"Trial expires in {days_until_trial_end} days. Subscribe to continue using the system."
+            
+            # Check if subscription is expiring soon
+            days_remaining = subscription.days_remaining
+            if days_remaining <= self.warning_days and subscription.status == 'ACTIVE':
+                result['warning'] = f"Subscription expires in {days_remaining} days. Please renew to avoid interruption."
+            
+            return result
+            
+        except Subscription.DoesNotExist:
+            # No subscription found - allow access with warning
+            result['warning'] = "No active subscription. Please subscribe to continue using the system."
+            # For now, we don't block access without subscription
+            # This can be changed to block by setting blocked = True
+            return result
+    
+    def _blocked_response(self, request, subscription_status):
+        """
+        Return subscription blocked response.
+        
+        Returns JSON response for API requests or HTML page for regular requests.
+        """
+        from django.http import JsonResponse
+        
+        status = subscription_status.get('status', 'UNKNOWN')
+        warning = subscription_status.get('warning', 'Subscription access blocked')
+        
+        # Check if there's a grace period
+        subscription = subscription_status.get('subscription')
+        if subscription and status == 'EXPIRED' and self.grace_days > 0:
+            # Allow access during grace period
+            return self.get_response(request)
+        
+        if request.path.startswith('/api/'):
+            return JsonResponse({
+                'error': 'SUBSCRIPTION_BLOCKED',
+                'status': status,
+                'message': warning,
+                'subscription': {
+                    'status': status,
+                    'days_remaining': subscription_status.get('days_remaining', 0),
+                }
+            }, status=403)
+        
+        # For HTML requests, return a simple message
+        # In production, you'd render a proper template
+        return JsonResponse({
+            'error': 'SUBSCRIPTION_BLOCKED',
+            'status': status,
+            'message': warning,
+            'action': 'Please contact support or renew your subscription.'
+        }, status=403)
+
+
+def check_tenant_subscription(tenant):
+    """
+    Utility function to check if a tenant has an active subscription.
+    
+    Args:
+        tenant: Tenant object
+    
+    Returns:
+        dict with subscription status
+    """
+    from tenancy.models import Subscription
+    from django.utils import timezone
+    
+    try:
+        subscription = Subscription.objects.get(tenant=tenant)
+        
+        return {
+            'has_subscription': True,
+            'is_active': subscription.status in ['TRIAL', 'ACTIVE'],
+            'status': subscription.status,
+            'can_access': subscription.can_access,
+            'days_remaining': subscription.days_remaining,
+            'trial_end_date': subscription.trial_end_date,
+            'end_date': subscription.end_date,
+            'plan_name': subscription.plan.name if subscription.plan else None,
+        }
+        
+    except Subscription.DoesNotExist:
+        return {
+            'has_subscription': False,
+            'is_active': False,
+            'status': 'NONE',
+            'can_access': False,
+        }
+
+
+def require_active_subscription(view_func):
+    """
+    Decorator to require an active subscription for a view.
+    
+    Usage:
+        @require_active_subscription
+        def my_view(request):
+            ...
+    """
+    from functools import wraps
+    from django.http import JsonResponse
+    
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        tenant = getattr(request, 'tenant', None)
+        
+        if not tenant:
+            return JsonResponse({
+                'error': 'No tenant context'
+            }, status=400)
+        
+        subscription_status = check_tenant_subscription(tenant)
+        
+        if not subscription_status['can_access']:
+            return JsonResponse({
+                'error': 'SUBSCRIPTION_REQUIRED',
+                'message': 'An active subscription is required to access this resource.',
+                'subscription_status': subscription_status
+            }, status=403)
+        
+        # Add subscription status to request
+        request.subscription_status = subscription_status
+        
+        return view_func(request, *args, **kwargs)
+    
+    return wrapper

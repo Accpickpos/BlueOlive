@@ -28,8 +28,8 @@ class DebtorService:
             'days_120': debtor.d120,
             'days_150': debtor.d150,
             'days_180': debtor.d180,
-            'total_balance': debtor.get_total_balance(),
-            'overdue_balance': debtor.get_overdue_balance(),
+            'total_balance': debtor.total_balance,
+            'overdue_balance': debtor.overdue_balance,
             'ddatlpd': debtor.ddatlpd,
             'damtlpd': debtor.damtlpd,
         }
@@ -113,7 +113,10 @@ class DebtorService:
         if dtgst is None:
             dtgst = Decimal('0.00')
         
-        # Create sequential transaction number
+        # Lock the debtor row to prevent concurrent transaction number generation
+        debtor = Debtor.objects.select_for_update().get(pk=debtor.pk)
+        
+        # Create sequential transaction number (within lock to prevent duplicates)
         last_tran = DebtorTransaction.objects.filter(dno=debtor).order_by('-dtrano').first()
         new_dtrano = str(int(last_tran.dtrano) + 1).zfill(6) if last_tran else '000001'
         
@@ -376,7 +379,7 @@ class DebtorService:
         Returns:
             dict: Credit limit status
         """
-        total_balance = debtor.get_total_balance()
+        total_balance = debtor.total_balance
         credit_limit = debtor.dclimit
         
         over_limit = total_balance > credit_limit

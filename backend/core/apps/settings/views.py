@@ -11,11 +11,14 @@ from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q
 from django.utils import timezone
 from datetime import datetime
 from django.core.management import call_command
+from django.core.mail import send_mail
+from django.conf import settings
 from io import StringIO
 
 from .models import (
@@ -1058,4 +1061,86 @@ class APIKeyViewSet(viewsets.ModelViewSet):
             return Response(
                 {'status': 'error', 'message': 'API key not found'},
                 status=status.HTTP_401_UNAUTHORIZED
+            )
+
+
+class EmailDocumentView(APIView):
+    """
+    API View for sending documents via email.
+    
+    Accepts HTML content and sends it as an email with optional PDF attachment.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        """
+        Send a document via email.
+        
+        Request body:
+        {
+            "document_type": "invoice" | "receipt" | "statement" | "report",
+            "document_id": number,
+            "document_number": string,
+            "recipient_email": string,
+            "html_content": string,
+            "subject": string (optional, defaults to "Document from {company}")
+        }
+        """
+        from tenancy.models import Tenant
+        
+        # Get tenant from request
+        tenant = getattr(request, 'tenant', None)
+        if not tenant:
+            return Response(
+                {'error': 'Tenant not found'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Extract data from request
+        document_type = request.data.get('document_type')
+        document_number = request.data.get('document_number')
+        recipient_email = request.data.get('recipient_email')
+        html_content = request.data.get('html_content')
+        subject = request.data.get('subject', f'{document_type.title()} {document_number}')
+        
+        # Validate required fields
+        if not all([document_type, document_number, recipient_email, html_content]):
+            return Response(
+                {'error': 'Missing required fields: document_type, document_number, recipient_email, html_content'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate email format
+        import re
+        email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_regex, recipient_email):
+            return Response(
+                {'error': 'Invalid email address'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get sender email from tenant or use default
+        sender_email = tenant.email or getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@example.com')
+        sender_name = tenant.company_name or 'Your Company'
+        
+        try:
+            # Send the email
+            send_mail(
+                subject=subject,
+                message=f'Please find attached your {document_type}: {document_number}',
+                from_email=f'{sender_name} <{sender_email}>',
+                recipient_list=[recipient_email],
+                html_message=html_content,
+                fail_silently=False,
+            )
+            
+            return Response({
+                'success': True,
+                'message': f'{document_type.title()} sent to {recipient_email}'
+            })
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to send email: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

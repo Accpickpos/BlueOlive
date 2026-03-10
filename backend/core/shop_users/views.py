@@ -137,7 +137,7 @@ class TenantTokenView(APIView):
                     "username": user.username,
                     "role": getattr(user, 'role', 'USER'),
                     "is_superuser": getattr(user, 'is_superuser', False),
-                    "is_admin": getattr(user, 'role', '') == 'ADMIN' or getattr(user, 'is_superuser', False),
+                    "is_admin": getattr(user, 'role', '') in ['ADMIN', 'MANAGER'] or getattr(user, 'is_superuser', False),
                 }
             })
 
@@ -342,7 +342,7 @@ class CurrentUserView(APIView):
                 'last_name': user.last_name,
                 'role': getattr(user, 'role', 'USER'),
                 'is_superuser': user.is_superuser,
-                'is_admin': getattr(user, 'role', '') == 'ADMIN' or user.is_superuser,
+                'is_admin': getattr(user, 'role', '') in ['ADMIN', 'MANAGER'] or user.is_superuser,
                 'tenant': {
                     'id': tenant.id if tenant else None,
                     'name': tenant.name if tenant else None,
@@ -585,6 +585,11 @@ class SignupView(APIView):
 class ShopUserViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing shop users.
+    
+    Permissions:
+    - ADMIN: Can view, create, edit, delete all users
+    - MANAGER: Can view all users, create users, edit/delete only users they created
+    - Others: Can only view users (read-only)
     """
     queryset = ShopUser.objects.all()
     serializer_class = ShopUserSerializer
@@ -602,19 +607,66 @@ class ShopUserViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         """
-        Automatically inherit role from creator if they are ADMIN.
-        This ensures new users get admin privileges when created by an admin.
+        Create a new user. Sets created_by to current user.
+        MANAGERs can create users but with restrictions (cannot create ADMIN users).
         """
         # Get the current user (creator)
         creator = self.request.user
         
-        # Check if creator is ADMIN - inherit their role
-        if getattr(creator, 'role', None) == 'ADMIN' or getattr(creator, 'is_superuser', False):
-            # Admin users create other admins automatically
-            serializer.save(role='ADMIN', is_staff=True)
+        # Get the role from the validated data (if provided)
+        role = serializer.validated_data.get('role')
+        
+        # If role is already provided in request, validate it
+        if role:
+            # Check if creator has permission to assign this role
+            creator_role = getattr(creator, 'role', None)
+            creator_is_superuser = getattr(creator, 'is_superuser', False)
+            
+            # MANAGERs cannot create ADMIN users
+            if role == 'ADMIN' and creator_role == 'MANAGER' and not creator_is_superuser:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("MANAGER users cannot create ADMIN users.")
+            
+            # Non-admin/non-manager users can only create CASHIER users
+            if creator_role not in ('ADMIN', 'MANAGER') and not creator_is_superuser:
+                if role != 'CASHIER':
+                    from rest_framework.exceptions import PermissionDenied
+                    raise PermissionDenied("Regular users can only create CASHIER users.")
+            
+            serializer.save(created_by=creator)
+        # If no role specified, non-admin creators create CASHIER users
+        elif getattr(creator, 'role', None) not in ('ADMIN', 'MANAGER') and not getattr(creator, 'is_superuser', False):
+            serializer.save(role='CASHIER', created_by=creator)
         else:
-            # Non-admins create users with default role (CASHIER)
-            serializer.save()
+            # Admin and Manager users - use default (CASHIER) if no role specified
+            serializer.save(created_by=creator)
+    
+    def perform_update(self, serializer):
+        """
+        Update a user. MANAGERs can only update users they created.
+        """
+        user = self.get_object()
+        current_user = self.request.user
+        
+        # Check if current user can edit this user
+        if not current_user.can_edit_user(user):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You can only edit users you created.")
+        
+        serializer.save()
+    
+    def perform_destroy(self, instance):
+        """
+        Delete a user. MANAGERs can only delete users they created.
+        """
+        current_user = self.request.user
+        
+        # Check if current user can delete this user
+        if not current_user.can_delete_user(instance):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You can only delete users you created.")
+        
+        instance.delete()
 
 
 class ProfileView(APIView):
@@ -639,7 +691,7 @@ class ProfileView(APIView):
                 'role': getattr(user, 'role', 'USER'),
                 'is_superuser': user.is_superuser,
                 'is_staff': user.is_staff,
-                'is_admin': getattr(user, 'role', '') == 'ADMIN' or user.is_superuser,
+                'is_admin': getattr(user, 'role', '') in ['ADMIN', 'MANAGER'] or user.is_superuser,
                 'phone': getattr(user, 'phone', None),
                 'shop_ids': getattr(user, 'shop_ids', []),
                 'tenant': {

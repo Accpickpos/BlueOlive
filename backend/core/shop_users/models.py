@@ -59,6 +59,16 @@ class ShopUser(AbstractUser):
     # Additional fields
     phone = models.CharField(max_length=20, blank=True, null=True)
     
+    # Track who created this user
+    created_by = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_users',
+        help_text='User who created this account'
+    )
+    
     # Email verification fields
     is_email_verified = models.BooleanField(
         default=False,
@@ -99,11 +109,40 @@ class ShopUser(AbstractUser):
     
     def has_shop_access(self, shop_id):
         """Check if user has access to a specific shop."""
-        # Admins have access to all shops in their tenant
-        if self.is_superuser or self.role == 'ADMIN':
+        # Admins and managers have access to all shops in their tenant
+        if self.is_superuser or self.role in ('ADMIN', 'MANAGER'):
             return True
         # Other users only have access to assigned shops
         return shop_id in self.shop_ids
+    
+    def can_edit_user(self, other_user):
+        """
+        Check if this user can edit another user.
+        - ADMIN can edit all users
+        - MANAGER can only edit users they created
+        - Other users cannot edit any users
+        """
+        # ADMIN and superuser can edit all users
+        if self.is_superuser or self.role == 'ADMIN':
+            return True
+        # MANAGER can only edit users they created
+        if self.role == 'MANAGER':
+            return other_user.created_by_id == self.id
+        return False
+    
+    def can_delete_user(self, other_user):
+        """
+        Check if this user can delete another user.
+        - ADMIN can delete all users
+        - MANAGER can only delete users they created
+        """
+        # ADMIN and superuser can delete all users
+        if self.is_superuser or self.role == 'ADMIN':
+            return True
+        # MANAGER can only delete users they created
+        if self.role == 'MANAGER':
+            return other_user.created_by_id == self.id
+        return False
 
     @property
     def full_name(self):

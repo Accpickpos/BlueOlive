@@ -13,22 +13,22 @@ class DebtorFilter(django_filters.FilterSet):
     """Filter for Debtor model."""
     
     account_number = django_filters.CharFilter(
-        field_name='customer_number',
+        field_name='dno',
         lookup_expr='icontains'
     )
     name = django_filters.CharFilter(lookup_expr='icontains')
     search_name = django_filters.CharFilter(
-        field_name='short_name',
+        field_name='dsname',
         lookup_expr='icontains'
     )
     
     # Balance filters
     min_balance = django_filters.NumberFilter(
-        field_name='balance_current',
+        field_name='dcrnt',
         lookup_expr='gte'
     )
     max_balance = django_filters.NumberFilter(
-        field_name='balance_current',
+        field_name='dcrnt',
         lookup_expr='lte'
     )
     
@@ -51,11 +51,11 @@ class DebtorFilter(django_filters.FilterSet):
         model = Debtor
         fields = {
             'is_active': ['exact'],
-            'block_flag': ['exact'],
-            'account_type': ['exact'],
-            'area_code': ['exact'],
-            'interest_flag': ['exact'],
-            'price_level': ['exact'],
+            'blockflag': ['exact'],
+            'acctype': ['exact'],
+            'darea': ['exact'],
+            'dintflag': ['exact'],
+            'price': ['exact'],
         }
     
     def filter_over_credit_limit(self, queryset, name, value):
@@ -65,9 +65,9 @@ class DebtorFilter(django_filters.FilterSet):
         if value:
             # Check if any aging balance exceeds credit_limit
             return queryset.filter(
-                models.Q(balance_current__gt=models.F('credit_limit')) |
-                models.Q(balance_30_days__gt=0) |
-                models.Q(balance_60_days__gt=0)
+                models.Q(dcrnt__gt=models.F('dclimit')) |
+                models.Q(d30__gt=0) |
+                models.Q(d60__gt=0)
             )
         return queryset
 

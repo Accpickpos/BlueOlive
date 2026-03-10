@@ -4,7 +4,7 @@
       context: ./backend/core
     container_name: blueolive-backend
     mem_limit: 2g
-    shm_size: 256m
+    shm_size: 128m
     command: >
       sh -c "
       python manage.py migrate &&
@@ -19,8 +19,10 @@
     env_file:
       - ./backend/core/.env
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - blueolive_network
     restart: unless-stopped
@@ -30,16 +32,18 @@
       context: ./backend/core
     container_name: blueolive-celery
     mem_limit: 1g
-    shm_size: 128m
-    command: sh -c "sleep 5 && celery -A core worker --loglevel=info"
+    shm_size: 64m
+    command: celery -A core worker --loglevel=info
     volumes:
       - ./backend/core:/app
     env_file:
       - ./backend/core/.env
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
-      postgres:
+      backend:
         condition: service_started
     networks:
       - blueolive_network
@@ -50,11 +54,15 @@
       context: ./frontend
     container_name: blueolive-frontend
     mem_limit: 4g
-    shm_size: 512m
+    shm_size: 256m
     working_dir: /app
-    command: sh -c "NODE_OPTIONS='--max-old-space-size=3072' npm run dev"
+    command: npm run dev
     env_file:
       - ./frontend/.env
+    environment:
+      - NODE_ENV=development
+      - NODE_OPTIONS=--max-old-space-size=256
+      - NEXT_PUBLIC_API_BASE=http://localhost:8000
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -98,6 +106,11 @@
       - blueolive_network
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   postgres_data:

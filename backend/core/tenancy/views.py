@@ -3,9 +3,13 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
-from datetime import date
-from .models import Tenant, Shop, ShopConfiguration
-from .serializers import TenantSerializer, ShopSerializer, ShopConfigurationSerializer
+from datetime import date, timedelta
+from .models import Tenant, Shop, ShopConfiguration, SubscriptionPlan, Subscription, SubscriptionPayment
+from .serializers import (
+    TenantSerializer, ShopSerializer, ShopConfigurationSerializer,
+    SubscriptionPlanSerializer, SubscriptionSerializer, SubscriptionDetailSerializer,
+    SubscriptionCreateSerializer, SubscriptionPaymentSerializer, SubscriptionCancelSerializer
+)
 from tenancy.tenant_context import get_current_tenant
 from tenancy.permissions import IsAdmin, IsTenantMember, CanCreateTenant
 import logging
@@ -24,8 +28,8 @@ def current_tenant(request):
         subdomain = None
 
     tenant_key = request.headers.get("X-Tenant") or subdomain
+    tenant = None
     if tenant_key:
-        tenant = None
         try:
             tenant = Tenant.objects.get(slug=tenant_key)
         except Tenant.DoesNotExist:
@@ -35,8 +39,20 @@ def current_tenant(request):
                 tenant = shop.tenant
             except Shop.DoesNotExist:
                 pass
-        if tenant:
-            return Response({'name': tenant.name, 'slug': tenant.slug})
+    
+    # If no tenant found from subdomain/header, try user context
+    if not tenant and request.user.is_authenticated:
+        if hasattr(request.user, 'tenant_id') and request.user.tenant_id:
+            try:
+                tenant = Tenant.objects.get(id=request.user.tenant_id)
+            except Tenant.DoesNotExist:
+                pass
+    
+    if tenant:
+        # Return full tenant details using the serializer
+        from .serializers import TenantListSerializer
+        serializer = TenantListSerializer(tenant)
+        return Response(serializer.data)
     return Response({'tenant': None})
 
 @api_view(['GET'])
@@ -121,11 +137,11 @@ class ShopViewSet(viewsets.ModelViewSet):
         Enforce tenant membership and role-based permissions:
         - create: Admin only
         - update/delete: Admin only
-        - list/retrieve: All tenant members
+        - list/retrieve: Admin only (ADMIN and MANAGER can see shops - see ShopUser.has_shop_access)
         """
         from tenancy.permissions import IsAdmin
         
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+        if self.action in ['create', 'update', 'partial_update', 'destroy', 'list', 'retrieve']:
             return [IsAdmin()]
         else:
             return [IsTenantMember()]
@@ -489,4 +505,334 @@ class ShopConfigurationViewSet(viewsets.ModelViewSet):
     
     def perform_update(self, serializer):
         serializer.save()
+
+
+# ============================================================================
+# SUBSCRIPTION VIEWS
+# ============================================================================
+
+class SubscriptionPlanViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing subscription plans.
+    
+    Endpoints:
+    - GET /plans/ - List all active plans
+    - POST /plans/ - Create a new plan (admin only)
+    - GET /plans/{id}/ - Get plan details
+    - PUT /plans/{id}/ - Update plan
+    - DELETE /plans/{id}/ - Deactivate plan
+    """
+    queryset = SubscriptionPlan.objects.all()
+    serializer_class = SubscriptionPlanSerializer
+    permission_classes = [IsAdminUser]
+    
+    def get_queryset(self):
+        queryset = SubscriptionPlan.objects.all()
+        # Filter by active status
+        is_active = self.request.query_params.get('is_active')
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active.lower() == 'true')
+        # Filter trial plans
+        is_trial = self.request.query_params.get('is_trial')
+        if is_trial is not None:
+            queryset = queryset.filter(is_trial=is_trial.lower() == 'true')
+        return queryset
+    
+    @action(detail=False, methods=['get'])
+    def public(self, request):
+        """Get only public (non-trial) active plans for display."""
+        plans = SubscriptionPlan.objects.filter(is_active=True, is_trial=False).order_by('sort_order', 'price')
+        serializer = SubscriptionPlanSerializer(plans, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def trial(self, request):
+        """Get trial plans."""
+        plans = SubscriptionPlan.objects.filter(is_active=True, is_trial=True)
+        serializer = SubscriptionPlanSerializer(plans, many=True)
+        return Response(serializer.data)
+
+
+class SubscriptionViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing subscriptions.
+    
+    Endpoints:
+    - GET /subscriptions/ - List subscriptions
+    - POST /subscriptions/ - Create new subscription
+    - GET /subscriptions/{id}/ - Get subscription details
+    - PUT /subscriptions/{id}/ - Update subscription
+    - DELETE /subscriptions/{id}/ - Cancel subscription
+    - POST /subscriptions/{id}/cancel/ - Cancel subscription with reason
+    - POST /subscriptions/{id}/renew/ - Manual renewal
+    - POST /subscriptions/{id}/change-plan/ - Change subscription plan
+    """
+    queryset = Subscription.objects.all()
+    permission_classes = [IsAdminUser]
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return SubscriptionCreateSerializer
+        elif self.action in ['retrieve', 'update', 'partial_update']:
+            return SubscriptionDetailSerializer
+        return SubscriptionSerializer
+    
+    def get_queryset(self):
+        queryset = Subscription.objects.select_related('tenant', 'plan').all()
+        # Filter by tenant
+        tenant_id = self.request.query_params.get('tenant_id')
+        if tenant_id:
+            queryset = queryset.filter(tenant_id=tenant_id)
+        # Filter by status
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        return queryset
+    
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """
+        Cancel a subscription.
+        
+        Request body:
+        {
+            "immediately": false,  // Cancel now or at end of period
+            "reason": "Optional reason for cancellation"
+        }
+        """
+        subscription = self.get_object()
+        serializer = SubscriptionCancelSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        immediately = serializer.validated_data.get('immediately', False)
+        reason = serializer.validated_data.get('reason', '')
+        
+        if subscription.status in ['CANCELLED', 'EXPIRED']:
+            return Response(
+                {'error': 'Subscription is already cancelled or expired'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if immediately:
+            subscription.status = 'CANCELLED'
+            subscription.cancelled_at = date.today()
+            subscription.auto_renew = False
+            subscription.save()
+            logger.info(f"Subscription {subscription.id} cancelled immediately by {reason}")
+        else:
+            subscription.auto_renew = False
+            subscription.save()
+            logger.info(f"Subscription {subscription.id} marked for cancellation at end of period")
+        
+        return Response(SubscriptionSerializer(subscription).data)
+    
+    @action(detail=True, methods=['post'])
+    def renew(self, request, pk=None):
+        """
+        Manually renew a subscription.
+        Extends the subscription by one billing period.
+        """
+        subscription = self.get_object()
+        
+        if subscription.status == 'CANCELLED':
+            # Reactivate cancelled subscription
+            subscription.status = 'ACTIVE'
+            subscription.cancelled_at = None
+            subscription.auto_renew = True
+        
+        # Extend the end date
+        new_end_date = subscription.end_date + timedelta(days=subscription.plan.billing_period_days)
+        subscription.end_date = new_end_date
+        subscription.current_period_end = new_end_date
+        subscription.status = 'ACTIVE'
+        subscription.save()
+        
+        logger.info(f"Subscription {subscription.id} renewed until {new_end_date}")
+        return Response(SubscriptionSerializer(subscription).data)
+    
+    @action(detail=True, methods=['post'])
+    def change_plan(self, request, pk=None):
+        """
+        Change the subscription plan.
+        
+        Request body:
+        {
+            "plan_id": 1  // ID of the new plan
+        }
+        """
+        subscription = self.get_object()
+        plan_id = request.data.get('plan_id')
+        
+        if not plan_id:
+            return Response(
+                {'error': 'plan_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            new_plan = SubscriptionPlan.objects.get(id=plan_id, is_active=True)
+        except SubscriptionPlan.DoesNotExist:
+            return Response(
+                {'error': 'Plan not found or inactive'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Update subscription with new plan
+        old_plan = subscription.plan
+        subscription.plan = new_plan
+        subscription.auto_renew = True
+        subscription.status = 'ACTIVE'
+        subscription.save()
+        
+        logger.info(f"Subscription {subscription.id} changed from {old_plan.name} to {new_plan.name}")
+        return Response(SubscriptionDetailSerializer(subscription).data)
+    
+    @action(detail=False, methods=['get'])
+    def current(self, request):
+        """Get the current tenant's subscription."""
+        tenant = get_current_tenant()
+        if not tenant:
+            return Response(
+                {'error': 'No tenant context'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            subscription = Subscription.objects.select_related('tenant', 'plan').get(tenant=tenant)
+            serializer = SubscriptionDetailSerializer(subscription)
+            return Response(serializer.data)
+        except Subscription.DoesNotExist:
+            return Response(
+                {'error': 'No active subscription found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
+    @action(detail=True, methods=['post'])
+    def suspend(self, request, pk=None):
+        """Suspend a subscription (admin action)."""
+        subscription = self.get_object()
+        subscription.status = 'SUSPENDED'
+        subscription.save()
+        logger.info(f"Subscription {subscription.id} suspended")
+        return Response(SubscriptionSerializer(subscription).data)
+    
+    @action(detail=True, methods=['post'])
+    def reactivate(self, request, pk=None):
+        """Reactivate a suspended subscription (admin action)."""
+        subscription = self.get_object()
+        subscription.status = 'ACTIVE'
+        subscription.save()
+        logger.info(f"Subscription {subscription.id} reactivated")
+        return Response(SubscriptionSerializer(subscription).data)
+
+
+class SubscriptionPaymentViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing subscription payments.
+    
+    Endpoints:
+    - GET /payments/ - List payments
+    - POST /payments/ - Record a new payment
+    - GET /payments/{id}/ - Get payment details
+    - PUT /payments/{id}/ - Update payment
+    - DELETE /payments/{id}/ - Delete payment
+    - POST /payments/{id}/process/ - Process payment
+    - POST /payments/{id}/refund/ - Refund payment
+    """
+    queryset = SubscriptionPayment.objects.all()
+    serializer_class = SubscriptionPaymentSerializer
+    permission_classes = [IsAdminUser]
+    
+    def get_queryset(self):
+        queryset = SubscriptionPayment.objects.select_related('subscription', 'subscription__tenant').all()
+        # Filter by subscription
+        subscription_id = self.request.query_params.get('subscription_id')
+        if subscription_id:
+            queryset = queryset.filter(subscription_id=subscription_id)
+        # Filter by status
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        return queryset
+    
+    @action(detail=True, methods=['post'])
+    def process(self, request, pk=None):
+        """
+        Process a pending payment.
+        
+        Request body:
+        {
+            "gateway_payment_id": "payfast_xxx",
+            "status": "SUCCEEDED"
+        }
+        """
+        payment = self.get_object()
+        gateway_payment_id = request.data.get('gateway_payment_id', '')
+        new_status = request.data.get('status', 'SUCCEEDED')
+        
+        if payment.status != 'PENDING' and payment.status != 'PROCESSING':
+            return Response(
+                {'error': 'Payment cannot be processed in current state'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        payment.gateway_payment_id = gateway_payment_id or payment.gateway_payment_id
+        payment.status = new_status
+        
+        if new_status == 'SUCCEEDED':
+            payment.paid_at = date.today()
+            # Extend subscription
+            subscription = payment.subscription
+            new_end_date = subscription.end_date + timedelta(days=subscription.plan.billing_period_days)
+            subscription.end_date = new_end_date
+            subscription.current_period_end = new_end_date
+            subscription.status = 'ACTIVE'
+            subscription.save()
+        elif new_status == 'FAILED':
+            payment.failed_at = date.today()
+        
+        payment.save()
+        logger.info(f"Payment {payment.id} processed with status {new_status}")
+        return Response(SubscriptionPaymentSerializer(payment).data)
+    
+    @action(detail=True, methods=['post'])
+    def refund(self, request, pk=None):
+        """
+        Refund a payment.
+        
+        Request body:
+        {
+            "reason": "Customer request"
+        }
+        """
+        payment = self.get_object()
+        
+        if payment.status != 'SUCCEEDED':
+            return Response(
+                {'error': 'Only succeeded payments can be refunded'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        payment.status = 'REFUNDED'
+        payment.save()
+        logger.info(f"Payment {payment.id} refunded")
+        return Response(SubscriptionPaymentSerializer(payment).data)
+    
+    @action(detail=False, methods=['get'])
+    def tenant_payments(self, request):
+        """Get payments for the current tenant."""
+        tenant = get_current_tenant()
+        if not tenant:
+            return Response(
+                {'error': 'No tenant context'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            subscription = Subscription.objects.get(tenant=tenant)
+            payments = SubscriptionPayment.objects.filter(subscription=subscription).order_by('-created_at')
+            serializer = SubscriptionPaymentSerializer(payments, many=True)
+            return Response(serializer.data)
+        except Subscription.DoesNotExist:
+            return Response([])
 

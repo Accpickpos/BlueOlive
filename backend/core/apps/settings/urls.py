@@ -22,6 +22,7 @@ from .views import (
     DepartmentMonthlyStatsViewSet,
     SalesAreaMonthlyStatsViewSet,
     APIKeyViewSet,
+    EmailDocumentView,
 )
 from .api.import_api import ImportViewSet
 
@@ -47,6 +48,7 @@ app_name = 'settings'
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('email-document/', EmailDocumentView.as_view(), name='email-document'),
 ]
 
 

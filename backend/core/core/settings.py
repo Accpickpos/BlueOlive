@@ -208,6 +208,8 @@ REST_FRAMEWORK = {
         'login': '5/minute',
     },
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    # Custom exception handler for consistent error responses
+    'EXCEPTION_HANDLER': 'core.exception_handler.custom_exception_handler',
 }
 
 
@@ -380,6 +382,16 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+# Email Configuration
+# Default email backend - use 'console' for development, 'smtp' for production
+EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'localhost')
+EMAIL_PORT = os.environ.get('EMAIL_PORT', '587')
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'true').lower() == 'true'
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@accpick.co.za')
+
 # Logging - Environment-configurable
 # Supports both text and JSON output based on LOG_FORMAT setting
 # Use 'json' for production (integrates with ELK, Splunk, CloudWatch)
@@ -482,10 +494,36 @@ else:
 # drf-spectacular configuration for API documentation
 SPECTACULAR_SETTINGS = {
     'TITLE': 'BlueOlive API',
-    'DESCRIPTION': 'Enterprise Management System API',
+    'DESCRIPTION': 'Enterprise Multi-Tenant POS Management System API',
     'VERSION': '1.0.0',
-    'SERVE_PERMISSIONS': ['rest_framework.permissions.IsAuthenticated'],
+    # Allow public access to API documentation (change to IsAuthenticated for production if needed)
+    'SERVE_PERMISSIONS': ['rest_framework.permissions.AllowAny'],
     'SCHEMA_PATH_PREFIX': '/api/',
+    # Organize endpoints by business domain
+    'TAGS': [
+        {'name': 'Authentication', 'description': 'User login, logout, token refresh, and registration'},
+        {'name': 'Tenants', 'description': 'Multi-tenant management - create and manage tenant organizations'},
+        {'name': 'Shops', 'description': 'Shop/branch management within tenants'},
+        {'name': 'Users', 'description': 'User management and shop access'},
+        {'name': 'POS', 'description': 'Point of Sale - cash sales, laybies, quotations, job cards'},
+        {'name': 'Stock Control', 'description': 'Inventory management - stock items, movements, special deals'},
+        {'name': 'Debtors', 'description': 'Customer accounts receivable - invoices, payments, aging'},
+        {'name': 'Creditors', 'description': 'Supplier accounts payable - invoices, payments, RFC'},
+        {'name': 'Cash Book', 'description': 'Cash transactions and reconciliation'},
+        {'name': 'General Ledger', 'description': 'Financial accounting and reporting'},
+        {'name': 'Purchase Orders', 'description': 'Purchase order management'},
+        {'name': 'Settings', 'description': 'System configuration - departments, tax codes, payment methods'},
+        {'name': 'Messaging', 'description': 'Notifications and messaging'},
+        {'name': 'SaaS Admin', 'description': 'Platform administration (superuser only)'},
+    ],
+    # Split request/response schemas for better documentation
+    'COMPONENT_SPLIT_REQUEST': True,
+    # Enable enum value descriptions
+    'ENUM_NAME_OVERRIDES': {
+        # Add custom enum overrides if needed
+    },
+    # Customize error responses in schema
+    'DEFAULT_RESPONSE_DEPTH': 2,
 }
 
 

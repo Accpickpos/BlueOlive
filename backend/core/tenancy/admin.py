@@ -1,9 +1,7 @@
 # tenancy/admin.py
 from django.contrib import admin
 from django.conf import settings
-from tenancy.models import Tenant
-from tenancy.models import Shop
-from tenancy.models import ShopConfiguration
+from tenancy.models import Tenant, Shop, ShopConfiguration, SubscriptionPlan, Subscription, SubscriptionPayment
 from tenancy.audit import AuditLog
 from tenancy.utils import provision_tenant
 from tenancy.shop_manager import create_shop_schema
@@ -114,3 +112,135 @@ class AuditLogAdmin(admin.ModelAdmin):
 
             # 🔸 Create schema and migrate inside tenant DB
             create_shop_schema(tenant, obj.schema_name)
+
+
+# ============================================================================
+# SUBSCRIPTION ADMIN
+# ============================================================================
+
+@admin.register(SubscriptionPlan)
+class SubscriptionPlanAdmin(admin.ModelAdmin):
+    """Admin for subscription plans."""
+    list_display = ('name', 'slug', 'price', 'billing_period_days', 'max_shops', 'max_users', 'is_active', 'is_trial', 'sort_order')
+    list_filter = ('is_active', 'is_trial', 'billing_period_days')
+    search_fields = ('name', 'slug', 'description')
+    prepopulated_fields = {'slug': ('name',)}
+    readonly_fields = ('created_at', 'updated_at')
+    
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'slug', 'description')
+        }),
+        ('Pricing', {
+            'fields': ('price', 'setup_fee', 'billing_period_days')
+        }),
+        ('Limits', {
+            'fields': ('max_shops', 'max_users', 'max_invoices_per_month')
+        }),
+        ('Features', {
+            'fields': ('features',)
+        }),
+        ('Settings', {
+            'fields': ('is_active', 'is_trial', 'sort_order')
+        }),
+    )
+
+
+@admin.register(Subscription)
+class SubscriptionAdmin(admin.ModelAdmin):
+    """Admin for subscriptions."""
+    list_display = ('tenant', 'plan', 'status', 'start_date', 'end_date', 'auto_renew', 'created_at')
+    list_filter = ('status', 'auto_renew', 'plan')
+    search_fields = ('tenant__name', 'tenant__slug', 'gateway_subscription_id')
+    readonly_fields = ('created_at', 'updated_at', 'current_period_start', 'current_period_end', 'invoices_this_period')
+    raw_id_fields = ('tenant',)
+    
+    fieldsets = (
+        ('Tenant & Plan', {
+            'fields': ('tenant', 'plan')
+        }),
+        ('Status', {
+            'fields': ('status', 'auto_renew', 'cancelled_at')
+        }),
+        ('Dates', {
+            'fields': ('start_date', 'end_date', 'trial_end_date', 'current_period_start', 'current_period_end')
+        }),
+        ('Usage', {
+            'fields': ('invoices_this_period',)
+        }),
+        ('Gateway', {
+            'fields': ('gateway_customer_id', 'gateway_subscription_id'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    actions = ['activate_subscriptions', 'deactivate_subscriptions', 'extend_trials']
+    
+    def activate_subscriptions(self, request, queryset):
+        updated = queryset.update(status='ACTIVE', auto_renew=True)
+        self.message_user(request, f"{updated} subscriptions activated.")
+    activate_subscriptions.short_description = "Activate selected subscriptions"
+    
+    def deactivate_subscriptions(self, request, queryset):
+        updated = queryset.update(status='CANCELLED', auto_renew=False)
+        self.message_user(request, f"{updated} subscriptions cancelled.")
+    deactivate_subscriptions.short_description = "Cancel selected subscriptions"
+    
+    def extend_trials(self, request, queryset):
+        from datetime import timedelta
+        from django.utils import timezone
+        today = timezone.now().date()
+        extended = 0
+        for sub in queryset:
+            if sub.status == 'TRIAL':
+                new_trial_end = sub.trial_end_date + timedelta(days=7) if sub.trial_end_date else today + timedelta(days=7)
+                sub.trial_end_date = new_trial_end
+                sub.save()
+                extended += 1
+        self.message_user(request, f"Extended trial for {extended} subscriptions.")
+    extend_trials.short_description = "Extend trial by 7 days"
+
+
+@admin.register(SubscriptionPayment)
+class SubscriptionPaymentAdmin(admin.ModelAdmin):
+    """Admin for subscription payments."""
+    list_display = ('subscription', 'amount', 'currency', 'status', 'payment_method', 'paid_at', 'created_at')
+    list_filter = ('status', 'payment_method', 'currency')
+    search_fields = ('subscription__tenant__name', 'gateway_payment_id', 'gateway_reference', 'invoice_number')
+    readonly_fields = ('created_at', 'updated_at')
+    raw_id_fields = ('subscription',)
+    
+    fieldsets = (
+        ('Payment', {
+            'fields': ('subscription', 'amount', 'currency', 'payment_method')
+        }),
+        ('Status', {
+            'fields': ('status', 'paid_at', 'failed_at')
+        }),
+        ('Gateway', {
+            'fields': ('gateway_payment_id', 'gateway_reference'),
+            'classes': ('collapse',)
+        }),
+        ('Invoice', {
+            'fields': ('description', 'invoice_number')
+        }),
+    )
+    
+    actions = ['mark_as_succeeded', 'mark_as_failed', 'refund_payments']
+    
+    def mark_as_succeeded(self, request, queryset):
+        from django.utils import timezone
+        updated = queryset.update(status='SUCCEEDED', paid_at=timezone.now().date())
+        self.message_user(request, f"{updated} payments marked as succeeded.")
+    mark_as_succeeded.short_description = "Mark as succeeded"
+    
+    def mark_as_failed(self, request, queryset):
+        from django.utils import timezone
+        updated = queryset.update(status='FAILED', failed_at=timezone.now().date())
+        self.message_user(request, f"{updated} payments marked as failed.")
+    mark_as_failed.short_description = "Mark as failed"
+    
+    def refund_payments(self, request, queryset):
+        updated = queryset.filter(status='SUCCEEDED').update(status='REFUNDED')
+        self.message_user(request, f"Refunded {updated} payments.")
+    refund_payments.short_description = "Refund selected payments"

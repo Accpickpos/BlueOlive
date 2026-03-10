@@ -5,6 +5,9 @@ from .views import (
     TenantViewSet, 
     ShopViewSet, 
     ShopConfigurationViewSet,
+    SubscriptionPlanViewSet,
+    SubscriptionViewSet,
+    SubscriptionPaymentViewSet,
     current_tenant, 
     tenant_shops, 
     all_shops,
@@ -19,6 +22,12 @@ router.register(r'', TenantViewSet, basename='tenant')
 router.register(r'shops', ShopViewSet, basename='shop')
 router.register(r'shop-config', ShopConfigurationViewSet, basename='shop-config')
 
+# Subscription routes
+subscription_router = DefaultRouter()
+subscription_router.register(r'plans', SubscriptionPlanViewSet, basename='subscription-plan')
+subscription_router.register(r'subscriptions', SubscriptionViewSet, basename='subscription')
+subscription_router.register(r'payments', SubscriptionPaymentViewSet, basename='subscription-payment')
+
 urlpatterns = [
     # Specific paths MUST come BEFORE the router to avoid being caught as pk
     path('current_tenant/', current_tenant, name='current-tenant'),
@@ -29,6 +38,9 @@ urlpatterns = [
     path('switch-shop/', switch_shop, name='switch-shop'),
     path('my-shops/', get_accessible_shops, name='accessible-shops'),
     path('current-shop/', get_current_shop, name='current-shop'),
+    
+    # Subscription endpoints
+    path('subscription/', include(subscription_router.urls)),
     
     # Router must come LAST
     path('', include(router.urls)),

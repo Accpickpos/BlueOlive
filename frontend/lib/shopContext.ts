@@ -10,6 +10,9 @@ export interface Shop {
   slug: string;
   tenant_id: number;
   is_active: boolean;
+  logo?: string | null;
+  address?: string | null;
+  phone?: string | null;
 }
 
 /**

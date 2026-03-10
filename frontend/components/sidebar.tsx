@@ -103,6 +103,9 @@ const menuConfig = [
       },
       { type: "link", name: "Settings", href: "/dashboard/admin/settings", icon: UserCog },
       { type: "link", name: "Import Data", href: "/dashboard/admin/import", icon: Upload },
+      { type: "link", name: "Inter-Branch Transfers", href: "/dashboard/admin/ibt", icon: ArrowRight },
+      { type: "link", name: "Inter-Branch Items", href: "/dashboard/admin/ibi", icon: Package },
+      { type: "link", name: "Stock Consolidation", href: "/dashboard/admin/stock-consolidation", icon: Layers },
     ],
   },
 
@@ -131,9 +134,6 @@ const menuConfig = [
   },
 
   { type: "link", name: "Messaging", href: "/dashboard/messaging", icon: MessageSquare },
-  { type: "link", name: "Inter-Branch Transfers", href: "/dashboard/ibt", icon: ArrowRight },
-  { type: "link", name: "Inter-Branch Items", href: "/dashboard/ibi", icon: Package },
-  { type: "link", name: "Stock Consolidation", href: "/dashboard/stock-consolidation", icon: Layers },
   { type: "link", name: "Expenses", href: "/dashboard/expenses", icon: DollarSign },
   { type: "link", name: "Reports", href: "/dashboard/reports", icon: BarChart },
 ];

@@ -11,6 +11,23 @@ import {
   TrendingUp, DollarSign, Percent
 } from 'lucide-react';
 import Link from 'next/link';
+import { apiRequest } from '@/lib/api';
+
+interface SalesArea {
+  id: number;
+  darea: string;
+  dareaname: string;
+}
+
+interface SalesmanPerformance {
+  id: number;
+  area: string;
+  salesman: string;
+  salesman_name?: string;
+  sales: number;
+  transactions: number;
+  margin: number;
+}
 
 export default function AreaSalesmanReportPage() {
   const [year, setYear] = useState(new Date().getFullYear());
@@ -18,33 +35,44 @@ export default function AreaSalesmanReportPage() {
 
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
 
-  // Placeholder data - in a real implementation this would connect to sales/debtors API
-  // that tracks salesman and area performance
-  const placeholderData = [
-    { id: 1, area: 'North', salesman: 'John Smith', sales: 125000, transactions: 450, margin: 28.5 },
-    { id: 2, area: 'North', salesman: 'Jane Doe', sales: 98000, transactions: 380, margin: 26.2 },
-    { id: 3, area: 'South', salesman: 'Bob Wilson', sales: 87000, transactions: 320, margin: 24.8 },
-    { id: 4, area: 'South', salesman: 'Alice Brown', sales: 76000, transactions: 290, margin: 25.1 },
-    { id: 5, area: 'East', salesman: 'Charlie Davis', sales: 112000, transactions: 410, margin: 27.9 },
-    { id: 6, area: 'West', salesman: 'Eva Martinez', sales: 94000, transactions: 350, margin: 26.5 },
-    { id: 7, area: 'West', salesman: 'Frank Miller', sales: 68000, transactions: 250, margin: 23.2 },
-  ];
+  // Fetch sales areas from API
+  const { data: salesAreasData, isLoading: loadingAreas } = useQuery({
+    queryKey: ['sales-areas'],
+    queryFn: () => apiRequest('/api/v1/debtors/sales-areas/'),
+    select: (response) => response.data.results || response.data,
+  });
+
+  const salesAreas: SalesArea[] = salesAreasData || [];
+
+  // Generate area options from API data
+  const areas = [...new Set(salesAreas.map((a: SalesArea) => a.darea))];
+
+  // Build performance data from API areas
+  const performanceData: SalesmanPerformance[] = salesAreas.map((area: SalesArea, index: number) => ({
+    id: area.id,
+    area: area.darea,
+    salesman: area.darea,
+    salesman_name: area.dareaname,
+    sales: 0, // Would need sales transaction API for actual data
+    transactions: 0,
+    margin: 0,
+  }));
 
   const filteredData = selectedArea 
-    ? placeholderData.filter(d => d.area === selectedArea)
-    : placeholderData;
-
-  const areas = [...new Set(placeholderData.map(d => d.area))];
+    ? performanceData.filter(d => d.area === selectedArea)
+    : performanceData;
 
   const totals = filteredData.reduce((acc, d) => ({
     sales: acc.sales + d.sales,
     transactions: acc.transactions + d.transactions,
   }), { sales: 0, transactions: 0 });
 
-  const avgMargin = filteredData.reduce((acc, d) => acc + d.margin, 0) / filteredData.length;
+  const avgMargin = filteredData.length > 0 
+    ? filteredData.reduce((acc, d) => acc + d.margin, 0) / filteredData.length
+    : 0;
 
   const areaSummary = areas.map(area => {
-    const areaData = placeholderData.filter(d => d.area === area);
+    const areaData = performanceData.filter(d => d.area === area);
     return {
       area,
       sales: areaData.reduce((sum, d) => sum + d.sales, 0),
@@ -84,8 +112,7 @@ export default function AreaSalesmanReportPage() {
       {/* Info Banner */}
       <Card className="p-4 bg-blue-50 border-blue-200">
         <p className="text-sm text-blue-800">
-          <strong>Note:</strong> This report uses placeholder data. In production, it would connect to the Debtors/Sales API 
-          to track actual salesman and area performance from invoice data.
+          <strong>Note:</strong> Sales areas loaded from API. Sales/Transaction data requires additional integration with POS/Debtors invoices.
         </p>
       </Card>
 
