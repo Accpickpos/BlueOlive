@@ -39,6 +39,7 @@ class DebtorViewSet(viewsets.ModelViewSet):
     ViewSet for managing debtors (customers) - DMAST table.
     """
     queryset = Debtor.objects.all()
+    lookup_field = 'dno'
     permission_classes = [IsAuthenticated, HasDebtorPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = DebtorFilter
@@ -97,7 +98,7 @@ class DebtorViewSet(viewsets.ModelViewSet):
             total_debtors = debtors.count()
             active_debtors = debtors.filter(is_active=True).count()
             # FIX: block_flag values for blocked accounts are '1','2','3','Y' per model
-            blocked_debtors = debtors.filter(block_flag__in=['1', '2', '3', 'Y']).count()
+            blocked_debtors = debtors.filter(blockflag__in=['1', '2', '3', 'Y']).count()
 
             aggregates = debtors.aggregate(
                 total_balance=Sum('dcrnt'),
@@ -108,9 +109,9 @@ class DebtorViewSet(viewsets.ModelViewSet):
             )
 
             overdue_120_plus = sum([
-                debtors.aggregate(Sum('balance_120_days'))['balance_120_days__sum'] or Decimal('0.00'),
-                debtors.aggregate(Sum('balance_150_days'))['balance_150_days__sum'] or Decimal('0.00'),
-                debtors.aggregate(Sum('balance_180_days'))['balance_180_days__sum'] or Decimal('0.00'),
+                debtors.aggregate(Sum('d120'))['d120__sum'] or Decimal('0.00'),
+                debtors.aggregate(Sum('d150'))['d150__sum'] or Decimal('0.00'),
+                debtors.aggregate(Sum('d180'))['d180__sum'] or Decimal('0.00'),
             ])
 
             data = {

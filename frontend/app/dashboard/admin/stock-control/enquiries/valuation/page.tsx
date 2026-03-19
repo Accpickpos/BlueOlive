@@ -223,11 +223,11 @@ export default function ValuationPage() {
                           <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
                             <div 
                               className="h-full bg-blue-600" 
-                              style={{ width: `${(dept.totalCostValue / totalCostValue) * 100}%` }}
+                              style={{ width: `${(Number(dept.totalCostValue) / Number(totalCostValue)) * 100}%` }}
                             />
                           </div>
                           <span className="text-sm">
-                            {((dept.totalCostValue / totalCostValue) * 100).toFixed(1)}%
+                            {(Number(dept.totalCostValue) / Number(totalCostValue) * 100).toFixed(1)}%
                           </span>
                         </div>
                       </td>
@@ -283,13 +283,13 @@ export default function ValuationPage() {
               </thead>
               <tbody>
                 {stockItems?.results?.slice(0, 20).map((item: any) => {
-                  const totalValue = (item.quantity_on_hand || 0) * (item.cost_price || 0);
+                  const totalValue = Number(item.quantity_on_hand || 0) * Number(item.cost_price || 0);
                   return (
                     <tr key={item.stock_code} className="border-b hover:bg-gray-50">
                       <td className="py-3 px-4 font-mono">{item.stock_code}</td>
                       <td className="py-3 px-4 max-w-xs truncate">{item.description}</td>
-                      <td className="py-3 px-4 text-right">{item.quantity_on_hand?.toFixed(2) || '0.00'}</td>
-                      <td className="py-3 px-4 text-right">R {item.cost_price?.toFixed(2) || '0.00'}</td>
+                      <td className="py-3 px-4 text-right">{Number(item.quantity_on_hand || 0).toFixed(2) || '0.00'}</td>
+                      <td className="py-3 px-4 text-right">R {Number(item.cost_price || 0).toFixed(2) || '0.00'}</td>
                       <td className="py-3 px-4 text-right font-medium">
                         R {totalValue.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
                       </td>

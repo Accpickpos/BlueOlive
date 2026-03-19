@@ -511,20 +511,43 @@ class ShopConfigurationViewSet(viewsets.ModelViewSet):
 # SUBSCRIPTION VIEWS
 # ============================================================================
 
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAdminUser, AllowAny, IsAuthenticated
+from django.db.models import Q
+
+
+# ============================================================================
+# SUBSCRIPTION VIEWS
+# ============================================================================
+
+
+class IsAdminUserOrReadOnly(IsAdminUser):
+    """
+    Custom permission that allows read access to anyone,
+    but write access only to admin users.
+    """
+    def has_permission(self, request, view):
+        if request.method in ['GET', 'HEAD', 'OPTIONS']:
+            return True
+        return super().has_permission(request, view)
+
+
 class SubscriptionPlanViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing subscription plans.
     
     Endpoints:
-    - GET /plans/ - List all active plans
+    - GET /plans/ - List all active plans (public access)
     - POST /plans/ - Create a new plan (admin only)
-    - GET /plans/{id}/ - Get plan details
-    - PUT /plans/{id}/ - Update plan
-    - DELETE /plans/{id}/ - Deactivate plan
+    - GET /plans/{id}/ - Get plan details (public access)
+    - PUT /plans/{id}/ - Update plan (admin only)
+    - DELETE /plans/{id}/ - Deactivate plan (admin only)
     """
     queryset = SubscriptionPlan.objects.all()
     serializer_class = SubscriptionPlanSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAdminUserOrReadOnly]
     
     def get_queryset(self):
         queryset = SubscriptionPlan.objects.all()

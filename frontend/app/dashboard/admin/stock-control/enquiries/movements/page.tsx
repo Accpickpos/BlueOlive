@@ -153,10 +153,10 @@ export default function MovementsPage() {
             <div>
               <p className="text-xs text-gray-600 uppercase">Total Incoming</p>
               <p className="text-xl font-bold text-green-600">
-                {transactions?.results
+                {Number(transactions?.results
                   ?.filter((t: any) => t.transaction_type === 'IN' || t.transaction_type === 'GRN')
                   ?.reduce((sum: number, t: any) => sum + (t.quantity > 0 ? t.quantity : 0), 0)
-                  ?.toFixed(0) || 0}
+                  || 0).toFixed(0) || 0}
               </p>
             </div>
             <ArrowDown className="w-8 h-8 text-green-200" />
@@ -168,10 +168,10 @@ export default function MovementsPage() {
             <div>
               <p className="text-xs text-gray-600 uppercase">Total Outgoing</p>
               <p className="text-xl font-bold text-red-600">
-                {transactions?.results
+                {Number(transactions?.results
                   ?.filter((t: any) => t.transaction_type === 'OUT' || t.transaction_type === 'SAL')
                   ?.reduce((sum: number, t: any) => sum + Math.abs(t.quantity < 0 ? t.quantity : 0), 0)
-                  ?.toFixed(0) || 0}
+                  || 0).toFixed(0) || 0}
               </p>
             </div>
             <ArrowUp className="w-8 h-8 text-red-200" />
@@ -260,13 +260,13 @@ export default function MovementsPage() {
                       <td className={`py-3 px-4 text-right font-medium ${
                         tx.quantity > 0 ? 'text-green-600' : 'text-red-600'
                       }`}>
-                        {tx.quantity > 0 ? '+' : ''}{tx.quantity?.toFixed(2)}
+                        {tx.quantity > 0 ? '+' : ''}{Number(tx.quantity || 0).toFixed(2)}
                       </td>
                       <td className="py-3 px-4 text-right">
-                        R {tx.unit_cost?.toFixed(2) || '0.00'}
+                        R {Number(tx.unit_cost || 0).toFixed(2) || '0.00'}
                       </td>
                       <td className="py-3 px-4 text-right font-medium">
-                        R {((tx.quantity || 0) * (tx.unit_cost || 0)).toFixed(2)}
+                        R {(Number(tx.quantity || 0) * Number(tx.unit_cost || 0)).toFixed(2)}
                       </td>
                       <td className="py-3 px-4 text-gray-600">
                         {tx.reference || '-'}

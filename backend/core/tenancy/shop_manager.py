@@ -19,7 +19,8 @@ def create_shop_schema(tenant, schema_name):
     
     This function:
     1. Creates the PostgreSQL schema
-    2. Migrates only SHOP_APP_LABELS apps to the schema
+    2. Cleans up any shop tables incorrectly in public schema
+    3. Migrates only SHOP_APP_LABELS apps to the schema
     """
     alias = tenant.db_alias
     set_current_tenant(tenant)
@@ -40,7 +41,19 @@ def create_shop_schema(tenant, schema_name):
         # Commit schema creation
         conn.commit()
         
-        # Step 2: Migrate shop apps to this schema
+        # Step 2: Clean up any shop tables incorrectly in public schema (from previous failed attempts)
+        # This ensures a clean state before migrations
+        logger.info("Step 2: Cleaning up tables in wrong schema...")
+        try:
+            dropped_tables = cleanup_tables_in_wrong_schema(tenant)
+            if dropped_tables:
+                logger.warning(f"  Cleaned up {len(dropped_tables)} tables from public schema: {dropped_tables}")
+            else:
+                logger.info("  No cleanup needed - public schema is clean")
+        except Exception as e:
+            logger.warning(f"  Cleanup warning (non-fatal): {e}")
+        
+        # Step 3: Migrate shop apps to this schema
         migrate_shop_apps(tenant, schema_name)
         
         logger.info(f"✓ Schema setup complete: {schema_name}")
@@ -166,8 +179,9 @@ def migrate_shop_apps(tenant, schema_name):
                     try:
                         logger.info(f"  Migrating {app_label}...")
                         
-                        # Before migrating, update the database connection options to use the shop schema
-                        # This ensures Django creates tables in the correct schema
+                        # Before migrating, set the search_path directly using SQL
+                        # We need public in the path for FK references, but tables should still
+                        # be created in the shop schema (first in path)
                         original_options = settings.DATABASES[alias].get('OPTIONS', {}).copy()
                         settings.DATABASES[alias]['OPTIONS'] = {
                             'options': f'-c search_path={schema_name},public'
@@ -177,6 +191,16 @@ def migrate_shop_apps(tenant, schema_name):
                         
                         # Close any existing connection to force reconnect with new options
                         connections[alias].close()
+                        
+                        # Now explicitly set search_path on the new connection
+                        conn = connections[alias]
+                        conn.connect()
+                        with conn.cursor() as cur:
+                            cur.execute(f'SET search_path TO "{schema_name}", public')
+                            cur.execute('SHOW search_path')
+                            actual_path = cur.fetchone()[0]
+                            logger.warning(f"[migrate_shop_apps] Search path set to: {actual_path}")
+                        conn.commit()
                         
                         try:
                             call_command(
@@ -192,7 +216,7 @@ def migrate_shop_apps(tenant, schema_name):
                             settings.DATABASES[alias]['OPTIONS'] = original_options
                             connections.databases[alias]['OPTIONS'] = original_options
                             connections[alias].close()  # Close to force reconnect with public schema
-                        
+
                     except Exception as e:
                         logger.error(f"  ✗ Failed to migrate {app_label}: {str(e)}")
                         # Restore original options even on error
@@ -205,6 +229,24 @@ def migrate_shop_apps(tenant, schema_name):
                     os.environ.pop('SHOP_SCHEMA', None)
                 else:
                     os.environ['SHOP_SCHEMA'] = original_shop_schema
+            
+            # After all migrations, clean up any tables that got created in public schema
+            # This is safe to do here because all migrations are complete
+            logger.info("Final cleanup: Removing any tables accidentally created in public schema...")
+            try:
+                # Reconnect with public schema for cleanup
+                conn = connections[alias]
+                conn.close()
+                conn.connect()
+                with conn.cursor() as cur:
+                    cur.execute('SET search_path TO public')
+                conn.commit()
+                
+                dropped = cleanup_tables_in_wrong_schema(tenant)
+                if dropped:
+                    logger.warning(f"  Cleaned up {len(dropped)} tables from public: {dropped}")
+            except Exception as e:
+                logger.warning(f"  Cleanup warning (non-fatal): {e}")
             
             # After migrations, verify and create any missing tables
             logger.info(f"Step 5: Verifying tables in schema {schema_name}...")
@@ -228,6 +270,7 @@ def create_missing_shop_tables(conn, schema_name, app_labels):
     """
     Create missing tables in shop schema by directly using Django's schema editor.
     This handles the case where migrations don't properly create tables in non-public schemas.
+    Also verifies and adds missing columns to existing tables.
     """
     from django.db import connection
     from django.db.backends.postgresql.schema import DatabaseSchemaEditor
@@ -283,6 +326,35 @@ def create_missing_shop_tables(conn, schema_name, app_labels):
                             logger.error(f"  ✗ Failed to create {model._meta.db_table}: {str(e)}")
             else:
                 logger.info(f"✓ All required tables exist in {schema_name}")
+                
+            # NEW: Check for missing columns in existing tables
+            logger.info(f"Verifying columns in existing tables...")
+            with DatabaseSchemaEditor(conn) as schema_editor:
+                for model in models_to_create:
+                    table_name = model._meta.db_table
+                    if table_name in existing_tables:
+                        # Get columns that exist in the database
+                        cur.execute("""
+                            SELECT column_name
+                            FROM information_schema.columns
+                            WHERE table_schema = %s AND table_name = %s
+                        """, [schema_name, table_name])
+                        db_columns = {row[0] for row in cur.fetchall()}
+                        
+                        # Get columns that should exist according to model
+                        model_columns = {field.column for field in model._meta.get_fields() if hasattr(field, 'column')}
+                        
+                        # Find missing columns
+                        missing_columns = model_columns - db_columns
+                        if missing_columns:
+                            logger.warning(f"  Table {table_name} missing columns: {missing_columns}")
+                            for field in model._meta.get_fields():
+                                if hasattr(field, 'column') and field.column in missing_columns:
+                                    try:
+                                        schema_editor.add_field(model, field)
+                                        logger.info(f"    ✓ Added column: {field.column}")
+                                    except Exception as e:
+                                        logger.error(f"    ✗ Failed to add {field.column}: {str(e)}")
                 
     except Exception as e:
         logger.error(f"Error creating missing tables: {str(e)}")
@@ -353,6 +425,9 @@ def migrate_tenant_database(tenant):
     - Tenant apps (public schema): token_blacklist, shop_users
     
     Does NOT migrate SHOP_APP_LABELS (those go to shop schemas).
+    
+    IMPORTANT: Also cleans up any shop tables that may have been incorrectly
+    created in the public schema.
     """
     import os
     
@@ -386,6 +461,10 @@ def migrate_tenant_database(tenant):
         tenant_app_labels = getattr(settings, 'TENANT_APP_LABELS', [])
         shop_app_labels = getattr(settings, 'SHOP_APP_LABELS', [])
         
+        # DEBUG: Log what's about to be migrated
+        logger.warning(f"[migrate_tenant_database] TENANT_APP_LABELS: {tenant_app_labels}")
+        logger.warning(f"[migrate_tenant_database] SHOP_APP_LABELS: {shop_app_labels}")
+        
         # Tenant apps EXCLUDING shop apps
         # shop_users, admin, token_blacklist go to public schema
         # cash_book, creditors, etc. go to shop schemas
@@ -393,6 +472,9 @@ def migrate_tenant_database(tenant):
             app for app in tenant_app_labels 
             if app not in shop_app_labels
         ]
+        
+        logger.warning(f"[migrate_tenant_database] Apps to migrate to PUBLIC: {apps_for_public_schema}")
+        logger.warning(f"[migrate_tenant_database] Shop apps (excluded): {shop_app_labels}")
         
         logger.info(f"Apps to migrate to public schema: {apps_for_public_schema}")
         logger.info(f"Shop apps (will be migrated to shop schemas): {shop_app_labels}")
@@ -852,4 +934,137 @@ def get_schema_info(tenant, schema_name):
             
     except Exception as e:
         logger.error(f"Failed to get schema info for {schema_name}: {str(e)}")
+        raise
+
+
+def cleanup_tables_in_wrong_schema(tenant):
+    """
+    Remove shop-specific tables that incorrectly exist in tenant public schema.
+    
+    This fixes the issue where shop app tables (pos, stock_control, debtors, etc.)
+    were created in the tenant public schema instead of only in shop schemas.
+    
+    These tables should ONLY exist in shop schemas, never in public schema.
+    """
+    from django.conf import settings
+    
+    alias = tenant.db_alias
+    shop_app_labels = getattr(settings, 'SHOP_APP_LABELS', [])
+    
+    # Build list of table prefixes that belong to shop apps
+    shop_table_prefixes = []
+    for app_label in shop_app_labels:
+        # Convert app_label to table prefix
+        # e.g., 'cash_book' -> 'cash_book_', 'stock_control' -> 'stock_control_'
+        shop_table_prefixes.append(f"{app_label}_")
+    
+    try:
+        logger.warning(f"[cleanup_tables_in_wrong_schema] Starting cleanup for tenant: {tenant.name}")
+        
+        conn = connections[alias]
+        
+        with conn.cursor() as cur:
+            # Get all tables in public schema
+            cur.execute("""
+                SELECT tablename
+                FROM pg_tables
+                WHERE schemaname = 'public'
+                ORDER BY tablename
+            """)
+            public_tables = [row[0] for row in cur.fetchall()]
+            
+            logger.info(f"Found {len(public_tables)} tables in public schema")
+            
+            # Find shop tables in public schema
+            tables_to_remove = []
+            for table in public_tables:
+                for prefix in shop_table_prefixes:
+                    if table.startswith(prefix):
+                        tables_to_remove.append(table)
+                        logger.warning(f"  Found shop table in public: {table}")
+                        break
+            
+            if not tables_to_remove:
+                logger.info("No shop tables found in public schema - nothing to clean up")
+                return []
+            
+            logger.warning(f"[cleanup_tables_in_wrong_schema] Tables to remove from public schema: {tables_to_remove}")
+            
+            # Drop each table from public schema
+            dropped = []
+            for table_name in tables_to_remove:
+                try:
+                    # First drop CASCADE to remove dependent views/constraints
+                    cur.execute(f'DROP TABLE IF EXISTS "{table_name}" CASCADE')
+                    conn.commit()
+                    logger.info(f"  ✓ Dropped: {table_name} from public schema")
+                    dropped.append(table_name)
+                except Exception as e:
+                    logger.error(f"  ✗ Failed to drop {table_name}: {str(e)}")
+            
+            logger.warning(f"[cleanup_tables_in_wrong_schema] Dropped {len(dropped)} tables from public schema")
+            return dropped
+            
+    except Exception as e:
+        logger.error(f"Failed to cleanup tables in wrong schema: {str(e)}")
+        raise
+
+
+def verify_schema_isolation(tenant):
+    """
+    Verify that shop tables are properly isolated in shop schemas and not in public.
+    
+    Returns:
+        dict with: 
+            - is_valid: bool (True if no issues found)
+            - issues: list of issues found
+            - public_tables: list of all tables in public schema
+            - shop_tables_in_public: list of shop tables incorrectly in public
+    """
+    from django.conf import settings
+    
+    alias = tenant.db_alias
+    shop_app_labels = getattr(settings, 'SHOP_APP_LABELS', [])
+    
+    # Build list of table prefixes that belong to shop apps
+    shop_table_prefixes = []
+    for app_label in shop_app_labels:
+        shop_table_prefixes.append(f"{app_label}_")
+    
+    try:
+        conn = connections[alias]
+        
+        with conn.cursor() as cur:
+            # Get all tables in public schema
+            cur.execute("""
+                SELECT tablename
+                FROM pg_tables
+                WHERE schemaname = 'public'
+                ORDER BY tablename
+            """)
+            public_tables = [row[0] for row in cur.fetchall()]
+            
+            # Find shop tables in public schema
+            shop_tables_in_public = []
+            for table in public_tables:
+                for prefix in shop_table_prefixes:
+                    if table.startswith(prefix):
+                        shop_tables_in_public.append(table)
+                        break
+            
+            is_valid = len(shop_tables_in_public) == 0
+            
+            issues = []
+            if shop_tables_in_public:
+                issues.append(f"Found {len(shop_tables_in_public)} shop tables in public schema that should only be in shop schemas")
+            
+            return {
+                'is_valid': is_valid,
+                'issues': issues,
+                'public_tables': public_tables,
+                'shop_tables_in_public': shop_tables_in_public
+            }
+            
+    except Exception as e:
+        logger.error(f"Failed to verify schema isolation: {str(e)}")
         raise

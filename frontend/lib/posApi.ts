@@ -484,6 +484,20 @@ class POSTransactionAPI {
     await this.request('DELETE', `${ENDPOINTS.POS.LAYBYES}${laybeyId}/`);
   }
 
+  /**
+   * Convert laybye to invoice
+   */
+  async convertLaybyeToInvoice(laybyeId: string | number, debtorId?: number, debtorAccountNumber?: string): Promise<TransactionResponse> {
+    const data: any = {};
+    if (debtorId) {
+      data.debtor_id = debtorId;
+    }
+    if (debtorAccountNumber) {
+      data.debtor_account_number = debtorAccountNumber;
+    }
+    return this.request('POST', `${ENDPOINTS.POS.LAYBYES}${laybyeId}/convert_to_invoice/`, data);
+  }
+
   // ============================================================
   // QUOTATION ENDPOINTS
   // ============================================================
@@ -543,6 +557,17 @@ class POSTransactionAPI {
    */
   async deleteQuotation(quotationId: string | number): Promise<void> {
     await this.request('DELETE', `${ENDPOINTS.POS.QUOTATIONS}${quotationId}/`);
+  }
+
+  async convertQuotationToInvoice(quotationId: string | number, debtorId?: number, debtorAccountNumber?: string): Promise<TransactionResponse> {
+    const data: any = {};
+    if (debtorId) {
+      data.debtor_id = debtorId;
+    }
+    if (debtorAccountNumber) {
+      data.debtor_account_number = debtorAccountNumber;
+    }
+    return this.request('POST', `${ENDPOINTS.POS.QUOTATIONS}${quotationId}/convert_to_invoice/`, data);
   }
 
   // ============================================================

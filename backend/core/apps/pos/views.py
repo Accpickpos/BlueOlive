@@ -2,6 +2,8 @@
 Point of Sale views.
 API viewsets for all POS operations based on PointOfSale.pdf
 """
+from decimal import Decimal
+
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -12,7 +14,7 @@ from datetime import date
 from .models import (
     ReceiptOnAccount, CreditNote, CashReturn,
     CashACheque, TransactionQuery,
-    CashSale, Laybye, Quotation, JobCard, Payout, Repair, CashControl,
+    CashSale, Laybye, Quotation, JobCard, JobCardLine, Payout, Repair, CashControl,
     Invoice, InvoiceLine
 )
 
@@ -21,16 +23,19 @@ from .serializers import (
     LaybyeListSerializer, LaybyeDetailSerializer,
     QuotationListSerializer, QuotationDetailSerializer,
     PayoutSerializer, RepairSerializer,
-    JobCardListSerializer, JobCardDetailSerializer,
+    JobCardListSerializer, JobCardDetailSerializer, JobCardLineSerializer,
     CashControlSerializer, CashControlSummarySerializer, ReceiptOnAccountSerializer,
     CreditNoteListSerializer, CreditNoteDetailSerializer, CreditNoteCreateSerializer,
-    CashReturnSerializer, CashReturnCreateSerializer,
+    CashReturnSerializer, CashReturnLineSerializer,
     CashAChequeSerializer, TransactionQuerySerializer,
     InvoiceListSerializer, InvoiceDetailSerializer, InvoiceCreateUpdateSerializer,
     InvoiceLineSerializer
 )
 from .services import (
     CashSaleService, LaybyeService, QuotationService, RepairService
+)
+from .exceptions import (
+    InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException
 )
 from .filters import (
     CashSaleFilter, LaybyeFilter, QuotationFilter, JobCardFilter
@@ -48,11 +53,35 @@ class CashSaleViewSet(viewsets.ModelViewSet):
     """
     queryset = CashSale.objects.all()
     permission_classes = [IsAuthenticated]
-    lookup_field = 'sale_number'  # Allow lookup by sale_number instead of pk
+    lookup_field = 'pk'  # Default lookup by primary key
+    lookup_value_regex = '[^/]+'  # Allow both numeric IDs and alphanumeric sale_numbers
     filter_backends = [DjangoFilterBackend]
     filterset_class = CashSaleFilter
     ordering_fields = ['sale_date', 'sale_time', 'total_amount']
     ordering = ['-sale_date', '-sale_time']
+    
+    def get_object(self):
+        """
+        Retrieve the object using either pk or sale_number.
+        Allow lookup by both numeric ID and sale_number string.
+        """
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        
+        # Try to get the lookup value from the URL
+        lookup_value = self.kwargs.get(lookup_url_kwarg)
+        
+        if not lookup_value:
+            return super().get_object()
+        
+        # Check if the lookup value is numeric (pk) or string (sale_number)
+        if lookup_value.isdigit():
+            # It's a numeric ID - use pk lookup
+            self.lookup_field = 'pk'
+        else:
+            # It's a string - try sale_number lookup
+            self.lookup_field = 'sale_number'
+        
+        return super().get_object()
     
     def get_serializer_class(self):
         """Return appropriate serializer based on action."""
@@ -93,7 +122,7 @@ class CashSaleViewSet(viewsets.ModelViewSet):
                 'status': 'success',
                 'message': f'Cash sale {cash_sale.sale_number} posted successfully'
             })
-        except ValueError as e:
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
@@ -111,7 +140,7 @@ class CashSaleViewSet(viewsets.ModelViewSet):
                 'status': 'success',
                 'message': f'Cash sale {cash_sale.sale_number} cancelled'
             })
-        except ValueError as e:
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
@@ -286,7 +315,7 @@ class LaybyeViewSet(viewsets.ModelViewSet):
                 'message': 'Payment recorded successfully',
                 'new_balance': float(laybye.balance_due)
             })
-        except ValueError as e:
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
@@ -305,7 +334,7 @@ class LaybyeViewSet(viewsets.ModelViewSet):
                 'message': 'Laybye cancelled',
                 'refund_amount': float(laybye.refund_amount)
             })
-        except ValueError as e:
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
@@ -319,6 +348,67 @@ class LaybyeViewSet(viewsets.ModelViewSet):
             'status': 'success',
             'expired_count': count
         })
+    
+    @action(detail=True, methods=['post'])
+    def convert_to_invoice(self, request, pk=None):
+        """Convert laybye to customer invoice."""
+        laybye = self.get_object()
+        debtor_id = request.data.get('debtor_id')
+        debtor_account_number = request.data.get('debtor_account_number')
+        debtor = None
+        
+        # If debtor_id or debtor_account_number provided, look up debtor
+        if debtor_id:
+            try:
+                from apps.debtors.models import Debtor
+                debtor = Debtor.objects.get(id=debtor_id)
+            except Debtor.DoesNotExist:
+                return Response(
+                    {'error': f'Debtor with id {debtor_id} not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        elif debtor_account_number:
+            try:
+                from apps.debtors.models import Debtor
+                # Convert string to integer - dno is an IntegerField
+                debtor = Debtor.objects.get(dno=int(debtor_account_number))
+            except Debtor.DoesNotExist:
+                return Response(
+                    {'error': f'Debtor with account number {debtor_account_number} not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            except (ValueError, TypeError):
+                return Response(
+                    {'error': f'Invalid account number format: {debtor_account_number}. Must be a number.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # Try conversion even without debtor (for manual customer entry)
+        try:
+            from .services import QuotationService
+            invoice = QuotationService.convert_laybye_to_invoice(laybye, debtor)
+            
+            # Import the invoice serializer
+            from .serializers import InvoiceDetailSerializer
+            serializer = InvoiceDetailSerializer(invoice)
+            
+            return Response({
+                'status': 'success',
+                'message': 'Laybye converted to invoice',
+                'invoice': serializer.data
+            }, status=status.HTTP_201_CREATED)
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            return Response(
+                {'error': f'Conversion failed: {str(e)}', 'details': error_details},
+                status=status.HTTP_400_BAD_REQUEST
+            )
     
     @action(detail=False, methods=['get'])
     def active(self, request):
@@ -368,26 +458,58 @@ class QuotationViewSet(viewsets.ModelViewSet):
         """Convert quotation to invoice."""
         quotation = self.get_object()
         debtor_id = request.data.get('debtor_id')
+        debtor_account_number = request.data.get('debtor_account_number')
+        debtor = None
         
-        if not debtor_id:
-            return Response(
-                {'error': 'debtor_id is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # If debtor_id or debtor_account_number provided, look up debtor
+        if debtor_id:
+            try:
+                from apps.debtors.models import Debtor
+                debtor = Debtor.objects.get(id=debtor_id)
+            except Debtor.DoesNotExist:
+                return Response(
+                    {'error': f'Debtor with id {debtor_id} not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        elif debtor_account_number:
+            try:
+                from apps.debtors.models import Debtor
+                # Convert string to integer - dno is an IntegerField
+                debtor = Debtor.objects.get(dno=int(debtor_account_number))
+            except Debtor.DoesNotExist:
+                return Response(
+                    {'error': f'Debtor with account number {debtor_account_number} not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            except (ValueError, TypeError):
+                return Response(
+                    {'error': f'Invalid account number format: {debtor_account_number}. Must be a number.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
         
+        # Try conversion even without debtor (for manual customer entry)
         try:
-            from apps.debtors.models import Debtor
-            debtor = Debtor.objects.get(id=debtor_id)
+            invoice = QuotationService.convert_quotation_to_invoice(quotation, debtor)
             
-            QuotationService.convert_to_invoice(quotation, debtor)
+            # Import the invoice serializer
+            from .serializers import InvoiceDetailSerializer
+            serializer = InvoiceDetailSerializer(invoice)
             
             return Response({
                 'status': 'success',
-                'message': 'Quotation converted to invoice'
-            })
-        except ValueError as e:
+                'message': 'Quotation converted to invoice',
+                'invoice': serializer.data
+            }, status=status.HTTP_201_CREATED)
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
             return Response(
                 {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            return Response(
+                {'error': f'Conversion failed: {str(e)}', 'details': error_details},
                 status=status.HTTP_400_BAD_REQUEST
             )
     
@@ -404,7 +526,7 @@ class QuotationViewSet(viewsets.ModelViewSet):
                 'message': 'Quotation converted to job card',
                 'job_number': job_card.job_number
             })
-        except ValueError as e:
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
@@ -459,7 +581,7 @@ class RepairViewSet(viewsets.ModelViewSet):
                 'status': 'success',
                 'message': 'Repair issued to supplier'
             })
-        except ValueError as e:
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
@@ -487,7 +609,7 @@ class RepairViewSet(viewsets.ModelViewSet):
                 'status': 'success',
                 'message': 'Repair received from supplier'
             })
-        except ValueError as e:
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
@@ -504,7 +626,7 @@ class RepairViewSet(viewsets.ModelViewSet):
                 'status': 'success',
                 'message': 'Repair invoiced to customer'
             })
-        except ValueError as e:
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
@@ -533,22 +655,102 @@ class JobCardViewSet(viewsets.ModelViewSet):
             queryset = queryset.prefetch_related('lines')
         return queryset
     
+    @action(detail=True, methods=['post'], url_path='line-items')
+    def add_line_items(self, request, pk=None):
+        """Add line items to a job card."""
+        job_card = self.get_object()
+        line_items_data = request.data
+        
+        if not isinstance(line_items_data, list):
+            return Response(
+                {'error': 'line_items must be a list'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        created_lines = []
+        for idx, item_data in enumerate(line_items_data, start=1):
+            # Calculate line totals
+            quantity = Decimal(str(item_data.get('quantity', 1)))
+            unit_price = Decimal(str(item_data.get('unit_price', 0)))
+            discount_percentage = Decimal(str(item_data.get('discount_percentage', 0)))
+            
+            # Calculate discount amount
+            discount_amount = (quantity * unit_price * discount_percentage) / 100
+            line_subtotal = (quantity * unit_price) - discount_amount
+            
+            # VAT calculation (14% standard rate)
+            tax_code = item_data.get('tax_code', 1)
+            if tax_code == 1 or tax_code == 'STANDARD':  # STANDARD
+                vat_amount = line_subtotal * Decimal('0.14')
+            else:
+                vat_amount = Decimal('0')
+            
+            line_total = line_subtotal + vat_amount
+            
+            line_item = JobCardLine.objects.create(
+                job_card=job_card,
+                line_number=item_data.get('line_number', idx),
+                stock_code=item_data.get('stock_code', ''),
+                description=item_data.get('description', ''),
+                quantity=quantity,
+                unit_price=unit_price,
+                discount_percentage=discount_percentage,
+                tax_code=tax_code,
+                line_total=line_total,
+                vat_amount=vat_amount,
+                cost_price=Decimal(str(item_data.get('cost_price', 0))),
+            )
+            created_lines.append(line_item)
+        
+        # Update job card totals
+        job_card.refresh_from_db()
+        lines = job_card.lines.all()
+        job_card.subtotal = sum((line.line_total - line.vat_amount) for line in lines)
+        job_card.vat_amount = sum(line.vat_amount for line in lines)
+        job_card.total_amount = job_card.subtotal + job_card.vat_amount
+        job_card.total_cost = sum((line.quantity * line.cost_price) for line in lines)
+        job_card.gross_profit = job_card.subtotal - job_card.total_cost
+        job_card.save()
+        
+        serializer = JobCardLineSerializer(created_lines, many=True)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
     @action(detail=True, methods=['post'])
     def convert_to_invoice(self, request, pk=None):
         """Convert job card to customer invoice."""
         job_card = self.get_object()
         debtor_id = request.data.get('debtor_id')
+        debtor_account_number = request.data.get('debtor_account_number')
+        debtor = None
         
-        if not debtor_id:
-            return Response(
-                {'error': 'debtor_id is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # If debtor_id or debtor_account_number provided, look up debtor
+        if debtor_id:
+            try:
+                from apps.debtors.models import Debtor
+                debtor = Debtor.objects.get(id=debtor_id)
+            except Debtor.DoesNotExist:
+                return Response(
+                    {'error': f'Debtor with id {debtor_id} not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        elif debtor_account_number:
+            try:
+                from apps.debtors.models import Debtor
+                # Convert string to integer - dno is an IntegerField
+                debtor = Debtor.objects.get(dno=int(debtor_account_number))
+            except Debtor.DoesNotExist:
+                return Response(
+                    {'error': f'Debtor with account number {debtor_account_number} not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            except (ValueError, TypeError):
+                return Response(
+                    {'error': f'Invalid account number format: {debtor_account_number}. Must be a number.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
         
+        # Try conversion even without debtor (for manual customer entry)
         try:
-            from apps.debtors.models import Debtor
-            debtor = Debtor.objects.get(id=debtor_id)
-            
             from .services import QuotationService
             invoice = QuotationService.convert_job_card_to_invoice(job_card, debtor)
             
@@ -561,14 +763,16 @@ class JobCardViewSet(viewsets.ModelViewSet):
                 'message': 'Job card converted to invoice',
                 'invoice': serializer.data
             }, status=status.HTTP_201_CREATED)
-        except Debtor.DoesNotExist:
-            return Response(
-                {'error': f'Debtor with id {debtor_id} not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except ValueError as e:
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
             return Response(
                 {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            return Response(
+                {'error': f'Conversion failed: {str(e)}', 'details': error_details},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -617,10 +821,7 @@ class CashControlViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 
-"""
-Additional Point of Sale views for missing features.
-Receipt on Account, Credit Note, Cash Return, Cash a Cheque, Transaction Query
-"""
+
 
 
 class ReceiptOnAccountViewSet(viewsets.ModelViewSet):
@@ -641,7 +842,7 @@ class ReceiptOnAccountViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         """Optimize queryset."""
-        return super().get_queryset().select_related('debtor', 'cashier')
+        return super().get_queryset().select_related('cashier')
     
     @action(detail=True, methods=['post'])
     def post_receipt(self, request, pk=None):
@@ -729,7 +930,7 @@ class CreditNoteViewSet(viewsets.ModelViewSet):
         
         try:
             # Update stock for each line
-            from apps.stock_control.models import StockItem, StockMovement
+            from apps.stock_control.models import StockItem, StockTransaction
             for line in credit_note.lines.all():
                 if line.stock_code:
                     try:
@@ -738,10 +939,10 @@ class CreditNoteViewSet(viewsets.ModelViewSet):
                         stock_item.save()
                         
                         # Create stock movement
-                        StockMovement.objects.create(
+                        StockTransaction.objects.create(
                             stock_item=stock_item,
-                            movement_type='CRN',
-                            movement_date=credit_note.credit_date,
+                            transaction_type='RETURN',
+                            transaction_date=credit_note.credit_date,
                             transaction_number=credit_note.credit_number,
                             quantity_in=line.quantity,
                             quantity_balance=stock_item.quantity_on_hand,
@@ -783,7 +984,7 @@ class CashReturnViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         """Return appropriate serializer."""
         if self.action == 'create':
-            return CashReturnCreateSerializer
+            return CashReturnLineSerializer
         return CashReturnSerializer
     
     def get_queryset(self):
@@ -806,7 +1007,7 @@ class CashReturnViewSet(viewsets.ModelViewSet):
         
         try:
             # Update stock for each line
-            from apps.stock_control.models import StockItem, StockMovement
+            from apps.stock_control.models import StockItem, StockTransaction
             for line in cash_return.lines.all():
                 if line.stock_code:
                     try:
@@ -815,12 +1016,11 @@ class CashReturnViewSet(viewsets.ModelViewSet):
                         stock_item.save()
                         
                         # Create stock movement
-                        StockMovement.objects.create(
+                        StockTransaction.objects.create(
                             stock_item=stock_item,
-                            movement_type='CSR',
-                            movement_date=cash_return.return_date,
+                            transaction_type='RETURN',
+                            transaction_date=cash_return.return_date,
                             transaction_number=cash_return.return_number,
-                            reference=cash_return.reason,
                             quantity_in=line.quantity,
                             quantity_balance=stock_item.quantity_on_hand,
                             unit_price=line.unit_price,
@@ -903,7 +1103,7 @@ class TransactionQueryViewSet(viewsets.ModelViewSet):
     serializer_class = TransactionQuerySerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['query_date', 'query_type', 'query_status', 'assigned_to']
+    filterset_fields = ['query_date', 'transaction_type', 'query_status', 'assigned_to']
     ordering_fields = ['query_date']
     ordering = ['-query_date']
     
@@ -1030,11 +1230,35 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     """
     queryset = Invoice.objects.all()
     permission_classes = [IsAuthenticated]
-    lookup_field = 'invoice_number'  # Allow lookup by invoice_number instead of pk
+    lookup_field = 'pk'  # Default lookup by primary key
+    lookup_value_regex = '[^/]+'  # Allow both numeric IDs and alphanumeric invoice_numbers
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['status', 'invoice_date', 'debtor', 'is_posted']
     ordering_fields = ['invoice_date', 'invoice_number', 'total_amount']
     ordering = ['-invoice_date', '-invoice_number']
+    
+    def get_object(self):
+        """
+        Retrieve the object using either pk or invoice_number.
+        Allow lookup by both numeric ID and invoice_number string.
+        """
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        
+        # Try to get the lookup value from the URL
+        lookup_value = self.kwargs.get(lookup_url_kwarg)
+        
+        if not lookup_value:
+            return super().get_object()
+        
+        # Check if the lookup value is numeric (pk) or string (invoice_number)
+        if lookup_value.isdigit():
+            # It's a numeric ID - use pk lookup
+            self.lookup_field = 'pk'
+        else:
+            # It's a string - try invoice_number lookup
+            self.lookup_field = 'invoice_number'
+        
+        return super().get_object()
     
     def get_serializer_class(self):
         """Return appropriate serializer based on action."""
@@ -1066,16 +1290,15 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         return queryset
     
     def perform_create(self, serializer):
-        """Set default values on create."""
-        # Generate invoice number if not provided
+        """Auto-generate invoice number if not provided."""
         if not serializer.validated_data.get('invoice_number'):
             from django.utils import timezone
-            from datetime import timedelta
             today = timezone.now().date()
             count = Invoice.objects.filter(invoice_date=today).count() + 1
             invoice_number = f"INV-{today.year}{today.month:02d}{today.day:02d}-{count:05d}"
             serializer.save(invoice_number=invoice_number)
-        # If invoice_number is provided, the serializer has already created the invoice
+        else:
+            serializer.save()
     
     @action(detail=True, methods=['post'])
     def post(self, request, pk=None):
@@ -1083,13 +1306,13 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         invoice = self.get_object()
         
         try:
-            invoice.post_to_accounts()
+            invoice.post()
             return Response({
                 'status': 'success',
                 'message': f'Invoice {invoice.invoice_number} posted successfully',
                 'invoice': InvoiceDetailSerializer(invoice).data
             })
-        except ValueError as e:
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
@@ -1106,7 +1329,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                 'status': 'success',
                 'message': f'Invoice {invoice.invoice_number} cancelled'
             })
-        except ValueError as e:
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
@@ -1123,7 +1346,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                 'status': 'success',
                 'message': f'Invoice {invoice.invoice_number} voided'
             })
-        except ValueError as e:
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
@@ -1156,7 +1379,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                 'message': f'Payment of {amount} applied to invoice {invoice.invoice_number}',
                 'invoice': InvoiceDetailSerializer(invoice).data
             })
-        except ValueError as e:
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST

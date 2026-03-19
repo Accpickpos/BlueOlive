@@ -279,7 +279,7 @@ export default function TrendsPage() {
                                 style={{ width: `${Math.min(margin, 100)}%` }}
                               />
                             </div>
-                            <span className="text-sm w-12 text-right">{margin.toFixed(1)}%</span>
+                            <span className="text-sm w-12 text-right">{Number(margin).toFixed(1)}%</span>
                           </div>
                         </td>
                       </tr>
@@ -294,7 +294,7 @@ export default function TrendsPage() {
                     <td className="py-3 px-4 text-right">R {totalCost.toLocaleString('en-ZA', { maximumFractionDigits: 0 })}</td>
                     <td className="py-3 px-4 text-right">R {totalProfit.toLocaleString('en-ZA', { maximumFractionDigits: 0 })}</td>
                     <td className="py-3 px-4 text-right">
-                      {totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : 0}%
+                      {totalRevenue > 0 ? (Number(totalProfit) / Number(totalRevenue) * 100).toFixed(1) : 0}%
                     </td>
                   </tr>
                 </tfoot>

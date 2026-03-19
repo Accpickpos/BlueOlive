@@ -6,7 +6,7 @@ from decimal import Decimal
 from rest_framework import serializers
 from django.core.exceptions import ValidationError as DjangoValidationError
 from .exceptions import (
-    DuplicateTransaction, PaymentImbalance, POSValidationException
+    DuplicateTransaction, POSValidationException
 )
 from .calculation_service import CalculationService
 
@@ -164,7 +164,11 @@ class PaymentValidator:
         )
         
         if not is_balanced:
-            raise PaymentImbalance(tender_total, transaction_total)
+            raise serializers.ValidationError(
+                f"Payment imbalance: tendered {tender_total}, "
+                f"total {transaction_total}, "
+                f"difference {abs(float(tender_total) - float(transaction_total)):.2f}"
+            )
     
     @staticmethod
     def validate_cheque_details(tender_type, cheque_data):

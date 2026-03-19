@@ -299,6 +299,13 @@ export const ENDPOINTS = {
     NOTIFICATION_MARK_READ: (id: number) => `${API_V1_BASE}/messaging/notifications/${id}/mark_read/`,
     NOTIFICATION_MARK_ALL_READ: `${API_V1_BASE}/messaging/notifications/mark_all_read/`,
   },
+
+  // ===== SUBSCRIPTION (SaaS Plans) =====
+  SUBSCRIPTION: {
+    PLANS: `${API_V1_BASE}/subscription/plans/`,
+    SUBSCRIPTIONS: `${API_V1_BASE}/subscription/subscriptions/`,
+    PAYMENTS: `${API_V1_BASE}/subscription/payments/`,
+  },
 } as const;
 
 /**

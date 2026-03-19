@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 @receiver(pre_save, sender=CashSaleLine)
 def calculate_cash_sale_line_totals(sender, instance, **kwargs):
     """Calculate totals for cash sale line before saving."""
-    if not instance.pk:  # Only on create, not update
+    if True:  # Recalculate on every save
         try:
             calcs = CalculationService.calculate_line_totals(
                 quantity=instance.quantity,
@@ -45,7 +45,7 @@ def calculate_cash_sale_line_totals(sender, instance, **kwargs):
 @receiver(post_save, sender=CashSaleLine)
 def update_cash_sale_header_after_line(sender, instance, created, **kwargs):
     """Update parent cash sale totals after line changes."""
-    if created or kwargs.get('update_fields'):
+    if True:  # recalculate on every save
         try:
             cash_sale = instance.cash_sale
             
@@ -92,26 +92,26 @@ def update_cash_sale_header_after_line(sender, instance, created, **kwargs):
 @receiver(pre_save, sender=LaybyeLine)
 def calculate_laybye_line_totals(sender, instance, **kwargs):
     """Calculate totals for laybye line before saving."""
-    if not instance.pk:
-        try:
-            calcs = CalculationService.calculate_line_totals(
-                quantity=instance.quantity,
-                unit_price=instance.unit_price,
-                discount_percentage=instance.discount_percentage,
-                tax_code=instance.tax_code
-            )
-            
-            instance.line_total = calcs['line_total']
-            instance.vat_amount = calcs['vat_amount']
-            
-        except Exception as e:
-            logger.error(f"Error calculating laybye line totals: {str(e)}")
+    try:
+        calcs = CalculationService.calculate_line_totals(
+            quantity=instance.quantity,
+            unit_price=instance.unit_price,
+            discount_percentage=instance.discount_percentage,
+            tax_code=instance.tax_code,
+            cost_price=instance.cost_price
+        )
+        
+        instance.line_total = calcs['line_total']
+        instance.vat_amount = calcs['vat_amount']
+        
+    except Exception as e:
+        logger.error(f"Error calculating laybye line totals: {str(e)}")
 
 
 @receiver(post_save, sender=LaybyeLine)
 def update_laybye_header_after_line(sender, instance, created, **kwargs):
     """Update parent laybye totals after line changes."""
-    if created or kwargs.get('update_fields'):
+    if created or not created:  # recalculate on every save
         try:
             laybye = instance.laybye
             lines = laybye.lines.all()
@@ -137,7 +137,7 @@ def update_laybye_header_after_line(sender, instance, created, **kwargs):
 @receiver(pre_save, sender=QuotationLine)
 def calculate_quotation_line_totals(sender, instance, **kwargs):
     """Calculate totals for quotation line before saving."""
-    if not instance.pk:
+    if True:  # Recalculate on every save
         try:
             calcs = CalculationService.calculate_line_totals(
                 quantity=instance.quantity,
@@ -157,7 +157,7 @@ def calculate_quotation_line_totals(sender, instance, **kwargs):
 @receiver(post_save, sender=QuotationLine)
 def update_quotation_header_after_line(sender, instance, created, **kwargs):
     """Update parent quotation totals after line changes."""
-    if created or kwargs.get('update_fields'):
+    if True:  # recalculate on every save
         try:
             quotation = instance.quotation
             lines = quotation.lines.all()
@@ -192,7 +192,7 @@ def update_quotation_header_after_line(sender, instance, created, **kwargs):
 @receiver(pre_save, sender=JobCardLine)
 def calculate_jobcard_line_totals(sender, instance, **kwargs):
     """Calculate totals for job card line before saving."""
-    if not instance.pk:
+    if True:  # Recalculate on every save
         try:
             calcs = CalculationService.calculate_line_totals(
                 quantity=instance.quantity,
@@ -213,7 +213,7 @@ def calculate_jobcard_line_totals(sender, instance, **kwargs):
 @receiver(post_save, sender=JobCardLine)
 def update_jobcard_header_after_line(sender, instance, created, **kwargs):
     """Update parent job card totals after line changes."""
-    if created or kwargs.get('update_fields'):
+    if True:  # recalculate on every save
         try:
             job_card = instance.job_card
             lines = job_card.lines.all()
@@ -251,7 +251,7 @@ def update_jobcard_header_after_line(sender, instance, created, **kwargs):
 @receiver(pre_save, sender=CreditNoteLine)
 def calculate_creditnote_line_totals(sender, instance, **kwargs):
     """Calculate totals for credit note line before saving."""
-    if not instance.pk:
+    if True:  # Recalculate on every save
         try:
             calcs = CalculationService.calculate_line_totals(
                 quantity=instance.quantity,
@@ -270,7 +270,7 @@ def calculate_creditnote_line_totals(sender, instance, **kwargs):
 @receiver(post_save, sender=CreditNoteLine)
 def update_creditnote_header_after_line(sender, instance, created, **kwargs):
     """Update parent credit note totals after line changes."""
-    if created or kwargs.get('update_fields'):
+    if True:  # recalculate on every save
         try:
             credit_note = instance.credit_note
             lines = credit_note.lines.all()
@@ -297,7 +297,7 @@ def update_creditnote_header_after_line(sender, instance, created, **kwargs):
 @receiver(pre_save, sender=CashReturnLine)
 def calculate_cashreturn_line_totals(sender, instance, **kwargs):
     """Calculate totals for cash return line before saving."""
-    if not instance.pk:
+    if True:  # Recalculate on every save
         try:
             calcs = CalculationService.calculate_line_totals(
                 quantity=instance.quantity,
@@ -316,7 +316,7 @@ def calculate_cashreturn_line_totals(sender, instance, **kwargs):
 @receiver(post_save, sender=CashReturnLine)
 def update_cashreturn_header_after_line(sender, instance, created, **kwargs):
     """Update parent cash return totals after line changes."""
-    if created or kwargs.get('update_fields'):
+    if True:  # recalculate on every save
         try:
             cash_return = instance.cash_return
             lines = cash_return.lines.all()

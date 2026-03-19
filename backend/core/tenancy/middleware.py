@@ -55,14 +55,16 @@ class TenantMiddleware:
                 if shop:
                     set_current_shop(shop.schema_name)
                     request.shop = shop
+                    # Register tenant database connection with the correct shop schema
+                    # This is CRITICAL for multi-shop data isolation within a tenant
+                    register_tenant_connection(tenant, shop=shop)
                 else:
                     # DEBUG: Log when no shop is found
                     if settings.DEBUG:
                         logger.debug(f"[TenantMiddleware] No shop identified for tenant {tenant.name}")
-                
-                # Register tenant database connection with the correct shop schema
-                # This is CRITICAL for multi-shop data isolation within a tenant
-                register_tenant_connection(tenant, shop=shop)
+                    # Don't register tenant connection when there's no shop - this prevents
+                    # database errors when tenant has no shops configured
+                    request.shop = None
                 
                 # Set tenant context
                 set_current_tenant(tenant)
@@ -310,24 +312,7 @@ class TenantMiddleware:
         # DEBUG: Log the tenant details
         logger.debug(f"[_identify_shop] Starting with tenant={tenant.name}, tenant.shops.count={tenant.shops.count()}")
         
-        # Method 1: From authenticated user's context
-        if hasattr(request, 'user') and request.user.is_authenticated:
-            # Get shop from user's current context (could be from JWT claims)
-            shop_id = getattr(request.user, 'current_shop_id', None)
-            if shop_id:
-                logger.debug(f"[_identify_shop] User has current_shop_id={shop_id}")
-                try:
-                    shop = Shop.objects.get(
-                        tenant=tenant,
-                        id=shop_id,
-                        is_active=True
-                    )
-                    if settings.DEBUG:
-                        logger.debug(f"Shop from user context: {shop.name}")
-                except Shop.DoesNotExist:
-                    logger.warning(f"User's shop {shop_id} not found")
-        
-        # Method 2: From session (shop_id is set when user switches shops)
+        # Method 1: From session FIRST (most reliable - set during login/switch)
         # IMPORTANT: Read session directly, don't require authentication
         # This ensures correct shop is used even before auth middleware runs
         if not shop and hasattr(request, 'session') and 'current_shop_id' in request.session:
@@ -348,7 +333,43 @@ class TenantMiddleware:
                 request.session.pop('current_shop_id', None)
                 request.session.pop('current_shop_schema', None)
         
-        # Method 3: Development mode - allow header/query param override
+        # Method 2: From authenticated user's context (only if session not set)
+        # Note: JWT may have overwritten this to first shop, so session should take priority
+        if not shop and hasattr(request, 'user') and request.user.is_authenticated:
+            # Get shop from user's current context (could be from JWT claims)
+            shop_id = getattr(request.user, 'current_shop_id', None)
+            if shop_id:
+                logger.debug(f"[_identify_shop] User has current_shop_id={shop_id}")
+                try:
+                    shop = Shop.objects.get(
+                        tenant=tenant,
+                        id=shop_id,
+                        is_active=True
+                    )
+                    if settings.DEBUG:
+                        logger.debug(f"Shop from user context: {shop.name}")
+                except Shop.DoesNotExist:
+                    logger.warning(f"User's shop {shop_id} not found")
+        
+        # Method 3: From X-Shop-ID header (can be used in both DEBUG and production)
+        # This header is sent by the frontend from localStorage 'currentShopId'
+        if not shop:
+            shop_id_header = request.headers.get('X-Shop-ID')
+            if shop_id_header:
+                try:
+                    shop = Shop.objects.get(
+                        tenant=tenant,
+                        id=int(shop_id_header),
+                        is_active=True
+                    )
+                    logger.debug(f"Shop from X-Shop-ID header: {shop.name} (id={shop.id}, schema={shop.schema_name})")
+                    # Also set in session for future requests
+                    request.session['current_shop_id'] = shop.id
+                    request.session['current_shop_schema'] = shop.schema_name
+                except (Shop.DoesNotExist, ValueError) as e:
+                    logger.warning(f"Shop not found for X-Shop-ID header: {shop_id_header} - {e}")
+        
+        # Method 4: Development mode - allow header/query param override
         # SECURITY: Only in DEBUG mode
         if not shop and settings.DEBUG:
             shop = self._identify_shop_dev(request, tenant)
@@ -380,7 +401,24 @@ class TenantMiddleware:
         
         SECURITY: Only runs when DEBUG=True (enforced by caller).
         """
-        # Check header
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Check header - X-Shop-ID (numeric ID)
+        shop_id = request.headers.get('X-Shop-ID')
+        if shop_id:
+            try:
+                shop = Shop.objects.get(
+                    tenant=tenant,
+                    id=int(shop_id),
+                    is_active=True
+                )
+                logger.debug(f"Shop from X-Shop-ID header (DEV): {shop.name} (id={shop.id}, schema={shop.schema_name})")
+                return shop
+            except (Shop.DoesNotExist, ValueError):
+                logger.warning(f"Shop not found for X-Shop-ID header: {shop_id}")
+        
+        # Check header - X-Shop-Slug (subdomain/slug)
         shop_slug = request.headers.get('X-Shop-Slug')
         if shop_slug:
             try:

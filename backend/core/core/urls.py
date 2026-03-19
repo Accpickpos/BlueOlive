@@ -42,6 +42,10 @@ from apps.pos.urls import router as pos_router
 from apps.settings.urls import router as settings_router
 from apps.general_ledger.urls import router as general_ledger_router
 from apps.messaging.urls import urlpatterns as messaging_urls
+from apps.stockfinder.urls import router as stockfinder_router
+
+# Import subscription router from tenancy
+from tenancy.urls import subscription_router
 
 class LoginRequiredTemplateView(LoginRequiredMixin, TemplateView):
     pass
@@ -59,6 +63,9 @@ v1_api_patterns = [
     # SaaS Administration (superuser only)
     path('saas-admin/', include('apps.saas_admin.urls')),
 
+    # Subscription Plans (platform-level)
+    path('subscription/', include(subscription_router.urls)),
+
     # Business Applications
     path('debtors/', include(debtors_router.urls)),
     path('creditors/', include(creditors_urls)),
@@ -69,6 +76,7 @@ v1_api_patterns = [
     path('settings/', include(settings_router.urls)),
     path('general-ledger/', include(general_ledger_router.urls)),
     path('messaging/', include(messaging_urls)),
+    path('stockfinder/', include(stockfinder_router.urls)),
 ]
 
 urlpatterns = [

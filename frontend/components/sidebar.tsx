@@ -29,6 +29,7 @@ import {
   Upload,
   PanelLeftClose,
   PanelLeftOpen,
+  X,
 } from "lucide-react";
 
 // ================== MENU CONFIG ==================
@@ -102,6 +103,7 @@ const menuConfig = [
         ],
       },
       { type: "link", name: "Settings", href: "/dashboard/admin/settings", icon: UserCog },
+      { type: "link", name: "Stockfinder", href: "/dashboard/admin/stockfinder", icon: Wrench },
       { type: "link", name: "Import Data", href: "/dashboard/admin/import", icon: Upload },
       { type: "link", name: "Inter-Branch Transfers", href: "/dashboard/admin/ibt", icon: ArrowRight },
       { type: "link", name: "Inter-Branch Items", href: "/dashboard/admin/ibi", icon: Package },
@@ -138,7 +140,7 @@ const menuConfig = [
   { type: "link", name: "Reports", href: "/dashboard/reports", icon: BarChart },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ isMobileOpen = false, onMobileClose }: { isMobileOpen?: boolean; onMobileClose?: () => void }) {
   const pathname = usePathname();
   const [openDropdowns, setOpenDropdowns] = useState<{ [key: string]: boolean }>({});
   const [mounted, setMounted] = useState(false);
@@ -256,22 +258,43 @@ export default function Sidebar() {
 
   return (
     <>
+      {/* Mobile overlay backdrop */}
+      {isMobileOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-30 md:hidden"
+          onClick={onMobileClose}
+        />
+      )}
       {/* Sidebar */}
       <aside
         className={`relative flex flex-col h-screen bg-white border-r border-gray-100 shadow-sm transition-all duration-300 ease-in-out shrink-0
-          ${collapsed ? "w-16" : "w-64"}`}
+          ${collapsed ? "w-16" : "w-64"}
+          ${isMobileOpen 
+            ? "fixed inset-y-0 left-0 z-40 transform-none" 
+            : "hidden md:flex md:translate-x-0 -translate-x-full"}`}
       >
         {/* Toggle button — sits on the right edge */}
         <button
           onClick={() => setCollapsed((v) => !v)}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="absolute -right-3 top-6 z-20 flex items-center justify-center w-6 h-6 rounded-full bg-white border border-gray-200 shadow-sm text-gray-500 hover:text-blue-600 hover:border-blue-300 hover:shadow-md transition-all duration-150"
+          className="absolute -right-3 top-6 z-20 flex items-center justify-center w-6 h-6 rounded-full bg-white border border-gray-200 shadow-sm text-gray-500 hover:text-blue-600 hover:border-blue-300 hover:shadow-md transition-all duration-150 hidden md:flex"
         >
           {collapsed
             ? <PanelLeftOpen className="h-3 w-3" />
             : <PanelLeftClose className="h-3 w-3" />
           }
         </button>
+
+        {/* Mobile close button */}
+        {isMobileOpen && (
+          <button
+            onClick={onMobileClose}
+            aria-label="Close sidebar"
+            className="absolute top-4 right-4 z-50 p-1 rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 md:hidden"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
 
         {/* Logo */}
         <div className={`flex items-center h-16 border-b border-gray-100 shrink-0 transition-all duration-300 ${collapsed ? "justify-center px-0" : "px-5 gap-3"}`}>

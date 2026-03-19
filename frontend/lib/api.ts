@@ -313,11 +313,12 @@ export async function apiRequest(endpoint: string, options: any = {}): Promise<A
   });
 }
 
-export async function login(tenant_slug: string, username: string, password: string): Promise<AxiosResponse> {
+export async function login(tenant_slug: string, username: string, password: string, shop_id?: number): Promise<AxiosResponse> {
   const response = await api.post('/api/v1/users/auth/login/', {
     username,
     password,
     tenant_slug,
+    shop_id,  // Send selected shop_id to backend
   });
 
   // Backend returns user object, tokens are in httpOnly cookies set by the server
@@ -339,6 +340,7 @@ export async function signup(signupData: {
   last_name: string;
   company_name: string;
   subdomain: string;
+  subscription_plan_id?: number;
 }): Promise<AxiosResponse> {
   const response = await api.post('/api/v1/users/auth/signup/', signupData);
   
@@ -347,6 +349,20 @@ export async function signup(signupData: {
   csrfToken = null;
   
   return response;
+}
+
+// Subdomain validation for real-time availability checking
+export interface SubdomainValidationResponse {
+  subdomain: string;
+  available: boolean;
+  suggestions: string[];
+}
+
+export async function validateSubdomain(subdomain: string): Promise<SubdomainValidationResponse> {
+  const response = await api.get('/api/v1/users/auth/signup/validate-subdomain/', {
+    params: { subdomain },
+  });
+  return response.data;
 }
 
 export async function logout(): Promise<AxiosResponse> {
@@ -461,7 +477,7 @@ export async function getTenants(): Promise<any[]> {
 }
 
 export async function getTenantShops(tenantSlug?: string): Promise<any[]> {
-  const url = tenantSlug ? `/api/v1/tenant_shops/?tenant=${tenantSlug}` : '/api/v1/tenant_shops/';
+  const url = tenantSlug ? `/api/v1/tenants/tenant_shops/?tenant=${tenantSlug}` : '/api/v1/tenants/tenant_shops/';
   const res = await apiRequest(url);
   return res.data;
 }
@@ -471,6 +487,24 @@ export async function createTenant(tenantData: any): Promise<AxiosResponse> {
     method: 'POST',
     data: tenantData,
   });
+}
+
+// ========================================
+// Subscription/SaaS Plans API
+// ========================================
+
+export async function getSubscriptionPlans(): Promise<any[]> {
+  const res = await api.get('/api/v1/subscription/plans/');
+  return res.data;
+}
+
+export async function getActiveSubscriptionPlans(): Promise<any> {
+  const res = await api.get('/api/v1/subscription/plans/?is_active=true');
+  // Handle both array and paginated response
+  if (Array.isArray(res.data)) {
+    return res.data;
+  }
+  return res.data.results || [];
 }
 
 // ========================================

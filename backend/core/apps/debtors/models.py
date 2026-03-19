@@ -1213,7 +1213,7 @@ class DebtorOpenItem(TimeStampedModel):
         # Auto-calculate due date if not set
         if not self.due_date and self.debtor and self.transaction_date:
             self.due_date = self.transaction_date + timezone.timedelta(
-                days=self.debtor.payment_terms
+                days=getattr(self.debtor, 'terms', 30) or 30
             )
         
         # Auto-update aging flag

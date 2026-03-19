@@ -1,0 +1,5 @@
+DATABASES:
+default:
+  NAME: blue_olive
+  HOST: localhost
+  PORT: 5432

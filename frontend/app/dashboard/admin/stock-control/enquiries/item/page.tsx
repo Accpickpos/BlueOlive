@@ -180,29 +180,29 @@ function ItemEnquiryContent() {
               <div className="space-y-3">
                 <div>
                   <p className="text-sm text-gray-500">Quantity on Hand</p>
-                  <p className={`text-2xl font-bold ${stockItem.quantity_on_hand <= 0 ? 'text-red-600' : stockItem.quantity_on_hand <= stockItem.reorder_quantity ? 'text-amber-600' : 'text-green-600'}`}>
-                    {stockItem.quantity_on_hand?.toFixed(2) || '0.00'}
+                  <p className={`text-2xl font-bold ${Number(stockItem.quantity_on_hand) <= 0 ? 'text-red-600' : Number(stockItem.quantity_on_hand) <= Number(stockItem.reorder_quantity) ? 'text-amber-600' : 'text-green-600'}`}>
+                    {Number(stockItem.quantity_on_hand || 0).toFixed(2) || '0.00'}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Reorder Quantity</p>
-                  <p className="font-medium">{stockItem.reorder_quantity?.toFixed(2) || '0.00'}</p>
+                  <p className="font-medium">{Number(stockItem.reorder_quantity || 0).toFixed(2) || '0.00'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Allocated</p>
-                  <p className="font-medium">{stockItem.quantity_allocated?.toFixed(2) || '0.00'}</p>
+                  <p className="font-medium">{Number(stockItem.quantity_allocated || 0).toFixed(2) || '0.00'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Available</p>
-                  <p className="font-medium">{((stockItem.quantity_on_hand || 0) - (stockItem.quantity_allocated || 0)).toFixed(2)}</p>
+                  <p className="font-medium">{(Number(stockItem.quantity_on_hand || 0) - Number(stockItem.quantity_allocated || 0)).toFixed(2)}</p>
                 </div>
                 <div className="pt-2">
-                  {stockItem.quantity_on_hand <= 0 ? (
+                  {Number(stockItem.quantity_on_hand) <= 0 ? (
                     <div className="flex items-center text-red-600 text-sm">
                       <AlertTriangle className="w-4 h-4 mr-1" />
                       Out of Stock
                     </div>
-                  ) : stockItem.quantity_on_hand <= stockItem.reorder_quantity ? (
+                  ) : Number(stockItem.quantity_on_hand) <= Number(stockItem.reorder_quantity) ? (
                     <div className="flex items-center text-amber-600 text-sm">
                       <AlertTriangle className="w-4 h-4 mr-1" />
                       Low Stock
@@ -225,19 +225,19 @@ function ItemEnquiryContent() {
               <div className="space-y-3">
                 <div>
                   <p className="text-sm text-gray-500">Cost Price</p>
-                  <p className="text-xl font-bold">R {stockItem.cost_price?.toFixed(2) || '0.00'}</p>
+                  <p className="text-xl font-bold">R {Number(stockItem.cost_price || 0).toFixed(2) || '0.00'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Selling Price 1</p>
-                  <p className="font-medium">R {stockItem.selling_price_1?.toFixed(2) || '0.00'}</p>
+                  <p className="font-medium">R {Number(stockItem.selling_price_1 || 0).toFixed(2) || '0.00'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Selling Price 2</p>
-                  <p className="font-medium">R {stockItem.selling_price_2?.toFixed(2) || '0.00'}</p>
+                  <p className="font-medium">R {Number(stockItem.selling_price_2 || 0).toFixed(2) || '0.00'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Selling Price 3</p>
-                  <p className="font-medium">R {stockItem.selling_price_3?.toFixed(2) || '0.00'}</p>
+                  <p className="font-medium">R {Number(stockItem.selling_price_3 || 0).toFixed(2) || '0.00'}</p>
                 </div>
               </div>
             </Card>
@@ -250,24 +250,24 @@ function ItemEnquiryContent() {
               <div className="space-y-3">
                 <div>
                   <p className="text-sm text-gray-500">Cost Price</p>
-                  <p className="text-xl font-bold">R {stockItem.cost_price?.toFixed(2) || '0.00'}</p>
+                  <p className="text-xl font-bold">R {Number(stockItem.cost_price || 0).toFixed(2) || '0.00'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Selling Price 1</p>
-                  <p className="font-medium">R {stockItem.selling_price_1?.toFixed(2) || '0.00'}</p>
+                  <p className="font-medium">R {Number(stockItem.selling_price_1 || 0).toFixed(2) || '0.00'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Selling Price 2</p>
-                  <p className="font-medium">R {stockItem.selling_price_2?.toFixed(2) || '0.00'}</p>
+                  <p className="font-medium">R {Number(stockItem.selling_price_2 || 0).toFixed(2) || '0.00'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Selling Price 3</p>
-                  <p className="font-medium">R {stockItem.selling_price_3?.toFixed(2) || '0.00'}</p>
+                  <p className="font-medium">R {Number(stockItem.selling_price_3 || 0).toFixed(2) || '0.00'}</p>
                 </div>
                 {pricing?.active_special_deal && (
                   <div className="pt-2 border-t">
                     <p className="text-sm text-amber-600 font-medium">Active Special Deal!</p>
-                    <p className="text-sm">R {pricing.active_special_deal.special_selling_price_1?.toFixed(2)}</p>
+                    <p className="text-sm">R {Number(pricing.active_special_deal.special_selling_price_1 || 0).toFixed(2)}</p>
                     <p className="text-xs text-gray-500">
                       Until {pricing.active_special_deal.end_date}
                     </p>
@@ -320,13 +320,13 @@ function ItemEnquiryContent() {
                         <td className={`py-3 px-2 text-right font-medium ${
                           tx.quantity > 0 ? 'text-green-600' : 'text-red-600'
                         }`}>
-                          {tx.quantity > 0 ? '+' : ''}{tx.quantity?.toFixed(2)}
+                          {tx.quantity > 0 ? '+' : ''}{Number(tx.quantity || 0).toFixed(2)}
                         </td>
                         <td className="py-3 px-2 text-right">
-                          R {tx.unit_cost?.toFixed(2) || '0.00'}
+                          R {Number(tx.unit_cost || 0).toFixed(2) || '0.00'}
                         </td>
                         <td className="py-3 px-2 text-right">
-                          R {((tx.quantity || 0) * (tx.unit_cost || 0)).toFixed(2)}
+                          R {(Number(tx.quantity || 0) * Number(tx.unit_cost || 0)).toFixed(2)}
                         </td>
                         <td className="py-3 px-2 text-gray-600">
                           {tx.reference || '-'}
@@ -361,7 +361,7 @@ function ItemEnquiryContent() {
                           {fp.effective_date ? new Date(fp.effective_date).toLocaleDateString('en-ZA') : '-'}
                         </td>
                         <td className="py-3 px-2 text-right font-medium">
-                          R {fp.new_price?.toFixed(2)}
+                          R {Number(fp.new_price || 0).toFixed(2)}
                         </td>
                         <td className="py-3 px-2">
                           <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">

@@ -56,19 +56,20 @@ export default function LoginPage() {
         setTenant(subdomain);
         console.log('Stored tenant in localStorage:', subdomain);
         
-        // Fetch shops for the tenant and store them
-        try {
-          const shops = await getTenantShops(subdomain);
-          setShops(shops);
-          console.log('Stored shops in localStorage:', shops.length);
-          
-          // Set the first shop as current if available
-          if (shops.length > 0) {
-            setCurrentShop(shops[0]);
-            console.log('Set current shop:', shops[0].name);
-          }
-        } catch (shopError) {
-          console.warn('Failed to fetch shops after login:', shopError);
+        // Use the shop from the login response (already set by backend)
+        const shop = response.data.shop;
+        const shops = response.data.accessible_shops || [];
+        
+        setShops(shops);
+        
+        if (shop) {
+          // Use the shop selected during login (or default set by backend)
+          setCurrentShop(shop);
+          console.log('Set current shop:', shop.name);
+        } else if (shops.length > 0) {
+          // Fallback to first shop if no shop in response
+          setCurrentShop(shops[0]);
+          console.log('Set current shop:', shops[0].name);
         }
         
         // Set user directly from login response to bypass profile fetch issues

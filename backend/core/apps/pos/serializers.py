@@ -7,12 +7,13 @@ from decimal import Decimal
 from django.db import transaction as db_transaction
 from datetime import date
 from .models import (
-    CashSale, CashSaleLine, Tender, Laybye, LaybyeLine, LaybyelPayment,
+    CashSale, CashSaleLine, Tender, Laybye, LaybyeLine, LaybyePayment,
     Quotation, QuotationLine, Payout, Repair, JobCard, JobCardLine,
     CashControl, ReceiptOnAccount, CreditNote, CreditNoteLine,
     CashReturn, CashReturnLine, CashACheque, TransactionQuery, Invoice, InvoiceLine
 )
 from apps.settings.models import SalesArea
+from apps.debtors.models import Debtor
 from .price_validation_service import PriceValidationService
 
 
@@ -175,7 +176,7 @@ class CashSaleDetailSerializer(serializers.ModelSerializer):
         model = CashSale
         fields = '__all__'
         read_only_fields = [
-            'subtotal', 'discount_amount', 'vat_amount', 'total_amount',
+            'subtotal', 'discount_percentage', 'vat_amount', 'total_amount',
             'total_cost', 'gross_profit', 'change_given', 'is_posted',
             'created_at', 'updated_at'
         ]
@@ -333,10 +334,6 @@ class CashSaleCreateSerializer(serializers.ModelSerializer):
 
 class LaybyeLineSerializer(serializers.ModelSerializer):
     """Serializer for laybye line items."""
-    stock_item_description = serializers.CharField(
-        source='stock_item.description',
-        read_only=True
-    )
     
     class Meta:
         model = LaybyeLine
@@ -344,11 +341,11 @@ class LaybyeLineSerializer(serializers.ModelSerializer):
         read_only_fields = ['line_total', 'vat_amount']
 
 
-class LaybyelPaymentSerializer(serializers.ModelSerializer):
+class LaybyePaymentSerializer(serializers.ModelSerializer):
     """Serializer for laybye payments."""
     
     class Meta:
-        model = LaybyelPayment
+        model = LaybyePayment
         fields = '__all__'
         read_only_fields = ['created_at', 'updated_at']
 
@@ -370,7 +367,7 @@ class LaybyeListSerializer(serializers.ModelSerializer):
 class LaybyeDetailSerializer(serializers.ModelSerializer):
     """Detailed serializer for laybye."""
     lines = LaybyeLineSerializer(many=True, read_only=True)
-    payments = LaybyelPaymentSerializer(many=True, read_only=True)
+    payments = LaybyePaymentSerializer(many=True, read_only=True)
     sales_area_detail = SalesAreaSimpleSerializer(source='sales_area', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     
@@ -459,7 +456,7 @@ class JobCardListSerializer(serializers.ModelSerializer):
         model = JobCard
         fields = [
             'id', 'job_number', 'job_date', 'customer_name', 'telephone',
-            'registration_number', 'total_amount', 'gross_profit', 'status',
+            'registration_number', 'subtotal', 'total_amount', 'gross_profit', 'status',
             'status_display', 'sales_area_name', 'created_at'
         ]
 
@@ -472,7 +469,15 @@ class JobCardDetailSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = JobCard
-        fields = '__all__'
+        fields = [
+            'id', 'job_number', 'job_date', 'customer_name', 'address', 'telephone',
+            'contact_person', 'order_number', 'registration_number', 'job_description',
+            'sales_area', 'sales_area_detail', 'operator_number',
+            'subtotal', 'vat_amount', 'total_amount', 'total_cost', 'gross_profit',
+            'status', 'status_display', 'cancellation_reason',
+            'debtor_account_number',
+            'lines', 'created_at', 'updated_at'
+        ]
         read_only_fields = ['subtotal', 'vat_amount', 'total_amount', 'total_cost', 'gross_profit', 'created_at', 'updated_at']
 
 
@@ -646,7 +651,7 @@ class CashAChequeSerializer(serializers.ModelSerializer):
     class Meta:
         model = CashACheque
         fields = '__all__'
-        read_only_fields = ['cash_paid', 'is_processed', 'created_at', 'updated_at']
+        read_only_fields = ['is_processed', 'created_at', 'updated_at']
     
     def validate(self, data):
         """Calculate cash paid."""
@@ -713,7 +718,7 @@ class InvoiceListSerializer(serializers.ModelSerializer):
     """Serializer for invoice list view."""
     
     debtor_name = serializers.CharField(source='debtor.dname', read_only=True)
-    debtor_account_number = serializers.CharField(source='debtor.account_number', read_only=True)
+    debtor_account_number = serializers.CharField(source='debtor.dno', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     
     class Meta:
@@ -742,6 +747,7 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
     """Detailed serializer for invoice with line items."""
     
     debtor_name = serializers.CharField(source='debtor.dname', read_only=True)
+    debtor_account_number = serializers.CharField(source='debtor.dno', read_only=True)
     lines = InvoiceLineSerializer(many=True, read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     profit_margin = serializers.ReadOnlyField()
@@ -758,6 +764,7 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
             'due_date',
             'debtor',
             'debtor_name',
+            'debtor_account_number',
             'delivery_name',
             'delivery_address_line1',
             'delivery_address_line2',
@@ -805,58 +812,63 @@ class InvoiceCreateUpdateSerializer(serializers.ModelSerializer):
     
     # Accept debtor_account_number and convert to debtor ID
     debtor_account_number = serializers.CharField(write_only=True, required=False)
+    # Explicitly define debtor as not required since we convert from debtor_account_number
+    # Use a custom field that allows setting via to_internal_value
+    debtor = serializers.PrimaryKeyRelatedField(
+        queryset=Debtor.objects.none(),  # Set in __init__ to avoid circular imports
+        required=False,  # Not required as input - set via debtor_account_number
+        help_text="Customer/Debtor (can be provided via debtor_account_number)"
+    )
+    # Accept both 'lines' and 'line_items' for line items (frontend uses 'line_items')
     lines = InvoiceLineSerializer(many=True, required=False, write_only=True)
+    line_items = InvoiceLineSerializer(many=True, required=False, write_only=True)
     
-    class Meta:
-        model = Invoice
-        fields = [
-            'invoice_number',
-            'invoice_date',
-            'due_date',
-            'debtor',
-            'debtor_account_number',  # Frontend uses this
-            'delivery_name',
-            'delivery_address_line1',
-            'delivery_address_line2',
-            'delivery_telephone',
-            'order_number',
-            'customer_reference',
-            'job_card_number',
-            'sales_area',
-            'subtotal',
-            'discount_amount',
-            'vat_amount',
-            'total_amount',
-            'total_cost',
-            'gross_profit',
-            'status',
-            'created_by',
-            'notes',
-            'lines',
-        ]
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Set queryset here to avoid circular import issues
+        from apps.debtors.models import Debtor
+        self.fields['debtor'].queryset = Debtor.objects.all()
     
     def to_internal_value(self, data):
-        """Convert debtor_account_number to debtor before validation."""
-        # Call parent first to get all validated data
+        """Convert debtor_account_number to debtor, and merge line_items -> lines."""
         ret = super().to_internal_value(data)
+        
+        # Merge line_items into lines if lines not provided (frontend compatibility)
+        if 'line_items' in ret and 'lines' not in ret:
+            ret['lines'] = ret.pop('line_items')
+        elif 'line_items' in ret:
+            ret.pop('line_items')
         
         # Handle debtor_account_number -> debtor conversion
         debtor_account_number = data.get('debtor_account_number')
         if debtor_account_number:
             from apps.debtors.models import Debtor
             try:
-                debtor = Debtor.objects.get(customer_number=debtor_account_number)
+                debtor = Debtor.objects.get(dno=int(debtor_account_number))
                 ret['debtor'] = debtor
             except Debtor.DoesNotExist:
                 raise serializers.ValidationError({'debtor_account_number': f'Debtor with account number {debtor_account_number} not found'})
             except ValueError:
-                raise serializers.ValidationError({'debtor_account_number': 'Invalid account number format'})
+                raise serializers.ValidationError({'debtor_account_number': 'Invalid account number format. Must be a number.'})
+        
+        # Remove debtor_account_number from validated_data as it's not a model field
+        ret.pop('debtor_account_number', None)
         
         return ret
     
     def create(self, validated_data):
         """Create invoice with line items."""
         lines_data = validated_data.pop('lines', [])
+        
+        # Set default sales_area if not provided
+        if 'sales_area' not in validated_data or not validated_data.get('sales_area'):
+            from apps.settings.models import SalesArea
+            default_sales_area = SalesArea.objects.filter(is_active=True).first()
+            if default_sales_area:
+                validated_data['sales_area'] = str(default_sales_area.number).zfill(2)
+            else:
+                # Fallback: use a default sales area code
+                validated_data['sales_area'] = '01'
         
         with db_transaction.atomic():
             invoice = Invoice.objects.create(**validated_data)
@@ -883,238 +895,32 @@ class InvoiceCreateUpdateSerializer(serializers.ModelSerializer):
                     InvoiceLine.objects.create(invoice=instance, **line_data)
         
         return instance
-
-
-"""
-Additional Point of Sale serializers for missing features.
-Receipt on Account, Credit Note, Cash Return, Cash a Cheque, Transaction Query
-"""
-
-
-class ReceiptOnAccountSerializer(serializers.ModelSerializer):
-    """Serializer for receipt on account."""
-    cashier_name = serializers.CharField(source='cashier.username', read_only=True)
-    tender_type_display = serializers.CharField(
-        source='get_tender_type_display',
-        read_only=True
-    )
     
     class Meta:
-        model = ReceiptOnAccount
-        fields = '__all__'
-        read_only_fields = ['total_amount', 'is_posted', 'created_at', 'updated_at']
-    
-    def validate(self, data):
-        """Calculate total amount."""
-        amount = data.get('amount', Decimal('0.00'))
-        settlement_discount = data.get('settlement_discount', Decimal('0.00'))
-        data['total_amount'] = amount - settlement_discount
-        return data
-
-
-class CreditNoteLineSerializer(serializers.ModelSerializer):
-    """Serializer for credit note line items."""
-    
-    class Meta:
-        model = CreditNoteLine
+        model = Invoice
         fields = [
-            'id', 'line_number', 'stock_code', 'description', 'quantity',
-            'unit_price', 'tax_code', 'line_total', 'vat_amount'
+            'invoice_number',
+            'invoice_date',
+            'due_date',
+            'debtor',
+            'debtor_account_number',  # Frontend uses this
+            'delivery_name',
+            'delivery_address_line1',
+            'delivery_address_line2',
+            'delivery_telephone',
+            'order_number',
+            'customer_reference',
+            'job_card_number',
+            'sales_area',
+            'created_by',  # Frontend can set this for salesman
+            'subtotal',
+            'discount_amount',
+            'vat_amount',
+            'total_amount',
+            'total_cost',
+            'gross_profit',
+            'status',
+            'notes',
+            'lines',
+            'line_items',  # Frontend uses this (alias for lines)
         ]
-        read_only_fields = ['line_total', 'vat_amount']
-
-
-class CreditNoteListSerializer(serializers.ModelSerializer):
-    """Serializer for credit note list view."""
-    cashier_name = serializers.CharField(source='cashier.username', read_only=True)
-    
-    class Meta:
-        model = CreditNote
-        fields = [
-            'id', 'credit_number', 'credit_date', 'customer_name',
-            'debtor_account', 'total_amount', 'cashier_name',
-            'is_posted', 'created_at'
-        ]
-
-
-class CreditNoteDetailSerializer(serializers.ModelSerializer):
-    """Detailed serializer for credit note."""
-    lines = CreditNoteLineSerializer(many=True, read_only=True)
-    cashier_name = serializers.CharField(source='cashier.username', read_only=True)
-    
-    class Meta:
-        model = CreditNote
-        fields = '__all__'
-        read_only_fields = ['subtotal', 'vat_amount', 'total_amount', 'is_posted', 'created_at', 'updated_at']
-
-
-class CreditNoteCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating credit notes."""
-    lines = CreditNoteLineSerializer(many=True)
-    
-    class Meta:
-        model = CreditNote
-        fields = [
-            'credit_number', 'credit_date', 'customer_name', 'debtor_account',
-            'original_sale_number', 'reason', 'sales_area',
-            'cashier', 'station_number', 'lines'
-        ]
-    
-    def validate_credit_number(self, value):
-        """Validate unique credit number."""
-        if CreditNote.objects.filter(credit_number=value).exists():
-            raise serializers.ValidationError("Credit number already exists.")
-        return value
-    
-    @db_transaction.atomic
-    def create(self, validated_data):
-        """Create credit note with lines."""
-        lines_data = validated_data.pop('lines')
-        
-        credit_note = CreditNote.objects.create(**validated_data)
-        
-        subtotal = Decimal('0.00')
-        vat_total = Decimal('0.00')
-        
-        for idx, line_data in enumerate(lines_data, start=1):
-            line_data['line_number'] = idx
-            
-            quantity = line_data['quantity']
-            unit_price = line_data['unit_price']
-            tax_code = line_data.get('tax_code', 1)
-            
-            line_subtotal = quantity * unit_price
-            vat_rate = Decimal('0.14') if tax_code == 1 else Decimal('0.00')
-            line_vat = line_subtotal * vat_rate
-            line_total = line_subtotal + line_vat
-            
-            line_data['line_total'] = line_total
-            line_data['vat_amount'] = line_vat
-            
-            CreditNoteLine.objects.create(credit_note=credit_note, **line_data)
-            
-            subtotal += line_subtotal
-            vat_total += line_vat
-        
-        credit_note.subtotal = subtotal
-        credit_note.vat_amount = vat_total
-        credit_note.total_amount = subtotal + vat_total
-        credit_note.save()
-        
-        return credit_note
-
-
-class CashReturnLineSerializer(serializers.ModelSerializer):
-    """Serializer for cash return line items."""
-    
-    class Meta:
-        model = CashReturnLine
-        fields = [
-            'id', 'line_number', 'stock_code', 'description', 'quantity',
-            'unit_price', 'tax_code', 'line_total', 'vat_amount'
-        ]
-        read_only_fields = ['line_total', 'vat_amount']
-
-
-class CashReturnSerializer(serializers.ModelSerializer):
-    """Serializer for cash returns."""
-    lines = CashReturnLineSerializer(many=True, read_only=True)
-    cashier_name = serializers.CharField(source='cashier.username', read_only=True)
-    
-    class Meta:
-        model = CashReturn
-        fields = '__all__'
-        read_only_fields = ['subtotal', 'vat_amount', 'total_amount', 'is_posted', 'created_at', 'updated_at']
-
-
-class CashReturnCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating cash returns."""
-    lines = CashReturnLineSerializer(many=True)
-    
-    class Meta:
-        model = CashReturn
-        fields = [
-            'return_number', 'return_date', 'original_sale_number',
-            'customer_name', 'reason', 'cashier', 'station_number', 'lines'
-        ]
-    
-    @db_transaction.atomic
-    def create(self, validated_data):
-        """Create cash return with lines."""
-        lines_data = validated_data.pop('lines')
-        
-        cash_return = CashReturn.objects.create(**validated_data)
-        
-        subtotal = Decimal('0.00')
-        vat_total = Decimal('0.00')
-        
-        for idx, line_data in enumerate(lines_data, start=1):
-            line_data['line_number'] = idx
-            
-            quantity = line_data['quantity']
-            unit_price = line_data['unit_price']
-            tax_code = line_data.get('tax_code', 1)
-            
-            line_subtotal = quantity * unit_price
-            vat_rate = Decimal('0.14') if tax_code == 1 else Decimal('0.00')
-            line_vat = line_subtotal * vat_rate
-            line_total = line_subtotal + line_vat
-            
-            line_data['line_total'] = line_total
-            line_data['vat_amount'] = line_vat
-            
-            CashReturnLine.objects.create(cash_return=cash_return, **line_data)
-            
-            subtotal += line_subtotal
-            vat_total += line_vat
-        
-        cash_return.subtotal = subtotal
-        cash_return.vat_amount = vat_total
-        cash_return.total_amount = subtotal + vat_total
-        cash_return.save()
-        
-        return cash_return
-
-
-class CashAChequeSerializer(serializers.ModelSerializer):
-    """Serializer for cash a cheque."""
-    cashier_name = serializers.CharField(source='cashier.username', read_only=True)
-    
-    class Meta:
-        model = CashACheque
-        fields = '__all__'
-        read_only_fields = ['cash_paid', 'is_processed', 'created_at', 'updated_at']
-    
-    def validate(self, data):
-        """Calculate cash paid."""
-        cheque_amount = data.get('cheque_amount', Decimal('0.00'))
-        commission = data.get('commission', Decimal('0.00'))
-        data['cash_paid'] = cheque_amount - commission
-        return data
-
-
-class TransactionQuerySerializer(serializers.ModelSerializer):
-    """Serializer for transaction queries."""
-    transaction_type_display = serializers.CharField(
-        source='get_transaction_type_display',
-        read_only=True
-    )
-    query_status_display = serializers.CharField(
-        source='get_query_status_display',
-        read_only=True
-    )
-    assigned_to_name = serializers.CharField(
-        source='assigned_to.username',
-        read_only=True,
-        allow_null=True
-    )
-    resolved_by_name = serializers.CharField(
-        source='resolved_by.username',
-        read_only=True,
-        allow_null=True
-    )
-    
-    class Meta:
-        model = TransactionQuery
-        fields = '__all__'
-        read_only_fields = ['created_at', 'updated_at']

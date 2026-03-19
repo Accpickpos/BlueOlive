@@ -92,13 +92,13 @@ from apps.creditors.models import (
 # ============================================================
 
 DEBTOR_CSV_TO_MODEL_FIELD_MAP = {
-    'DNO':        'customer_number',
-    'DNAME':      'name',
-    'DSNAME':     'short_name',
-    'DCONTACT':   'contact_person',
-    'DTEL':       'phone',
-    'TEL2':       'phone2',
-    'DFAX':       'fax',
+    'DNO':        'dno',
+    'DNAME':      'dname',
+    'DSNAME':     'dsname',
+    'DCONTACT':   'dcontact',
+    'DTEL':       'dtel',
+    'TEL2':       'dtel2',
+    'DFAX':       'dfax',
     'EMAIL':      'email',
     'DADD1':      'address_line1',
     'DADD2':      'address_line2',
@@ -108,34 +108,34 @@ DEBTOR_CSV_TO_MODEL_FIELD_MAP = {
     'DELAD2':     'delivery_address2',
     'DELAD3':     'delivery_address3',
     'DELAD4':     'delivery_address4',
-    'DTAXNO':     'tax_number',
-    'VATREF':     'vat_reference',
-    'DAREA':      'area_code',
-    'DBALBFWD':   'balance_brought_forward',
-    'DCRNT':      'balance_current',
-    'D30':        'balance_30_days',
-    'D60':        'balance_60_days',
-    'D90':        'balance_90_days',
-    'D120':       'balance_120_days',
-    'D150':       'balance_150_days',
-    'D180':       'balance_180_days',
-    'DSALESM':    'sales_month',
-    'DSALESY':    'sales_year',
-    'DPROFITM':   'profit_month',
-    'DPROFITY':   'profit_year',
-    'DAMTLPD':    'last_payment_amount',
-    'DDATLPD':    'last_payment_date',
-    'DATEOPENED': 'date_opened',
-    'DDISCPER':   'discount_percentage',
-    'DCLIMIT':    'credit_limit',
-    'DINTFLAG':   'interest_flag',
-    'PRICE':      'price_level',
-    'ACCTYPE':    'account_type',
-    'TERMS':      'payment_terms',
-    'PDISC':      'prompt_payment_discount',
+    'DTAXNO':     'dtaxno',      # Legacy field name
+    'VATREF':     'vatref',      # Legacy field name
+    'DAREA':      'darea',       # Legacy field name
+    'DBALBFWD':   'dbalbfwd',    # Legacy field name
+    'DCRNT':      'dcrnt',       # Legacy field name
+    'D30':        'd30',         # Legacy field name
+    'D60':        'd60',         # Legacy field name
+    'D90':        'd90',         # Legacy field name
+    'D120':       'd120',        # Legacy field name
+    'D150':       'd150',        # Legacy field name
+    'D180':       'd180',        # Legacy field name
+    'DSALESM':    'dsalesm',     # Legacy field name
+    'DSALESY':    'dsalesy',     # Legacy field name
+    'DPROFITM':   'dprofitm',    # Legacy field name
+    'DPROFITY':   'dprofity',    # Legacy field name
+    'DAMTLPD':    'damtlpd',     # Legacy field name
+    'DDATLPD':    'ddatlpd',     # Legacy field name
+    'DATEOPENED': 'dateopened',  # Legacy field name
+    'DDISCPER':   'ddiscper',    # Legacy field name
+    'DCLIMIT':    'dclimit',     # Legacy field name
+    'DINTFLAG':   'dintflag',    # Legacy field name
+    'PRICE':      'price',       # Legacy field name
+    'ACCTYPE':    'acctype',     # Legacy field name
+    'TERMS':      'terms',       # Legacy field name
+    'PDISC':      'pdisc',       # Legacy field name
     'DISCPRN':    'discount_printable',
-    'DPOSBAL':    'positive_balance_only',
-    'BLOCKFLAG':  'block_flag',
+    'DPOSBAL':    'dposbal',     # Legacy field name
+    'BLOCKFLAG':  'blockflag',    # Legacy field name
     'NOTES':      'notes',
 }
 
@@ -452,11 +452,8 @@ RFC_STATUS_MAP = {
 
 DECIMAL_FIELDS = {
     # Debtor
-    'balance_brought_forward', 'balance_current', 'balance_30_days',
-    'balance_60_days', 'balance_90_days', 'balance_120_days',
-    'balance_150_days', 'balance_180_days', 'sales_month', 'sales_year',
-    'profit_month', 'profit_year', 'last_payment_amount',
-    'discount_percentage', 'credit_limit', 'prompt_payment_discount',
+    'dbalbfwd', 'dcrnt', 'd30', 'd60', 'd90', 'd120', 'd150', 'd180', 'dsalesm', 'dsalesy',
+    'dprofitm', 'dprofity', 'damtlpd', 'ddiscper', 'dclimit', 'pdisc',
     # Creditor
     'total_outstanding_balance', 'last_paid_amount', 'purchases_mtd',
     'purchases_ytd', 'prompt_payment_discount_percent',
@@ -496,7 +493,7 @@ DECIMAL_FIELDS = {
 }
 
 INTEGER_FIELDS = {
-    'customer_number', 'area_code', 'price_level', 'payment_terms',
+    'dno', 'darea', 'price', 'terms',
     'payment_terms_days',
     # Department
     'number',
@@ -513,7 +510,7 @@ INTEGER_FIELDS = {
 }
 
 DATE_FIELDS = {
-    'last_payment_date', 'last_paid_date', 'date_opened',
+    'ddatlpd', 'last_paid_date', 'dateopened',
     'date_last_purchased', 'date_last_sold',
     'transaction_date', 'audit_date',
     'date', 'due_date',
@@ -524,7 +521,7 @@ DATE_FIELDS = {
 
 # CharField Y/N fields
 YN_FIELDS = {
-    'interest_flag', 'discount_printable', 'positive_balance_only',
+    'dintflag', 'discount_printable', 'dposbal',
     'serial_tracking', 'charge_scrap', 'posted',
 }
 
@@ -564,7 +561,7 @@ VALID_MODEL_TYPES = set(_ALL_MAPS.keys())
 
 # The field that uniquely identifies each record, used to validate mappings
 REQUIRED_FIELD_MAP = {
-    'debtor':     'customer_number',
+    'debtor':     'dno',
     'creditor':   'supplier_number',
     'stock':      'stock_code',
     'department': 'number',
@@ -609,6 +606,11 @@ def _parse_value(value, field_name):
         if field_name in BOOL_FIELDS:    return False
         if field_name in EMAIL_FIELDS:   return ''
         if field_name == 'block_flag':   return '0'
+        # Empty ACCTYPE/acctype — return '' (CharField blank=True) so the field
+        # is set to empty string rather than left as None on a non-null column.
+        if field_name in ('acctype', 'account_type'): return ''
+        # Empty DATEOPENED — field is nullable on the model; return None explicitly.
+        if field_name == 'dateopened':   return None
         return ''
 
     if field_name in INTEGER_FIELDS:
@@ -634,7 +636,7 @@ def _parse_value(value, field_name):
     if field_name in EMAIL_FIELDS:
         return value.lower() if '@' in value and '.' in value.split('@')[-1] else ''
 
-    if field_name == 'block_flag':
+    if field_name == 'blockflag':
         if value in ('0', '1', '2', '3', 'Y', 'N'): return value
         if value.upper() in ('YES', 'TRUE'):          return 'Y'
         return '0'
@@ -677,9 +679,49 @@ def _set_schema_context(tenant, shop):
 
 
 def _apply_search_path(db_alias, schema_name):
+    """
+    Patch every shop model's db_table to be schema-qualified and return
+    a restore function. Uses thread-locals so concurrent requests don't
+    interfere with each other's patches.
+    """
+    from django.conf import settings as _settings
+    from django.apps import apps as django_apps
+
+    schema_app_labels = set(getattr(_settings, 'SHOP_APP_LABELS', []))
+
+    # Patch OPTIONS on the live settings_dict
     conn = connections[db_alias]
-    with conn.cursor() as cursor:
-        cursor.execute(f"SET search_path TO {schema_name}, public")
+    opts = conn.settings_dict.setdefault('OPTIONS', {})
+    opts['options'] = f'-c search_path={schema_name},public'
+
+    # Build a thread-local patch map for this import only
+    patched = {}
+    for app_label in schema_app_labels:
+        try:
+            app_config = django_apps.get_app_config(app_label)
+        except LookupError:
+            continue
+        for model in app_config.get_models():
+            original = model._meta.db_table
+            if '"' in original or original.startswith(schema_name):
+                continue
+            model._meta.db_table = f'"{schema_name}"."{original}"'
+            patched[model] = original
+
+    # Store in thread-local so _remove_schema_patch restores the right ones
+    _tl.patched_models = patched
+
+
+def _remove_schema_patch():
+    """Restore all model db_table values patched by _apply_search_path."""
+    patched = getattr(_tl, 'patched_models', {})
+    for model, original in patched.items():
+        model._meta.db_table = original
+    _tl.patched_models = {}
+
+
+import threading as _threading
+_tl = _threading.local()
 
 
 def _get_csv_to_model_map(model_type):
@@ -701,47 +743,179 @@ def _get_available_fields(model_type):
 # model has no problematic save() — otherwise use bulk_create.
 # ============================================================
 
-def _uoc(manager, lookup, defaults, mode):
+def _uoc(manager, lookup, defaults, mode, schema_name=None):
     """
-    Safe update_or_create that bypasses model.save() validation.
-    - create path: Model(**lookup, **defaults).save() — skips full_clean
-      by NOT calling the model's save() override; uses super().save() directly
-      via bulk_create of a single object (which skips all save() overrides).
-    - update path: QuerySet.update(**defaults) — pure SQL, no Python hooks.
+    Safe update_or_create using a direct psycopg2 connection when schema_name
+    is provided. This bypasses Django's connection pool entirely, which is
+    necessary because middleware resets the search_path between rows during
+    StreamingHttpResponse streaming.
+
+    Falls back to ORM for models without a schema_name (default DB models).
     """
     from django.db import IntegrityError
-    
-    if mode == 'create_only':
-        if manager.filter(**lookup).exists():
-            return 'skipped'
-        # bulk_create bypasses all save() overrides including full_clean()
+
+    db_alias = manager.db
+    db_table = manager.model._meta.db_table
+    # Strip any schema prefix that may have been patched onto db_table
+    bare_table = db_table.replace('"', '').split('.')[-1]
+
+    if schema_name:
+        import psycopg2 as _psycopg2
+        _sd = connections[db_alias].settings_dict
+        _raw = _psycopg2.connect(
+            dbname=_sd['NAME'],
+            user=_sd['USER'],
+            password=_sd['PASSWORD'],
+            host=_sd['HOST'],
+            port=int(_sd['PORT']),
+            options=f'-c search_path={schema_name},public -c statement_timeout=0',
+            connect_timeout=10,
+        )
+        # Timestamp columns from TimeStampedModel — not in CSV, use NOW()
+        _TS_COLS = {'created_at', 'updated_at'}
+
+        # autocommit must be set before ANY query — psycopg2 implicitly starts
+        # a transaction on the first cursor execute, after which set_session fails.
+        _raw.autocommit = True
+
+        # Query the table's NOT NULL columns once and fill missing ones with
+        # sensible defaults so we never hit NOT NULL constraint violations.
+        # Exclude: auto-increment PKs (serial/bigserial have nextval defaults
+        # that don't show in column_default for identity columns), and any
+        # column that already has a sequence/default we can't see plainly.
+        with _raw.cursor() as _info:
+            _info.execute("""
+                SELECT c.column_name, c.data_type
+                FROM information_schema.columns c
+                WHERE c.table_schema = %s
+                  AND c.table_name   = %s
+                  AND c.is_nullable  = 'NO'
+                  AND c.column_default IS NULL
+                  AND c.is_identity   = 'NO'
+                  AND c.column_name NOT IN (
+                      SELECT kcu.column_name
+                      FROM information_schema.table_constraints tc
+                      JOIN information_schema.key_column_usage kcu
+                        ON tc.constraint_name = kcu.constraint_name
+                       AND tc.table_schema    = kcu.table_schema
+                      WHERE tc.constraint_type = 'PRIMARY KEY'
+                        AND tc.table_schema    = %s
+                        AND tc.table_name      = %s
+                  )
+            """, [schema_name, bare_table, schema_name, bare_table])
+            _not_null_cols = {row[0]: row[1] for row in _info.fetchall()}
+
+        # Now switch to manual transaction mode for the actual DML
+        _raw.autocommit = False
+
+        def _apply_not_null_defaults(fields):
+            for col, dtype in _not_null_cols.items():
+                if col in _TS_COLS:
+                    continue  # handled by NOW()
+                if col not in fields:
+                    if 'int' in dtype or 'numeric' in dtype or 'decimal' in dtype or 'real' in dtype or 'double' in dtype:
+                        fields[col] = 0
+                    elif dtype in ('boolean',):
+                        fields[col] = False
+                    else:
+                        fields[col] = ''
+
+        def _resolve_fields(fields):
+            """Translate FK model instances to _id columns and unwrap their PK values."""
+            from django.db.models import Model
+            resolved = {}
+            for k, v in fields.items():
+                if isinstance(v, Model):
+                    resolved[f'{k}_id'] = v.pk
+                else:
+                    resolved[k] = v
+            return resolved
+
+        def _build_insert(all_fields):
+            all_fields = _resolve_fields(all_fields)
+            _apply_not_null_defaults(all_fields)
+            cols = list(all_fields.keys())
+            col_names = ', '.join(f'"{c}"' for c in cols)
+            placeholders = ', '.join('NOW()' if c in _TS_COLS else '%s' for c in cols)
+            vals = [v for c, v in zip(cols, all_fields.values()) if c not in _TS_COLS]
+            return col_names, placeholders, vals
+
+        def _build_update(fields):
+            fields = _resolve_fields(fields)
+            cols = list(fields.keys())
+            set_parts = [f'"{c}" = NOW()' if c in _TS_COLS else f'"{c}" = %s' for c in cols]
+            set_clause = ', '.join(set_parts)
+            vals = [v for c, v in zip(cols, fields.values()) if c not in _TS_COLS]
+            return set_clause, vals
+
         try:
-            obj = manager.model(**lookup, **defaults)
-            manager.bulk_create([obj])
-            return 'created'
-        except IntegrityError:
-            # Record was created by another process between check and create
-            return 'skipped'
+            with _raw.cursor() as _cur:
+                resolved_lookup = _resolve_fields(lookup)
+                lookup_clause = ' AND '.join(f'"{k}" = %s' for k in resolved_lookup)
+                lookup_vals = list(resolved_lookup.values())
 
-    elif mode == 'update_only':
-        rows = manager.filter(**lookup).update(**defaults)
-        return 'updated' if rows else 'skipped'
+                # Always include created_at/updated_at in inserts
+                defaults.setdefault('created_at', None)
+                defaults.setdefault('updated_at', None)
 
-    else:  # create_or_update
-        qs = manager.filter(**lookup)
-        if qs.exists():
-            qs.update(**defaults)
-            return 'updated'
-        else:
+                if mode == 'create_only':
+                    _cur.execute(f'SELECT 1 FROM "{bare_table}" WHERE {lookup_clause}', lookup_vals)
+                    if _cur.fetchone():
+                        return 'skipped'
+                    all_fields = {**lookup, **defaults}
+                    col_names, placeholders, vals = _build_insert(all_fields)
+                    _cur.execute(f'INSERT INTO "{bare_table}" ({col_names}) VALUES ({placeholders})', vals)
+                    _raw.commit()
+                    return 'created'
+
+                elif mode == 'update_only':
+                    if not defaults:
+                        return 'skipped'
+                    defaults['updated_at'] = None  # force updated_at = NOW()
+                    set_clause, update_vals = _build_update(defaults)
+                    _cur.execute(f'UPDATE "{bare_table}" SET {set_clause} WHERE {lookup_clause}', update_vals + lookup_vals)
+                    updated = _cur.rowcount
+                    _raw.commit()
+                    return 'updated' if updated else 'skipped'
+
+                else:  # create_or_update
+                    _cur.execute(f'SELECT 1 FROM "{bare_table}" WHERE {lookup_clause}', lookup_vals)
+                    if _cur.fetchone():
+                        defaults['updated_at'] = None  # force updated_at = NOW()
+                        set_clause, update_vals = _build_update(defaults)
+                        if update_vals or 'updated_at' in defaults:
+                            _cur.execute(f'UPDATE "{bare_table}" SET {set_clause} WHERE {lookup_clause}', update_vals + lookup_vals)
+                        _raw.commit()
+                        return 'updated'
+                    else:
+                        all_fields = {**lookup, **defaults}
+                        col_names, placeholders, vals = _build_insert(all_fields)
+                        _cur.execute(f'INSERT INTO "{bare_table}" ({col_names}) VALUES ({placeholders})', vals)
+                        _raw.commit()
+                        return 'created'
+        except Exception:
+            _raw.rollback()
+            raise
+        finally:
+            _raw.close()
+
+    else:
+        # No schema — use ORM directly (default DB models)
+        if mode == 'create_only':
+            if manager.filter(**lookup).exists():
+                return 'skipped'
             try:
                 obj = manager.model(**lookup, **defaults)
                 manager.bulk_create([obj])
                 return 'created'
             except IntegrityError:
-                # Record was created by another process between check and create
-                # Try to update instead
-                rows = manager.filter(**lookup).update(**defaults)
-                return 'updated' if rows else 'skipped'
+                return 'skipped'
+        elif mode == 'update_only':
+            rows = manager.filter(**lookup).update(**defaults)
+            return 'updated' if rows else 'skipped'
+        else:
+            obj, created = manager.update_or_create(**lookup, defaults=defaults)
+            return 'created' if created else 'updated'
 
 
 # ============================================================
@@ -949,7 +1123,7 @@ def import_csv(request):
     }
     import_fn = dispatch[model_type]
 
-    extra_kwargs = {}
+    extra_kwargs = {'schema_name': shop.schema_name}
     if model_type == 'supexp':
         extra_kwargs['year'] = int(import_year)
 
@@ -976,21 +1150,25 @@ def import_csv(request):
         }) + '\n'
 
         try:
-            with transaction.atomic(using=db_alias):
-                for row_num, row in enumerate(rows, start=2):
-                    try:
-                        record = {}
-                        for csv_col, model_field in mappings.items():
-                            idx = header_idx.get(csv_col)
-                            if idx is not None and idx < len(row):
-                                record[model_field] = _parse_value(row[idx], model_field)
+            for row_num, row in enumerate(rows, start=2):
+                # Parse record first (outside transaction)
+                record = {}
+                for csv_col, model_field in mappings.items():
+                    idx = header_idx.get(csv_col)
+                    if idx is not None and idx < len(row):
+                        record[model_field] = _parse_value(row[idx], model_field)
 
-                        required_val = record.get(required_field)
-                        if required_val is None or required_val == '':
-                            errors_list.append(f"Row {row_num}: Missing {required_field} — skipped")
-                            skipped += 1
-                            continue
+                required_val = record.get(required_field)
+                if required_val is None or required_val == '':
+                    # DEBUG: Add info to errors list for frontend to show
+                    errors_list.append(f"DEBUG: Row {row_num} - record_keys={list(record.keys())}, required_field={required_field}, csv_headers={headers}, mappings={mappings}")
+                    errors_list.append(f"Row {row_num}: Missing {required_field} — skipped")
+                    skipped += 1
+                    continue
 
+                # Process record in its own transaction
+                try:
+                    with transaction.atomic(using=db_alias):
                         result = import_fn(db_alias, record, mode, **extra_kwargs)
 
                         if result == 'created':
@@ -1000,33 +1178,41 @@ def import_csv(request):
                         else:
                             skipped += 1
 
-                    except Exception as e:
-                        errors_list.append(f"Row {row_num}: {e}")
-                        if len(errors_list) > 50:
-                            errors_list.append("... too many errors, stopping")
-                            break
+                except Exception as e:
+                    # The inner transaction.atomic() savepoint has already rolled back
+                    # this row cleanly. Do NOT call set_rollback() here — that would
+                    # poison the outer connection and cause the "atomic block" cascade
+                    # error on every subsequent row.
+                    import traceback
+                    error_details = f"Row {row_num}: {e}\n{traceback.format_exc(limit=3)}"
+                    errors_list.append(error_details)
+                    skipped += 1
+                    if len(errors_list) > 50:
+                        errors_list.append("... too many errors, stopping")
+                        break
 
-                    # Yield progress update every N rows
-                    if (row_num - 1) % progress_interval == 0:
-                        yield json.dumps({
-                            'status': 'processing',
-                            'total': total,
-                            'processed': row_num - 1,
-                            'created': created,
-                            'updated': updated,
-                            'skipped': skipped,
-                        }) + '\n'
+                # Yield progress update every N rows
+                if (row_num - 1) % progress_interval == 0:
+                    yield json.dumps({
+                        'status': 'processing',
+                        'total': total,
+                        'processed': row_num - 1,
+                        'created': created,
+                        'updated': updated,
+                        'skipped': skipped,
+                    }) + '\n'
 
-                # Yield completion status
-                yield json.dumps({
-                    'status': 'complete',
-                    'total': total,
-                    'processed': total,
-                    'created': created,
-                    'updated': updated,
-                    'skipped': skipped,
-                    'error_count': len(errors_list),
-                }) + '\n'
+            # Yield completion status
+            yield json.dumps({
+                'status': 'complete',
+                'total': total,
+                'processed': total,
+                'created': created,
+                'updated': updated,
+                'skipped': skipped,
+                'error_count': len(errors_list),
+                'errors': errors_list[:50],  # Include errors in response
+            }) + '\n'
 
         except Exception as e:
             yield json.dumps({
@@ -1035,6 +1221,7 @@ def import_csv(request):
                 'errors': errors_list[:50],  # Limit errors in response
             }) + '\n'
         finally:
+            _remove_schema_patch()
             clear_current()
 
     return StreamingHttpResponse(
@@ -1050,21 +1237,62 @@ def import_csv(request):
 # then calls _uoc() which bypasses model.save() validation.
 # ============================================================
 
-def _import_debtor_record(db_alias, record, mode, **_):
-    cust_num = record.get('customer_number')
-    defaults = {k: v for k, v in record.items() if k != 'customer_number' and v is not None}
+# Map Django model field names → actual dmast column names
+# (The model uses friendly names; the DB retains legacy DBF column names)
+_DEBTOR_FIELD_TO_COL = {
+    'address_line1':     'dadd1',
+    'address_line2':     'dadd2',
+    'address_line3':     'dadd3',
+    'postal_code':       'dpcode',
+    'delivery_address1': 'delad1',
+    'delivery_address2': 'delad2',
+    'delivery_address3': 'delad3',
+    'delivery_address4': 'delad4',
+    'discount_printable':'discprn',
+}
+
+# NOT NULL varchar/text columns in dmast that may be absent from CSV
+_DMAST_NOT_NULL_TEXT_COLS = {
+    'dname', 'dsname', 'dcontact', 'dtel', 'tel2', 'dtel2', 'dfax',
+    'email', 'dadd1', 'dadd2', 'dadd3', 'dpcode',
+    'delad1', 'delad2', 'delad3', 'delad4',
+    'dtaxno', 'vatref', 'acctype', 'discprn', 'blockflag',
+    'dintflag', 'dposbal', 'notes',
+}
+
+
+def _import_debtor_record(db_alias, record, mode, schema_name='public', **_):
+    cust_num = record.get('dno')
+    defaults = {k: v for k, v in record.items() if k != 'dno' and v is not None}
     defaults.setdefault('is_active', True)
-    return _uoc(Debtor.objects.using(db_alias), {'customer_number': cust_num}, defaults, mode)
+
+    # Translate Django model field names → actual DB column names
+    translated = {}
+    for field, val in defaults.items():
+        col = _DEBTOR_FIELD_TO_COL.get(field, field)
+        translated[col] = val
+
+    # Ensure NOT NULL text columns are always present
+    for col in _DMAST_NOT_NULL_TEXT_COLS:
+        translated.setdefault(col, '')
+
+    return _uoc(
+        Debtor.objects.using(db_alias),
+        {'dno': cust_num},
+        translated,
+        mode,
+        schema_name=schema_name,
+    )
 
 
-def _import_creditor_record(db_alias, record, mode, **_):
+def _import_creditor_record(db_alias, record, mode, schema_name=None, **_):
     sup_num = record.get('supplier_number')
     defaults = {k: v for k, v in record.items() if k != 'supplier_number' and v is not None}
     defaults.setdefault('is_active', True)
-    return _uoc(Creditor.objects.using(db_alias), {'supplier_number': sup_num}, defaults, mode)
+    return _uoc(Creditor.objects.using(db_alias), {'supplier_number': sup_num}, defaults, mode, schema_name=schema_name)
 
 
-def _import_stock_record(db_alias, record, mode, **_):
+def _import_stock_record(db_alias, record, mode, schema_name=None, **_):
     stock_code = record.get('stock_code')
     defaults = {k: v for k, v in record.items() if k != 'stock_code' and v is not None}
     defaults.setdefault('is_active', True)
@@ -1073,8 +1301,10 @@ def _import_stock_record(db_alias, record, mode, **_):
         dept_val = defaults.pop('department')
         try:
             defaults['department'] = SalesDepartment.objects.using(db_alias).get(number=int(dept_val))
-        except (SalesDepartment.DoesNotExist, ValueError, TypeError) as e:
-            raise ValueError(f"Department '{dept_val}' not found: {e}")
+        except (SalesDepartment.DoesNotExist, ValueError, TypeError):
+            # Department not found — leave field unset (NULL) rather than
+            # failing the row. Import departments first to avoid this.
+            pass
 
     if 'supplier' in defaults:
         sup_val = defaults.pop('supplier')
@@ -1088,13 +1318,13 @@ def _import_stock_record(db_alias, record, mode, **_):
         if tc_val:
             try:
                 defaults['tax_code'] = TaxCode.objects.using(db_alias).get(code=int(tc_val))
-            except (TaxCode.DoesNotExist, ValueError, TypeError) as e:
-                raise ValueError(f"TaxCode '{tc_val}' not found: {e}")
+            except (TaxCode.DoesNotExist, ValueError, TypeError):
+                pass  # Leave unset if not found
 
-    return _uoc(StockItem.objects.using(db_alias), {'stock_code': stock_code}, defaults, mode)
+    return _uoc(StockItem.objects.using(db_alias), {'stock_code': stock_code}, defaults, mode, schema_name=schema_name)
 
 
-def _import_department_record(db_alias, record, mode, **_):
+def _import_department_record(db_alias, record, mode, schema_name=None, **_):
     dept_number = record.get('number')
     if not dept_number:
         return 'skipped'
@@ -1123,7 +1353,7 @@ def _import_department_record(db_alias, record, mode, **_):
                 return 'updated'
     
     # Proceed with normal lookup by number
-    return _uoc(manager, {'number': dept_number}, defaults, mode)
+    return _uoc(manager, {'number': dept_number}, defaults, mode, schema_name=schema_name)
 
 
 def _resolve_debtor(db_alias, dno_val):
@@ -1131,7 +1361,7 @@ def _resolve_debtor(db_alias, dno_val):
     if not dno_val:
         raise ValueError("DNO (debtor) is required")
     try:
-        return Debtor.objects.using(db_alias).get(customer_number=int(dno_val))
+        return Debtor.objects.using(db_alias).get(dno=int(dno_val))
     except (Debtor.DoesNotExist, ValueError, TypeError) as e:
         raise ValueError(f"Debtor '{dno_val}' not found: {e}")
 
@@ -1146,7 +1376,7 @@ def _resolve_creditor(db_alias, sup_val):
         raise ValueError(f"Creditor '{sup_val}' not found: {e}")
 
 
-def _import_debtran_record(db_alias, record, mode, **_):
+def _import_debtran_record(db_alias, record, mode, schema_name=None, **_):
     """debtran.csv AND dtran.csv → DebtorTransaction."""
     tran_no = record.get('transaction_number')
     debtor  = _resolve_debtor(db_alias, record.get('debtor'))
@@ -1157,13 +1387,14 @@ def _import_debtran_record(db_alias, record, mode, **_):
     defaults.setdefault('source_type', 'IMPORT')
     defaults.setdefault('status', 'posted')
     return _uoc(
-        DebtorTransaction.objects.using(db_alias),
+        DebtorOpenItem.objects.using(db_alias),
         {'debtor': debtor, 'transaction_number': tran_no},
         defaults, mode,
+        schema_name=schema_name,
     )
 
 
-def _import_debtopen_record(db_alias, record, mode, **_):
+def _import_debtopen_record(db_alias, record, mode, schema_name=None, **_):
     """debtopen.csv → DebtorOpenItem."""
     tran_no = record.get('transaction_number')
     debtor  = _resolve_debtor(db_alias, record.get('debtor'))
@@ -1175,10 +1406,13 @@ def _import_debtopen_record(db_alias, record, mode, **_):
         DebtorOpenItem.objects.using(db_alias),
         {'debtor': debtor, 'transaction_number': tran_no},
         defaults, mode,
+
+        schema_name=schema_name,
     )
 
 
-def _import_debtoaud_record(db_alias, record, mode, **_):
+
+def _import_debtoaud_record(db_alias, record, mode, schema_name=None, **_):
     """debtoaud.csv → DebtorAudit."""
     tran_no    = record.get('transaction_number')
     audit_date = record.get('audit_date')
@@ -1191,10 +1425,13 @@ def _import_debtoaud_record(db_alias, record, mode, **_):
         DebtorAudit.objects.using(db_alias),
         {'debtor': debtor, 'transaction_number': tran_no, 'audit_date': audit_date},
         defaults, mode,
+
+        schema_name=schema_name,
     )
 
 
-def _import_dpdc_record(db_alias, record, mode, **_):
+
+def _import_dpdc_record(db_alias, record, mode, schema_name=None, **_):
     """dpdc.csv → Dpdc. FK field on model is named 'dno'."""
     cheque_date = record.get('date')
     debtor      = _resolve_debtor(db_alias, record.get('dno'))
@@ -1206,10 +1443,13 @@ def _import_dpdc_record(db_alias, record, mode, **_):
         Dpdc.objects.using(db_alias),
         {'dno': debtor, 'date': cheque_date},
         defaults, mode,
+
+        schema_name=schema_name,
     )
 
 
-def _import_suptran_record(db_alias, record, mode, **_):
+
+def _import_suptran_record(db_alias, record, mode, schema_name=None, **_):
     """suptran.csv → SupplierLedgerEntry."""
     tran_no  = record.get('transaction_number')
     creditor = _resolve_creditor(db_alias, record.get('creditor'))
@@ -1221,10 +1461,13 @@ def _import_suptran_record(db_alias, record, mode, **_):
         SupplierLedgerEntry.objects.using(db_alias),
         {'creditor': creditor, 'transaction_number': tran_no},
         defaults, mode,
+
+        schema_name=schema_name,
     )
 
 
-def _import_supopen_record(db_alias, record, mode, **_):
+
+def _import_supopen_record(db_alias, record, mode, schema_name=None, **_):
     """supopen.csv → CreditorOpenItem with is_legacy=True."""
     tran_no   = record.get('transaction_number')
     tran_type = record.get('transaction_type', '')
@@ -1238,10 +1481,13 @@ def _import_supopen_record(db_alias, record, mode, **_):
         CreditorOpenItem.objects.using(db_alias),
         {'creditor': creditor, 'transaction_number': tran_no, 'transaction_type': tran_type},
         defaults, mode,
+
+        schema_name=schema_name,
     )
 
 
-def _import_supoaud_record(db_alias, record, mode, **_):
+
+def _import_supoaud_record(db_alias, record, mode, schema_name=None, **_):
     """supoaud.csv → OpenItemAudit."""
     tran_no  = record.get('transaction_number')
     creditor = _resolve_creditor(db_alias, record.get('creditor'))
@@ -1253,10 +1499,13 @@ def _import_supoaud_record(db_alias, record, mode, **_):
         OpenItemAudit.objects.using(db_alias),
         {'creditor': creditor, 'transaction_number': tran_no},
         defaults, mode,
+
+        schema_name=schema_name,
     )
 
 
-def _import_supcrmas_record(db_alias, record, mode, **_):
+
+def _import_supcrmas_record(db_alias, record, mode, schema_name=None, **_):
     """supcrmas.csv → RFC."""
     rfc_no   = str(record.get('rfc_number', ''))
     creditor = _resolve_creditor(db_alias, record.get('creditor'))
@@ -1268,23 +1517,23 @@ def _import_supcrmas_record(db_alias, record, mode, **_):
     if 'return_date' not in defaults and defaults.get('date_sent'):
         defaults['return_date'] = defaults['date_sent']
     defaults['creditor'] = creditor
-    return _uoc(RFC.objects.using(db_alias), {'rfc_number': rfc_no}, defaults, mode)
+    return _uoc(RFC.objects.using(db_alias), {'rfc_number': rfc_no}, defaults, mode, schema_name=schema_name)
 
 
-def _import_supcrtrn_record(db_alias, record, mode, **_):
+def _import_supcrtrn_record(db_alias, record, mode, schema_name=None, **_):
     """supcrtrn.csv → RFCLineItem."""
     rfc_val   = record.get('rfc')
     stock_val = record.get('stock_item')
 
     try:
         rfc = RFC.objects.using(db_alias).get(rfc_number=str(rfc_val))
-    except RFC.DoesNotExist as e:
-        raise ValueError(f"RFC '{rfc_val}' not found: {e}")
+    except RFC.DoesNotExist:
+        return 'skipped'
 
     try:
         stock_item = StockItem.objects.using(db_alias).get(stock_code=str(stock_val))
-    except StockItem.DoesNotExist as e:
-        raise ValueError(f"StockItem '{stock_val}' not found: {e}")
+    except StockItem.DoesNotExist:
+        return 'skipped'
 
     defaults = {
         k: v for k, v in record.items()
@@ -1308,10 +1557,11 @@ def _import_supcrtrn_record(db_alias, record, mode, **_):
         {'rfc': rfc, 'stock_item': stock_item},
         {k: v for k, v in defaults.items() if k not in ('rfc', 'stock_item')},
         mode,
+        schema_name=schema_name,
     )
 
 
-def _import_suppo_record(db_alias, record, mode, **_):
+def _import_suppo_record(db_alias, record, mode, schema_name=None, **_):
     """
     suppo.csv → SupplierPaymentOrder.
     suppo.dbf has no SUPNO — creditor is always null on legacy records.
@@ -1325,10 +1575,13 @@ def _import_suppo_record(db_alias, record, mode, **_):
         SupplierPaymentOrder.objects.using(db_alias),
         {'payment_date': pay_date, 'amount': amount, 'detail_line1': detail1},
         defaults, mode,
+
+        schema_name=schema_name,
     )
 
 
-def _import_supexp_record(db_alias, record, mode, year, **_):
+
+def _import_supexp_record(db_alias, record, mode, year=None, schema_name=None, **_):
     """
     supexp.csv → ExpenseCategoryMonthlyBalance.
     'year' is a Django-only field (no DBF source) — passed as kwarg.
@@ -1346,10 +1599,13 @@ def _import_supexp_record(db_alias, record, mode, year, **_):
         ExpenseCategoryMonthlyBalance.objects.using(db_alias),
         {'expense_category': expense_cat, 'year': year},
         defaults, mode,
+
+        schema_name=schema_name,
     )
 
 
-def _import_supexpt_record(db_alias, record, mode, **_):
+
+def _import_supexpt_record(db_alias, record, mode, schema_name=None, **_):
     """
     supexpt.csv → ExpenseCategoryTransaction.
     INVAT and TOTAL (input_vat_amount / amount_inclusive) are editable=False —
@@ -1376,10 +1632,13 @@ def _import_supexpt_record(db_alias, record, mode, **_):
         ExpenseCategoryTransaction.objects.using(db_alias),
         {'transaction_number': tran_no},
         defaults, mode,
+
+        schema_name=schema_name,
     )
 
 
-def _import_stran_record(db_alias, record, mode, **_):
+
+def _import_stran_record(db_alias, record, mode, schema_name=None, **_):
     """
     stran.csv → StockTransaction.
 
@@ -1397,11 +1656,11 @@ def _import_stran_record(db_alias, record, mode, **_):
     stock_val = record.get('stock_item')
 
     if not stock_val:
-        raise ValueError("CODE (stock_item) is required for stran import")
+        return 'skipped'  # blank CODE — nothing to import
     try:
         stock_item = StockItem.objects.using(db_alias).get(stock_code=str(stock_val))
-    except StockItem.DoesNotExist as e:
-        raise ValueError(f"StockItem '{stock_val}' not found: {e}")
+    except StockItem.DoesNotExist:
+        return 'skipped'  # stock not imported yet or doesn't exist
 
     tran_type = record.get('transaction_type', 'SALE')
     defaults  = {'stock_item': stock_item, 'transaction_type': tran_type}
@@ -1441,7 +1700,7 @@ def _import_stran_record(db_alias, record, mode, **_):
     dno_val = record.get('debtor')
     if dno_val:
         try:
-            defaults['debtor'] = Debtor.objects.using(db_alias).get(customer_number=int(dno_val))
+            defaults['debtor'] = Debtor.objects.using(db_alias).get(dno=int(dno_val))
         except (Debtor.DoesNotExist, ValueError):
             pass
 
@@ -1464,4 +1723,5 @@ def _import_stran_record(db_alias, record, mode, **_):
         StockTransaction.objects.using(db_alias),
         {'transaction_number': tran_no},
         defaults, mode,
+        schema_name=schema_name,
     )

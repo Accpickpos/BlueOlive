@@ -15,7 +15,7 @@ class ShopUserSerializer(serializers.ModelSerializer):
     shops = serializers.SerializerMethodField(read_only=True)
     shop_ids = serializers.ListField(
         child=serializers.IntegerField(),
-        write_only=False,
+        write_only=True,
         required=False
     )
     
@@ -124,6 +124,7 @@ class ShopUserCreateSerializer(serializers.ModelSerializer):
     confirm_password = serializers.CharField(write_only=True, required=True)
     shop_ids = serializers.ListField(
         child=serializers.IntegerField(),
+        write_only=True,
         required=False,
         allow_empty=True
     )

@@ -120,6 +120,7 @@ def tenant_login(request):
     username = request.data.get('username') or request.data.get('email')
     password = request.data.get('password')
     tenant_slug = request.data.get('tenant_slug')
+    selected_shop_id = request.data.get('shop_id')  # Get selected shop from login request
     
     if not username or not password:
         return Response(
@@ -184,11 +185,27 @@ def tenant_login(request):
             )
         
         # Set default shop in session - get user's accessible shops
+        # Use selected_shop_id if provided and user has access to it
         try:
             accessible_shops = user.get_active_shops()
-            if accessible_shops:
-                # Set first accessible shop as current
+            
+            # Check if selected_shop_id was provided and user has access to it
+            default_shop = None
+            if selected_shop_id:
+                for shop in accessible_shops:
+                    if shop.id == int(selected_shop_id):
+                        default_shop = shop
+                        break
+            
+            # If user has only ONE shop, automatically use that
+            if not default_shop and len(accessible_shops) == 1:
                 default_shop = accessible_shops[0]
+            
+            # Otherwise use first accessible shop (for users with multiple shops)
+            if not default_shop and accessible_shops:
+                default_shop = accessible_shops[0]
+            
+            if default_shop:
                 request.session['current_shop_id'] = default_shop.id
                 request.session['current_shop_schema'] = default_shop.schema_name
                 # Also set on user object for immediate use
@@ -196,7 +213,6 @@ def tenant_login(request):
                 # Re-register tenant connection with the correct shop schema
                 register_tenant_connection(tenant, shop=default_shop)
             else:
-                default_shop = None
                 accessible_shops = []
         except Exception as e:
             logger.warning(f"Could not set default shop for user {user.id}: {e}")

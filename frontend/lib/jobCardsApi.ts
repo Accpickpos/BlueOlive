@@ -23,10 +23,12 @@ export interface JobCardLineItem {
 }
 
 export interface JobCardCreateData {
-  debtor_account_number: string;
+  debtor_account_number?: string;  // Make optional - can be empty for manual entry
+  customer_name: string;
+  job_number?: string;
   job_date: string; // YYYY-MM-DD
   description: string;
-  status: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'INVOICED';
+  status: 'OPEN' | 'ACTIVE' | 'INVOICED' | 'CANCELLED';
   labor_hours?: number;
   line_items?: JobCardLineItem[];
   notes?: string;
@@ -50,8 +52,13 @@ export interface JobCard {
   job_date: string;
   description: string;
   status: string;
-  labor_hours?: number;
+  customer_name?: string;
+  registration_number?: string;
+  telephone?: string;
+  subtotal?: number;
   total_amount?: number;
+  vat_amount?: number;
+  lines?: any[];
   notes?: string;
   created_at?: string;
   updated_at?: string;
@@ -160,6 +167,22 @@ export const jobCardsApi = {
     const response = await api.patch<JobCard>(
       `${ENDPOINTS.POS.JOB_CARDS}${id}/`,
       { status }
+    );
+    return response.data;
+  },
+
+  /**
+   * Convert job card to invoice
+   */
+  convertToInvoice: async (id: string | number, debtorId?: number, debtorAccountNumber?: string) => {
+    // If debtorAccountNumber is provided, send it instead of debtorId
+    const payload = debtorAccountNumber 
+      ? { debtor_account_number: debtorAccountNumber }
+      : { debtor_id: debtorId };
+    
+    const response = await api.post(
+      `${ENDPOINTS.POS.JOB_CARDS}${id}/convert_to_invoice/`,
+      payload
     );
     return response.data;
   },

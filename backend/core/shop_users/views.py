@@ -357,6 +357,66 @@ class CurrentUserView(APIView):
             )
 
 
+class SubdomainValidationView(APIView):
+    """
+    Validates subdomain availability in real-time.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        subdomain = request.query_params.get('subdomain', '').lower().strip()
+
+        if not subdomain:
+            return Response(
+                {'detail': 'Subdomain is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate subdomain format
+        import re
+        pattern = "^[a-z0-9][a-z0-9-]*[a-z0-9]$"
+        if not re.match(pattern, subdomain):
+            return Response(
+                {'detail': 'Invalid subdomain format. Use only lowercase letters, numbers, and hyphens.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if len(subdomain) < 3:
+            return Response(
+                {'detail': 'Subdomain must be at least 3 characters'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if len(subdomain) > 50:
+            return Response(
+                {'detail': 'Subdomain must be at most 50 characters'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if subdomain is already taken
+        from tenancy.models import Tenant
+        is_taken = Tenant.objects.filter(subdomain=subdomain).exists()
+
+        if is_taken:
+            suggestions = []
+            for i in range(1, 4):
+                suggestion = subdomain + str(i)
+                if not Tenant.objects.filter(subdomain=suggestion).exists():
+                    suggestions.append(suggestion)
+
+            return Response({
+                'subdomain': subdomain,
+                'available': False,
+                'suggestions': suggestions[:3]
+            })
+
+        return Response({
+            'subdomain': subdomain,
+            'available': True,
+            'suggestions': []
+        })
+
+
 class SignupView(APIView):
     """
     Tenant signup - creates new tenant, database, and admin user.
@@ -682,6 +742,9 @@ class ProfileView(APIView):
             user = request.user
             tenant = get_current_tenant()
             
+            # Get current shop ID from user object (set by middleware)
+            current_shop_id = getattr(user, 'current_shop_id', None)
+            
             return Response({
                 'id': user.id,
                 'username': user.username,
@@ -694,6 +757,7 @@ class ProfileView(APIView):
                 'is_admin': getattr(user, 'role', '') in ['ADMIN', 'MANAGER'] or user.is_superuser,
                 'phone': getattr(user, 'phone', None),
                 'shop_ids': getattr(user, 'shop_ids', []),
+                'current_shop_id': current_shop_id,
                 'tenant': {
                     'id': tenant.id if tenant else None,
                     'name': tenant.name if tenant else None,
