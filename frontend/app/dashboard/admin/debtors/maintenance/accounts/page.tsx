@@ -31,9 +31,9 @@ export default function AccountsPage() {
       // Add filters based on filter type
       if (filterType === 'active') {
         apiFilters.is_active = true;
-        apiFilters.block_flag__in = ['0', 'N'];
+        apiFilters.blockflag__in = ['0', 'N'];
       } else if (filterType === 'blocked') {
-        apiFilters.block_flag__in = ['1', '2', '3', 'Y'];
+        apiFilters.blockflag__in = ['1', '2', '3', 'Y'];
       }
       // For 'all' - no filters
       

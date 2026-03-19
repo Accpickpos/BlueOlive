@@ -140,9 +140,9 @@ function DebtorsListComponent({ onRefresh }: DebtorsListProps) {
 
       if (filterType === 'active') {
         apiFilters.is_active = true;
-        apiFilters.block_flag__in = ['0', 'N'];
+        apiFilters.blockflag__in = ['0', 'N'];
       } else if (filterType === 'blocked') {
-        apiFilters.block_flag__in = ['1', '2', '3', 'Y'];
+        apiFilters.blockflag__in = ['1', '2', '3', 'Y'];
       }
 
       const data = await debtorsApi.accounts.list(apiFilters);

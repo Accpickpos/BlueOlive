@@ -17,7 +17,7 @@ class ShopUserAdmin(UserAdmin):
     fieldsets = (
         (None, {'fields': ('username', 'password')}),
         ('Personal info', {'fields': ('first_name', 'last_name', 'email', 'phone')}),
-        ('Tenant info', {'fields': ('tenant_id', 'role')}),  # Changed from 'tenant' to 'tenant_id'
+        ('Tenant info', {'fields': ('tenant_id', 'role', 'shop_ids')}),  # Added shop_ids
         ('Permissions', {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
         }),
@@ -27,7 +27,7 @@ class ShopUserAdmin(UserAdmin):
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('username', 'email', 'password1', 'password2', 'tenant_id', 'role'),  # Changed
+            'fields': ('username', 'email', 'password1', 'password2', 'tenant_id', 'role', 'shop_ids'),
         }),
     )
     

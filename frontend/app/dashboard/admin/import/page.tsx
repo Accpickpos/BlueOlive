@@ -6,6 +6,26 @@ import { api } from '@/lib/api';
 import { ENDPOINTS } from '@/lib/api-config';
 
 // ============================================================
+// Helper Functions
+// ============================================================
+
+// Helper to extract error message from axios error response
+function getErrorMessage(err: any): string {
+  // DRF returns errors in 'detail' for 403/404, or 'error' for custom errors
+  const responseData = err?.response?.data;
+  if (responseData?.detail) {
+    return typeof responseData.detail === 'string' 
+      ? responseData.detail 
+      : JSON.stringify(responseData.detail);
+  }
+  if (responseData?.error) {
+    return responseData.error;
+  }
+  // Fallback to message or default
+  return err?.message || 'An unexpected error occurred';
+}
+
+// ============================================================
 // Types
 // ============================================================
 interface Shop {
@@ -82,13 +102,13 @@ type DataType =
 // Model field labels for each data type
 const FIELD_LABELS: Record<string, Record<string, string>> = {
   debtor: {
-    customer_number: 'Account Number (DNO)',
-    name: 'Customer Name',
-    short_name: 'Short Name',
-    contact_person: 'Contact Person',
-    phone: 'Phone',
-    phone2: 'Phone 2',
-    fax: 'Fax',
+    dno: 'Account Number (DNO)',
+    dname: 'Customer Name',
+    dsname: 'Short Name',
+    dcontact: 'Contact Person',
+    dtel: 'Phone',
+    dtel2: 'Phone 2',
+    dfax: 'Fax',
     email: 'Email',
     address_line1: 'Address Line 1',
     address_line2: 'Address Line 2',
@@ -98,34 +118,34 @@ const FIELD_LABELS: Record<string, Record<string, string>> = {
     delivery_address2: 'Delivery Address 2',
     delivery_address3: 'Delivery Address 3',
     delivery_address4: 'Delivery Address 4',
-    tax_number: 'Tax Number',
-    vat_reference: 'VAT Reference',
-    area_code: 'Sales Area',
-    balance_brought_forward: 'Balance B/F',
-    balance_current: 'Current Balance',
-    balance_30_days: '30 Days',
-    balance_60_days: '60 Days',
-    balance_90_days: '90 Days',
-    balance_120_days: '120 Days',
-    balance_150_days: '150 Days',
-    balance_180_days: '180 Days',
-    sales_month: 'Sales (Month)',
-    sales_year: 'Sales (Year)',
-    profit_month: 'Profit (Month)',
-    profit_year: 'Profit (Year)',
-    last_payment_amount: 'Last Payment Amount',
-    last_payment_date: 'Last Payment Date',
-    discount_percentage: 'Discount %',
-    credit_limit: 'Credit Limit',
-    interest_flag: 'Charge Interest',
-    price_level: 'Price Level',
-    account_type: 'Account Type',
-    payment_terms: 'Payment Terms',
-    prompt_payment_discount: 'Prompt Discount %',
+    dtaxno: 'Tax Number',
+    vatref: 'VAT Reference',
+    darea: 'Sales Area',
+    dbalbfwd: 'Balance B/F',
+    dcrnt: 'Current Balance',
+    d30: '30 Days',
+    d60: '60 Days',
+    d90: '90 Days',
+    d120: '120 Days',
+    d150: '150 Days',
+    d180: '180 Days',
+    dsalesm: 'Sales (Month)',
+    dsalesy: 'Sales (Year)',
+    dprofitm: 'Profit (Month)',
+    dprofity: 'Profit (Year)',
+    damtlpd: 'Last Payment Amount',
+    ddatlpd: 'Last Payment Date',
+    ddiscper: 'Discount %',
+    dclimit: 'Credit Limit',
+    dintflag: 'Charge Interest',
+    price: 'Price Level',
+    acctype: 'Account Type',
+    terms: 'Payment Terms',
+    pdisc: 'Prompt Discount %',
     discount_printable: 'Print Discount',
-    positive_balance_only: 'Positive Balance Only',
-    block_flag: 'Block Flag',
-    date_opened: 'Date Opened',
+    dposbal: 'Positive Balance Only',
+    blockflag: 'Block Flag',
+    dateopened: 'Date Opened',
     notes: 'Notes',
   },
   creditor: {
@@ -379,7 +399,7 @@ const FIELD_LABELS: Record<string, Record<string, string>> = {
 
 // Required field for each data type
 const REQUIRED_FIELD: Record<DataType, string> = {
-  debtor: 'customer_number',
+  debtor: 'dno',
   creditor: 'supplier_number',
   stock: 'stock_code',
   department: 'number',
@@ -621,7 +641,7 @@ export default function ImportDataPage() {
       setMappings(res.data.suggested_mappings);
       setStep('map');
     } catch (err: any) {
-      setError(err?.response?.data?.error || 'Failed to analyze file');
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -709,7 +729,7 @@ export default function ImportDataPage() {
                   created: progress.created,
                   updated: progress.updated,
                   skipped: progress.skipped,
-                  errors: [],
+                  errors: progress.errors || [],
                   message: `Import complete: ${progress.created} created, ${progress.updated} updated, ${progress.skipped} skipped`,
                 });
               } else if (progress.status === 'error') {
@@ -724,7 +744,7 @@ export default function ImportDataPage() {
 
       setStep('done');
     } catch (err: any) {
-      setError(err?.message || err?.response?.data?.error || 'Import failed');
+      setError(getErrorMessage(err));
       setStep('map');
     } finally {
       setLoading(false);

@@ -17,6 +17,8 @@ export interface User {
   is_admin: boolean;
   tenant_id: number | null;
   tenant?: Tenant;
+  shop_ids?: number[];
+  current_shop_id?: number | null;
 }
 
 interface UseAuthReturn {

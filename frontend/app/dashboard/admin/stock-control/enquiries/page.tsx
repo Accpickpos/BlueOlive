@@ -87,8 +87,8 @@ export default function StockControlEnquiriesPage() {
                 </div>
                 <div className="text-right">
                   <span className="text-sm text-gray-600">QOH: </span>
-                  <span className={`font-medium ${item.quantity_on_hand <= 0 ? 'text-red-600' : item.quantity_on_hand <= item.reorder_quantity ? 'text-amber-600' : 'text-green-600'}`}>
-                    {item.quantity_on_hand?.toFixed(2) || 0}
+                  <span className={`font-medium ${Number(item.quantity_on_hand) <= 0 ? 'text-red-600' : Number(item.quantity_on_hand) <= Number(item.reorder_quantity) ? 'text-amber-600' : 'text-green-600'}`}>
+                    {Number(item.quantity_on_hand || 0).toFixed(2) || 0}
                   </span>
                 </div>
               </button>

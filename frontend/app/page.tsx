@@ -1,14 +1,17 @@
 'use client';
 
-import { ArrowRight, BarChart3, Users, Lock, Zap, Globe, TrendingUp } from 'lucide-react';
+import { ArrowRight, BarChart3, Users, Lock, Zap, Globe, TrendingUp, Check } from 'lucide-react';
 import Link from 'next/link';
 import { useAuthContext } from '@/lib/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { getActiveSubscriptionPlans } from '@/lib/api';
 
 export default function LandingPage() {
   const { user, isLoading } = useAuthContext();
   const router = useRouter();
+  const [plans, setPlans] = useState<any[]>([]);
+  const [plansLoading, setPlansLoading] = useState(true);
 
   // Redirect if already logged in
   useEffect(() => {
@@ -16,6 +19,51 @@ export default function LandingPage() {
       router.push('/dashboard');
     }
   }, [user, isLoading, router]);
+
+  // Fetch subscription plans
+  useEffect(() => {
+    async function fetchPlans() {
+      try {
+        const data = await getActiveSubscriptionPlans();
+        setPlans(data);
+      } catch (error) {
+        console.error('Failed to fetch plans:', error);
+        // Fallback to default plans if API fails
+        setPlans([
+          {
+            id: 1,
+            name: 'Starter',
+            price: 99,
+            description: 'Perfect for small businesses',
+            features: { pos: true, debtors: false, creditors: false, api_access: false },
+            max_shops: 1,
+            max_users: 3,
+          },
+          {
+            id: 2,
+            name: 'Professional',
+            price: 249,
+            description: 'For growing businesses',
+            features: { pos: true, debtors: true, creditors: false, api_access: false },
+            max_shops: 3,
+            max_users: 10,
+          },
+          {
+            id: 3,
+            name: 'Enterprise',
+            price: 499,
+            description: 'Full-featured for large operations',
+            features: { pos: true, debtors: true, creditors: true, api_access: true },
+            max_shops: 999,
+            max_users: 50,
+          },
+        ]);
+      } finally {
+        setPlansLoading(false);
+      }
+    }
+    fetchPlans();
+  }, []);
 
   return (
     <div className="min-h-screen bg-white">
@@ -228,6 +276,79 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Pricing Section */}
+      <section id="pricing" className="py-20 px-4 sm:px-6 lg:px-8 bg-gray-50">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">Simple, Transparent Pricing</h2>
+            <p className="text-xl text-gray-600">Choose the plan that fits your business needs</p>
+          </div>
+
+          {plansLoading ? (
+            <div className="flex justify-center items-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+              {plans.map((plan: any) => (
+                <div key={plan.id} className="bg-white rounded-2xl shadow-lg p-8 hover:shadow-xl transition border-2 border-transparent hover:border-indigo-600">
+                  <div className="text-center">
+                    <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.name}</h3>
+                    <p className="text-gray-600 mb-6">{plan.description || plan.name + ' plan'}</p>
+                    <div className="mb-6">
+                      <span className="text-4xl font-bold text-gray-900">R{plan.price}</span>
+                      <span className="text-gray-600">/shop/month</span>
+                    </div>
+                  </div>
+                  
+                  <ul className="space-y-4 mb-8">
+                    <li className="flex items-center gap-3">
+                      <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
+                      <span className="text-gray-700">Up to {plan.max_shops === 999 ? 'Unlimited' : plan.max_shops} shops</span>
+                    </li>
+                    <li className="flex items-center gap-3">
+                      <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
+                      <span className="text-gray-700">Up to {plan.max_users} users</span>
+                    </li>
+                    {plan.features?.pos && (
+                      <li className="flex items-center gap-3">
+                        <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
+                        <span className="text-gray-700">POS System</span>
+                      </li>
+                    )}
+                    {plan.features?.debtors && (
+                      <li className="flex items-center gap-3">
+                        <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
+                        <span className="text-gray-700">Debtors Management</span>
+                      </li>
+                    )}
+                    {plan.features?.creditors && (
+                      <li className="flex items-center gap-3">
+                        <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
+                        <span className="text-gray-700">Creditors Management</span>
+                      </li>
+                    )}
+                    {plan.features?.api_access && (
+                      <li className="flex items-center gap-3">
+                        <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
+                        <span className="text-gray-700">API Access</span>
+                      </li>
+                    )}
+                  </ul>
+
+                  <Link
+                    href="/auth"
+                    className="block w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-semibold transition"
+                  >
+                    Get Started
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* CTA Section */}
       <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-r from-indigo-600 to-purple-600">
         <div className="max-w-4xl mx-auto text-center">
@@ -259,8 +380,8 @@ export default function LandingPage() {
             <div>
               <h4 className="text-white font-semibold mb-4">Product</h4>
               <ul className="space-y-2 text-sm">
-                <li><a href="#" className="hover:text-white transition">Features</a></li>
-                <li><a href="#" className="hover:text-white transition">Pricing</a></li>
+                <li><a href="#features" className="hover:text-white transition">Features</a></li>
+                <li><a href="#pricing" className="hover:text-white transition">Pricing</a></li>
                 <li><a href="#" className="hover:text-white transition">Security</a></li>
               </ul>
             </div>

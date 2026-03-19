@@ -185,7 +185,7 @@ class Command(BaseCommand):
             shops_display = f"Up to {plan.max_shops} shops" if plan.max_shops < 999 else "Unlimited shops"
             
             self.stdout.write('')
-            self.stdout.write(self.style.HTTP_BOLD(f"{plan.sort_order}. {plan.name}"))
+            self.stdout.write(self.style.WARNING(f"{plan.sort_order}. {plan.name}"))
             self.stdout.write(f"   Price: {price_display} per shop/month")
             self.stdout.write(f"   Setup: R{plan.setup_fee} (one-time)")
             self.stdout.write(f"   Limits: {shops_display}, {plan.max_users} users")

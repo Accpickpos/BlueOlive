@@ -47,11 +47,25 @@ class DebtorFilter(django_filters.FilterSet):
         lookup_expr='lte'
     )
     
+    # Report filters (used by summary/age-analysis endpoints but not filtering Debtor model)
+    cutoff_date = django_filters.DateFilter(
+        method='filter_cutoff_date'
+    )
+    
+    def filter_cutoff_date(self, queryset, name, value):
+        """
+        Filter method for cutoff_date parameter.
+        This parameter is accepted but not used for filtering debtors
+        since the summary is calculated from current balances.
+        """
+        # Return unchanged queryset - cutoff_date is used by other endpoints
+        return queryset
+    
     class Meta:
         model = Debtor
         fields = {
             'is_active': ['exact'],
-            'blockflag': ['exact'],
+            'blockflag': ['exact', 'in'],
             'acctype': ['exact'],
             'darea': ['exact'],
             'dintflag': ['exact'],

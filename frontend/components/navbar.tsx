@@ -1,5 +1,5 @@
 "use client";
-import { Bell, User, LogOut, Home, Shield } from "lucide-react";
+import { Bell, User, LogOut, Home, Shield, Menu, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
@@ -8,7 +8,7 @@ import { useAuthContext } from "@/lib/AuthContext";
 import ShopSelector from "@/components/ShopSelector";
 import NotificationBell from "@/components/NotificationBell";
 
-export default function Navbar() {
+export default function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const router = useRouter();
   const { user, isAdmin, isLoading, refetch } = useAuthContext();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -41,14 +41,22 @@ export default function Navbar() {
   };
 
   return (
-    <header className="h-16 bg-white border-b flex items-center justify-between px-6 shadow-sm">
-      <div className="flex items-center gap-4">
+    <header className="h-16 bg-white border-b flex items-center justify-between px-4 md:px-6 shadow-sm">
+      <div className="flex items-center gap-2 md:gap-4">
+        {/* Mobile menu button */}
+        <button
+          onClick={onMenuClick}
+          aria-label="Toggle menu"
+          className="p-2 rounded-md hover:bg-gray-100 text-gray-600 md:hidden"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
         <Link href="/" className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800">
           <Home className="h-5 w-5" />
           <span className="font-semibold">BlueOlive</span>
         </Link>
         {isLoggedIn && (
-          <nav className="flex gap-4 ml-8">
+          <nav className="hidden md:flex gap-4 ml-8">
             <Link href="/dashboard" className="text-gray-700 hover:text-indigo-600 text-sm">
               Dashboard
             </Link>
@@ -61,13 +69,13 @@ export default function Navbar() {
           </nav>
         )}
         {!isLoggedIn && !isLoading && (
-          <nav className="flex gap-4 ml-8">
+          <nav className="hidden md:flex gap-4 ml-8">
             <Link href="/auth" className="text-gray-700 hover:text-indigo-600">Login</Link>
             <Link href="/create-tenant" className="text-gray-700 hover:text-indigo-600">Create Tenant</Link>
           </nav>
         )}
       </div>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 md:gap-4">
         {isLoggedIn && (
           <>
             {/* Shop Selector - only shows if user has access to multiple shops */}
@@ -76,13 +84,13 @@ export default function Navbar() {
             {/* Notification Bell */}
             <NotificationBell />
             
-            <span className="text-sm text-gray-600">{user && user.username}</span>
+            <span className="hidden md:inline text-sm text-gray-600">{user && user.username}</span>
             <button
               onClick={handleLogout}
-              className="flex items-center gap-2 px-3 py-1 text-sm text-gray-700 hover:text-red-600"
+              className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 text-sm text-gray-700 hover:text-red-600"
             >
               <LogOut className="h-4 w-4" />
-              Logout
+              <span className="hidden md:inline">Logout</span>
             </button>
           </>
         )}

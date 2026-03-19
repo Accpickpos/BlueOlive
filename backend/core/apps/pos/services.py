@@ -9,7 +9,7 @@ from datetime import date, timedelta
 import logging
 
 from .models import (
-    CashSale, CashSaleLine, Laybye, LaybyeLine, LaybyelPayment,
+    CashSale, CashSaleLine, Laybye, LaybyeLine, LaybyePayment,
     Quotation, QuotationLine, JobCard, JobCardLine, CashControl, Repair, Invoice, InvoiceLine
 )
 from apps.stock_control.models import StockItem, StockTransaction
@@ -299,7 +299,7 @@ class LaybyeService:
             sales_area: Sales area (optional)
         
         Returns:
-            LaybyelPayment: Created payment record
+            LaybyePayment: Created payment record
         
         Raises:
             InvalidDocumentState: If laybye is not active
@@ -324,7 +324,7 @@ class LaybyeService:
             )
         
         # Create payment record
-        payment = LaybyelPayment.objects.create(
+        payment = LaybyePayment.objects.create(
             laybye=laybye,
             payment_date=date.today(),
             amount=amount,
@@ -429,7 +429,7 @@ class QuotationService:
             job_number=f"JOB-{quotation.quotation_number}",
             job_date=date.today(),
             customer_name=quotation.customer_name,
-            address=quotation.address,
+            address=quotation.address_line1,
             telephone=quotation.telephone,
             sales_area=quotation.sales_area
         )
@@ -472,14 +472,14 @@ class QuotationService:
         Raises:
             ValueError: If job card cannot be converted
         """
-        if job_card.status == 'INVOICED':
+        if job_card.status == 'CONVERTED_TO_INVOICE':
             raise ValueError("Job card already converted to invoice")
         
         if job_card.status == 'CANCELLED':
             raise ValueError("Cannot convert cancelled job card to invoice")
         
         if not debtor:
-            raise ValueError("Debtor is required to create invoice")
+            raise ValueError("Debtor is required to create invoice. Please select a debtor.")
         
         # Generate invoice number (format: INV-YYYYMMDD-XXXXX)
         from django.utils import timezone
@@ -488,6 +488,19 @@ class QuotationService:
             invoice_date=today
         ).count() + 1
         invoice_number = f"INV-{today.year}{today.month:02d}{today.day:02d}-{invoice_count:05d}"
+        
+        # Handle sales_area - get the code string (not the ForeignKey object)
+        # Invoice.sales_area is a CharField(max_length=2), not a ForeignKey
+        sales_area_code = None
+        if job_card.sales_area:
+            # Convert the SalesArea number to a 2-digit string (e.g., 1 -> "01")
+            sales_area_code = str(job_card.sales_area.number).zfill(2)
+        else:
+            # Try to get default sales area
+            from apps.settings.models import SalesArea
+            default_sales_area = SalesArea.objects.filter(is_active=True).first()
+            if default_sales_area:
+                sales_area_code = str(default_sales_area.number).zfill(2)
         
         # Create invoice
         invoice = Invoice.objects.create(
@@ -499,18 +512,22 @@ class QuotationService:
             delivery_telephone=job_card.telephone,
             order_number=job_card.order_number,
             job_card_number=job_card.job_number,
-            sales_area=job_card.sales_area,
-            subtotal=job_card.subtotal,
-            vat_amount=job_card.vat_amount,
-            total_amount=job_card.total_amount,
-            total_cost=job_card.total_cost,
-            gross_profit=job_card.gross_profit,
+            sales_area=sales_area_code,
+            subtotal=round(job_card.subtotal, 2) if job_card.subtotal else Decimal('0.00'),
+            vat_amount=round(job_card.vat_amount, 2) if job_card.vat_amount else Decimal('0.00'),
+            total_amount=round(job_card.total_amount, 2) if job_card.total_amount else Decimal('0.00'),
+            total_cost=round(job_card.total_cost, 2) if job_card.total_cost else Decimal('0.00'),
+            gross_profit=round(job_card.gross_profit, 2) if job_card.gross_profit else Decimal('0.00'),
             status='DRAFT',
             is_posted=False
         )
         
         # Copy job card lines to invoice lines
         for job_line in job_card.lines.all():
+            # Calculate line_cost from quantity * cost_price (if available)
+            line_cost = (job_line.quantity * job_line.cost_price) if job_line.cost_price else Decimal('0.00')
+            
+            # Create invoice line - validation is now skipped in the model's save method
             InvoiceLine.objects.create(
                 invoice=invoice,
                 line_number=job_line.line_number,
@@ -523,15 +540,221 @@ class QuotationService:
                 line_total=job_line.line_total,
                 vat_amount=job_line.vat_amount,
                 cost_price=job_line.cost_price,
+                line_cost=line_cost,
                 line_profit=job_line.line_profit
             )
         
         # Update job card status
-        job_card.status = 'INVOICED'
+        job_card.status = 'CONVERTED_TO_INVOICE'
         job_card.save()
         
         logger.info(
             f"Converted job card {job_card.job_number} to invoice {invoice.invoice_number} "
+            f"for debtor {debtor.dno}"
+        )
+        
+        return invoice
+    
+    @transaction.atomic
+    def convert_laybye_to_invoice(laybye, debtor):
+        """
+        Convert laybye to customer invoice.
+        
+        Args:
+            laybye: Laybye instance to convert
+            debtor: Debtor instance (customer)
+        
+        Returns:
+            Invoice: Created invoice
+        
+        Raises:
+            ValueError: If laybye cannot be converted
+        """
+        from apps.pos.models import LaybyeLine
+        
+        if laybye.status == 'CONVERTED_TO_INVOICE':
+            raise ValueError("Laybye already converted to invoice")
+        
+        if laybye.status == 'CANCELLED':
+            raise ValueError("Cannot convert cancelled laybye to invoice")
+        
+        if laybye.status == 'EXPIRED':
+            raise ValueError("Cannot convert expired laybye to invoice")
+        
+        if not debtor:
+            raise ValueError("Debtor is required to create invoice. Please select a debtor.")
+        
+        # Generate invoice number (format: INV-YYYYMMDD-XXXXX)
+        from django.utils import timezone
+        from apps.settings.models import SalesArea
+        today = timezone.now().date()
+        invoice_count = Invoice.objects.filter(
+            invoice_date=today
+        ).count() + 1
+        invoice_number = f"INV-{today.year}{today.month:02d}{today.day:02d}-{invoice_count:05d}"
+        
+        # Handle sales_area - get the code string (not the ForeignKey object)
+        # Invoice.sales_area is a CharField(max_length=2), not a ForeignKey
+        sales_area_code = None
+        if laybye.sales_area:
+            sales_area_code = str(laybye.sales_area.number).zfill(2)
+        else:
+            default_sales_area = SalesArea.objects.filter(is_active=True).first()
+            if default_sales_area:
+                sales_area_code = str(default_sales_area.number).zfill(2)
+        
+        # Create invoice
+        invoice = Invoice.objects.create(
+            debtor=debtor,
+            invoice_number=invoice_number,
+            invoice_date=today,
+            delivery_name=laybye.customer_name,
+            delivery_address_line1=laybye.address_line1,
+            delivery_address_line2=laybye.address_line2,
+            delivery_address_line3=laybye.address_line3,
+            delivery_telephone=laybye.telephone,
+            sales_area=sales_area_code,
+            subtotal=round(laybye.total_amount - laybye.vat_amount, 2) if laybye.total_amount else Decimal('0.00'),
+            vat_amount=round(laybye.vat_amount, 2) if hasattr(laybye, 'vat_amount') and laybye.vat_amount else Decimal('0.00'),
+            total_amount=round(laybye.total_amount, 2) if laybye.total_amount else Decimal('0.00'),
+            total_cost=Decimal('0.00'),
+            gross_profit=Decimal('0.00'),
+            status='DRAFT',
+            is_posted=False
+        )
+        
+        # Copy laybye sale lines to invoice lines (only 'SP' = Sale type)
+        laybye_lines = LaybyeLine.objects.filter(
+            laybye=laybye, 
+            transaction_type='SP'
+        ).order_by('transaction_date', 'transaction_time')
+        
+        line_number = 1
+        for laybye_line in laybye_lines:
+            # Calculate line_cost from quantity * cost_price
+            line_cost = (laybye_line.quantity * laybye_line.cost_price) if laybye_line.cost_price else Decimal('0.00')
+            
+            InvoiceLine.objects.create(
+                invoice=invoice,
+                line_number=line_number,
+                stock_code=laybye_line.stock_code,
+                description=laybye_line.description,
+                quantity=laybye_line.quantity,
+                unit_price=laybye_line.unit_price,
+                discount_percentage=laybye_line.discount_percentage,
+                tax_code=laybye_line.tax_code,
+                line_total=laybye_line.line_total,
+                vat_amount=laybye_line.vat_amount,
+                cost_price=laybye_line.cost_price,
+                line_cost=line_cost,
+                line_profit=laybye_line.selling_price - laybye_line.cost_price if laybye_line.selling_price and laybye_line.cost_price else Decimal('0.00')
+            )
+            line_number += 1
+        
+        # Update laybye status
+        laybye.status = 'CONVERTED_TO_INVOICE'
+        laybye.save()
+        
+        logger.info(
+            f"Converted laybye {laybye.laybye_number} to invoice {invoice.invoice_number} "
+            f"for debtor {debtor.dno}"
+        )
+        
+        return invoice
+    
+    @transaction.atomic
+    def convert_quotation_to_invoice(quotation, debtor):
+        """
+        Convert quotation to customer invoice.
+        
+        Args:
+            quotation: Quotation instance to convert
+            debtor: Debtor instance (customer)
+        
+        Returns:
+            Invoice: Created invoice
+        
+        Raises:
+            ValueError: If quotation cannot be converted
+        """
+        if quotation.status == 'CONVERTED_TO_INVOICE':
+            raise ValueError("Quotation already converted to invoice")
+        
+        if quotation.status == 'CANCELLED':
+            raise ValueError("Cannot convert cancelled quotation to invoice")
+        
+        if quotation.status == 'EXPIRED':
+            raise ValueError("Cannot convert expired quotation to invoice")
+        
+        if not debtor:
+            raise ValueError("Debtor is required to create invoice. Please select a debtor.")
+        
+        # Generate invoice number (format: INV-YYYYMMDD-XXXXX)
+        from django.utils import timezone
+        from apps.settings.models import SalesArea
+        today = timezone.now().date()
+        invoice_count = Invoice.objects.filter(
+            invoice_date=today
+        ).count() + 1
+        invoice_number = f"INV-{today.year}{today.month:02d}{today.day:02d}-{invoice_count:05d}"
+        
+        # Handle sales_area - get the code string (not the ForeignKey object)
+        # Invoice.sales_area is a CharField(max_length=2), not a ForeignKey
+        sales_area_code = None
+        if quotation.sales_area:
+            sales_area_code = str(quotation.sales_area.number).zfill(2)
+        else:
+            default_sales_area = SalesArea.objects.filter(is_active=True).first()
+            if default_sales_area:
+                sales_area_code = str(default_sales_area.number).zfill(2)
+        
+        # Create invoice
+        invoice = Invoice.objects.create(
+            debtor=debtor,
+            invoice_number=invoice_number,
+            invoice_date=today,
+            delivery_name=quotation.customer_name,
+            delivery_address_line1=quotation.address_line1,
+            delivery_address_line2=quotation.address_line2,
+            delivery_address_line3=quotation.address_line3,
+            delivery_telephone=quotation.telephone,
+            sales_area=sales_area_code,
+            subtotal=round(quotation.subtotal, 2) if quotation.subtotal else Decimal('0.00'),
+            vat_amount=round(quotation.vat_amount, 2) if quotation.vat_amount else Decimal('0.00'),
+            total_amount=round(quotation.total_amount, 2) if quotation.total_amount else Decimal('0.00'),
+            total_cost=Decimal('0.00'),
+            gross_profit=round(quotation.gross_profit, 2) if quotation.gross_profit else Decimal('0.00'),
+            status='DRAFT',
+            is_posted=False
+        )
+        
+        # Copy quotation lines to invoice lines
+        for quote_line in quotation.lines.all():
+            # Calculate line_cost from quantity * cost_price
+            line_cost = (quote_line.quantity * quote_line.cost_price) if quote_line.cost_price else Decimal('0.00')
+            
+            InvoiceLine.objects.create(
+                invoice=invoice,
+                line_number=quote_line.line_number,
+                stock_code=quote_line.stock_code,
+                description=quote_line.description,
+                quantity=quote_line.quantity,
+                unit_price=quote_line.unit_price,
+                discount_percentage=quote_line.discount_percentage,
+                tax_code=quote_line.tax_code,
+                line_total=quote_line.line_total,
+                vat_amount=quote_line.vat_amount,
+                cost_price=quote_line.cost_price,
+                line_cost=line_cost,
+                line_profit=(quote_line.unit_price - quote_line.cost_price) * quote_line.quantity if quote_line.unit_price and quote_line.cost_price else Decimal('0.00')
+            )
+        
+        # Update quotation status
+        quotation.status = 'CONVERTED_TO_INVOICE'
+        quotation.save()
+        
+        logger.info(
+            f"Converted quotation {quotation.quotation_number} to invoice {invoice.invoice_number} "
             f"for debtor {debtor.dno}"
         )
         
@@ -545,13 +768,12 @@ class RepairService:
     @transaction.atomic
     def issue_to_supplier(repair, supplier_account, transport_mode=''):
         """Issue repair to supplier."""
-        if repair.status != 'CREATED':
+        if repair.status != 'C':
             raise ValueError("Repair must be in CREATED status to issue")
         
-        repair.supplier_account = supplier_account
+        repair.supplier_number = int(supplier_account) if str(supplier_account).isdigit() else None
         repair.date_sent = date.today()
-        repair.transport_mode = transport_mode
-        repair.status = 'ISSUED'
+        repair.status = 'I'
         repair.save()
         
         return repair
@@ -560,13 +782,12 @@ class RepairService:
     @transaction.atomic
     def receive_from_supplier(repair, repair_cost, supplier_invoice=''):
         """Receive repaired item from supplier."""
-        if repair.status != 'ISSUED':
+        if repair.status != 'I':
             raise ValueError("Repair must be in ISSUED status to receive")
         
-        repair.date_repaired = date.today()
+        repair.date_returned = date.today()
         repair.repair_cost = repair_cost
-        repair.supplier_invoice_number = supplier_invoice
-        repair.status = 'RECEIVED'
+        repair.status = 'R'
         repair.save()
         
         return repair
@@ -575,13 +796,13 @@ class RepairService:
     @transaction.atomic
     def invoice_customer(repair):
         """Mark repair as invoiced."""
-        if repair.status != 'RECEIVED':
+        if repair.status != 'R':
             raise ValueError("Repair must be RECEIVED before invoicing")
         
         # This would create an invoice for the customer
         # Implementation depends on invoice creation logic
         
-        repair.status = 'INVOICED'
+        repair.status = 'V'
         repair.save()
         
         return repair

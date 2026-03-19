@@ -5,7 +5,7 @@ Django admin interface for POS models.
 from django.contrib import admin
 from django.utils.html import format_html
 from .models import (
-    CashSale, CashSaleLine, Tender, Laybye, LaybyeLine, LaybyelPayment,
+    CashSale, CashSaleLine, Tender, Laybye, LaybyeLine, LaybyePayment,
     Quotation, QuotationLine, Payout, Repair, JobCard, JobCardLine,
     CashControl, ReceiptOnAccount, CreditNote, CreditNoteLine,
     CashReturn, CashReturnLine, CashACheque, TransactionQuery
@@ -132,7 +132,7 @@ class LaybyeLineInline(admin.TabularInline):
 
 class LaybyelPaymentInline(admin.TabularInline):
     """Inline for laybye payments."""
-    model = LaybyelPayment
+    model = LaybyePayment
     extra = 0
     fields = ['payment_date', 'amount', 'sales_area']
     readonly_fields = ['payment_date', 'amount']

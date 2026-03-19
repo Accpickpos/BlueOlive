@@ -2,7 +2,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
-from .views import ShopUserViewSet, ProfileView, TenantTokenView, LogoutView, GetCSRFTokenView, UnifiedLoginView, SignupView, CookieTokenRefreshView
+from .views import ShopUserViewSet, ProfileView, TenantTokenView, LogoutView, GetCSRFTokenView, UnifiedLoginView, SignupView, CookieTokenRefreshView, SubdomainValidationView
 from .user_management_viewset import UserManagementViewSet
 
 router = DefaultRouter()
@@ -14,6 +14,7 @@ urlpatterns = [
     # Authentication endpoints (already under /api/v1/users/auth/ in main urls.py)
     path('csrf/', GetCSRFTokenView.as_view(), name='csrf_token'),
     path('signup/', SignupView.as_view(), name='signup'),
+    path('signup/validate-subdomain/', SubdomainValidationView.as_view(), name='validate_subdomain'),
     path('login/', TenantTokenView.as_view(), name='token_obtain_pair'),
     path('unified-login/', UnifiedLoginView.as_view(), name='unified_login'),
     path('logout/', LogoutView.as_view(), name='logout'),

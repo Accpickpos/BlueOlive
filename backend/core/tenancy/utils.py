@@ -40,10 +40,6 @@ def register_tenant_connection(tenant, shop=None):
     
     logger.debug(f"[register_tenant_connection] Tenant: {tenant.name}, Shop: {shop.name if shop else None}, Schema: {shop_schema}, DB: {tenant.db_name}")
     
-    # CRITICAL: shop_users table is ALWAYS in public schema, not the shop schema
-    # So we must prioritize public in search_path for authentication to work
-    # The shop schema is used for shop-specific data (invoices, products, etc.)
-    
     db_config = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": tenant.db_name,
@@ -51,21 +47,35 @@ def register_tenant_connection(tenant, shop=None):
         "PASSWORD": default_db['PASSWORD'],  # Use settings PASSWORD, not tenant.db_password
         "HOST": tenant.db_host,
         "PORT": tenant.db_port,
-        "CONN_MAX_AGE": 60,  # tune as needed
-        # CRITICAL: Set search_path to public FIRST (for shop_users), then shop schema
-        # This ensures shop_users queries hit public schema while shop data queries hit shop schema
+        "CONN_MAX_AGE": 60,
+        # search_path: shop schema first so all shop tables (dmast, stock_items, etc.)
+        # resolve without qualification. public second for shared tables (shop_users,
+        # auth_*, django_*). Both are always found — order determines priority only.
         "OPTIONS": {
-            'options': f'-c search_path=public,"{shop_schema}" -c statement_timeout=0'
+            'options': f'-c search_path="{shop_schema}",public -c statement_timeout=0'
         },
         "TIME_ZONE": settings.TIME_ZONE,
         "AUTOCOMMIT": True,
         "ATOMIC_REQUESTS": False,
-        "CONN_HEALTH_CHECKS": False,
+        # IMPORTANT: must be True when CONN_MAX_AGE > 0.
+        # Without health checks Django reuses persistent connections that may have been
+        # opened before this schema was registered, causing "relation does not exist"
+        # on tables that only exist in the shop schema (e.g. dmast).
+        "CONN_HEALTH_CHECKS": True,
     }
     # Add to settings and ensure connections updated
     settings.DATABASES[alias] = db_config
-    # Ensure connection handler sees it
     connections.databases[alias] = db_config
+
+    # Force-close any existing physical connection for this alias so the next
+    # query opens a fresh one with the new search_path OPTIONS above.
+    # Without this, a persistent connection opened before register_tenant_connection
+    # (e.g. from a previous request) would be reused and still point at the wrong schema.
+    if alias in connections._connections.__dict__:
+        try:
+            connections[alias].close()
+        except Exception:
+            pass
     
     logger.debug(f"[register_tenant_connection] Connection registered: alias={alias}, db={tenant.db_name}, search_path=public,{shop_schema}")
 

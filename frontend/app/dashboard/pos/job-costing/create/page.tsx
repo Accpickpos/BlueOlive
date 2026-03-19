@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/useAuth';
-import { usePOSAPI } from '@/lib/posApi';
+import { jobCardsApi, JobCardLineItem } from '@/lib/jobCardsApi';
+import { DebtorPicker } from '@/components/pos/DebtorPicker';
+import { StockItemPicker } from '@/components/pos/StockItemPicker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,16 +19,31 @@ import {
 } from '@/components/ui/table';
 import { ArrowLeft, AlertCircle, CheckCircle, Plus, Trash2 } from 'lucide-react';
 
+interface Debtor {
+  id: number;
+  dno: string;
+  name: string;
+  telephone?: string;
+}
+
+interface StockItem {
+  id: number;
+  stock_code: string;
+  description: string;
+  selling_price: number;
+}
+
 export default function CreateJobCostingPage() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
-  const posAPI = usePOSAPI(user?.tenant?.slug);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [selectedDebtor, setSelectedDebtor] = useState<Debtor | null>(null);
 
   const [formData, setFormData] = useState({
     job_number: '',
+    debtor_account_number: '',  // Add debtor account number
     customer_name: '',
     job_description: '',
     start_date: '',
@@ -36,10 +53,51 @@ export default function CreateJobCostingPage() {
 
   const [lineItems, setLineItems] = useState<any[]>([]);
   const [newItem, setNewItem] = useState({
+    stock_item: null as StockItem | null,
     description: '',
     quantity: '',
     unit_rate: '',
   });
+
+  // Handle debtor selection
+  const handleDebtorSelect = (debtor: any) => {
+    setSelectedDebtor(debtor);
+    setFormData(prev => ({
+      ...prev,
+      debtor_account_number: debtor.account_number || debtor.dno || '',  // Use account_number from DebtorPicker, fallback to dno
+      customer_name: debtor.name
+    }));
+  };
+
+  // Handle manual customer name entry
+  const handleCustomerNameChange = (value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      customer_name: value,
+      // Clear debtor if manually typing name (user can still select debtor afterwards)
+      debtor_account_number: value !== prev.customer_name ? '' : prev.debtor_account_number
+    }));
+  };
+
+  // Handle stock item selection
+  const handleStockSelect = (item: any) => {
+    setNewItem(prev => ({
+      ...prev,
+      stock_item: item,
+      description: item.description,
+      unit_rate: item.selling_price.toString()
+    }));
+  };
+
+  // Map frontend status to backend status
+  const mapStatusToBackend = (status: string): string => {
+    switch (status) {
+      case 'open': return 'ACTIVE';
+      case 'in_progress': return 'ACTIVE';
+      case 'completed': return 'CONVERTED_TO_INVOICE';
+      default: return 'ACTIVE';
+    }
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -64,7 +122,7 @@ export default function CreateJobCostingPage() {
     };
 
     setLineItems([...lineItems, item]);
-    setNewItem({ description: '', quantity: '', unit_rate: '' });
+    setNewItem({ description: '', quantity: '', unit_rate: '', stock_item: null });
     setError(null);
   };
 
@@ -90,18 +148,42 @@ export default function CreateJobCostingPage() {
         throw new Error('At least one line item is required');
       }
 
-      const jobData = {
-        ...formData,
-        estimated_cost: formData.estimated_cost ? parseFloat(formData.estimated_cost) : 0,
-        line_items: lineItems,
+      // Auto-generate job number if not provided
+      const jobNumber = formData.job_number.trim() || `JB-${Date.now()}`;
+      
+      // First create the job card
+      const jobCardData = {
+        job_number: jobNumber,
+        debtor_account_number: formData.debtor_account_number, // Include debtor account
+        job_date: formData.start_date || new Date().toISOString().split('T')[0],
+        customer_name: formData.customer_name,
+        description: formData.job_description,
+        status: 'ACTIVE', // Backend only accepts ACTIVE, CONVERTED_TO_INVOICE, or CANCELLED
+        registration_number: '',
+        telephone: '',
+        address: '',
       };
 
-      // API call would go here
-      // const response = await posAPI.jobCosting.create(jobData);
-      // setSuccess('Job card created successfully');
-      // setTimeout(() => router.push('/dashboard/pos/job-costing'), 2000);
+      // Create the job card first
+      const response = await jobCardsApi.create(jobCardData as any);
+      const jobCardId = response.id;
 
-      // Placeholder success
+      // Then add line items if any exist
+      if (lineItems.length > 0) {
+        const lineItemsData = lineItems.map((item, index) => ({
+          item_code: item.stock_item?.stock_code || '',
+          line_number: index + 1,
+          description: item.description,
+          quantity: item.quantity,
+          unit_price: item.unit_rate,
+          discount_percentage: 0,
+          tax_code: 1, // 1 = STANDARD (14%)
+          stock_code: item.stock_item?.stock_code || ''
+        }));
+        
+        await jobCardsApi.addLineItems(jobCardId, lineItemsData as any);
+      }
+
       setSuccess('Job card created successfully');
       setTimeout(() => router.push('/dashboard/pos/job-costing'), 2000);
     } catch (err) {
@@ -172,13 +254,28 @@ export default function CreateJobCostingPage() {
                     Customer Name *
                   </label>
                   <Input
-                    type="text"
-                    name="customer_name"
-                    placeholder="Customer name"
                     value={formData.customer_name}
-                    onChange={handleChange}
-                    required
+                    onChange={(e) => handleCustomerNameChange(e.target.value)}
+                    placeholder="Enter customer name manually"
+                    className="mb-2"
                   />
+                  <p className="text-xs text-gray-500 mb-2">
+                    Or select from debtors:
+                  </p>
+                  <DebtorPicker
+                    onSelect={handleDebtorSelect}
+                    disabled={!user}
+                  />
+                  {selectedDebtor && (
+                    <p className="mt-1 text-sm text-green-600">
+                      Selected: {selectedDebtor.name} ({selectedDebtor.dno})
+                    </p>
+                  )}
+                  {formData.customer_name && !selectedDebtor && (
+                    <p className="mt-1 text-sm text-blue-600">
+                      Manual entry: {formData.customer_name}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -237,15 +334,11 @@ export default function CreateJobCostingPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Description
+                    Stock Item
                   </label>
-                  <Input
-                    type="text"
-                    placeholder="Cost description"
-                    value={newItem.description}
-                    onChange={(e) =>
-                      setNewItem({ ...newItem, description: e.target.value })
-                    }
+                  <StockItemPicker
+                    onSelect={handleStockSelect}
+                    disabled={!user}
                   />
                 </div>
                 <div>

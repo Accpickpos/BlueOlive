@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { login, signup, fetchCSRFToken, getTenantShops } from '@/lib/api';
+import { login, signup, fetchCSRFToken, getTenantShops, getActiveSubscriptionPlans } from '@/lib/api';
 import { useAuthContext } from '@/lib/AuthContext';
 import { setTenant, setShops, setCurrentShop } from '@/lib/shopContext';
-import { ArrowLeft, BarChart3 } from 'lucide-react';
+import { ArrowLeft, BarChart3, Check } from 'lucide-react';
 
 export default function AuthPage() {
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
@@ -29,12 +29,36 @@ export default function AuthPage() {
     lastName: '',
     companyName: '',
     subdomain: '',
+    subscriptionPlanId: '',
   });
+
+  const [plans, setPlans] = useState<any[]>([]);
+  const [plansLoading, setPlansLoading] = useState(true);
 
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [messageType, setMessageType] = useState<'error' | 'success'>('error');
   const router = useRouter();
+
+  // Fetch subscription plans on mount
+  useEffect(() => {
+    async function fetchPlans() {
+      try {
+        const data = await getActiveSubscriptionPlans();
+        setPlans(data);
+        // Set default to first non-trial plan if available
+        const nonTrialPlan = data.find((p: any) => !p.is_trial);
+        if (nonTrialPlan) {
+          setSignupData(prev => ({ ...prev, subscriptionPlanId: nonTrialPlan.id.toString() }));
+        }
+      } catch (error) {
+        console.error('Failed to fetch plans:', error);
+      } finally {
+        setPlansLoading(false);
+      }
+    }
+    fetchPlans();
+  }, []);
 
   // Don't pre-fetch CSRF token - let it be fetched on-demand during login
   // Pre-fetching can trigger rate limiting on stale sessions
@@ -61,17 +85,18 @@ export default function AuthPage() {
         // Store tenant in localStorage for API requests
         setTenant(loginData.subdomain);
         
-        // Fetch shops for the tenant and store them
-        try {
-          const shops = await getTenantShops(loginData.subdomain);
-          setShops(shops);
-          
-          // Set the first shop as current if available
-          if (shops.length > 0) {
-            setCurrentShop(shops[0]);
-          }
-        } catch (shopError) {
-          console.warn('Failed to fetch shops after login:', shopError);
+        // Use the shop from the login response (already set by backend)
+        const shop = response.data.shop;
+        const shops = response.data.accessible_shops || [];
+        
+        setShops(shops);
+        
+        if (shop) {
+          // Use the shop selected during login (or default set by backend)
+          setCurrentShop(shop);
+        } else if (shops.length > 0) {
+          // Fallback to first shop if no shop in response
+          setCurrentShop(shops[0]);
         }
         
         // Refetch user profile to update AuthContext
@@ -99,8 +124,8 @@ export default function AuthPage() {
 
     // Validation
     if (!signupData.email || !signupData.username || !signupData.password || 
-        !signupData.companyName || !signupData.subdomain) {
-      setMessage('Please fill in all required fields');
+        !signupData.companyName || !signupData.subdomain || !signupData.subscriptionPlanId) {
+      setMessage('Please fill in all required fields and select a subscription plan');
       setMessageType('error');
       setLoading(false);
       return;
@@ -130,6 +155,7 @@ export default function AuthPage() {
         last_name: signupData.lastName,
         company_name: signupData.companyName,
         subdomain: signupData.subdomain,
+        subscription_plan_id: parseInt(signupData.subscriptionPlanId),
       });
 
       if (response.status === 201 || response.status === 200) {
@@ -427,16 +453,66 @@ export default function AuthPage() {
                   />
                 </div>
 
+                {/* Subscription Plan Selection */}
+                <div>
+                  <label htmlFor="signup-plan" className="block text-sm font-medium text-gray-700 mb-1">
+                    Select Your Plan *
+                  </label>
+                  {plansLoading ? (
+                    <div className="flex items-center justify-center py-4">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
+                    </div>
+                  ) : plans.length === 0 ? (
+                    <p className="text-sm text-red-500 py-2">No subscription plans available. Please try again later.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {plans.filter((p: any) => !p.is_trial).map((plan: any) => (
+                        <div
+                          key={plan.id}
+                          onClick={() => setSignupData({ ...signupData, subscriptionPlanId: plan.id.toString() })}
+                          className={`p-3 border rounded-lg cursor-pointer transition ${
+                            signupData.subscriptionPlanId === plan.id.toString()
+                              ? 'border-indigo-500 bg-indigo-50'
+                              : 'border-gray-300 hover:border-indigo-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <span className="font-medium text-gray-900">{plan.name}</span>
+                              <span className="ml-2 text-sm text-gray-500">(up to {plan.max_shops === 999 ? 'unlimited' : plan.max_shops} shops, {plan.max_users} users)</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-lg font-bold text-indigo-600">
+                                {plan.price > 0 ? `R${plan.price}` : 'FREE'}
+                              </span>
+                              <span className="text-xs text-gray-500">/month</span>
+                            </div>
+                          </div>
+                          {signupData.subscriptionPlanId === plan.id.toString() && (
+                            <div className="mt-2 flex items-center gap-1 text-xs text-indigo-600">
+                              <Check className="h-3 w-3" /> Selected - You'll start with a 14-day free trial
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 mt-2">
+                    You'll start with a 14-day free trial. Payment will be required after the trial ends.
+                  </p>
+                </div>
+
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || plansLoading || !signupData.subscriptionPlanId}
                   className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed mt-4"
                 >
-                  {loading ? 'Creating Account...' : 'Create Account'}
+                  {loading ? 'Creating Account...' : plansLoading ? 'Loading Plans...' : 'Create Account'}
                 </button>
 
                 <p className="text-xs text-gray-500 text-center mt-4">
                   You'll be automatically logged in and taken to your dashboard after account creation.
+                  Your subscription will be activated based on the plan you selected.
                 </p>
 
                 <div className="text-center mt-4">

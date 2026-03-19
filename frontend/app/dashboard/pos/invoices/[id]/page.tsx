@@ -134,8 +134,8 @@ export default function InvoiceDetail() {
     return sum + itemTotal - discount;
   }, 0);
   
-  const tax = invoice.tax_amount || 0;
-  const total = invoice.total_amount || subtotal + tax;
+  const tax = Number(invoice.tax_amount) || 0;
+  const total = Number(invoice.total_amount) || Number(subtotal) + tax;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">

@@ -138,7 +138,7 @@ class RepairFilter(django_filters.FilterSet):
     
     repair_number = django_filters.CharFilter(lookup_expr='icontains')
     customer_name = django_filters.CharFilter(lookup_expr='icontains')
-    supplier_account = django_filters.CharFilter(lookup_expr='icontains')
+    supplier_number = django_filters.NumberFilter()
     
     class Meta:
         model = Repair

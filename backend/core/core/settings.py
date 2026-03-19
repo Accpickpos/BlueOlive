@@ -53,7 +53,8 @@ USE_DEFAULT_TENANT = True
 
 # Default shop to use when no shop is specified in request
 # This is used when users log in and need to access shop-specific data
-USE_DEFAULT_SHOP = True 
+# Disabled for now - session should always take priority
+USE_DEFAULT_SHOP = False 
 
 # Application definition
 
@@ -95,6 +96,7 @@ TENANT_APPS = [
     'apps.settings',
     'apps.pos',
     'apps.messaging',
+    'apps.stockfinder',                          # Stockfinder integration
 ]
 
 # Django requires INSTALLED_APPS to know which apps are available
@@ -113,6 +115,7 @@ SHOP_APP_LABELS = [
     'stock_control',
     'purchase_orders',
     'pos',
+    'stockfinder',  # Stockfinder integration
 ]
 
 # For the database router: specify which app labels are tenant-specific
@@ -123,7 +126,7 @@ TENANT_APP_LABELS = [
     'shop_users',      # Custom user model
     'messaging',
 
-] + SHOP_APP_LABELS
+] 
 
 # Custom user model
 AUTH_USER_MODEL = 'shop_users.ShopUser'
@@ -261,6 +264,7 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
     'x-tenant',
     'x-shop',
+    'x-shop-id',
 ]
 
 # CSRF trusted origins for cross-origin requests
