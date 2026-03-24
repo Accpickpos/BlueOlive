@@ -16,7 +16,6 @@ build/
 backend/core/.env
 
 # Python
-__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -24,6 +23,12 @@ __pycache__/
 venv/
 ENV/
 .venv/
+backend/.venv/
+
+# Django
+*.log
+logs/
+staticfiles/media/
 
 # Django
 *.log
