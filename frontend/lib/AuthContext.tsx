@@ -102,15 +102,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
       
-      // Find current shop
-      const current = shops?.find((s: Shop) => s.is_current);
-      if (current) {
-        setCurrentShop(current);
-      } else if (shops && shops.length > 0) {
-        setCurrentShop(shops[0]);
-      } else {
-        setCurrentShop(null);
-      }
+        // Find current shop - also save to localStorage for X-Shop-ID header
+        const current = shops?.find((s: Shop) => s.is_current);
+        if (current) {
+          setCurrentShop(current);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('currentShopId', String(current.id));
+          }
+        } else if (shops && shops.length > 0) {
+          setCurrentShop(shops[0]);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('currentShopId', String(shops[0].id));
+          }
+        } else {
+          setCurrentShop(null);
+        }
     } catch (error: any) {
       // Don't crash if shops endpoint fails - user might not have shop access yet
       console.error('Could not fetch accessible shops:', error?.response?.data || error);

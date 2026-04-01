@@ -6,6 +6,12 @@ Based on DMAST, DEBTRAN, DEBTOPEN, DPDC, DEBTORAUD tables.
 from rest_framework import serializers
 from django.db import transaction
 from decimal import Decimal
+import logging
+
+logger = logging.getLogger(__name__)
+
+logger = logging.getLogger(__name__)
+
 from .models import (
     Debtor, DebtorTransaction, DebtorAudit,
     Debtopen, Dpdc, Darea
@@ -71,25 +77,36 @@ class DebtorListSerializer(serializers.ModelSerializer):
             'balance_brought_forward',
         ]
     
+    def to_representation(self, instance):
+        """Override to add error handling for serialization."""
+        try:
+            return super().to_representation(instance)
+        except Exception as e:
+            logger.error(f"[DebtorListSerializer] Error serializing debtor {instance.dno}: {type(e).__name__}: {str(e)}")
+            raise
+    
     def get_total_balance(self, obj):
         """Calculate total balance."""
         try:
-            return obj.total_balance
+            return float(obj.total_balance)
         except (AttributeError, TypeError) as e:
-            return Decimal(0)
+            logger.warning(f"[DebtorListSerializer] Error getting total_balance for debtor {getattr(obj, 'dno', 'unknown')}: {str(e)}")
+            return 0
     
     def get_overdue_balance(self, obj):
         """Calculate overdue balance (> 30 days)."""
         try:
-            return obj.overdue_balance
+            return float(obj.overdue_balance)
         except (AttributeError, TypeError) as e:
-            return Decimal(0)
+            logger.warning(f"[DebtorListSerializer] Error getting overdue_balance for debtor {getattr(obj, 'dno', 'unknown')}: {str(e)}")
+            return 0
     
     def get_is_blocked_flag(self, obj):
         """Get block status."""
         try:
             return obj.is_blocked
         except (AttributeError, TypeError) as e:
+            logger.warning(f"[DebtorListSerializer] Error getting is_blocked for debtor {getattr(obj, 'dno', 'unknown')}: {str(e)}")
             return False
 
 
@@ -103,7 +120,7 @@ class DebtorDetailSerializer(serializers.ModelSerializer):
     available_credit = serializers.SerializerMethodField()
     credit_utilization_pct = serializers.SerializerMethodField()
     
-    # Backward compatibility aliases
+    # Backward compatibility
     customer_number = serializers.IntegerField(source='dno', read_only=True)
     name = serializers.CharField(source='dname', read_only=True)
     short_name = serializers.CharField(source='dsname', read_only=True)
@@ -148,21 +165,17 @@ class DebtorDetailSerializer(serializers.ModelSerializer):
             'dclimit', 'darea', 'dintflag', 'blockflag', 'dposbal',
             'dbalbfwd', 'dcrnt', 'd30', 'd60', 'd90', 'd120', 'd150', 'd180',
             'dsalesm', 'dsalesy', 'dprofitm', 'dprofity', 'damtlpd', 'ddatlpd',
-            'dateopened', 'notes',
-            'total_balance', 'overdue_balance', 'is_blocked_flag', 'available_credit', 'credit_utilization_pct',
-            'is_active', 'created_at', 'updated_at',
+            'dateopened', 'dscontra', 'dlimit Adjdate', 'lastpayment_date',
+            'total_balance', 'overdue_balance', 'is_blocked_flag', 'available_credit',
+            'credit_utilization_pct', 'is_active', 'notes', 'created_at', 'updated_at',
             # Backward compatibility
             'customer_number', 'name', 'short_name', 'contact_person', 'phone', 'phone2', 'fax',
-            'account_type', 'price_level', 'payment_terms', 'discount_percentage', 'prompt_payment_discount',
-            'discount_printable', 'credit_limit', 'area_code', 'interest_flag', 'block_flag',
-            'positive_balance_only', 'balance_brought_forward', 'balance_current',
+            'account_type', 'price_level', 'payment_terms', 'discount_percentage',
+            'prompt_payment_discount', 'credit_limit', 'area_code', 'interest_flag',
+            'block_flag', 'positive_balance_only', 'balance_brought_forward', 'balance_current',
             'balance_30_days', 'balance_60_days', 'balance_90_days', 'balance_120_days',
             'balance_150_days', 'balance_180_days', 'sales_month', 'sales_year',
-            'profit_month', 'profit_year', 'last_payment_amount', 'last_payment_date', 'date_opened',
-        ]
-        read_only_fields = [
-            'dcrnt', 'd30', 'd60', 'd90', 'd120', 'd150', 'd180',
-            'dsalesm', 'dsalesy', 'dprofitm', 'dprofity', 'damtlpd', 'ddatlpd',
+            'profit_month', 'profit_year', 'last_payment_amount', 'last_payment_date',
         ]
     
     def get_total_balance(self, obj):
@@ -177,106 +190,226 @@ class DebtorDetailSerializer(serializers.ModelSerializer):
         except (AttributeError, TypeError):
             return Decimal(0)
     
-    def get_available_credit(self, obj):
-        try:
-            return obj.credit_available
-        except (AttributeError, TypeError):
-            return Decimal(0)
-    
-    def get_credit_utilization_pct(self, obj):
-        try:
-            total = obj.total_balance
-            if obj.dclimit and obj.dclimit > 0:
-                return round((total / obj.dclimit) * 100, 2)
-            return 0
-        except (AttributeError, TypeError, ZeroDivisionError):
-            return 0
-    
     def get_is_blocked_flag(self, obj):
         try:
             return obj.is_blocked
         except (AttributeError, TypeError):
             return False
+    
+    def get_available_credit(self, obj):
+        try:
+            return float(obj.dclimit) - float(obj.total_balance)
+        except (AttributeError, TypeError, ZeroDivisionError):
+            return 0
+    
+    def get_credit_utilization_pct(self, obj):
+        try:
+            if obj.dclimit > 0:
+                return float(obj.total_balance) / float(obj.dclimit) * 100
+            return 0
+        except (AttributeError, TypeError, ZeroDivisionError):
+            return 0
 
 
-class DebtorCreateUpdateSerializer(serializers.ModelSerializer):
+class DebtorCreateUpdateSerializer(serializers.Serializer):
     """Serializer for creating/updating debtor (DMAST)."""
     
-    id = serializers.IntegerField(source='dno', read_only=True)
+    # Frontend fields
+    customer_number = serializers.IntegerField(required=False, allow_null=True)
+    name = serializers.CharField(required=False, allow_blank=True)
+    short_name = serializers.CharField(required=False, allow_blank=True)
+    contact_person = serializers.CharField(required=False, allow_blank=True)
+    phone = serializers.CharField(required=False, allow_blank=True)
+    phone2 = serializers.CharField(required=False, allow_blank=True)
+    fax = serializers.CharField(required=False, allow_blank=True)
+    email = serializers.CharField(required=False, allow_blank=True)
+    account_type = serializers.CharField(required=False, allow_blank=True)
+    price_level = serializers.IntegerField(required=False, allow_null=True)
+    payment_terms = serializers.IntegerField(required=False, allow_null=True)
+    discount_percentage = serializers.DecimalField(required=False, allow_null=True, max_digits=10, decimal_places=2)
+    prompt_payment_discount = serializers.DecimalField(required=False, allow_null=True, max_digits=10, decimal_places=2)
+    credit_limit = serializers.DecimalField(required=False, allow_null=True, max_digits=12, decimal_places=2)
+    area_code = serializers.IntegerField(required=False, allow_null=True)
+    tax_number = serializers.CharField(required=False, allow_blank=True)
+    vat_ref = serializers.CharField(required=False, allow_blank=True)
+    # Boolean fields - frontend sends true/false
+    interest_flag = serializers.BooleanField(required=False, default=False)
+    block_flag = serializers.BooleanField(required=False, default=False)
+    positive_balance_only = serializers.BooleanField(required=False, default=False)
+    discount_printable = serializers.BooleanField(required=False, default=False)
+    is_active = serializers.BooleanField(required=False, default=True)
+    # Address fields
+    address_line1 = serializers.CharField(required=False, allow_blank=True)
+    address_line2 = serializers.CharField(required=False, allow_blank=True)
+    address_line3 = serializers.CharField(required=False, allow_blank=True)
+    postal_code = serializers.CharField(required=False, allow_blank=True)
+    delivery_address1 = serializers.CharField(required=False, allow_blank=True)
+    delivery_address2 = serializers.CharField(required=False, allow_blank=True)
+    delivery_address3 = serializers.CharField(required=False, allow_blank=True)
+    delivery_address4 = serializers.CharField(required=False, allow_blank=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
     
-    # Backward compatibility
-    customer_number = serializers.IntegerField(source='dno', required=False)
-    name = serializers.CharField(source='dname', required=False)
-    short_name = serializers.CharField(source='dsname', required=False, allow_blank=True)
-    contact_person = serializers.CharField(source='dcontact', required=False, allow_blank=True)
-    phone = serializers.CharField(source='dtel', required=False, allow_blank=True)
-    phone2 = serializers.CharField(source='dtel2', required=False, allow_blank=True)
-    fax = serializers.CharField(source='dfax', required=False, allow_blank=True)
-    account_type = serializers.CharField(source='acctype', required=False, allow_blank=True)
-    price_level = serializers.IntegerField(source='price', required=False, allow_null=True)
-    payment_terms = serializers.IntegerField(source='terms', required=False, allow_null=True)
-    discount_percentage = serializers.DecimalField(source='ddiscper', max_digits=10, decimal_places=2, required=False)
-    prompt_payment_discount = serializers.DecimalField(source='pdisc', max_digits=10, decimal_places=2, required=False)
-    discount_printable = serializers.CharField(required=False, allow_blank=True)
-    credit_limit = serializers.DecimalField(source='dclimit', max_digits=12, decimal_places=2, required=False)
-    area_code = serializers.IntegerField(source='darea', required=False, allow_null=True)
-    interest_flag = serializers.CharField(source='dintflag', required=False, allow_blank=True)
-    block_flag = serializers.CharField(source='blockflag', required=False, allow_blank=True)
-    positive_balance_only = serializers.CharField(source='dposbal', required=False, allow_blank=True)
-    
-    class Meta:
-        model = Debtor
-        fields = [
-            'id', 'dno', 'dname', 'dsname', 'dcontact', 'dtel', 'dtel2', 'dfax',
-            'email', 'address_line1', 'address_line2', 'address_line3', 'postal_code',
-            'delivery_address1', 'delivery_address2', 'delivery_address3', 'delivery_address4',
-            'dtaxno', 'vatref', 'acctype', 'price', 'terms', 'ddiscper', 'pdisc', 'discount_printable',
-            'dclimit', 'darea', 'dintflag', 'blockflag', 'dposbal', 'notes', 'is_active',
-            # Backward compatibility
-            'customer_number', 'name', 'short_name', 'contact_person', 'phone', 'phone2', 'fax',
-            'account_type', 'price_level', 'payment_terms', 'discount_percentage', 'prompt_payment_discount',
-            'discount_printable', 'credit_limit', 'area_code', 'interest_flag', 'block_flag',
-            'positive_balance_only',
-        ]
+    def validate(self, attrs):
+        print(f"[DebtorSerializer] validate() called with attrs keys: {list(attrs.keys())}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"[DebtorSerializer] validate() called with attrs keys: {list(attrs.keys())}")
+        
+        # Map frontend fields to model fields
+        field_mapping = {
+            'customer_number': 'dno',
+            'name': 'dname',
+            'short_name': 'dsname',
+            'contact_person': 'dcontact',
+            'phone': 'dtel',
+            'phone2': 'dtel2',
+            'fax': 'dfax',
+            'account_type': 'acctype',
+            'price_level': 'price',
+            'payment_terms': 'terms',
+            'discount_percentage': 'ddiscper',
+            'prompt_payment_discount': 'pdisc',
+            'credit_limit': 'dclimit',
+            'area_code': 'darea',
+            'tax_number': 'dtaxno',
+            'vat_ref': 'vatref',
+        }
+        
+        # Apply field mapping
+        for frontend_name, model_name in field_mapping.items():
+            if frontend_name in attrs:
+                attrs[model_name] = attrs.pop(frontend_name)
+        
+        print(f"[DebtorSerializer] After mapping, attrs keys: {list(attrs.keys())}")
+        
+        # Convert boolean to Y/N for legacy fields
+        bool_fields = {
+            'interest_flag': 'dintflag',
+            'block_flag': 'blockflag',
+            'positive_balance_only': 'dposbal',
+        }
+        
+        for frontend_name, model_name in bool_fields.items():
+            if frontend_name in attrs and attrs[frontend_name] is not None:
+                attrs[model_name] = 'Y' if attrs[frontend_name] else 'N'
+                attrs.pop(frontend_name, None)
+        
+        # Handle discount_printable
+        if 'discount_printable' in attrs and attrs['discount_printable'] is not None:
+            attrs['discount_printable'] = 'Y' if attrs['discount_printable'] else 'N'
+        
+        logger.error(f"[DebtorSerializer] After mapping, attrs keys: {list(attrs.keys())}")
+        
+        # Auto-generate dno if not provided
+        if 'dno' not in attrs or attrs.get('dno') is None:
+            from django.db.models import Max
+            from tenancy.tenant_context import get_current_tenant
+            
+            tenant = get_current_tenant()
+            if tenant:
+                max_dno = Debtor.objects.using(tenant.db_alias).aggregate(Max('dno'))['dno__max']
+                attrs['dno'] = (max_dno or 0) + 1
+            else:
+                max_dno = Debtor.objects.aggregate(Max('dno'))['dno__max']
+                attrs['dno'] = (max_dno or 0) + 1
+            
+            logger.info(f"[DebtorSerializer] Auto-generated dno={attrs['dno']} (max was {max_dno})")
+        else:
+            # User provided dno - check for duplicates
+            provided_dno = attrs.get('dno')
+            from tenancy.tenant_context import get_current_tenant
+            tenant = get_current_tenant()
+            
+            # Check if this dno already exists
+            if tenant:
+                exists = Debtor.objects.using(tenant.db_alias).filter(dno=provided_dno).exists()
+            else:
+                exists = Debtor.objects.filter(dno=provided_dno).exists()
+            
+            if exists:
+                logger.warning(f"[DebtorSerializer] Debtor with dno={provided_dno} already exists!")
+                # Try to find next available number
+                if tenant:
+                    max_dno = Debtor.objects.using(tenant.db_alias).aggregate(Max('dno'))['dno__max']
+                else:
+                    max_dno = Debtor.objects.aggregate(Max('dno'))['dno__max']
+                attrs['dno'] = (max_dno or 0) + 1
+                logger.info(f"[DebtorSerializer] Using next available dno={attrs['dno']} instead")
+        
+        print(f"[DebtorSerializer] After dno generation, attrs: dno={attrs.get('dno')}, dname={attrs.get('dname')}")
+        
+        # Handle dname - ensure it's not empty
+        if not attrs.get('dname') and attrs.get('dsname'):
+            attrs['dname'] = attrs['dsname']
+        
+        # Set defaults for required fields that can't be null
+        attrs.setdefault('dtel2', '')  # tel2 is required in DB
+        attrs.setdefault('dcrnt', Decimal('0.00'))
+        attrs.setdefault('d30', Decimal('0.00'))
+        attrs.setdefault('d60', Decimal('0.00'))
+        attrs.setdefault('d90', Decimal('0.00'))
+        attrs.setdefault('d120', Decimal('0.00'))
+        attrs.setdefault('d150', Decimal('0.00'))
+        attrs.setdefault('d180', Decimal('0.00'))
+        attrs.setdefault('dbalbfwd', Decimal('0.00'))
+        attrs.setdefault('dsalesm', Decimal('0.00'))
+        attrs.setdefault('dsalesy', Decimal('0.00'))
+        attrs.setdefault('dprofitm', Decimal('0.00'))
+        attrs.setdefault('dprofity', Decimal('0.00'))
+        attrs.setdefault('damtlpd', Decimal('0.00'))
+        
+        logger.error(f"[DebtorSerializer] Final attrs: dno={attrs.get('dno')}, dname={attrs.get('dname')}")
+        
+        return attrs
     
     def create(self, validated_data):
-        # Handle backward compatibility field mappings
-        if 'dname' not in validated_data and 'name' in validated_data:
-            validated_data['dname'] = validated_data.pop('name')
-        if 'dsname' not in validated_data and 'short_name' in validated_data:
-            validated_data['dsname'] = validated_data.pop('short_name')
-        if 'dcontact' not in validated_data and 'contact_person' in validated_data:
-            validated_data['dcontact'] = validated_data.pop('contact_person')
-        if 'dtel' not in validated_data and 'phone' in validated_data:
-            validated_data['dtel'] = validated_data.pop('phone')
-        if 'dtel2' not in validated_data and 'phone2' in validated_data:
-            validated_data['dtel2'] = validated_data.pop('phone2')
-        if 'dfax' not in validated_data and 'fax' in validated_data:
-            validated_data['dfax'] = validated_data.pop('fax')
-        if 'acctype' not in validated_data and 'account_type' in validated_data:
-            validated_data['acctype'] = validated_data.pop('account_type')
-        if 'price' not in validated_data and 'price_level' in validated_data:
-            validated_data['price'] = validated_data.pop('price_level')
-        if 'terms' not in validated_data and 'payment_terms' in validated_data:
-            validated_data['terms'] = validated_data.pop('payment_terms')
-        if 'ddiscper' not in validated_data and 'discount_percentage' in validated_data:
-            validated_data['ddiscper'] = validated_data.pop('discount_percentage')
-        if 'pdisc' not in validated_data and 'prompt_payment_discount' in validated_data:
-            validated_data['pdisc'] = validated_data.pop('prompt_payment_discount')
-        if 'discount_printable' not in validated_data and 'discount_printable' in validated_data:
-            validated_data['discount_printable'] = validated_data.pop('discount_printable')
-        if 'dclimit' not in validated_data and 'credit_limit' in validated_data:
-            validated_data['dclimit'] = validated_data.pop('credit_limit')
-        if 'darea' not in validated_data and 'area_code' in validated_data:
-            validated_data['darea'] = validated_data.pop('area_code')
-        if 'dintflag' not in validated_data and 'interest_flag' in validated_data:
-            validated_data['dintflag'] = validated_data.pop('interest_flag')
-        if 'blockflag' not in validated_data and 'block_flag' in validated_data:
-            validated_data['blockflag'] = validated_data.pop('block_flag')
-        if 'dposbal' not in validated_data and 'positive_balance_only' in validated_data:
-            validated_data['dposbal'] = validated_data.pop('positive_balance_only')
-            
-        return super().create(validated_data)
+        print(f"[DebtorSerializer] create() called with: {validated_data}")
+        
+        # Use objects.create but first ensure all CharField fields have values
+        # Create a copy to avoid modifying the original
+        data = dict(validated_data)
+        
+        # List of fields that need to be empty strings, not None - set defaults explicitly
+        string_fields = ['dtel2', 'dfax', 'dsname', 'dcontact', 'email',
+                        'address_line1', 'address_line2', 'address_line3', 'postal_code',
+                        'delivery_address1', 'delivery_address2', 'delivery_address3', 'delivery_address4',
+                        'dtaxno', 'vatref', 'notes', 'acctype', 'blockflag', 'dintflag', 'dposbal']
+        
+        for field in string_fields:
+            if field not in data or data.get(field) is None:
+                data[field] = ''
+                print(f"[DebtorSerializer] Set {field} to empty string in data")
+        
+        # Also ensure Decimal fields have defaults
+        decimal_fields = ['ddiscper', 'pdisc', 'dclimit', 'dcrnt', 'd30', 'd60', 'd90', 
+                         'd120', 'd150', 'd180', 'dbalbfwd', 'dsalesm', 'dsalesy', 
+                         'dprofitm', 'dprofity', 'damtlpd']
+        for field in decimal_fields:
+            if field not in data or data.get(field) is None:
+                data[field] = Decimal('0.00')
+        
+        print(f"[DebtorSerializer] Final data before create: dtel2={repr(data.get('dtel2'))}")
+        
+        # Set dtel2 to empty string - either from form or default
+        # The database now has DEFAULT '' so this should work
+        if not data.get('dtel2'):
+            data['dtel2'] = ''
+        
+        # Create model instance and save
+        logger.debug(f"[DebtorSerializer] Creating Debtor with dtel2={repr(data.get('dtel2'))}")
+        debtor = Debtor(**data)
+        
+        logger.debug(f"[DebtorSerializer] After Debtor() creation, dtel2={repr(debtor.dtel2)}")
+        
+        debtor.save()
+        logger.debug(f"[DebtorSerializer] After debtor.save(), dtel2 in db will be set")
+        return debtor
+    
+    def update(self, instance, validated_data):
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
 
 
 # Rest of the serializers would follow the same pattern...
@@ -304,38 +437,53 @@ class DpdcSerializer(serializers.ModelSerializer):
 
 
 class DebtorAuditSerializer(serializers.ModelSerializer):
-    """Serializer for audit logs."""
+    """Serializer for audit records."""
     class Meta:
         model = DebtorAudit
         fields = '__all__'
 
 
 class DareaSerializer(serializers.ModelSerializer):
-    """Serializer for sales areas."""
+    """Serializer for debtor areas/sales regions."""
     class Meta:
         model = Darea
         fields = '__all__'
 
 
 class AgeAnalysisSerializer(serializers.Serializer):
-    """Serializer for age analysis."""
-    pass
+    """Serializer for age analysis data."""
+    customer_number = serializers.IntegerField()
+    name = serializers.CharField()
+    total_balance = serializers.DecimalField(max_digits=12, decimal_places=2)
+    current = serializers.DecimalField(max_digits=12, decimal_places=2)
+    days_30 = serializers.DecimalField(max_digits=12, decimal_places=2)
+    days_60 = serializers.DecimalField(max_digits=12, decimal_places=2)
+    days_90 = serializers.DecimalField(max_digits=12, decimal_places=2)
+    days_120_plus = serializers.DecimalField(max_digits=12, decimal_places=2)
 
 
 class DebtorSummarySerializer(serializers.Serializer):
-    """Serializer for summary statistics."""
-    pass
+    """Serializer for debtor summary statistics."""
+    total_debtors = serializers.IntegerField()
+    active_debtors = serializers.IntegerField()
+    blocked_debtors = serializers.IntegerField()
+    total_balance = serializers.FloatField()
+    current_balance = serializers.FloatField()
+    overdue_30 = serializers.FloatField()
+    overdue_60 = serializers.FloatField()
+    overdue_90 = serializers.FloatField()
+    overdue_120_plus = serializers.FloatField()
 
 
 class DebtranListSerializer(serializers.ModelSerializer):
-    """Serializer for transaction list."""
+    """Serializer for debtor transaction list view."""
     class Meta:
         model = DebtorTransaction
-        fields = '__all__'
+        fields = ['id', 'transaction_date', 'transaction_type', 'reference', 'debit', 'credit', 'outstanding']
 
 
 class DebtOpenListSerializer(serializers.ModelSerializer):
-    """Serializer for open items list."""
+    """Serializer for open item list view."""
     class Meta:
         model = Debtopen
-        fields = '__all__'
+        fields = ['id', 'trans_date', 'reference', 'debit', 'credit', 'outstanding', 'allocated']

@@ -14,6 +14,7 @@ from django.core.exceptions import ValidationError
 from decimal import Decimal
 from datetime import datetime, timedelta
 
+from apps.shop_filter_mixin import ShopFilterMixin
 from .models import (
     IncomeCategory, CashBookTransaction, OtherIncome, OtherExpense,
     BankDeposit, CashWithdrawal, BankTransfer, BankCharge, InterestReceived,
@@ -32,7 +33,7 @@ from .permissions import (
 from apps.common.permissions import BaseModelPermission, CanReconcile as CommonCanReconcile
 
 
-class IncomeCategoryViewSet(viewsets.ModelViewSet):
+class IncomeCategoryViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Income Categories"""
     queryset = IncomeCategory.objects.all()
     serializer_class = IncomeCategorySerializer
@@ -43,7 +44,7 @@ class IncomeCategoryViewSet(viewsets.ModelViewSet):
     ordering = ['number']
 
 
-class CashBookTransactionViewSet(viewsets.ReadOnlyModelViewSet):
+class CashBookTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     API endpoint for viewing cash book transactions
     Read-only - transactions created through specific endpoints
@@ -135,7 +136,7 @@ class CashBookTransactionViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(balances)
 
 
-class OtherIncomeViewSet(viewsets.ModelViewSet):
+class OtherIncomeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Other Income transactions"""
     serializer_class = OtherIncomeSerializer
     permission_classes = [IsAuthenticated, CanCreateTransactions, CanModifyReconciledTransactions]
@@ -182,7 +183,7 @@ class OtherIncomeViewSet(viewsets.ModelViewSet):
             )
 
 
-class OtherExpenseViewSet(viewsets.ModelViewSet):
+class OtherExpenseViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Other Expense transactions"""
     serializer_class = OtherExpenseSerializer
     permission_classes = [IsAuthenticated, CanCreateTransactions, CanModifyReconciledTransactions]
@@ -230,7 +231,7 @@ class OtherExpenseViewSet(viewsets.ModelViewSet):
             )
 
 
-class BankDepositViewSet(viewsets.ModelViewSet):
+class BankDepositViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Bank Deposits"""
     serializer_class = BankDepositSerializer
     permission_classes = [IsAuthenticated, CanCreateTransactions, CanModifyReconciledTransactions]
@@ -292,7 +293,7 @@ class BankDepositViewSet(viewsets.ModelViewSet):
             )
 
 
-class CashWithdrawalViewSet(viewsets.ModelViewSet):
+class CashWithdrawalViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Cash Withdrawals"""
     serializer_class = CashWithdrawalSerializer
     permission_classes = [IsAuthenticated, CanCreateTransactions, CanModifyReconciledTransactions]
@@ -302,7 +303,7 @@ class CashWithdrawalViewSet(viewsets.ModelViewSet):
         return CashWithdrawal.objects.select_related('transaction').all()
 
 
-class BankTransferViewSet(viewsets.ModelViewSet):
+class BankTransferViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Bank Transfers"""
     serializer_class = BankTransferSerializer
     permission_classes = [IsAuthenticated, CanCreateTransactions, CanModifyReconciledTransactions]
@@ -312,7 +313,7 @@ class BankTransferViewSet(viewsets.ModelViewSet):
         return BankTransfer.objects.select_related('transaction').all()
 
 
-class BankChargeViewSet(viewsets.ModelViewSet):
+class BankChargeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Bank Charges"""
     serializer_class = BankChargeSerializer
     permission_classes = [IsAuthenticated, CanCreateTransactions, CanModifyReconciledTransactions]
@@ -322,7 +323,7 @@ class BankChargeViewSet(viewsets.ModelViewSet):
         return BankCharge.objects.select_related('transaction').all()
 
 
-class InterestReceivedViewSet(viewsets.ModelViewSet):
+class InterestReceivedViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Interest Received"""
     serializer_class = InterestReceivedSerializer
     permission_classes = [IsAuthenticated, CanCreateTransactions, CanModifyReconciledTransactions]
@@ -332,7 +333,7 @@ class InterestReceivedViewSet(viewsets.ModelViewSet):
         return InterestReceived.objects.select_related('transaction').all()
 
 
-class BankReconciliationViewSet(viewsets.ModelViewSet):
+class BankReconciliationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Bank Reconciliations"""
     permission_classes = [IsAuthenticated, CanReconcile]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
@@ -454,7 +455,7 @@ class BankReconciliationViewSet(viewsets.ModelViewSet):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class CashFloatViewSet(viewsets.ModelViewSet):
+class CashFloatViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Cash Float management"""
     queryset = CashFloat.objects.all()
     serializer_class = CashFloatSerializer
@@ -462,7 +463,7 @@ class CashFloatViewSet(viewsets.ModelViewSet):
     ordering = ['-float_date']
 
 
-class ExpenseCategoryBalanceViewSet(viewsets.ModelViewSet):
+class ExpenseCategoryBalanceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for expense category balances (per spec CBEXP)"""
     queryset = ExpenseCategoryBalance.objects.select_related('expense_category')
     serializer_class = ExpenseCategoryBalanceSerializer
@@ -517,7 +518,7 @@ class ExpenseCategoryBalanceViewSet(viewsets.ModelViewSet):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class IncomeCategoryBalanceViewSet(viewsets.ModelViewSet):
+class IncomeCategoryBalanceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for income category balances (per spec CBINC)"""
     queryset = IncomeCategoryBalance.objects.select_related('income_category')
     serializer_class = IncomeCategoryBalanceSerializer
@@ -572,7 +573,7 @@ class IncomeCategoryBalanceViewSet(viewsets.ModelViewSet):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class UnpresentedChequeViewSet(viewsets.ModelViewSet):
+class UnpresentedChequeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for unpresented cheques (per spec CBCHEQ)"""
     queryset = UnpresentedCheque.objects.all()
     serializer_class = UnpresentedChequeSerializer

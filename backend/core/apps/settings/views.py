@@ -21,6 +21,8 @@ from django.core.mail import send_mail
 from django.conf import settings
 from io import StringIO
 
+from apps.shop_filter_mixin import ShopFilterMixin
+
 from .models import (
     SalesDepartment,
     SalesArea,
@@ -66,7 +68,7 @@ from .serializers import (
 # BASE VIEWSET WITH COMMON FUNCTIONALITY
 # ═══════════════════════════════════════════════════════════════════════════
 
-class BaseSettingsViewSet(viewsets.ModelViewSet):
+class BaseSettingsViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     Base ViewSet with common functionality for all settings models
     Handles audit trail (created_by, updated_by)
@@ -514,7 +516,7 @@ class CreditTermsViewSet(BaseSettingsViewSet):
 # SYSTEM CONFIGURATION VIEWSET
 # ═══════════════════════════════════════════════════════════════════════════
 
-class SystemConfigurationViewSet(viewsets.ModelViewSet):
+class SystemConfigurationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for System Configuration (Singleton)
     
@@ -819,7 +821,7 @@ class SystemConfigurationViewSet(viewsets.ModelViewSet):
 # MONTHLY STATISTICS VIEWSETS (READ-ONLY)
 # ═══════════════════════════════════════════════════════════════════════════
 
-class DepartmentMonthlyStatsViewSet(viewsets.ReadOnlyModelViewSet):
+class DepartmentMonthlyStatsViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     Read-only ViewSet for Department Monthly Statistics
     
@@ -850,7 +852,7 @@ class DepartmentMonthlyStatsViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
-class SalesAreaMonthlyStatsViewSet(viewsets.ReadOnlyModelViewSet):
+class SalesAreaMonthlyStatsViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     Read-only ViewSet for Sales Area Monthly Statistics
     
@@ -881,7 +883,7 @@ class SalesAreaMonthlyStatsViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
-class APIKeyViewSet(viewsets.ModelViewSet):
+class APIKeyViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing API keys.
     

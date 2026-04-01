@@ -1253,7 +1253,7 @@ _DEBTOR_FIELD_TO_COL = {
 
 # NOT NULL varchar/text columns in dmast that may be absent from CSV
 _DMAST_NOT_NULL_TEXT_COLS = {
-    'dname', 'dsname', 'dcontact', 'dtel', 'tel2', 'dtel2', 'dfax',
+    'dname', 'dsname', 'dcontact', 'dtel', 'dtel2', 'dfax',
     'email', 'dadd1', 'dadd2', 'dadd3', 'dpcode',
     'delad1', 'delad2', 'delad3', 'delad4',
     'dtaxno', 'vatref', 'acctype', 'discprn', 'blockflag',

@@ -7,6 +7,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 
+from apps.shop_filter_mixin import ShopFilterMixin
+
 from .models import (
     Creditor,
     GoodsReceivedNote, GRNLineItem,
@@ -48,7 +50,7 @@ from .serializers import (
 # CREDITOR (SUPPLIER) MASTER
 # ============================================================================
 
-class CreditorViewSet(viewsets.ModelViewSet):
+class CreditorViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     CRUD for Creditor master accounts.
 
@@ -149,7 +151,7 @@ class CreditorViewSet(viewsets.ModelViewSet):
 # GOODS RECEIVED NOTE
 # ============================================================================
 
-class GoodsReceivedNoteViewSet(viewsets.ModelViewSet):
+class GoodsReceivedNoteViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     GRN list / detail / create.
 
@@ -210,7 +212,7 @@ class GoodsReceivedNoteViewSet(viewsets.ModelViewSet):
         return Response(GoodsReceivedNoteSerializer(grn).data)
 
 
-class GRNLineItemViewSet(viewsets.ModelViewSet):
+class GRNLineItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """Line items nested under a GRN — /grns/{grn_pk}/lines/"""
 
     serializer_class   = GRNLineItemSerializer
@@ -229,7 +231,7 @@ class GRNLineItemViewSet(viewsets.ModelViewSet):
 # CREDITOR INVOICE
 # ============================================================================
 
-class CreditorInvoiceViewSet(viewsets.ModelViewSet):
+class CreditorInvoiceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     Expense invoices (electricity, rent, etc.).
 
@@ -271,7 +273,7 @@ class CreditorInvoiceViewSet(viewsets.ModelViewSet):
         return Response(CreditorInvoiceSerializer(invoice).data)
 
 
-class CreditorInvoiceLineItemViewSet(viewsets.ModelViewSet):
+class CreditorInvoiceLineItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """Nested line items — /invoices/{invoice_pk}/lines/"""
 
     serializer_class   = CreditorInvoiceLineItemSerializer
@@ -290,7 +292,7 @@ class CreditorInvoiceLineItemViewSet(viewsets.ModelViewSet):
 # CREDITOR CREDIT NOTE
 # ============================================================================
 
-class CreditorCreditNoteViewSet(viewsets.ModelViewSet):
+class CreditorCreditNoteViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     Credit notes from suppliers.
 
@@ -332,7 +334,7 @@ class CreditorCreditNoteViewSet(viewsets.ModelViewSet):
         return Response(CreditorCreditNoteSerializer(cn).data)
 
 
-class CreditorCreditNoteLineItemViewSet(viewsets.ModelViewSet):
+class CreditorCreditNoteLineItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """Nested line items — /credit_notes/{cn_pk}/lines/"""
 
     serializer_class   = CreditorCreditNoteLineItemSerializer
@@ -351,7 +353,7 @@ class CreditorCreditNoteLineItemViewSet(viewsets.ModelViewSet):
 # CREDITOR PAYMENT
 # ============================================================================
 
-class CreditorPaymentViewSet(viewsets.ModelViewSet):
+class CreditorPaymentViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     Payments made to suppliers.
 
@@ -417,7 +419,7 @@ class CreditorPaymentViewSet(viewsets.ModelViewSet):
 # CREDITOR JOURNAL
 # ============================================================================
 
-class CreditorJournalViewSet(viewsets.ModelViewSet):
+class CreditorJournalViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     Debit/credit journal adjustments.
 
@@ -459,7 +461,7 @@ class CreditorJournalViewSet(viewsets.ModelViewSet):
 # SUPPLIER LEDGER ENTRY (read-only — imported from suptran.dbf)
 # ============================================================================
 
-class SupplierLedgerEntryViewSet(viewsets.ReadOnlyModelViewSet):
+class SupplierLedgerEntryViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     Read-only view of raw suptran ledger entries.
     These are imported from the DBF — not created through the API.
@@ -479,7 +481,7 @@ class SupplierLedgerEntryViewSet(viewsets.ReadOnlyModelViewSet):
 # OPEN ITEMS
 # ============================================================================
 
-class CreditorOpenItemViewSet(viewsets.ModelViewSet):
+class CreditorOpenItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     Open items (supopen).
 
@@ -519,7 +521,7 @@ class CreditorOpenItemViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class OpenItemAllocationViewSet(viewsets.ModelViewSet):
+class OpenItemAllocationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     Payment allocations against open items.
     Typically created via /payments/{id}/allocate/ but also accessible directly.
@@ -536,7 +538,7 @@ class OpenItemAllocationViewSet(viewsets.ModelViewSet):
 # OPEN ITEM AUDIT (read-only)
 # ============================================================================
 
-class OpenItemAuditViewSet(viewsets.ReadOnlyModelViewSet):
+class OpenItemAuditViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     Audit trail of open item changes — system-written, read-only via API.
     """
@@ -554,7 +556,7 @@ class OpenItemAuditViewSet(viewsets.ReadOnlyModelViewSet):
 # RFC (RETURN FOR CREDIT)
 # ============================================================================
 
-class RFCViewSet(viewsets.ModelViewSet):
+class RFCViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     Returns for credit (supcrmas + supcrtrn).
 
@@ -597,7 +599,7 @@ class RFCViewSet(viewsets.ModelViewSet):
         return Response(RFCSerializer(rfc).data)
 
 
-class RFCLineItemViewSet(viewsets.ModelViewSet):
+class RFCLineItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """Nested line items — /rfcs/{rfc_pk}/lines/"""
 
     serializer_class   = RFCLineItemSerializer
@@ -616,7 +618,7 @@ class RFCLineItemViewSet(viewsets.ModelViewSet):
 # EXPENSE CATEGORY MONTHLY BALANCE (read-only — system-accumulated)
 # ============================================================================
 
-class ExpenseCategoryMonthlyBalanceViewSet(viewsets.ReadOnlyModelViewSet):
+class ExpenseCategoryMonthlyBalanceViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     Expense category monthly totals (supexp). System-accumulated — read-only.
 
@@ -638,7 +640,7 @@ class ExpenseCategoryMonthlyBalanceViewSet(viewsets.ReadOnlyModelViewSet):
 # EXPENSE CATEGORY TRANSACTION
 # ============================================================================
 
-class ExpenseCategoryTransactionViewSet(viewsets.ReadOnlyModelViewSet):
+class ExpenseCategoryTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     Individual expense postings (supexpt). Read-only — written by posting engine.
 
@@ -679,7 +681,7 @@ class ExpenseCategoryTransactionViewSet(viewsets.ReadOnlyModelViewSet):
 # SUPPLIER PAYMENT ORDER
 # ============================================================================
 
-class SupplierPaymentOrderViewSet(viewsets.ModelViewSet):
+class SupplierPaymentOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     Scheduled outgoing payment orders (suppo).
 
@@ -721,7 +723,7 @@ class SupplierPaymentOrderViewSet(viewsets.ModelViewSet):
 # CREDITOR TRANSACTION LINE (generic)
 # ============================================================================
 
-class CreditorTransactionLineViewSet(viewsets.ModelViewSet):
+class CreditorTransactionLineViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """Generic transaction lines (ContentType polymorphic)."""
 
     queryset = CreditorTransactionLine.objects.all()
@@ -735,7 +737,7 @@ class CreditorTransactionLineViewSet(viewsets.ModelViewSet):
 # OUTSTANDING BALANCE CAPTURE
 # ============================================================================
 
-class OutstandingBalanceViewSet(viewsets.ModelViewSet):
+class OutstandingBalanceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     API endpoint for managing supplier outstanding balances.
     

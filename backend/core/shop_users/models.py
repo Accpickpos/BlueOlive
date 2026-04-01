@@ -242,9 +242,12 @@ class ShopUser(AbstractUser):
         Uses shop_ids JSON field for multi-shop access.
         """
         from tenancy.models import Shop
+        import logging
+        logger = logging.getLogger(__name__)
         
         # Admins have access to all shops in their tenant
         if self.is_superuser or self.role == 'ADMIN':
+            logger.debug(f"[get_active_shops] User {self.id} is admin, returning all tenant shops")
             if not self.tenant_id:
                 return Shop.objects.none()
             return Shop.objects.using('default').filter(
@@ -255,8 +258,11 @@ class ShopUser(AbstractUser):
         # Use shop_ids JSON field for explicit access
         shop_ids_list = getattr(self, 'shop_ids', []) or []
         
+        logger.debug(f"[get_active_shops] User {self.id} has shop_ids: {shop_ids_list}")
+        
         if not shop_ids_list:
             # No explicit shop assignments - return empty
+            logger.warning(f"[get_active_shops] User {self.id} has NO shop_ids assigned!")
             return Shop.objects.none()
         
         return Shop.objects.using('default').filter(

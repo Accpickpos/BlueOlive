@@ -3,6 +3,8 @@ from django.db import connections
 from django.core.management import call_command
 from django.conf import settings
 from tenancy.tenant_context import set_current_tenant, clear_current_tenant
+from tenancy.utils import register_tenant_connection
+from tenancy.management.commands.fix_tel2_column import fix_tel2_column_for_shop
 import logging
 import os
 
@@ -55,6 +57,10 @@ def create_shop_schema(tenant, schema_name):
         
         # Step 3: Migrate shop apps to this schema
         migrate_shop_apps(tenant, schema_name)
+        
+        # Step 4: Fix tel2 column NOT NULL issue for all tables
+        logger.info("Step 4: Fixing tel2 column default...")
+        fix_tel2_column_for_shop(tenant, schema_name)
         
         logger.info(f"✓ Schema setup complete: {schema_name}")
         

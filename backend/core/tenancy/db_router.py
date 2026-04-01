@@ -183,11 +183,24 @@ class TenantDatabaseRouter:
             if db == "default":
                 logger.warning(f"[allow_migrate] BLOCK {app_label}.{model_name} → default DB (shop app)")
                 return False
-            is_shop_migration = self._is_shop_schema_migration()
+            
+            # Check for shop schema migration context
+            shop_schema = os.environ.get('SHOP_SCHEMA')
+            is_shop_migration = shop_schema is not None
+            
             if not is_shop_migration:
+                # For migrations: raise an error to prevent silent failures
+                # The migration will NOT be recorded as applied, forcing user to set SHOP_SCHEMA
+                if self._is_migration_context():
+                    raise RuntimeError(
+                        f"[allow_migrate] Migration of {app_label} to shop schema requires SHOP_SCHEMA environment variable. "
+                        f"Set it with: set SHOP_SCHEMA=<schema_name> && python manage.py migrate"
+                    )
+                # For non-migration operations: allow if tenant is set
                 logger.warning(f"[allow_migrate] BLOCK {app_label}.{model_name} → tenant public schema (SHOP_SCHEMA not set)")
                 return False
-            logger.debug(f"[allow_migrate] ALLOW {app_label}.{model_name} → shop schema (SHOP_SCHEMA={os.environ.get('SHOP_SCHEMA')})")
+            
+            logger.debug(f"[allow_migrate] ALLOW {app_label}.{model_name} → shop schema (SHOP_SCHEMA={shop_schema})")
             return True
         
         if app_label in tenant_app_labels:
@@ -213,6 +226,16 @@ class TenantDatabaseRouter:
         else:
             logger.warning(f"[_is_shop_schema_migration] No migration context set")
         return shop_schema is not None
+    
+    def _is_migration_context(self):
+        """
+        Check if we're running Django migrations by looking at the command line.
+        """
+        import sys
+        # Check for migrate command in sys.argv
+        if len(sys.argv) >= 2 and 'migrate' in sys.argv[1:]:
+            return True
+        return False
 
 
 class StrictTenantDatabaseRouter:

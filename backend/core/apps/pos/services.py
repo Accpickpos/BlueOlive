@@ -491,16 +491,21 @@ class QuotationService:
         
         # Handle sales_area - get the code string (not the ForeignKey object)
         # Invoice.sales_area is a CharField(max_length=2), not a ForeignKey
-        sales_area_code = None
+        sales_area_code = '01'  # Default fallback
         if job_card.sales_area:
             # Convert the SalesArea number to a 2-digit string (e.g., 1 -> "01")
             sales_area_code = str(job_card.sales_area.number).zfill(2)
         else:
             # Try to get default sales area
-            from apps.settings.models import SalesArea
-            default_sales_area = SalesArea.objects.filter(is_active=True).first()
-            if default_sales_area:
-                sales_area_code = str(default_sales_area.number).zfill(2)
+            try:
+                from apps.settings.models import SalesArea
+                default_sales_area = SalesArea.objects.filter(is_active=True).first()
+                if default_sales_area:
+                    sales_area_code = str(default_sales_area.number).zfill(2)
+            except Exception as e:
+                logger.warning(f"Could not fetch default SalesArea: {e}")
+        
+        logger.debug(f"Using sales_area_code: {sales_area_code} for job card {job_card.job_number}")
         
         # Create invoice
         invoice = Invoice.objects.create(
@@ -545,8 +550,56 @@ class QuotationService:
             )
         
         # Update job card status
-        job_card.status = 'CONVERTED_TO_INVOICE'
-        job_card.save()
+        # Log all field lengths for debugging
+        logger.debug(f"Job card field lengths before update:")
+        logger.debug(f"  job_number: {len(job_card.job_number) if job_card.job_number else 0} (max 20)")
+        logger.debug(f"  customer_name: {len(job_card.customer_name) if job_card.customer_name else 0} (max 200)")
+        logger.debug(f"  address: {len(job_card.address) if job_card.address else 0} (max 1000)")
+        logger.debug(f"  telephone: {len(job_card.telephone) if job_card.telephone else 0} (max 50)")
+        logger.debug(f"  contact_person: {len(job_card.contact_person) if job_card.contact_person else 0} (max 100)")
+        logger.debug(f"  order_number: {len(job_card.order_number) if job_card.order_number else 0} (max 50)")
+        logger.debug(f"  registration_number: {len(job_card.registration_number) if job_card.registration_number else 0} (max 50)")
+        logger.debug(f"  job_description: {len(job_card.job_description) if job_card.job_description else 0} (max ?)")
+        logger.debug(f"  debtor_account_number: {len(job_card.debtor_account_number) if job_card.debtor_account_number else 0} (max 20)")
+        logger.debug(f"  status: {len(job_card.status) if job_card.status else 0} (max 25)")
+        logger.debug(f"  cancellation_reason: {len(job_card.cancellation_reason) if job_card.cancellation_reason else 0} (max ?)")
+        
+        # Truncate all string fields to their max_length to prevent database errors
+        status_value = 'CONVERTED_TO_INVOICE'[:25]  # max_length is 25
+        job_card.status = status_value
+        
+        # Truncate any potentially long string fields
+        if job_card.job_number and len(job_card.job_number) > 20:
+            job_card.job_number = job_card.job_number[:20]
+        if job_card.customer_name and len(job_card.customer_name) > 200:
+            job_card.customer_name = job_card.customer_name[:200]
+        if job_card.address and len(job_card.address) > 1000:
+            job_card.address = job_card.address[:1000]
+        if job_card.telephone and len(job_card.telephone) > 50:
+            job_card.telephone = job_card.telephone[:50]
+        if job_card.contact_person and len(job_card.contact_person) > 100:
+            job_card.contact_person = job_card.contact_person[:100]
+        if job_card.order_number and len(job_card.order_number) > 50:
+            job_card.order_number = job_card.order_number[:50]
+        if job_card.registration_number and len(job_card.registration_number) > 50:
+            job_card.registration_number = job_card.registration_number[:50]
+        if job_card.job_description and len(job_card.job_description) > 2000:
+            job_card.job_description = job_card.job_description[:2000]
+        if job_card.debtor_account_number and len(job_card.debtor_account_number) > 20:
+            job_card.debtor_account_number = job_card.debtor_account_number[:20]
+        if job_card.cancellation_reason and len(job_card.cancellation_reason) > 500:
+            job_card.cancellation_reason = job_card.cancellation_reason[:500]
+        
+        logger.debug(f"Updating job card {job_card.job_number} status to: {status_value}")
+        
+        try:
+            # Use update_fields to avoid triggering full save signals that might cause issues
+            job_card.save(update_fields=['status', 'updated_at'])
+        except Exception as e:
+            logger.error(f"Error updating job card status: {e}")
+            logger.error(f"Job card fields: job_number={job_card.job_number}, status={job_card.status}")
+            # Re-raise to maintain original error behavior
+            raise
         
         logger.info(
             f"Converted job card {job_card.job_number} to invoice {invoice.invoice_number} "

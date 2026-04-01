@@ -11,6 +11,8 @@ from django.db.models import Sum, Q, Min, Max, Count, Avg, F
 from decimal import Decimal
 from datetime import datetime, timedelta
 
+from apps.shop_filter_mixin import ShopFilterMixin
+
 from .models import GLMast, GLTran, GLStJnl, GLSpread
 from .serializers import (
     GLMastSerializer, GLMastListSerializer, GLMastDetailSerializer,
@@ -20,7 +22,7 @@ from .serializers import (
 )
 
 
-class GLMastViewSet(viewsets.ModelViewSet):
+class GLMastViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing General Ledger Master accounts.
     
@@ -170,7 +172,7 @@ class GLMastViewSet(viewsets.ModelViewSet):
         })
 
 
-class GLTranViewSet(viewsets.ModelViewSet):
+class GLTranViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing GL Transactions (Journal Entries).
     
@@ -430,7 +432,7 @@ class GLTranViewSet(viewsets.ModelViewSet):
         })
 
 
-class GLStJnlViewSet(viewsets.ModelViewSet):
+class GLStJnlViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing GL Standing Journals.
     
@@ -561,7 +563,7 @@ class GLStJnlViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class GLSpreadViewSet(viewsets.ModelViewSet):
+class GLSpreadViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing GL Spread Sheets.
     

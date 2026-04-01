@@ -58,7 +58,13 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 if not current_shop:
                     current_shop = accessible_shops[0]
                 
-                # Only current shop in access token (for quick access)
+                # Add current shop to ACCESS token (for quick access - used by Method 0)
+                # Get the access token and add claims to it
+                access_token = refresh.access_token
+                access_token['current_shop_id'] = current_shop.id
+                access_token['current_shop_schema'] = current_shop.schema_name
+                
+                # Also add to refresh token (for reference)
                 refresh['current_shop_id'] = current_shop.id
                 refresh['current_shop_schema'] = current_shop.schema_name
                 
@@ -187,7 +193,14 @@ def tenant_login(request):
         # Set default shop in session - get user's accessible shops
         # Use selected_shop_id if provided and user has access to it
         try:
+            # DEBUG: Log user details
+            logger.debug(f"[LOGIN] User {user.id} (role={user.role}, tenant_id={user.tenant_id}, shop_ids={getattr(user, 'shop_ids', [])})")
+            
             accessible_shops = user.get_active_shops()
+            
+            # DEBUG: Log accessible shops
+            shop_count = accessible_shops.count() if hasattr(accessible_shops, 'count') else len(list(accessible_shops))
+            logger.debug(f"[LOGIN] Found {shop_count} accessible shops for user {user.id}")
             
             # Check if selected_shop_id was provided and user has access to it
             default_shop = None
@@ -229,8 +242,12 @@ def tenant_login(request):
         refresh['username'] = user.username
         refresh['email'] = user.email
         refresh['role'] = user.role
-        # Add current_shop_id to token (consistent with CustomTokenObtainPairSerializer)
+        # Add current_shop_id to ACCESS token (for Method 0 to work)
         if default_shop:
+            access_token = refresh.access_token
+            access_token['current_shop_id'] = default_shop.id
+            access_token['current_shop_schema'] = default_shop.schema_name
+            # Also add to refresh for reference
             refresh['current_shop_id'] = default_shop.id
             refresh['current_shop_schema'] = default_shop.schema_name
         

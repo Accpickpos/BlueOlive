@@ -7,17 +7,23 @@ import type { NextRequest } from 'next/server';
  * - In Docker/production: use blueolive-backend:8000
  */
 function getApiBaseUrl(request: NextRequest): string {
-  // Check if we're running locally by checking the origin
-  const origin = request.headers.get('origin') || '';
-  const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
-  
-  // Use environment variable if set, otherwise determine based on origin
+  // Use environment variable if explicitly set - this takes precedence
   if (process.env.NEXT_PUBLIC_API_BASE) {
     return process.env.NEXT_PUBLIC_API_BASE;
   }
+
+  // Check if we're running locally by checking the host header
+  // The host header is always present and more reliable than origin
+  const host = request.headers.get('host') || '';
+  const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
+  
+  // Also check x-forwarded-host for proxied requests
+  const xForwardedHost = request.headers.get('x-forwarded-host') || '';
+  const isForwardedToLocalhost = xForwardedHost.includes('localhost') || xForwardedHost.includes('127.0.0.1');
   
   // Default based on whether request is from localhost
-  return isLocalhost ? 'http://localhost:8000' : 'http://blueolive-backend:8000';
+  const isLocalRequest = isLocalhost || isForwardedToLocalhost;
+  return isLocalRequest ? 'http://localhost:8000' : 'http://blueolive-backend:8000';
 }
 
 /**

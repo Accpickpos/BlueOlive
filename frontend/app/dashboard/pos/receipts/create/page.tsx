@@ -24,6 +24,7 @@ import {
   SuccessAlert,
   LoadingOverlay,
 } from '@/components/pos/form-components';
+import { DebtorPicker } from '@/components/pos/DebtorPicker';
 import {
   AlertCircle,
   Plus,
@@ -58,38 +59,31 @@ export default function CreateReceipt() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [selectedDebtorName, setSelectedDebtorName] = useState<string>('');
 
-  // Fetch debtor when account number changes
-  useEffect(() => {
-    const fetchDebtor = async () => {
-      if (!formData.debtor_account_number) {
-        setDebtorInfo(null);
-        setDebtorError(null);
-        return;
-      }
+  // Handle debtor selection from picker
+  const handleDebtorSelect = (debtor: {
+    account_number: string;
+    name: string;
+    balance: number;
+    credit_limit: number;
+  }) => {
+    setFormData({ ...formData, debtor_account_number: debtor.account_number });
+    setDebtorInfo(debtor);
+    setSelectedDebtorName(debtor.name);
+    setDebtorError(null);
+  };
 
-      try {
-        setDebtorLoading(true);
-        setDebtorError(null);
-        const isHealthy = await posAPI.healthCheck();
-        if (isHealthy) {
-          setDebtorInfo({ 
-            account_number: formData.debtor_account_number,
-            account_name: 'Sample Debtor Account',
-            balance: 1500,
-            credit_limit: 10000,
-          });
-        }
-      } catch (err) {
-        setDebtorError('Debtor account not found');
-      } finally {
-        setDebtorLoading(false);
-      }
-    };
+  // Handle manual customer name entry (allow manual entry even without selecting debtor)
+  const handleCustomerNameChange = (value: string) => {
+    setSelectedDebtorName(value);
+    // If the name doesn't match a selected debtor, clear the info
+    if (debtorInfo && debtorInfo.name !== value) {
+      setDebtorInfo(null);
+    }
+  };
 
-    const timer = setTimeout(fetchDebtor, 500);
-    return () => clearTimeout(timer);
-  }, [formData.debtor_account_number, posAPI]);
+  // Note: Debtor is now selected via DebtorPicker component above
 
   const addTender = () => {
     setTenders([
@@ -241,33 +235,47 @@ export default function CreateReceipt() {
                 <CardDescription>Basic receipt details</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* Debtor Selection */}
+                {/* Debtor Selection with Search or Manual Entry */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium">
                     Debtor Account <span className="text-red-500">*</span>
                   </label>
-                  <div className="flex gap-2">
+                  
+                  {/* Option 1: Search existing debtors */}
+                  <DebtorPicker
+                    onSelect={handleDebtorSelect}
+                    label="Select Customer"
+                    placeholder="Search for existing debtor..."
+                  />
+                  
+                  {/* Option 2: Manual entry (for non-account customers) */}
+                  <div className="mt-2">
                     <Input
-                      placeholder="Enter account number (e.g., ACC001)"
-                      value={formData.debtor_account_number}
-                      onChange={(e) =>
-                        setFormData({ ...formData, debtor_account_number: e.target.value })
-                      }
+                      placeholder="Or manually enter customer name..."
+                      value={selectedDebtorName}
+                      onChange={(e) => {
+                        handleCustomerNameChange(e.target.value);
+                        if (e.target.value && !formData.debtor_account_number) {
+                          // Allow manual entry without debtor account
+                          setFormData({ ...formData, debtor_account_number: e.target.value });
+                        }
+                      }}
                       className="flex-1"
                     />
                   </div>
+                  
                   <p className="text-xs text-slate-500">
-                    Enter the debtor's account number to look up their details
+                    Search for an existing debtor account OR enter a customer name manually
                   </p>
                 </div>
 
-                {/* Debtor Info Card */}
-                {debtorInfo && (
+                {/* Debtor Info Card - show selected debtor or manual entry */}
+                {(debtorInfo || selectedDebtorName) && (
                   <AccountInfoCard
-                    accountName={debtorInfo.account_name}
-                    accountNumber={debtorInfo.account_number}
-                    balance={debtorInfo.balance}
-                    creditLimit={debtorInfo.credit_limit}
+                    accountName={debtorInfo?.name || selectedDebtorName}
+                    accountNumber={debtorInfo?.account_number || formData.debtor_account_number}
+                    balance={debtorInfo?.balance || 0}
+                    creditLimit={debtorInfo?.credit_limit || 0}
                   />
                 )}
               </CardContent>

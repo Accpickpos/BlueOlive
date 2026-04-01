@@ -214,9 +214,21 @@ class ShopUserCreateSerializer(serializers.ModelSerializer):
         if not tenant:
             raise serializers.ValidationError("No tenant context available")
         
+        # FIX: If no shop_ids provided, auto-assign the first shop from tenant
+        if not shop_ids:
+            first_shop = tenant.shops.filter(is_active=True).first()
+            if first_shop:
+                shop_ids = [first_shop.id]
+                # Log for debugging
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"[UserCreationSerializer] Auto-assigned shop_id={first_shop.id} ({first_shop.name}) to new user")
+            else:
+                logger.warning(f"[UserCreationSerializer] No active shops found for tenant {tenant.name}!")
+        
         # Set tenant_id and shop_ids
         validated_data['tenant_id'] = tenant.id
-        validated_data['shop_ids'] = shop_ids if shop_ids else []
+        validated_data['shop_ids'] = shop_ids
         
         user = ShopUser(**validated_data)
         user.set_password(password)  # Use set_password instead of make_password

@@ -13,6 +13,11 @@ from django.db.models.functions import TruncMonth
 from datetime import date, timedelta
 from decimal import Decimal
 from django.db import transaction as db_transaction
+import logging
+
+logger = logging.getLogger(__name__)
+
+from apps.shop_filter_mixin import ShopFilterMixin
 
 from .models import (
     Debtor, DebtorTransaction, Debtopen, Dpdc, DebtorAudit, Darea
@@ -34,7 +39,7 @@ from .permissions import (
 from apps.common.permissions import BaseModelPermission, CanPostTransaction
 
 
-class DebtorViewSet(viewsets.ModelViewSet):
+class DebtorViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing debtors (customers) - DMAST table.
     """
@@ -46,6 +51,17 @@ class DebtorViewSet(viewsets.ModelViewSet):
     search_fields = ['dno', 'dname', 'dsname', 'dcontact']
     ordering_fields = ['dno', 'dname', 'dcrnt', 'created_at']
     ordering = ['dno']
+
+    def get_queryset(self):
+        """Override to add logging for debugging 500 errors."""
+        logger.info(f"[DebtorsList] Starting get_queryset for user {self.request.user.id}")
+        try:
+            queryset = super().get_queryset()
+            logger.info(f"[DebtorsList] Queryset after super().get_queryset(): {queryset.query}")
+            return queryset
+        except Exception as e:
+            logger.error(f"[DebtorsList] Error in get_queryset: {type(e).__name__}: {str(e)}", exc_info=True)
+            raise
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -400,7 +416,7 @@ class DebtorViewSet(viewsets.ModelViewSet):
             )
 
 
-class DebtorTransactionViewSet(viewsets.ReadOnlyModelViewSet):
+class DebtorTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for debtor transactions (DEBTRAN).
     """
@@ -483,7 +499,7 @@ class DebtorTransactionViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
 
-class DebteopenViewSet(viewsets.ModelViewSet):
+class DebteopenViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for open item transactions (DEBTOPEN).
     """
@@ -556,7 +572,7 @@ class DebteopenViewSet(viewsets.ModelViewSet):
             )
 
 
-class DpdcViewSet(viewsets.ModelViewSet):
+class DpdcViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for post-dated cheques (DPDC).
     """
@@ -664,7 +680,7 @@ class DpdcViewSet(viewsets.ModelViewSet):
             )
 
 
-class DebtorAuditViewSet(viewsets.ReadOnlyModelViewSet):
+class DebtorAuditViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for debtor audit records (DEBTORAUD).
     """
@@ -682,7 +698,7 @@ class DebtorAuditViewSet(viewsets.ReadOnlyModelViewSet):
         return super().get_queryset().select_related('dno')
 
 
-class DareaViewSet(viewsets.ModelViewSet):
+class DareaViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for sales area/salesman data (DAREA).
     """
