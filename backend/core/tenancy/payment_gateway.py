@@ -16,7 +16,7 @@ import hashlib
 import hmac
 import logging
 import urllib.parse
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import date, timedelta
 
 import requests
@@ -135,7 +135,8 @@ class PayFastGateway(PaymentGateway):
         """
         filtered = {k: v for k, v in data.items() if k != 'signature' and v != ''}
         param_string = '&'.join(
-            f"{k}={urllib.parse.quote_plus(str(v))}"
+            # FIX #1: was str(k) — must encode the value, not the key again
+            f"{k}={urllib.parse.quote_plus(str(filtered[k]))}"
             for k in sorted(filtered.keys())
         )
         if self.passphrase:
@@ -359,19 +360,27 @@ class PayFastGateway(PaymentGateway):
 
         url = f"{self.base_url}/api/subscriptions/{gateway_subscription_id}/cancel"
 
-        timestamp = timezone.now().strftime('%Y-%m-%dT%H:%M:%S%z') or timezone.now().isoformat()
+        # FIX #3: removed unreachable `or` fallback — strftime never returns falsy
+        timestamp = timezone.now().strftime('%Y-%m-%dT%H:%M:%S%z')
+
         headers = {
             'merchant-id': self.merchant_id,
             'timestamp':   timestamp,
             'version':     'v1',
         }
 
-        # Build signature for API call
-        sig_string = (
-            f"merchant-id={self.merchant_id}&"
-            f"passphrase={self.passphrase}&"
-            f"timestamp={timestamp}&"
-            f"version=v1"
+        # FIX #4: build API signature correctly — sorted, URL-encoded, passphrase appended last
+        sig_params = {
+            'merchant-id': self.merchant_id,
+            'timestamp':   timestamp,
+            'version':     'v1',
+        }
+        if self.passphrase:
+            sig_params['passphrase'] = self.passphrase
+
+        sig_string = '&'.join(
+            f"{k}={urllib.parse.quote_plus(str(v))}"
+            for k in sorted(sig_params.keys())
         )
         headers['signature'] = hashlib.md5(sig_string.encode()).hexdigest()
 
@@ -454,11 +463,23 @@ class StripeGateway(PaymentGateway):
     def _verify_webhook_signature(self, payload: bytes, sig_header: str):
         """
         Verify the Stripe webhook signature.
-        Raises stripe.error.SignatureVerificationError on failure.
+
+        FIX #2: guard against missing webhook_secret; wrap SignatureVerificationError
+        in our own PaymentGatewayError so callers get a consistent error surface.
         """
-        return self.stripe.Webhook.construct_event(
-            payload, sig_header, self.webhook_secret
-        )
+        if not self.webhook_secret:
+            raise PaymentGatewayError(
+                "webhook_secret is not configured. "
+                "Set STRIPE_WEBHOOK_SECRET before verifying webhook signatures."
+            )
+        try:
+            return self.stripe.Webhook.construct_event(
+                payload, sig_header, self.webhook_secret
+            )
+        except self.stripe.error.SignatureVerificationError as exc:
+            raise PaymentGatewayError(
+                f"Webhook signature verification failed: {exc}"
+            ) from exc
 
     def _interval_for_plan(self, plan):
         """Return ('month', 1) or ('year', 1) based on billing_period_days."""
@@ -476,7 +497,6 @@ class StripeGateway(PaymentGateway):
         Return a Stripe Price ID for the plan.
         Stores it on the plan to avoid creating duplicates.
         """
-        # If the plan already has a Stripe price, reuse it
         stripe_price_id = getattr(plan, 'stripe_price_id', None)
         if stripe_price_id:
             return stripe_price_id
@@ -490,7 +510,6 @@ class StripeGateway(PaymentGateway):
             idempotency_key     = f"price-{plan.id}",
         )
 
-        # Cache on the plan model if the field exists
         if hasattr(plan, 'stripe_price_id'):
             plan.stripe_price_id = price.id
             plan.save(update_fields=['stripe_price_id'])
@@ -599,7 +618,7 @@ class StripeGateway(PaymentGateway):
         if raw_payload and sig_header and self.webhook_secret:
             try:
                 event = self._verify_webhook_signature(raw_payload, sig_header)
-            except self.stripe.error.SignatureVerificationError as exc:
+            except PaymentGatewayError as exc:
                 logger.error("Stripe webhook signature verification failed: %s", exc)
                 return {'status': 'failed', 'error': 'Invalid webhook signature'}
         else:
@@ -645,11 +664,14 @@ class StripeGateway(PaymentGateway):
             try:
                 from tenancy.models import Subscription
                 subscription = Subscription.objects.get(gateway_subscription_id=stripe_sub_id)
-            except Exception:
-                logger.warning("Stripe invoice.payment_succeeded: subscription %s not found", stripe_sub_id)
+            except Exception as exc:
+                # FIX #5: log instead of silently swallowing
+                logger.warning(
+                    "Stripe invoice.payment_succeeded: subscription %s not found: %s",
+                    stripe_sub_id, exc,
+                )
                 return {'status': 'pending'}
 
-            # Record the renewal payment
             amount_paid = Decimal(obj.get('amount_paid', 0)) / 100  # Stripe sends cents
             payment = SubscriptionPayment.objects.create(
                 subscription       = subscription,
@@ -679,8 +701,12 @@ class StripeGateway(PaymentGateway):
                     subscription.status = 'PAST_DUE'
                     subscription.save(update_fields=['status'])
                     logger.warning("Stripe payment failed for subscription %s", stripe_sub_id)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    # FIX #5: log instead of silently swallowing
+                    logger.error(
+                        "Stripe invoice.payment_failed: error updating subscription %s: %s",
+                        stripe_sub_id, exc,
+                    )
             return {'status': 'failed', 'error': 'Invoice payment failed'}
 
         # ------------------------------------------------------------------
@@ -693,8 +719,12 @@ class StripeGateway(PaymentGateway):
                     subscription.status = 'CANCELLED'
                     subscription.save(update_fields=['status'])
                     logger.info("Stripe subscription %s cancelled", stripe_sub_id)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    # FIX #5: log instead of silently swallowing
+                    logger.error(
+                        "Stripe customer.subscription.deleted: error updating subscription %s: %s",
+                        stripe_sub_id, exc,
+                    )
             return {'status': 'success'}
 
         # ------------------------------------------------------------------
@@ -711,7 +741,6 @@ class StripeGateway(PaymentGateway):
         price_id    = self._get_or_create_price(subscription.plan)
 
         if payment_token:
-            # Attach the payment method to the customer
             self.stripe.PaymentMethod.attach(
                 payment_token,
                 customer=customer_id,
@@ -774,7 +803,10 @@ class StripeGateway(PaymentGateway):
             'idempotency_key': f"refund-{gateway_payment_id}",
         }
         if amount is not None:
-            refund_kwargs['amount'] = int(amount * 100)  # Convert to cents
+            # FIX #6: use quantize to avoid floating-point drift on Decimal * 100
+            refund_kwargs['amount'] = int(
+                (amount * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+            )
         if reason:
             refund_kwargs['reason'] = reason
 
@@ -817,19 +849,16 @@ def resolve_gateway_for_tenant(tenant) -> str:
     Returns:
         str: 'payfast' | 'stripe'
     """
-    # 1. Explicit preference stored on tenant model
     preferred = getattr(tenant, 'preferred_gateway', None)
     if preferred:
         return preferred.lower()
 
-    # 2. Country-based routing
     country = getattr(tenant, 'country', None) or ''
     if country.upper() == 'ZA':
         return 'payfast'
     elif country:
         return 'stripe'
 
-    # 3. Fall back to settings default
     return getattr(settings, 'DEFAULT_PAYMENT_GATEWAY', 'payfast')
 
 
@@ -925,7 +954,7 @@ def cancel_tenant_subscription(subscription):
         success = gateway.cancel_subscription(gw_sub_id)
 
     if success:
-        subscription.status     = 'CANCELLED'
+        subscription.status       = 'CANCELLED'
         subscription.cancelled_at = timezone.now()
         subscription.save(update_fields=['status', 'cancelled_at'])
         logger.info("Subscription %s cancelled", subscription.id)

@@ -30,6 +30,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   X,
+  Key,
 } from "lucide-react";
 
 // ================== MENU CONFIG ==================
@@ -103,7 +104,8 @@ const menuConfig = [
         ],
       },
       { type: "link", name: "Settings", href: "/dashboard/admin/settings", icon: UserCog },
-      { type: "link", name: "Stockfinder", href: "/dashboard/admin/stockfinder", icon: Wrench },
+      { type: "link", name: "Stockfinder Orders", href: "/dashboard/admin/stockfinder/orders", icon: Package },
+      { type: "link", name: "API Keys", href: "/dashboard/admin/api-keys", icon: Key },
       { type: "link", name: "Import Data", href: "/dashboard/admin/import", icon: Upload },
       { type: "link", name: "Inter-Branch Transfers", href: "/dashboard/admin/ibt", icon: ArrowRight },
       { type: "link", name: "Inter-Branch Items", href: "/dashboard/admin/ibi", icon: Package },
