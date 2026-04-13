@@ -22,10 +22,8 @@ def register_tenant_connection(tenant, shop=None):
     import logging
     logger = logging.getLogger(__name__)
     
-    alias = tenant.db_alias
-    # Use credentials from settings, not from tenant object
-    # This allows old tenants with incorrect db_password to still work
-    default_db = settings.DATABASES['default']
+    # Use the tenant's base alias as fallback
+    base_alias = tenant.db_alias
     
     # Get the shop's schema name - use provided shop or fall back to first shop
     # This ensures proper multi-shop data isolation within a tenant
@@ -38,7 +36,21 @@ def register_tenant_connection(tenant, shop=None):
     
     shop_schema = shop.schema_name if shop else "public"  # Fallback to public if no shop
     
-    logger.debug(f"[register_tenant_connection] Tenant: {tenant.name}, Shop: {shop.name if shop else None}, Schema: {shop_schema}, DB: {tenant.db_name}")
+    # CRITICAL FIX: Generate unique alias for each shop to force fresh connection
+    # This prevents any connection caching between shop switches
+    # Use shop-specific alias: tenant_2_greyling, tenant_2_main, etc.
+    if shop:
+        shop_alias = f"{base_alias}_{shop.name.lower().replace(' ', '_')}"
+    else:
+        shop_alias = base_alias
+    
+    logger.debug(f"[register_tenant_connection] Tenant: {tenant.name}, Shop: {shop.name if shop else None}, Schema: {shop_schema}, DB: {tenant.db_name}, Alias: {shop_alias}")
+    
+    # Use credentials from settings, not from tenant object
+    
+    # Use credentials from settings, not from tenant object
+    # This allows old tenants with incorrect db_password to still work
+    default_db = settings.DATABASES['default']
     
     db_config = {
         "ENGINE": "django.db.backends.postgresql",
@@ -47,7 +59,9 @@ def register_tenant_connection(tenant, shop=None):
         "PASSWORD": default_db['PASSWORD'],  # Use settings PASSWORD, not tenant.db_password
         "HOST": tenant.db_host,
         "PORT": tenant.db_port,
-        "CONN_MAX_AGE": 60,
+        # FIX: Disable connection pooling to force fresh connection each time
+        # This ensures search_path is properly applied when switching shops
+        "CONN_MAX_AGE": 0,
         # search_path: shop schema first so all shop tables (dmast, stock_items, etc.)
         # resolve without qualification. public second for shared tables (shop_users,
         # auth_*, django_*). Both are always found — order determines priority only.
@@ -57,27 +71,30 @@ def register_tenant_connection(tenant, shop=None):
         "TIME_ZONE": settings.TIME_ZONE,
         "AUTOCOMMIT": True,
         "ATOMIC_REQUESTS": False,
-        # IMPORTANT: must be True when CONN_MAX_AGE > 0.
-        # Without health checks Django reuses persistent connections that may have been
-        # opened before this schema was registered, causing "relation does not exist"
-        # on tables that only exist in the shop schema (e.g. dmast).
-        "CONN_HEALTH_CHECKS": True,
+        # Health check required when CONN_MAX_AGE > 0, but not needed when = 0
+        "CONN_HEALTH_CHECKS": False,
     }
     # Add to settings and ensure connections updated
-    settings.DATABASES[alias] = db_config
-    connections.databases[alias] = db_config
+    # FIX: Use the shop-specific alias to prevent connection caching
+    settings.DATABASES[shop_alias] = db_config
+    connections.databases[shop_alias] = db_config
+    
+    # BACKWARD COMPATIBILITY: Also create the old-style alias (without shop name)
+    # This ensures existing code that uses tenant.db_alias still works
+    settings.DATABASES[base_alias] = db_config
+    connections.databases[base_alias] = db_config
 
     # Force-close any existing physical connection for this alias so the next
     # query opens a fresh one with the new search_path OPTIONS above.
     # Without this, a persistent connection opened before register_tenant_connection
     # (e.g. from a previous request) would be reused and still point at the wrong schema.
-    if alias in connections._connections.__dict__:
+    if shop_alias in connections._connections.__dict__:
         try:
-            connections[alias].close()
+            connections[shop_alias].close()
         except Exception:
             pass
     
-    logger.debug(f"[register_tenant_connection] Connection registered: alias={alias}, db={tenant.db_name}, search_path=public,{shop_schema}")
+    logger.debug(f"[register_tenant_connection] Connection registered: alias={shop_alias}, db={tenant.db_name}, search_path=public,{shop_schema}")
 
 def create_tenant_database_postgres(tenant, superuser_conn_info):
     """

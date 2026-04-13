@@ -555,6 +555,23 @@ const posApi: AxiosInstance = axios.create({
   withCredentials: true,
 });
 
+// Add X-Shop-ID and X-Tenant headers to all POS API requests (mirrors main api instance)
+posApi.interceptors.request.use((config) => {
+  // Add tenant header if available
+  const tenant = typeof window !== 'undefined' ? localStorage.getItem('tenant') : null;
+  if (tenant) {
+    config.headers['X-Tenant'] = tenant;
+  }
+  
+  // Add shop ID header if available (this is critical for pre-authentication shop identification)
+  const shopId = typeof window !== 'undefined' ? localStorage.getItem('currentShopId') : null;
+  if (shopId) {
+    config.headers['X-Shop-ID'] = shopId;
+  }
+  
+  return config;
+});
+
 // Cookies are sent automatically with withCredentials: true
 // No need for Authorization header - httpOnly cookie handles authentication
 

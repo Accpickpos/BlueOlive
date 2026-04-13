@@ -99,6 +99,14 @@ export class CreditorsApiClient {
       headers['X-Tenant-ID'] = this.tenantId;
     }
 
+    // Add X-Shop-ID header for shop identification (critical for pre-authentication)
+    if (typeof window !== 'undefined') {
+      const shopId = localStorage.getItem('currentShopId');
+      if (shopId) {
+        headers['X-Shop-ID'] = shopId;
+      }
+    }
+
     return headers;
   }
 

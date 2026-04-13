@@ -6,6 +6,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 
+from apps.shop_filter_mixin import ShopFilterMixin
+
 from .models import (
     StockItem, SpecialDeal, FuturePricing, ShrinkWrap,
     PackBundle, PackBundleIngredient, StockTransaction, StockMovementLedger,
@@ -35,7 +37,7 @@ from .serializers import (
 # StockItem
 # ─────────────────────────────────────────────
 
-class StockItemViewSet(viewsets.ModelViewSet):
+class StockItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     CRUD for stock items with filtering, search, and helper actions.
 
@@ -191,7 +193,7 @@ class StockItemViewSet(viewsets.ModelViewSet):
 # SpecialDeal
 # ─────────────────────────────────────────────
 
-class SpecialDealViewSet(viewsets.ModelViewSet):
+class SpecialDealViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     queryset = SpecialDeal.objects.select_related('stock_item')
     serializer_class = SpecialDealSerializer
     permission_classes = [IsAuthenticated]
@@ -213,7 +215,7 @@ class SpecialDealViewSet(viewsets.ModelViewSet):
 # FuturePricing
 # ─────────────────────────────────────────────
 
-class FuturePricingViewSet(viewsets.ModelViewSet):
+class FuturePricingViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     queryset = FuturePricing.objects.select_related('stock_item')
     serializer_class = FuturePricingSerializer
     permission_classes = [IsAuthenticated]
@@ -246,7 +248,7 @@ class FuturePricingViewSet(viewsets.ModelViewSet):
 # ShrinkWrap
 # ─────────────────────────────────────────────
 
-class ShrinkWrapViewSet(viewsets.ModelViewSet):
+class ShrinkWrapViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     queryset = ShrinkWrap.objects.select_related('shrink_pack_code', 'bulk_pack_code')
     serializer_class = ShrinkWrapSerializer
     permission_classes = [IsAuthenticated]
@@ -258,7 +260,7 @@ class ShrinkWrapViewSet(viewsets.ModelViewSet):
 # PackBundle
 # ─────────────────────────────────────────────
 
-class PackBundleViewSet(viewsets.ModelViewSet):
+class PackBundleViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     queryset = PackBundle.objects.prefetch_related('ingredients__ingredient_stock')
     serializer_class = PackBundleSerializer
     permission_classes = [IsAuthenticated]
@@ -270,7 +272,7 @@ class PackBundleViewSet(viewsets.ModelViewSet):
         return Response({'total_cost': total})
 
 
-class PackBundleIngredientViewSet(viewsets.ModelViewSet):
+class PackBundleIngredientViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     queryset = PackBundleIngredient.objects.select_related('ingredient_stock')
     serializer_class = PackBundleIngredientSerializer
     permission_classes = [IsAuthenticated]
@@ -282,7 +284,7 @@ class PackBundleIngredientViewSet(viewsets.ModelViewSet):
 # StockTransaction
 # ─────────────────────────────────────────────
 
-class StockTransactionViewSet(viewsets.ModelViewSet):
+class StockTransactionViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     queryset = StockTransaction.objects.select_related(
         'stock_item', 'department', 'tax_code', 'debtor', 'supplier'
     )
@@ -311,7 +313,7 @@ class StockTransactionViewSet(viewsets.ModelViewSet):
 # StockMovementLedger
 # ─────────────────────────────────────────────
 
-class StockMovementLedgerViewSet(viewsets.ReadOnlyModelViewSet):
+class StockMovementLedgerViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """Read-only ledger — entries are created by the system during transactions."""
     queryset = StockMovementLedger.objects.select_related('stock_item')
     serializer_class = StockMovementLedgerSerializer
@@ -326,7 +328,7 @@ class StockMovementLedgerViewSet(viewsets.ReadOnlyModelViewSet):
 # StockTake
 # ─────────────────────────────────────────────
 
-class StockTakeViewSet(viewsets.ModelViewSet):
+class StockTakeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     Manage stock take sessions.
 
@@ -392,7 +394,7 @@ class StockTakeViewSet(viewsets.ModelViewSet):
         return Response(StockTakeItemSerializer(items, many=True).data)
 
 
-class StockTakeItemViewSet(viewsets.ModelViewSet):
+class StockTakeItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     queryset = StockTakeItem.objects.select_related('stock_take', 'stock_item')
     serializer_class = StockTakeItemSerializer
     permission_classes = [IsAuthenticated]
@@ -420,7 +422,7 @@ class StockTakeItemViewSet(viewsets.ModelViewSet):
 # ContractPricing
 # ─────────────────────────────────────────────
 
-class ContractPricingViewSet(viewsets.ModelViewSet):
+class ContractPricingViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     queryset = ContractPricing.objects.select_related(
         'debtor', 'stock_item', 'department', 'supplier'
     )
@@ -434,7 +436,7 @@ class ContractPricingViewSet(viewsets.ModelViewSet):
 # OneTouchLookupKey
 # ─────────────────────────────────────────────
 
-class OneTouchLookupKeyViewSet(viewsets.ModelViewSet):
+class OneTouchLookupKeyViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     queryset = OneTouchLookupKey.objects.select_related('stock_item')
     serializer_class = OneTouchLookupKeySerializer
     permission_classes = [IsAuthenticated]
@@ -446,7 +448,7 @@ class OneTouchLookupKeyViewSet(viewsets.ModelViewSet):
 # StockMonthlyStatistic
 # ─────────────────────────────────────────────
 
-class StockMonthlyStatisticViewSet(viewsets.ModelViewSet):
+class StockMonthlyStatisticViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     queryset = StockMonthlyStatistic.objects.select_related('stock_item')
     serializer_class = StockMonthlyStatisticSerializer
     permission_classes = [IsAuthenticated]
@@ -460,7 +462,7 @@ class StockMonthlyStatisticViewSet(viewsets.ModelViewSet):
 # Branch
 # ─────────────────────────────────────────────
 
-class BranchViewSet(viewsets.ModelViewSet):
+class BranchViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     Manage branches/locations.
 
@@ -500,7 +502,7 @@ class BranchViewSet(viewsets.ModelViewSet):
 # BranchStock
 # ─────────────────────────────────────────────
 
-class BranchStockViewSet(viewsets.ModelViewSet):
+class BranchStockViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     queryset = BranchStock.objects.select_related('branch', 'stock_item')
     serializer_class = BranchStockSerializer
     permission_classes = [IsAuthenticated]
@@ -523,7 +525,7 @@ class BranchStockViewSet(viewsets.ModelViewSet):
 # GroupOrder
 # ─────────────────────────────────────────────
 
-class GroupOrderViewSet(viewsets.ModelViewSet):
+class GroupOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     Manage group orders.
 
@@ -549,7 +551,7 @@ class GroupOrderViewSet(viewsets.ModelViewSet):
         return Response({'group_order_number': order.group_order_number, 'total_amount': total})
 
 
-class GroupOrderItemViewSet(viewsets.ModelViewSet):
+class GroupOrderItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     queryset = GroupOrderItem.objects.select_related('group_order', 'stock_item')
     serializer_class = GroupOrderItemSerializer
     permission_classes = [IsAuthenticated]
@@ -561,7 +563,7 @@ class GroupOrderItemViewSet(viewsets.ModelViewSet):
 # BranchTransfer
 # ─────────────────────────────────────────────
 
-class BranchTransferViewSet(viewsets.ModelViewSet):
+class BranchTransferViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     Manage inter-branch transfers (IBT).
 
@@ -646,7 +648,7 @@ class BranchTransferViewSet(viewsets.ModelViewSet):
         return Response({'message': 'Transfer cancelled.', 'transfer_number': transfer.transfer_number})
 
 
-class BranchTransferItemViewSet(viewsets.ModelViewSet):
+class BranchTransferItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     queryset = BranchTransferItem.objects.select_related('transfer', 'stock_item')
     serializer_class = BranchTransferItemSerializer
     permission_classes = [IsAuthenticated]
@@ -658,7 +660,7 @@ class BranchTransferItemViewSet(viewsets.ModelViewSet):
 # BranchTransferInvoice
 # ─────────────────────────────────────────────
 
-class BranchTransferInvoiceViewSet(viewsets.ModelViewSet):
+class BranchTransferInvoiceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     queryset = BranchTransferInvoice.objects.select_related('transfer')
     serializer_class = BranchTransferInvoiceSerializer
     permission_classes = [IsAuthenticated]

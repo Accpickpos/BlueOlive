@@ -309,6 +309,28 @@ class TenantMiddleware:
         
         shop = None
         
+        # METHOD 0: Extract shop directly from JWT token (highest priority)
+        # This enables fully stateless, pre-auth shop identification
+        if not shop:
+            access_token = request.COOKIES.get('access_token')
+            if access_token:
+                try:
+                    from rest_framework_simplejwt.tokens import AccessToken
+                    token = AccessToken(access_token)
+                    shop_id = token.get('current_shop_id')
+                    logger.debug(f"[_identify_shop] Method 0 - Token has current_shop_id: {shop_id}")
+                    if shop_id:
+                        shop = Shop.objects.filter(
+                            tenant=tenant, 
+                            id=shop_id, 
+                            is_active=True
+                        ).first()
+                        if shop and settings.DEBUG:
+                            logger.debug(f"[_identify_shop] Shop from JWT token: {shop.name}")
+                except Exception as e:
+                    if settings.DEBUG:
+                        logger.debug(f"[_identify_shop] JWT shop extraction failed: {e}")
+        
         # DEBUG: Log the tenant details
         logger.debug(f"[_identify_shop] Starting with tenant={tenant.name}, tenant.shops.count={tenant.shops.count()}")
         

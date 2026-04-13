@@ -24,6 +24,12 @@ __pycache__/
 venv/
 ENV/
 .venv/
+backend/.venv/
+
+# Django
+*.log
+logs/
+staticfiles/media/
 
 # Django
 *.log

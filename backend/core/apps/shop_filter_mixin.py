@@ -28,16 +28,35 @@ class ShopFilterMixin:
         # Get the current user
         user = self.request.user
         
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.debug(f"[ShopFilterMixin] User {user.id}, role={user.role}, is_superuser={user.is_superuser}")
+        
         # If user is superuser or admin, return all data
         if user.is_superuser or user.role == 'ADMIN':
+            logger.debug(f"[ShopFilterMixin] User {user.id} is admin - returning all data")
             return queryset
         
         # Get current shop from user or session
         shop_id = getattr(user, 'current_shop_id', None)
         
+        logger.debug(f"[ShopFilterMixin] User {user.id} current_shop_id (from user obj) = {shop_id}")
+        
         if not shop_id:
             # Try to get from session
             shop_id = self.request.session.get('current_shop_id')
+            logger.debug(f"[ShopFilterMixin] User {user.id} current_shop_id (from session) = {shop_id}")
+        
+        # FIX: If still no shop_id, try to get from user's assigned shops (shop_ids)
+        if not shop_id:
+            shop_ids_list = getattr(user, 'shop_ids', []) or []
+            if shop_ids_list:
+                # Use first assigned shop as current
+                shop_id = shop_ids_list[0]
+                logger.debug(f"[ShopFilterMixin] User {user.id} using first assigned shop: {shop_id}")
+                # Set it on user object for future requests
+                user.current_shop_id = shop_id
         
         if not shop_id:
             # No shop access - return empty queryset
@@ -48,6 +67,8 @@ class ShopFilterMixin:
         if not user.can_access_shop(shop_id):
             logger.warning(f"User {user.id} cannot access shop {shop_id}, returning empty queryset")
             return queryset.none()
+        
+        logger.debug(f"[ShopFilterMixin] User {user.id} filtering by shop_id = {shop_id}")
         
         # Filter by shop_id
         return self._filter_by_shop(queryset, shop_id)
@@ -65,9 +86,21 @@ class ShopFilterMixin:
         if 'shop' in [f.name for f in queryset.model._meta.get_fields()]:
             return queryset.filter(shop_id=shop_id)
         
+        # FIX: Models without shop_id field - check if data is shop-specific
+        # For StockItem and similar models that don't have shop_id:
+        # - If user is admin, return all
+        # - If user is non-admin, return all (they should see all items in their tenant)
+        # The shop filtering for stock is handled at the schema level, not per-shop
+        model_name = queryset.model.__name__
+        non_shop_models = ['StockItem', 'SalesDepartment', 'TaxCode', 'Creditor', 'Debtor']
+        
+        if model_name in non_shop_models:
+            logger.debug(f"[ShopFilterMixin] Model {model_name} has no shop_id - returning all (tenant-level data)")
+            return queryset
+        
         # No shop field found - log warning and return all
         if settings.DEBUG:
-            logger.debug(f"Model {queryset.model.__name__} has no shop_id field - returning all data")
+            logger.debug(f"[ShopFilterMixin] Model {queryset.model.__name__} has no shop_id field - returning all data")
         
         return queryset
     
@@ -76,20 +109,70 @@ class ShopFilterMixin:
         Automatically assign current shop on create.
         Ensures all new records are associated with the current shop.
         """
-        if hasattr(self.request, 'user') and self.request.user.is_authenticated:
-            user = self.request.user
-            shop_id = getattr(user, 'current_shop_id', None)
+        # Check if serializer has Meta attribute to identify the model
+        model_name = None
+        if hasattr(serializer, 'Meta') and hasattr(serializer.Meta, 'model'):
+            model_name = serializer.Meta.model.__name__
+        else:
+            # For serializers without Meta (like DebtorCreateUpdateSerializer which uses serializers.Serializer)
+            # try to determine model from the serializer class name
+            class_name = serializer.__class__.__name__
+            logger.debug(f"[ShopFilterMixin] perform_create: Serializer {class_name} has no Meta - checking class name")
             
-            if not shop_id:
-                shop_id = self.request.session.get('current_shop_id')
-            
-            if shop_id:
-                # Only set if not already provided and model has shop_id
-                if 'shop_id' not in serializer.validated_data:
-                    if 'shop' not in serializer.validated_data:
-                        serializer.validated_data['shop_id'] = shop_id
-                        if settings.DEBUG:
-                            logger.debug(f"Auto-assigned shop_id={shop_id} on create for {queryset.model.__name__}")
+            # Map serializer class names to model names
+            serializer_to_model = {
+                'DebtorCreateUpdateSerializer': 'Debtor',
+                'DebtorListSerializer': 'Debtor',
+                'DebtorDetailSerializer': 'Debtor',
+                'CreditorCreateUpdateSerializer': 'Creditor',
+                'CreditorListSerializer': 'Creditor',
+                'StockItemSerializer': 'StockItem',
+                'SalesDepartmentSerializer': 'SalesDepartment',
+                'JobCardListSerializer': 'JobCard',
+                'JobCardDetailSerializer': 'JobCard',
+            }
+            model_name = serializer_to_model.get(class_name)
+        
+        logger.debug(f"[ShopFilterMixin] perform_create: Identified model_name={model_name}")
+        
+        # DIAGNOSTIC: Log all fields in validated_data before processing
+        if settings.DEBUG:
+            logger.debug(f"[ShopFilterMixin] perform_create: validated_data keys = {list(serializer.validated_data.keys())}")
+        
+        # Models that don't have shop_id field - these are tenant-level models
+        # DIAGNOSTIC: Add JobCard to the list - it doesn't have shop_id field
+        non_shop_models = ['StockItem', 'SalesDepartment', 'TaxCode', 'Creditor', 'Debtor', 'JobCard']
+        
+        # Remove shop_id from validated_data for models that don't support it
+        if model_name and model_name in non_shop_models:
+            if 'shop_id' in serializer.validated_data:
+                logger.debug(f"[ShopFilterMixin] perform_create: Removing shop_id for {model_name}")
+                del serializer.validated_data['shop_id']
+            if 'shop' in serializer.validated_data:
+                del serializer.validated_data['shop']
+        else:
+            # For models that support shop_id, assign current shop
+            if hasattr(self.request, 'user') and self.request.user.is_authenticated:
+                user = self.request.user
+                shop_id = getattr(user, 'current_shop_id', None)
+                
+                if not shop_id:
+                    shop_id = self.request.session.get('current_shop_id')
+                
+                # FIX: If still no shop_id, try to get from user's assigned shops (shop_ids)
+                if not shop_id:
+                    shop_ids_list = getattr(user, 'shop_ids', []) or []
+                    if shop_ids_list:
+                        shop_id = shop_ids_list[0]
+                        logger.debug(f"[ShopFilterMixin] perform_create: Using first assigned shop {shop_id}")
+                
+                if shop_id:
+                    # Only set if not already provided and model has shop_id field
+                    if 'shop_id' not in serializer.validated_data:
+                        if 'shop' not in serializer.validated_data:
+                            serializer.validated_data['shop_id'] = shop_id
+                            if settings.DEBUG:
+                                logger.debug(f"Auto-assigned shop_id={shop_id} on create for {model_name or 'unknown model'}")
         
         super().perform_create(serializer)
     

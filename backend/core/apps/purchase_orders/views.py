@@ -8,6 +8,8 @@ from django.utils import timezone
 from decimal import Decimal
 from datetime import datetime, timedelta
 
+from apps.shop_filter_mixin import ShopFilterMixin
+
 from apps.creditors.models import Creditor, GoodsReceivedNote, GRNLineItem
 from apps.stock_control.models import StockItem, StockTransaction
 
@@ -27,7 +29,7 @@ from .serializers import (
 )
 
 
-class PurchaseOrderViewSet(viewsets.ModelViewSet):
+class PurchaseOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for Purchase Order management
     
@@ -419,7 +421,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class PurchaseOrderReceiptViewSet(viewsets.ReadOnlyModelViewSet):
+class PurchaseOrderReceiptViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for Goods Received Notes (Read-only)
     
@@ -434,7 +436,7 @@ class PurchaseOrderReceiptViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ['-receipt_date']
 
 
-class BackOrderViewSet(viewsets.ReadOnlyModelViewSet):
+class BackOrderViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for Back Orders (Read-only)
     
@@ -448,7 +450,7 @@ class BackOrderViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ['-created_date']
 
 
-class PurchaseOrderTemplateViewSet(viewsets.ModelViewSet):
+class PurchaseOrderTemplateViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for Purchase Order Templates
     

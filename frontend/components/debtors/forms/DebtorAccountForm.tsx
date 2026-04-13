@@ -28,6 +28,7 @@ const DEFAULT_FORM_DATA: DebtorCreateData = {
   short_name: '',
   contact_person: '',
   phone: '',
+  phone2: '',
   fax: '',
   address_line1: '',
   address_line2: '',
@@ -50,6 +51,10 @@ const DEFAULT_FORM_DATA: DebtorCreateData = {
   is_active: true,
   discount_printable: false,
   positive_balance_only: false,
+  // Legacy alias fields required by DebtorCreateData type
+  dno: 0,
+  dname: '',
+  d150: 0,
 };
 
 type FormData = DebtorCreateData & Partial<Pick<DebtorAccount, 'id' | 'created_at' | 'updated_at'>>;
@@ -97,11 +102,24 @@ export default function DebtorAccountForm({
     },
     onError: (err: any) => {
       const errorData = err.response?.data;
-      if (typeof errorData === 'object' && errorData !== null && !errorData.detail) {
+      // Backend returns { error: { code, message, field_errors } }
+      if (errorData?.error) {
+        const backendError = errorData.error;
+        if (backendError.field_errors) {
+          // Format field errors nicely
+          const fieldErrors = Object.entries(backendError.field_errors)
+            .map(([field, messages]) => `${field}: ${Array.isArray(messages) ? messages.join(', ') : messages}`)
+            .join('; ');
+          setError(fieldErrors || backendError.message || 'Failed to save account');
+        } else {
+          setError(backendError.message || 'Failed to save account');
+        }
+      } else if (typeof errorData === 'object' && errorData !== null) {
+        // Fallback for other error formats
         const fieldErrors = Object.entries(errorData)
           .map(([field, message]) => `${field}: ${message}`)
           .join(', ');
-        setError(fieldErrors || 'Failed to save account');
+        setError(fieldErrors || err.message || 'Failed to save account');
       } else {
         setError(errorData?.detail || err.message || 'Failed to save account');
       }
@@ -280,6 +298,24 @@ export default function DebtorAccountForm({
                 />
               </div>
 
+              <div>
+                <label htmlFor="phone2" className="block text-sm font-medium mb-1">
+                  Cell Number <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  id="phone2"
+                  name="phone2"
+                  type="tel"
+                  value={formData.phone2 || ''}
+                  onChange={handleChange}
+                  placeholder="Mobile number (required)"
+                  required
+                  disabled={mutation.isPending}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="fax" className="block text-sm font-medium mb-1">
                   Fax
@@ -654,6 +690,11 @@ function validateForm(data: FormData): string | null {
     return `Short name must be ${MAX_SHORT_NAME_LENGTH} characters or less`;
   }
 
+  // Cell number is required
+  if (!data.phone2?.trim()) {
+    return 'Cell number is required';
+  }
+
   if ((data.discount_percentage ?? 0) < 0 || (data.discount_percentage ?? 0) > 100) {
     return 'Trade discount must be between 0 and 100';
   }
@@ -674,12 +715,18 @@ function validateForm(data: FormData): string | null {
 }
 
 function prepareSubmitData(data: FormData, isEdit: boolean): DebtorCreateData | DebtorEditData {
-  const submitData = { ...data };
+  const submitData: any = { ...data };
 
   if (isEdit) {
-    delete (submitData as any).created_at;
-    delete (submitData as any).updated_at;
-    delete (submitData as any).id;
+    delete submitData.created_at;
+    delete submitData.updated_at;
+    delete submitData.id;
+  }
+
+  // Don't send customer_number for new records - let backend auto-generate
+  // Also remove it if it's 0 or undefined
+  if (!isEdit) {
+    delete submitData.customer_number;
   }
 
   return submitData as DebtorCreateData | DebtorEditData;

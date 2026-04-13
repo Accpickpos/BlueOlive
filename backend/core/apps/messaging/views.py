@@ -3,11 +3,14 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
+
+from apps.shop_filter_mixin import ShopFilterMixin
+
 from .models import Conversation, Message, MessageAttachment, Notification
 from .serializers import ConversationSerializer, MessageSerializer, MessageAttachmentSerializer, NotificationSerializer
 
 
-class ConversationViewSet(viewsets.ModelViewSet):
+class ConversationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     serializer_class = ConversationSerializer
     permission_classes = [IsAuthenticated]
 
@@ -149,7 +152,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
         return Response({'status': 'messages marked as read'})
 
 
-class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
+class NotificationViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """ViewSet for viewing notifications."""
     serializer_class = NotificationSerializer
     permission_classes = [IsAuthenticated]

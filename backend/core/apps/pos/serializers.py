@@ -6,6 +6,8 @@ from rest_framework import serializers
 from decimal import Decimal
 from django.db import transaction as db_transaction
 from datetime import date
+import logging
+logger = logging.getLogger(__name__)
 from .models import (
     CashSale, CashSaleLine, Tender, Laybye, LaybyeLine, LaybyePayment,
     Quotation, QuotationLine, Payout, Repair, JobCard, JobCardLine,
@@ -691,6 +693,14 @@ class TransactionQuerySerializer(serializers.ModelSerializer):
 class InvoiceLineSerializer(serializers.ModelSerializer):
     """Serializer for invoice line items."""
     
+    def to_representation(self, instance):
+        """Add detailed error handling for serialization."""
+        try:
+            return super().to_representation(instance)
+        except Exception as e:
+            logger.error(f"Error serializing InvoiceLine {instance.id}: {type(e).__name__}: {str(e)}", exc_info=True)
+            raise
+    
     class Meta:
         model = InvoiceLine
         fields = [
@@ -754,6 +764,20 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
     balance_due = serializers.ReadOnlyField()
     is_overdue = serializers.ReadOnlyField()
     days_overdue = serializers.ReadOnlyField()
+    
+    def to_representation(self, instance):
+        """Add detailed error handling for serialization."""
+        try:
+            return super().to_representation(instance)
+        except Exception as e:
+            logger.error(f"Error serializing Invoice {instance.id}: {type(e).__name__}: {str(e)}", exc_info=True)
+            # Log debtor info
+            if instance.debtor:
+                logger.error(f"Debtor: id={instance.debtor.id}, dno={instance.debtor.dno}, dname={instance.debtor.dname}")
+            # Log lines count
+            lines_count = instance.lines.count()
+            logger.error(f"Invoice has {lines_count} lines")
+            raise
     
     class Meta:
         model = Invoice

@@ -42,57 +42,98 @@ export default function ReceiptsList() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
-  // Fetch receipts
+  // Fetch receipts from API
   useEffect(() => {
     const fetchReceipts = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        // Demo data
-        setTimeout(() => {
-          setReceipts([
-            { id: 1, receipt_number: 'REC-001', debtor_account_number: 'DBT-001', amount: 1500.00, receipt_type: 'cash', receipt_date: new Date().toISOString(), status: 'posted' },
-            { id: 2, receipt_number: 'REC-002', debtor_account_number: 'DBT-002', amount: 2000.00, receipt_type: 'cheque', receipt_date: new Date(Date.now() - 86400000).toISOString(), status: 'posted' },
-            { id: 3, receipt_number: 'REC-003', debtor_account_number: 'DBT-003', amount: 800.00, receipt_type: 'eft', receipt_date: new Date(Date.now() - 172800000).toISOString(), status: 'posted' },
-          ]);
-        }, 300);
-      } catch (err) {
+        // Call the backend API to fetch receipts
+        const response = await posAPI.listReceipts({
+          from_date: dateFrom || undefined,
+          to_date: dateTo || undefined,
+        });
+        
+        // Map backend fields to frontend display fields
+        const mappedReceipts = response.results.map((receipt: any) => ({
+          id: receipt.id,
+          receipt_number: receipt.receipt_number,
+          debtor_account_number: receipt.debtor_account,
+          debtor_name: receipt.debtor_name,
+          amount: parseFloat(receipt.amount) || 0,
+          total_amount: parseFloat(receipt.total_amount) || 0,
+          receipt_type: receipt.tender_type?.toLowerCase(),
+          tender_type_display: receipt.tender_type_display,
+          receipt_date: receipt.receipt_date,
+          is_posted: receipt.is_posted,
+          is_cancelled: receipt.is_cancelled,
+          status: receipt.is_cancelled ? 'CANCELLED' : receipt.is_posted ? 'POSTED' : 'DRAFT',
+          reference: receipt.reference,
+          cheque_number: receipt.cheque_number,
+          bank_name: receipt.bank_name,
+          card_type: receipt.card_type,
+          authorization_code: receipt.authorization_code,
+          cashier_name: receipt.cashier_name,
+          station_number: receipt.station_number,
+        }));
+        
+        setReceipts(mappedReceipts);
+      } catch (err: any) {
         console.error('Error fetching receipts:', err);
         setError(err instanceof Error ? err.message : 'Failed to load receipts');
         setReceipts([]);
       } finally {
-        setTimeout(() => setLoading(false), 400);
+        setLoading(false);
       }
     };
 
     fetchReceipts();
-  }, []);
+  }, [dateFrom, dateTo]);
 
   // Filter receipts
   const filteredReceipts = receipts.filter((receipt) => {
     const matchesSearch =
       receipt.debtor_account_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      receipt.debtor_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       receipt.receipt_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      receipt.notes?.toLowerCase().includes(searchTerm.toLowerCase());
+      receipt.reference?.toLowerCase().includes(searchTerm.toLowerCase());
 
-    return matchesSearch;
+    // Filter by status
+    const matchesStatus = filterStatus === 'all' || receipt.status === filterStatus;
+
+    return matchesSearch && matchesStatus;
   });
 
-  const handleDelete = async (id: string) => {
-    // Delete functionality not yet implemented in API
-    setError('Delete functionality is not yet available');
-    setTimeout(() => setError(null), 3000);
+  const handleDelete = async (id: string | number) => {
+    if (!confirm('Are you sure you want to delete this receipt?')) {
+      return;
+    }
+    try {
+      setLoading(true);
+      await posAPI.deleteReceipt(id);
+      setSuccess('Receipt deleted successfully');
+      // Refresh the list
+      setReceipts((prev) => prev.filter((r) => r.id !== id));
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      console.error('Error deleting receipt:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete receipt');
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleExport = () => {
     // CSV export functionality
     const csv = [
-      ['Receipt #', 'Account', 'Amount', 'Type', 'Date', 'Status'],
+      ['Receipt #', 'Account #', 'Debtor Name', 'Amount', 'Type', 'Date', 'Status'],
       ...filteredReceipts.map((r) => [
         r.receipt_number,
         r.debtor_account_number,
-        r.amount,
+        r.debtor_name,
+        r.total_amount || r.amount,
         r.receipt_type,
         new Date(r.receipt_date).toLocaleDateString(),
         r.status,
@@ -265,7 +306,7 @@ export default function ReceiptsList() {
                   <TableHeader>
                     <TableRow className="bg-slate-50 hover:bg-slate-50">
                       <TableHead>Receipt #</TableHead>
-                      <TableHead>Account</TableHead>
+                      <TableHead>Account #</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
                       <TableHead>Date</TableHead>
@@ -279,14 +320,19 @@ export default function ReceiptsList() {
                         <TableCell className="font-medium text-slate-900">
                           {receipt.receipt_number || 'N/A'}
                         </TableCell>
-                        <TableCell>{receipt.debtor_account_number}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-medium">{receipt.debtor_account_number}</span>
+                            <span className="text-xs text-slate-500">{receipt.debtor_name}</span>
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <span className="text-sm">
                             {receipt.receipt_type?.replace(/_/g, ' ')}
                           </span>
                         </TableCell>
                         <TableCell className="text-right font-semibold">
-                          R{receipt.amount?.toFixed(2) || '0.00'}
+                          R{(receipt.total_amount || receipt.amount)?.toFixed(2) || '0.00'}
                         </TableCell>
                         <TableCell>
                           {new Date(receipt.receipt_date).toLocaleDateString()}
