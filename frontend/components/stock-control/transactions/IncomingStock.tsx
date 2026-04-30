@@ -1,25 +1,38 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Trash2, Save, X } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { ArrowLeft, Plus, Trash2, Save, X, Search, PackageCheck, ChevronDown } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface StockItem {
   stock_code: string;
   description: string;
   quantity_on_hand: number;
   supplier_code?: string;
-  sales_mtd_quantity?: number;
   cost_price: number;
   tax_code: number;
+}
+
+interface TaxCode {
+  id: number;
+  code: string;
+  rate: number;
+}
+
+interface Supplier {
+  id: number;
+  name: string;
+  supplier_number?: string;
 }
 
 interface TransactionLine {
   stock_code: string;
   description: string;
   quantity: number;
-  tax_code: number;
+  tax_code: number | '';
   unit_cost: number;
   line_total: number;
   vat_amount: number;
@@ -29,557 +42,664 @@ interface IncomingStockProps {
   onBack: () => void;
 }
 
+// ─── Pure helpers ─────────────────────────────────────────────────────────────
+
+function calcLine(
+  qty: number,
+  cost: number,
+  taxRate: number,
+  vatType: 'I' | 'E'
+): { subtotal: number; vat: number; total: number } {
+  const subtotal = qty * cost;
+  if (vatType === 'E') {
+    const vat = (subtotal * taxRate) / 100;
+    return { subtotal, vat, total: subtotal + vat };
+  }
+  const total = subtotal;
+  const vat = (total * taxRate) / (100 + taxRate);
+  return { subtotal: total - vat, vat, total };
+}
+
+function fmt(n: number) {
+  return `R ${n.toFixed(2)}`;
+}
+
+// ─── Small UI pieces ──────────────────────────────────────────────────────────
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-semibold uppercase tracking-widest text-slate-400">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+const inputCls =
+  'w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition';
+
+const selectCls =
+  'w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition appearance-none cursor-pointer';
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export default function IncomingStock({ onBack }: IncomingStockProps) {
+  // Header form
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
   const [vatType, setVatType] = useState<'I' | 'E'>('E');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [supplierId, setSupplierId] = useState<number | ''>('');
   const [additionalReference, setAdditionalReference] = useState('');
-  const [surcharge, setSurcharge] = useState(0);
-  const [lines, setLines] = useState<TransactionLine[]>([]);
-  const [showLineForm, setShowLineForm] = useState(false);
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editQuantity, setEditQuantity] = useState(0);
-  const [editUnitCost, setEditUnitCost] = useState(0);
+  const [surcharge, setSurcharge] = useState<number | ''>('');
+
+  // Add-line form
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedStockCode, setSelectedStockCode] = useState('');
-  const [quantity, setQuantity] = useState(0);
-  const [unitCost, setUnitCost] = useState(0);
-  const [selectedTaxCode, setSelectedTaxCode] = useState<number | ''>('');
-  const [stockItems, setStockItems] = useState<StockItem[]>([]);
-  const [filteredItems, setFilteredItems] = useState<StockItem[]>([]);
-  const [showItemsList, setShowItemsList] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<StockItem | null>(null);
+  const [quantity, setQuantity] = useState<number | ''>('');
+  const [unitCost, setUnitCost] = useState<number | ''>('');
+  const [taxCodeId, setTaxCodeId] = useState<number | ''>('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  // Lines
+  const [lines, setLines] = useState<TransactionLine[]>([]);
+
+  // Inline edit
+  const [editIndex, setEditIndex] = useState<number | null>(null);
+  const [editQty, setEditQty] = useState<number | ''>('');
+  const [editCost, setEditCost] = useState<number | ''>('');
+
   const queryClient = useQueryClient();
 
-  // Fetch stock items
-  const { data: stockData, isLoading: stockLoading } = useQuery({
+  // ── Queries ────────────────────────────────────────────────────────────────
+
+  const { data: stockData = [] } = useQuery<StockItem[]>({
     queryKey: ['stock-items'],
     queryFn: async () => {
-      const response = await api.get('/api/stock-control/stock-items/');
-      return response.data.results || response.data;
+      const res = await api.get('/api/stock-control/stock-items/');
+      return res.data.results ?? res.data;
     },
   });
 
-  // Fetch suppliers
-  const { data: suppliersData, isLoading: suppliersLoading, error: suppliersError } = useQuery({
+  const {
+    data: suppliersData = [],
+    isLoading: suppliersLoading,
+    error: suppliersError,
+  } = useQuery<Supplier[]>({
     queryKey: ['suppliers'],
     queryFn: async () => {
-      try {
-        const response = await api.get('/api/v1/creditors/creditors/');
-        console.log('Suppliers response:', response);
-        return response.data.results || response.data;
-      } catch (error) {
-        console.error('Failed to fetch suppliers:', error);
-        throw error;
-      }
+      const res = await api.get('/api/v1/creditors/creditors/');
+      return res.data.results ?? res.data;
     },
   });
 
-  // Fetch tax codes
-  const { data: taxData } = useQuery({
+  const { data: taxData = [] } = useQuery<TaxCode[]>({
     queryKey: ['tax-codes'],
     queryFn: async () => {
-      const response = await api.get('/api/v1/settings/tax-codes/');
-      return response.data.results || response.data;
+      const res = await api.get('/api/v1/settings/tax-codes/');
+      return res.data.results ?? res.data;
     },
   });
 
-  // Create incoming stock transaction
+  // ── Mutation ───────────────────────────────────────────────────────────────
+
   const createTransaction = useMutation({
-    mutationFn: async (data: any) => {
-      const response = await api.post('/api/stock-control/transactions/', data);
-      return response.data;
+    mutationFn: async (data: object) => {
+      const res = await api.post('/api/stock-control/stock-transactions/', data);
+      return res.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stock-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-items'] });
+    },
+  });
+
+  // ── Close dropdown on outside click ───────────────────────────────────────
+
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, []);
+
+  // ── Derived ────────────────────────────────────────────────────────────────
+
+  const filteredStock =
+    searchTerm.length >= 1
+      ? stockData
+          .filter(
+            (item) =>
+              item.stock_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+              item.description.toLowerCase().includes(searchTerm.toLowerCase())
+          )
+          .slice(0, 8)
+      : [];
+
+  function getTaxRate(id: number | ''): number {
+    if (id === '') return 0;
+    return taxData.find((t) => t.id === id)?.rate ?? 0;
+  }
+
+  // ── Line form handlers ─────────────────────────────────────────────────────
+
+  function handleSelectItem(item: StockItem) {
+    setSelectedItem(item);
+    setSearchTerm(item.stock_code + ' \u2014 ' + item.description);
+    setUnitCost(Number(item.cost_price) || '');
+    setTaxCodeId(item.tax_code || '');
+    setShowDropdown(false);
+  }
+
+  function handleAddLine() {
+    const qty = Number(quantity);
+    const cost = Number(unitCost);
+
+    // Allow manual typing: try to match search text to a stock item if none selected
+    let item = selectedItem;
+    if (!item && searchTerm.trim()) {
+      const lower = searchTerm.trim().toLowerCase();
+      item =
+        stockData.find(
+          (s) =>
+            s.stock_code.toLowerCase() === lower ||
+            (s.stock_code + ' \u2014 ' + s.description).toLowerCase() === lower
+        ) ?? null;
+    }
+
+    if (!item) {
+      alert('Please select a stock item from the search list.');
+      return;
+    }
+    if (qty <= 0) {
+      alert('Quantity must be greater than 0.');
+      return;
+    }
+    if (cost <= 0) {
+      alert('Unit cost must be greater than 0.');
+      return;
+    }
+
+    const { vat, total } = calcLine(qty, cost, getTaxRate(taxCodeId), vatType);
+
+    setLines((prev) => [
+      ...prev,
+      {
+        stock_code: item!.stock_code,
+        description: item!.description,
+        quantity: qty,
+        tax_code: taxCodeId,
+        unit_cost: cost,
+        line_total: total,
+        vat_amount: vat,
+      },
+    ]);
+
+    setSelectedItem(null);
+    setSearchTerm('');
+    setQuantity('');
+    setUnitCost('');
+    setTaxCodeId('');
+  }
+
+  function handleStartEdit(index: number) {
+    const line = lines[index];
+    setEditIndex(index);
+    setEditQty(line.quantity);
+    setEditCost(line.unit_cost);
+  }
+
+  function handleSaveEdit(index: number) {
+    const qty = Number(editQty);
+    const cost = Number(editCost);
+    if (qty <= 0 || cost <= 0) {
+      alert('Quantity and unit cost must be greater than 0.');
+      return;
+    }
+    const line = lines[index];
+    const { vat, total } = calcLine(qty, cost, getTaxRate(line.tax_code), vatType);
+    setLines((prev) =>
+      prev.map((l, i) =>
+        i === index ? { ...l, quantity: qty, unit_cost: cost, vat_amount: vat, line_total: total } : l
+      )
+    );
+    setEditIndex(null);
+  }
+
+  function handleCancelEdit() {
+    setEditIndex(null);
+    setEditQty('');
+    setEditCost('');
+  }
+
+  function handleRemoveLine(index: number) {
+    setLines((prev) => prev.filter((_, i) => i !== index));
+    if (editIndex === index) setEditIndex(null);
+  }
+
+  // ── Totals ─────────────────────────────────────────────────────────────────
+
+  const totals = lines.reduce(
+    (acc, l) => ({ qty: acc.qty + l.quantity, vat: acc.vat + l.vat_amount, amount: acc.amount + l.line_total }),
+    { qty: 0, vat: 0, amount: 0 }
+  );
+  const surchargeNum = Number(surcharge) || 0;
+  const grandTotal = totals.amount + surchargeNum;
+
+  // ── Submit ─────────────────────────────────────────────────────────────────
+
+  async function handleSubmit() {
+    if (!invoiceDate) { alert('Invoice date is required.'); return; }
+    if (!invoiceNumber.trim()) { alert('Invoice number is required.'); return; }
+    if (lines.length === 0) { alert('Add at least one line item.'); return; }
+
+    try {
+      for (const line of lines) {
+        // The serializer uses SlugRelatedField(slug_field='stock_code')
+        // so stock_item must be the stock_code string.
+        // quantity_out must be omitted or 0 — serializer rejects qty_in>0 AND qty_out>0
+        // but also rejects sending both, so we only send quantity_in.
+        const payload: Record<string, unknown> = {
+          transaction_type: 'INCOMING',
+          stock_item: line.stock_code,
+          quantity_in: line.quantity,
+          unit_cost: line.unit_cost,
+          unit_price: line.unit_cost,
+          value: +(line.quantity * line.unit_cost).toFixed(2),
+          discount: 0,
+          transaction_date: invoiceDate,
+          transaction_number: invoiceNumber.trim(),
+        };
+
+        // Only include optional fields when they have a real value
+        if (supplierId !== '') payload.supplier = supplierId;
+        if (line.tax_code !== '') payload.tax_code = line.tax_code;
+        if (additionalReference.trim()) payload.comments = additionalReference.trim();
+
+        await createTransaction.mutateAsync(payload);
+      }
+
       // Reset form
       setInvoiceDate(new Date().toISOString().split('T')[0]);
       setInvoiceNumber('');
       setSupplierId('');
       setAdditionalReference('');
-      setSurcharge(0);
+      setSurcharge('');
       setLines([]);
-      alert('Incoming stock transaction created successfully!');
+      alert('Incoming stock saved successfully!');
       onBack();
-    },
-    onError: (error: any) => {
-      alert(`Error: ${error.response?.data?.detail || error.message}`);
-    },
-  });
-
-  useEffect(() => {
-    if (stockData) {
-      setStockItems(stockData);
+    } catch (error: any) {
+      const data = error?.response?.data;
+      const msg =
+        data?.detail ??
+        data?.non_field_errors?.[0] ??
+        (data && typeof data === 'object'
+          ? Object.entries(data)
+              .map(([k, v]: any) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+              .join(' | ')
+          : null) ??
+        error?.message ??
+        'Unknown error occurred';
+      alert(`Save failed: ${msg}`);
     }
-  }, [stockData]);
+  }
 
-  useEffect(() => {
-    if (searchTerm) {
-      const filtered = stockItems.filter(
-        (item) =>
-          item.stock_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          item.description.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      setFilteredItems(filtered);
-      setShowItemsList(true);
-    } else {
-      setFilteredItems([]);
-      setShowItemsList(false);
-    }
-  }, [searchTerm, stockItems]);
+  // ── Line preview ──────────────────────────────────────────────────────────
 
-  const handleSelectItem = (item: StockItem) => {
-    setSelectedStockCode(item.stock_code);
-    setSearchTerm(item.stock_code);
-    setUnitCost(item.cost_price);
-    setSelectedTaxCode(item.tax_code || '');
-    setShowItemsList(false);
-  };
+  const showPreview = selectedItem && Number(quantity) > 0 && Number(unitCost) > 0;
+  const preview = showPreview
+    ? calcLine(Number(quantity), Number(unitCost), getTaxRate(taxCodeId), vatType)
+    : null;
 
-  const calculateLineTotal = () => {
-    const subtotal = quantity * unitCost;
-    const taxRate = taxData?.find((t: any) => t.id === selectedTaxCode)?.rate || 0;
-    
-    if (vatType === 'E') {
-      // Exclusive of VAT
-      const vat = (subtotal * taxRate) / 100;
-      return {
-        subtotal,
-        vat,
-        total: subtotal + vat,
-      };
-    } else {
-      // Inclusive of VAT
-      const total = quantity * unitCost;
-      const vat = (total * taxRate) / (100 + taxRate);
-      return {
-        subtotal: total - vat,
-        vat,
-        total,
-      };
-    }
-  };
+  const canAdd =
+    (!!selectedItem || searchTerm.trim().length > 0) &&
+    Number(quantity) > 0 &&
+    Number(unitCost) > 0;
 
-  const handleAddLine = () => {
-    if (!selectedStockCode || !quantity || !unitCost) {
-      alert('Please fill in all required fields');
-      return;
-    }
-
-    const { subtotal, vat, total } = calculateLineTotal();
-    const item = stockItems.find((s) => s.stock_code === selectedStockCode);
-
-    const newLine: TransactionLine = {
-      stock_code: selectedStockCode,
-      description: item?.description || '',
-      quantity,
-      tax_code: selectedTaxCode as number,
-      unit_cost: unitCost,
-      line_total: total,
-      vat_amount: vat,
-    };
-
-    setLines([...lines, newLine]);
-    // Reset form
-    setSelectedStockCode('');
-    setSearchTerm('');
-    setQuantity(0);
-    setUnitCost(0);
-    setSelectedTaxCode('');
-  };
-
-  const handleRemoveLine = (index: number) => {
-    setLines(lines.filter((_, i) => i !== index));
-  };
-
-  const handleStartEdit = (index: number) => {
-    const line = lines[index];
-    setEditingIndex(index);
-    setEditQuantity(line.quantity);
-    setEditUnitCost(line.unit_cost);
-  };
-
-  const handleSaveEdit = (index: number) => {
-    if (editQuantity <= 0 || editUnitCost <= 0) {
-      alert('Quantity and Unit Cost must be greater than 0');
-      return;
-    }
-
-    const updatedLines = [...lines];
-    const { subtotal, vat, total } = calculateLineTotal();
-    
-    updatedLines[index] = {
-      ...updatedLines[index],
-      quantity: editQuantity,
-      unit_cost: editUnitCost,
-      line_total: total,
-      vat_amount: vat,
-    };
-    
-    setLines(updatedLines);
-    setEditingIndex(null);
-  };
-
-  const handleCancelEdit = () => {
-    setEditingIndex(null);
-    setEditQuantity(0);
-    setEditUnitCost(0);
-  };
-
-  const calculateTotals = () => {
-    let totalQuantity = 0;
-    let totalVat = 0;
-    let totalAmount = 0;
-
-    lines.forEach((line) => {
-      totalQuantity += line.quantity;
-      totalVat += line.vat_amount;
-      totalAmount += line.line_total;
-    });
-
-    return {
-      totalQuantity,
-      totalVat,
-      totalAmount: totalAmount + surcharge,
-      surchargeAmount: surcharge,
-    };
-  };
-
-  const handleSubmit = async () => {
-    if (!invoiceDate || !invoiceNumber || lines.length === 0) {
-      alert('Please fill in all required fields and add at least one line item');
-      return;
-    }
-
-    const totals = calculateTotals();
-
-    try {
-      // Create a transaction for each line
-      for (const line of lines) {
-        // Find the stock item to get its ID
-        const stockItemData = stockItems.find(s => s.stock_code === line.stock_code);
-        
-        const transactionData = {
-          transaction_type: 'INCOMING',
-          stock_item: stockItemData?.stock_code || line.stock_code,
-          supplier: supplierId || null,
-          invoice_date: invoiceDate,
-          invoice_number: invoiceNumber,
-          vat_type: vatType,
-          additional_reference: additionalReference,
-          quantity_in: line.quantity,
-          unit_cost: line.unit_cost,
-          unit_price: line.unit_cost,
-          vat_amount: line.vat_amount,
-          total_amount: line.line_total,
-          surcharge: line.quantity > 0 ? (surcharge / totals.totalQuantity) * line.quantity : 0,
-          surcharge_per_unit: line.quantity > 0 ? surcharge / line.quantity : 0,
-          transaction_date: new Date().toISOString(),
-          transaction_number: invoiceNumber,
-          reference: additionalReference,
-        };
-
-        await createTransaction.mutateAsync(transactionData);
-      }
-    } catch (error) {
-      console.error('Error creating transaction:', error);
-    }
-  };
-
-  const totals = calculateTotals();
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6">
-      <div className="flex items-center gap-4 mb-6">
+    <div className="min-h-screen bg-slate-950 text-slate-100" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600&family=DM+Mono:wght@400;500&display=swap');
+        .mono { font-family: 'DM Mono', monospace; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+      `}</style>
+
+      {/* Top bar */}
+      <div className="sticky top-0 z-20 border-b border-slate-800 bg-slate-900/80 backdrop-blur px-6 py-4 flex items-center gap-4">
         <button
           onClick={onBack}
-          className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+          className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 transition font-medium"
         >
-          <ArrowLeft size={20} />
+          <ArrowLeft size={16} />
           Back
         </button>
-        <h2 className="text-2xl font-bold">Incoming Stock</h2>
+        <div className="h-4 w-px bg-slate-700" />
+        <PackageCheck size={18} className="text-emerald-400" />
+        <h1 className="text-sm font-semibold tracking-tight">Incoming Stock</h1>
       </div>
 
-      {/* Header Information */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <div>
-          <label className="block text-sm font-medium mb-2">Invoice Date</label>
-          <input
-            type="date"
-            value={invoiceDate}
-            onChange={(e) => setInvoiceDate(e.target.value)}
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-2">VAT Option</label>
-          <select
-            value={vatType}
-            onChange={(e) => setVatType(e.target.value as 'I' | 'E')}
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="E">Exclusive of VAT</option>
-            <option value="I">Inclusive of VAT</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-2">Supplier</label>
-          {suppliersError && <p className="text-red-500 text-sm mb-2">Error loading suppliers</p>}
-          <select
-            value={String(supplierId)}
-            onChange={(e) => setSupplierId(e.target.value ? parseInt(e.target.value) : '')}
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={suppliersLoading}
-          >
-            <option value="">{suppliersLoading ? 'Loading suppliers...' : '-- Select Supplier --'}</option>
-            {suppliersData?.map((supplier: any, idx: number) => (
-              <option key={`supplier-${supplier.id}-${idx}`} value={String(supplier.id)}>
-                {supplier.supplier_number || supplier.id} - {supplier.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-2">Invoice Number</label>
-          <input
-            type="text"
-            value={invoiceNumber}
-            onChange={(e) => setInvoiceNumber(e.target.value)}
-            placeholder="Supplier's invoice number"
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-2">Additional Reference</label>
-          <input
-            type="text"
-            value={additionalReference}
-            onChange={(e) => setAdditionalReference(e.target.value)}
-            placeholder="Additional notes or reference"
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-2">Surcharge (Exclusive of VAT)</label>
-          <input
-            type="number"
-            value={surcharge}
-            onChange={(e) => setSurcharge(parseFloat(e.target.value) || 0)}
-            step="0.01"
-            min="0"
-            placeholder="E.g., transport charges"
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-      </div>
+      <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
 
-      {/* Add Line Item Section */}
-      <div className="bg-gray-50 rounded-lg p-6 mb-6">
-        <h3 className="text-lg font-semibold mb-4">Add Stock Item</h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Stock Code / Description</label>
-            <div className="relative">
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search stock..."
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              {showItemsList && (
-                <div className="absolute top-full left-0 right-0 bg-white border border-t-0 rounded-b-lg shadow-lg max-h-40 overflow-y-auto z-10">
-                  {filteredItems.map((item) => (
-                    <div
+        {/* ── Transaction Details ──────────────────────────────────────────── */}
+        <section className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-5">
+            Transaction Details
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+
+            <Field label="Invoice Date *">
+              <input type="date" value={invoiceDate}
+                onChange={(e) => setInvoiceDate(e.target.value)}
+                className={inputCls} />
+            </Field>
+
+            <Field label="VAT Option">
+              <div className="relative">
+                <select value={vatType}
+                  onChange={(e) => setVatType(e.target.value as 'I' | 'E')}
+                  className={selectCls}>
+                  <option value="E">Exclusive of VAT</option>
+                  <option value="I">Inclusive of VAT</option>
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+              </div>
+            </Field>
+
+            <Field label="Invoice Number *">
+              <input type="text" value={invoiceNumber}
+                onChange={(e) => setInvoiceNumber(e.target.value)}
+                placeholder="Supplier's invoice number"
+                className={inputCls} />
+            </Field>
+
+            <Field label="Supplier">
+              {suppliersError && <p className="text-red-400 text-xs mb-1">Failed to load suppliers</p>}
+              <div className="relative">
+                <select
+                  value={String(supplierId)}
+                  onChange={(e) => setSupplierId(e.target.value ? parseInt(e.target.value) : '')}
+                  className={selectCls}
+                  disabled={suppliersLoading}
+                >
+                  <option value="">{suppliersLoading ? 'Loading...' : '— Select Supplier —'}</option>
+                  {suppliersData.map((s) => (
+                    <option key={s.id} value={String(s.id)}>
+                      {s.supplier_number ? `${s.supplier_number} — ` : ''}{s.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+              </div>
+            </Field>
+
+            <Field label="Additional Reference">
+              <input type="text" value={additionalReference}
+                onChange={(e) => setAdditionalReference(e.target.value)}
+                placeholder="Notes or PO reference"
+                className={inputCls} />
+            </Field>
+
+            <Field label="Surcharge (excl. VAT)">
+              <input type="number" value={surcharge}
+                onChange={(e) => setSurcharge(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                step="0.01" min="0" placeholder="0.00"
+                className={inputCls} />
+            </Field>
+          </div>
+        </section>
+
+        {/* ── Add Stock Item ───────────────────────────────────────────────── */}
+        <section className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-5">
+            Add Stock Item
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+
+            {/* Search */}
+            <div ref={searchRef} className="relative">
+              <Field label="Stock Code / Description">
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setSelectedItem(null);
+                      setShowDropdown(true);
+                    }}
+                    onFocus={() => { if (searchTerm) setShowDropdown(true); }}
+                    placeholder="Search stock..."
+                    className={`${inputCls} pl-9`}
+                  />
+                </div>
+              </Field>
+              {showDropdown && filteredStock.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-30 max-h-52 overflow-y-auto">
+                  {filteredStock.map((item) => (
+                    <button
                       key={item.stock_code}
+                      type="button"
                       onClick={() => handleSelectItem(item)}
-                      className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
+                      className="w-full text-left px-4 py-3 hover:bg-slate-700 transition border-b border-slate-700/40 last:border-0"
                     >
-                      <p className="font-medium">{item.stock_code}</p>
-                      <p className="text-sm text-gray-600">{item.description}</p>
-                    </div>
+                      <p className="text-sm font-medium text-slate-100 mono">{item.stock_code}</p>
+                      <p className="text-xs text-slate-400 truncate mt-0.5">{item.description}</p>
+                    </button>
                   ))}
                 </div>
               )}
+              {showDropdown && searchTerm.length >= 1 && filteredStock.length === 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-30 px-4 py-3 text-sm text-slate-500">
+                  No items found
+                </div>
+              )}
             </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2">Quantity</label>
-            <input
-              type="number"
-              value={quantity || ''}
-              onChange={(e) => setQuantity(e.target.value ? parseFloat(e.target.value) : 0)}
-              step="0.01"
-              min="0"
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2">Unit Cost</label>
-            <input
-              type="number"
-              value={unitCost || ''}
-              onChange={(e) => setUnitCost(e.target.value ? parseFloat(e.target.value) : 0)}
-              step="0.01"
-              min="0"
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2">Tax Code</label>
-            <select
-              value={selectedTaxCode}
-              onChange={(e) => setSelectedTaxCode(e.target.value ? parseInt(e.target.value) : '')}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Select Tax Code</option>
-              {taxData?.map((tax: any, idx: number) => (
-                <option key={`tax-${tax.id}-${idx}`} value={tax.id}>
-                  {tax.code} ({tax.rate}%)
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <button
-          onClick={handleAddLine}
-          disabled={!selectedStockCode || !quantity || !unitCost}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-        >
-          <Plus size={20} />
-          Add Line Item
-        </button>
-      </div>
 
-      {/* Goods Received Note */}
-      <div className="mb-6">
-        <h3 className="text-lg font-semibold mb-4">Goods Received Note</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-100 border-b">
-              <tr>
-                <th className="text-left px-4 py-2">Stock Code</th>
-                <th className="text-left px-4 py-2">Description</th>
-                <th className="text-right px-4 py-2">Qty</th>
-                <th className="text-right px-4 py-2">Unit Cost</th>
-                <th className="text-right px-4 py-2">VAT</th>
-                <th className="text-right px-4 py-2">Total</th>
-                <th className="text-center px-4 py-2">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((line, index) => (
-                <tr key={index} className="border-b hover:bg-gray-50">
-                  <td className="px-4 py-2">{line.stock_code}</td>
-                  <td className="px-4 py-2">{line.description}</td>
-                  <td className="text-right px-4 py-2">
-                    {editingIndex === index ? (
-                      <input
-                        type="number"
-                        value={editQuantity}
-                        onChange={(e) => setEditQuantity(parseFloat(e.target.value) || 0)}
-                        step="0.01"
-                        min="0"
-                        className="w-20 px-2 py-1 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    ) : (
-                      line.quantity.toFixed(2)
-                    )}
-                  </td>
-                  <td className="text-right px-4 py-2">
-                    {editingIndex === index ? (
-                      <input
-                        type="number"
-                        value={editUnitCost}
-                        onChange={(e) => setEditUnitCost(parseFloat(e.target.value) || 0)}
-                        step="0.01"
-                        min="0"
-                        className="w-24 px-2 py-1 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    ) : (
-                      `R ${line.unit_cost.toFixed(2)}`
-                    )}
-                  </td>
-                  <td className="text-right px-4 py-2">R {line.vat_amount.toFixed(2)}</td>
-                  <td className="text-right px-4 py-2 font-semibold">R {line.line_total.toFixed(2)}</td>
-                  <td className="text-center px-4 py-2 space-x-2">
-                    {editingIndex === index ? (
-                      <>
-                        <button
-                          onClick={() => handleSaveEdit(index)}
-                          className="text-green-600 hover:text-green-800 font-semibold"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={handleCancelEdit}
-                          className="text-gray-600 hover:text-gray-800 ml-2"
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => handleStartEdit(index)}
-                          className="text-blue-600 hover:text-blue-800 font-semibold text-sm"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleRemoveLine(index)}
-                          className="text-red-600 hover:text-red-800 ml-2"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </>
-                    )}
-                  </td>
+            <Field label="Quantity">
+              <input
+                type="number"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                step="0.01" min="0" placeholder="0.00"
+                className={inputCls}
+              />
+            </Field>
+
+            <Field label="Unit Cost">
+              <input
+                type="number"
+                value={unitCost}
+                onChange={(e) => setUnitCost(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                step="0.01" min="0" placeholder="0.00"
+                className={inputCls}
+              />
+            </Field>
+
+            <Field label="Tax Code">
+              <div className="relative">
+                <select
+                  value={taxCodeId}
+                  onChange={(e) => setTaxCodeId(e.target.value ? parseInt(e.target.value) : '')}
+                  className={selectCls}
+                >
+                  <option value="">— Tax Code —</option>
+                  {taxData.map((t) => (
+                    <option key={t.id} value={t.id}>{t.code} ({t.rate}%)</option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+              </div>
+            </Field>
+          </div>
+
+          {/* Live preview */}
+          {preview && (
+            <div className="mb-4 flex items-center gap-6 px-4 py-3 bg-slate-800/60 border border-slate-700 rounded-lg text-sm text-slate-400">
+              <span>Subtotal: <strong className="text-slate-200 mono">{fmt(preview.subtotal)}</strong></span>
+              <span>VAT: <strong className="text-slate-200 mono">{fmt(preview.vat)}</strong></span>
+              <span>Total: <strong className="text-emerald-400 mono">{fmt(preview.total)}</strong></span>
+            </div>
+          )}
+
+          <button
+            onClick={handleAddLine}
+            disabled={!canAdd}
+            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition"
+          >
+            <Plus size={16} />
+            Add Line Item
+          </button>
+        </section>
+
+        {/* ── Goods Received Note ──────────────────────────────────────────── */}
+        <section className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Goods Received Note
+            </p>
+            <span className="mono text-xs text-slate-500">{lines.length} line{lines.length !== 1 ? 's' : ''}</span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-800">
+                  {['Stock Code', 'Description', 'Qty', 'Unit Cost', 'VAT', 'Total', ''].map((h, i) => (
+                    <th
+                      key={i}
+                      className={`px-4 py-3 text-xs font-semibold uppercase tracking-widest text-slate-500 ${
+                        i === 0 ? 'text-left pl-6' : i >= 2 && i <= 5 ? 'text-right' : i === 1 ? 'text-left' : ''
+                      }`}
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {lines.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="text-center py-14 text-slate-600 text-sm">
+                      No items added yet — use the form above.
+                    </td>
+                  </tr>
+                )}
+                {lines.map((line, i) => (
+                  <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition group">
+                    <td className="pl-6 pr-4 py-3 mono text-emerald-400 font-medium text-sm">{line.stock_code}</td>
+                    <td className="px-4 py-3 text-slate-300 max-w-xs truncate">{line.description}</td>
+                    <td className="px-4 py-3 text-right">
+                      {editIndex === i ? (
+                        <input type="number" value={editQty}
+                          onChange={(e) => setEditQty(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                          step="0.01" min="0"
+                          className="w-20 px-2 py-1 bg-slate-700 border border-slate-600 rounded text-right text-slate-100 focus:outline-none focus:border-emerald-500 mono text-sm"
+                        />
+                      ) : (
+                        <span className="mono">{line.quantity.toFixed(2)}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {editIndex === i ? (
+                        <input type="number" value={editCost}
+                          onChange={(e) => setEditCost(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                          step="0.01" min="0"
+                          className="w-24 px-2 py-1 bg-slate-700 border border-slate-600 rounded text-right text-slate-100 focus:outline-none focus:border-emerald-500 mono text-sm"
+                        />
+                      ) : (
+                        <span className="mono">{fmt(line.unit_cost)}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right mono text-slate-400">{fmt(line.vat_amount)}</td>
+                    <td className="px-4 py-3 text-right mono font-semibold text-slate-100">{fmt(line.line_total)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2 justify-end">
+                        {editIndex === i ? (
+                          <>
+                            <button onClick={() => handleSaveEdit(i)}
+                              className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded transition">
+                              <Save size={12} /> Save
+                            </button>
+                            <button onClick={handleCancelEdit}
+                              className="p-1.5 text-slate-400 hover:text-slate-200 bg-slate-700 hover:bg-slate-600 rounded transition">
+                              <X size={12} />
+                            </button>
+                          </>
+                        ) : (
+                          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition">
+                            <button onClick={() => handleStartEdit(i)}
+                              className="px-2.5 py-1 text-xs font-semibold text-slate-300 hover:text-white bg-slate-700 hover:bg-slate-600 rounded transition">
+                              Edit
+                            </button>
+                            <button onClick={() => handleRemoveLine(i)}
+                              className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition">
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Totals */}
+          {lines.length > 0 && (
+            <div className="border-t border-slate-800 px-6 py-5 flex justify-end">
+              <div className="w-64 space-y-2.5">
+                <div className="flex justify-between text-sm text-slate-400">
+                  <span>Total Quantity</span>
+                  <span className="mono font-medium text-slate-200">{totals.qty.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm text-slate-400">
+                  <span>Total VAT</span>
+                  <span className="mono font-medium text-slate-200">{fmt(totals.vat)}</span>
+                </div>
+                {surchargeNum > 0 && (
+                  <div className="flex justify-between text-sm text-slate-400">
+                    <span>Surcharge</span>
+                    <span className="mono font-medium text-slate-200">{fmt(surchargeNum)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-base font-bold border-t border-slate-700 pt-3 text-slate-100">
+                  <span>Grand Total</span>
+                  <span className="mono text-emerald-400">{fmt(grandTotal)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* ── Actions ──────────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-end gap-3 pb-10">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium rounded-lg transition"
+          >
+            <X size={16} />
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={createTransaction.isPending || lines.length === 0 || !invoiceNumber.trim()}
+            className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition"
+          >
+            <Save size={16} />
+            {createTransaction.isPending ? 'Saving...' : 'Save & Update Stock'}
+          </button>
         </div>
 
-        {/* Totals */}
-        <div className="mt-6 space-y-2 text-right max-w-md ml-auto">
-          <div className="flex justify-between text-sm">
-            <span>Total Quantity:</span>
-            <span className="font-semibold">{totals.totalQuantity.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span>Total VAT:</span>
-            <span className="font-semibold">R {totals.totalVat.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span>Surcharge:</span>
-            <span className="font-semibold">R {totals.surchargeAmount.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-lg border-t pt-2">
-            <span>Total Amount:</span>
-            <span className="font-bold">R {totals.totalAmount.toFixed(2)}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Action Buttons */}
-      <div className="flex gap-4 justify-end">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 px-6 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition"
-        >
-          <X size={20} />
-          Cancel
-        </button>
-        <button
-          onClick={handleSubmit}
-          disabled={createTransaction.isPending}
-          className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition"
-        >
-          <Save size={20} />
-          {createTransaction.isPending ? 'Saving...' : 'Save & Update Stock'}
-        </button>
       </div>
     </div>
   );

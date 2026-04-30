@@ -35,7 +35,7 @@ interface StockItem {
   reorder_quantity: number;
   cost_price: number;
   allow_negative_quantities: boolean;
-  bin_number?: string;
+  bin_number?: number;
   markup_1?: number;
   markup_2?: number;
   markup_3?: number;
@@ -77,7 +77,7 @@ export default function StockItemMaintenance({ onBack }: StockItemMaintenancePro
     reorder_quantity: 0,
     cost_price: 0,
     allow_negative_quantities: false,
-    bin_number: '',
+    bin_number: undefined,
     markup_1: 0,
     markup_2: 0,
     markup_3: 0,
@@ -252,7 +252,7 @@ export default function StockItemMaintenance({ onBack }: StockItemMaintenancePro
       reorder_quantity: 0,
       cost_price: 0,
       allow_negative_quantities: false,
-      bin_number: '',
+      bin_number: undefined,
       markup_1: 0,
       markup_2: 0,
       markup_3: 0,
@@ -482,10 +482,10 @@ export default function StockItemMaintenance({ onBack }: StockItemMaintenancePro
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Bin/Shelf Location</label>
               <input
-                type="text"
+                type="number"
                 value={formData.bin_number || ''}
-                onChange={(e) => setFormData({ ...formData, bin_number: e.target.value })}
-                placeholder="e.g., A-01-02"
+                onChange={(e) => setFormData({ ...formData, bin_number: e.target.value ? parseInt(e.target.value) : undefined })}
+                placeholder="e.g., 12345"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
             </div>

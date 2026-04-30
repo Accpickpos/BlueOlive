@@ -174,7 +174,6 @@ class StockItemSerializer(serializers.ModelSerializer):
 
 
 class StockItemListSerializer(serializers.ModelSerializer):
-    """Compact serializer for list endpoints — omits statistics and nested data."""
     available_quantity = serializers.ReadOnlyField()
 
     class Meta:
@@ -183,9 +182,8 @@ class StockItemListSerializer(serializers.ModelSerializer):
             'stock_code', 'description', 'department', 'supplier',
             'cost_price', 'selling_price_1',
             'quantity_on_hand', 'available_quantity',
-            'reorder_quantity', 'is_active',
+            'reorder_quantity', 'is_active', 'tax_code',
         ]
-
 
 # ─────────────────────────────────────────────
 # StockTransaction
@@ -193,6 +191,10 @@ class StockItemListSerializer(serializers.ModelSerializer):
 
 class StockTransactionSerializer(serializers.ModelSerializer):
     stock_item_detail = StockItemMinimalSerializer(source='stock_item', read_only=True)
+    stock_item = serializers.SlugRelatedField(
+        queryset=StockItem.objects.all(),
+        slug_field='stock_code'
+    )
 
     class Meta:
         model = StockTransaction

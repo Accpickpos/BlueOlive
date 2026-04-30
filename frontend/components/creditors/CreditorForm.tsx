@@ -11,11 +11,12 @@ interface CreditorFormProps {
 
 export default function CreditorForm({ creditor, onSuccess, onCancel }: CreditorFormProps) {
   const api = useCreditorsAPI();
-  
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [creditTermsOptions, setCreditTermsOptions] = useState<CreditTermsOption[]>([]);
-  
+
   const [formData, setFormData] = useState<Record<string, any>>({
     supplier_number: '',
     account_number: '',
@@ -36,7 +37,7 @@ export default function CreditorForm({ creditor, onSuccess, onCancel }: Creditor
     fax: '',
     email: '',
     contact_person: '',
-    account_type: 'BBF', // Default account type (Balance Brought Forward)
+    account_type: 'BBF',
     our_account_number: '',
     update_selling_price_on_receipt: false,
     credit_terms: null,
@@ -75,11 +76,12 @@ export default function CreditorForm({ creditor, onSuccess, onCancel }: Creditor
         account_type: c.account_type || 'BBF',
         our_account_number: c.our_account_number || '',
         update_selling_price_on_receipt: c.update_selling_price_on_receipt || false,
-        credit_terms: c.credit_terms || undefined,
+        credit_terms: c.credit_terms || null,
         prompt_payment_discount_percent: c.prompt_payment_discount_percent || 0,
         bank_name: c.bank_name || '',
-        bank_branch_code: c.branch_code || '',
-        bank_account_number: c.account_number || '',
+        // ✅ Fixed: was c.branch_code and c.account_number (wrong keys)
+        bank_branch_code: c.bank_branch_code || '',
+        bank_account_number: c.bank_account_number || '',
         vat_number: c.vat_number || '',
         is_active: c.is_active !== false,
       });
@@ -102,45 +104,39 @@ export default function CreditorForm({ creditor, onSuccess, onCancel }: Creditor
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
-    
+
+    // Clear field error when user starts editing
+    if (fieldErrors[name]) {
+      setFieldErrors(prev => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+    }
+
     setFormData((prev: Record<string, any>) => {
       let newValue: any;
-      
+
       if (type === 'checkbox') {
         newValue = checked;
       } else if (name === 'credit_terms') {
-        // Special handling for credit_terms - only set if value is not empty
         newValue = value ? parseInt(value, 10) : null;
-        console.log(`Credit Terms changed: "${value}" -> ${newValue}`);
       } else if (name === 'supplier_number') {
-        // Keep as string for supplier number, and sync with account_number
         newValue = value;
-        console.log(`Supplier Number changed: "${value}"`);
-        // Also update account_number to match supplier_number
         return {
           ...prev,
           [name]: newValue,
-          account_number: newValue  // Keep in sync
-        };
-      } else if (name === 'account_number') {
-        // Also allow direct editing of account_number
-        newValue = value;
-        console.log(`Account Number changed: "${value}"`);
-        return {
-          ...prev,
-          [name]: newValue
+          account_number: newValue,
         };
       } else if (type === 'number') {
         newValue = parseFloat(value) || 0;
       } else {
         newValue = value;
       }
-      
-      console.log(`Field ${name} changed to:`, newValue);
-      
+
       return {
         ...prev,
-        [name]: newValue
+        [name]: newValue,
       };
     });
   };
@@ -148,69 +144,66 @@ export default function CreditorForm({ creditor, onSuccess, onCancel }: Creditor
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setFieldErrors({});
     setLoading(true);
 
     try {
-      // Validate supplier_number and account_number
-      if (!formData.supplier_number || formData.supplier_number.toString().trim() === '') {
+      // Client-side required field validation
+      if (!formData.supplier_number?.toString().trim()) {
         setError('Supplier number is required');
         setLoading(false);
         return;
       }
-      if (!formData.account_number || formData.account_number.toString().trim() === '') {
+      if (!formData.account_number?.toString().trim()) {
         setError('Account number is required');
         setLoading(false);
         return;
       }
-
-      // Validate required name
-      if (!formData.name || formData.name.trim() === '') {
+      if (!formData.name?.trim()) {
         setError('Supplier name is required');
         setLoading(false);
         return;
       }
 
-      // Log the form data before submission
-      console.log('=== CREDITOR FORM SUBMISSION ===');
-      console.log('Supplier Number:', formData.supplier_number);
-      console.log('Account Number:', formData.account_number);
-      console.log('Name:', formData.name);
-      console.log('Account Type:', formData.account_type);
-      console.log('Credit Terms:', formData.credit_terms, 'Type:', typeof formData.credit_terms);
-      console.log('Full Form Data:', JSON.stringify(formData, null, 2));
-      
-      // Prepare data - remove empty/null fields
-      const submitData: any = { ...formData };
-      
-      // Remove fields with empty strings or null values (except account_type which needs a valid value)
-      Object.keys(submitData).forEach(key => {
-        if (submitData[key] === '' || 
-            (submitData[key] === null && key !== 'credit_terms') ||
-            (submitData[key] === 0 && key === 'credit_terms')) {
-          delete submitData[key];
-          console.log(`Removed ${key} from submission (empty/null)`);
+      // Strip empty strings and nulls (but keep credit_terms: null so it can be cleared)
+      const submitData: any = {};
+      Object.entries(formData).forEach(([key, value]) => {
+        if (value === '' || (value === null && key !== 'credit_terms') || (value === 0 && key === 'credit_terms')) {
+          return;
         }
+        submitData[key] = value;
       });
-      
-      console.log('Data to submit:', JSON.stringify(submitData, null, 2));
-      
+
+      console.log('Submitting:', JSON.stringify(submitData, null, 2));
+
       if (creditor && creditor.supplier_number) {
-        // Update existing
-        console.log('Updating supplier with number:', creditor.supplier_number);
         const updated = await api.updateSupplier(creditor.supplier_number, submitData);
-        console.log('Update successful:', updated);
         onSuccess?.(updated);
       } else {
-        // Create new
-        console.log('Creating new supplier');
         const created = await api.createSupplier(submitData);
-        console.log('Creation successful:', created);
         onSuccess?.(created);
       }
-    } catch (err) {
-      console.error('=== SUBMISSION ERROR ===');
-      console.error('Error details:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred');
+    } catch (err: any) {
+      console.error('=== SUBMISSION ERROR ===', err);
+
+      // Unwrap structured API error - handles fetch, axios, and custom api wrappers
+      const apiError =
+        err?.response?.data?.error ??  // axios
+        err?.data?.error ??            // custom wrapper
+        err?.error ??                  // direct throw of error object
+        null;
+
+      if (apiError?.field_errors) {
+        // Map each field error into state so inputs can show inline messages
+        const mapped: Record<string, string> = {};
+        Object.entries(apiError.field_errors).forEach(([field, messages]) => {
+          mapped[field] = (messages as string[])[0];
+        });
+        setFieldErrors(mapped);
+        setError('Please correct the highlighted fields below.');
+      } else {
+        setError(apiError?.message ?? err?.message ?? 'An error occurred');
+      }
     } finally {
       setLoading(false);
     }
@@ -218,21 +211,75 @@ export default function CreditorForm({ creditor, onSuccess, onCancel }: Creditor
 
   const isEditing = !!creditor;
 
+  // ── Reusable field components ─────────────────────────────────────────────
+
+  /** Standard text input with server-side error display and optional maxLength */
+  const TextInput = ({
+    name,
+    label,
+    type = 'text',
+    required = false,
+    disabled = false,
+    placeholder = '',
+    maxLength,
+  }: {
+    name: string;
+    label: string;
+    type?: string;
+    required?: boolean;
+    disabled?: boolean;
+    placeholder?: string;
+    maxLength?: number;
+  }) => (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      <input
+        type={type}
+        name={name}
+        value={formData[name]}
+        onChange={handleInputChange}
+        disabled={disabled}
+        placeholder={placeholder}
+        maxLength={maxLength}
+        className={`w-full px-3 py-2 border rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 ${
+          fieldErrors[name] ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300'
+        }`}
+      />
+      {maxLength && (
+        <p className="mt-1 text-xs text-gray-400 text-right">
+          {(formData[name] as string)?.length ?? 0}/{maxLength}
+        </p>
+      )}
+      {fieldErrors[name] && (
+        <p className="mt-1 text-xs text-red-600">{fieldErrors[name]}</p>
+      )}
+    </div>
+  );
+
+  /** Address input — always max 20 chars per Django model constraint */
+  const AddressInput = ({ name, label }: { name: string; label: string }) => (
+    <TextInput name={name} label={label} maxLength={20} />
+  );
+
   return (
     <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-md p-6 space-y-6">
+
+      {/* Global error banner */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded p-4">
-          <p className="text-red-800">{error}</p>
+          <p className="text-red-800 text-sm">{error}</p>
         </div>
       )}
 
-      {/* Basic Information */}
-      <div>
+      {/* ── Basic Information ──────────────────────────────────────────────── */}
+      <section>
         <h3 className="text-lg font-semibold mb-4 text-gray-800">Basic Information</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Supplier Number *
+              Supplier Number <span className="text-red-500">*</span>
             </label>
             <input
               type="number"
@@ -241,308 +288,120 @@ export default function CreditorForm({ creditor, onSuccess, onCancel }: Creditor
               onChange={handleInputChange}
               disabled={isEditing}
               placeholder={isEditing ? '' : 'Enter supplier number'}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 ${
+                fieldErrors.supplier_number ? 'border-red-500' : 'border-gray-300'
+              }`}
             />
-            {/* Hidden field for account_number - synced with supplier_number */}
-            <input
-              type="hidden"
-              name="account_number"
-              value={formData.account_number}
-            />
+            {fieldErrors.supplier_number && (
+              <p className="mt-1 text-xs text-red-600">{fieldErrors.supplier_number}</p>
+            )}
+            <input type="hidden" name="account_number" value={formData.account_number} />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Supplier Name *
-            </label>
-            <input
-              type="text"
-              name="name"
-              value={formData.name}
-              onChange={handleInputChange}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Short Name
-            </label>
-            <input
-              type="text"
-              name="short_name"
-              value={formData.short_name}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
+          <TextInput name="name" label="Supplier Name" required />
+          <TextInput name="short_name" label="Short Name" />
         </div>
-      </div>
+      </section>
 
-      {/* Contact Information */}
-      <div>
+      {/* ── Contact Information ────────────────────────────────────────────── */}
+      <section>
         <h3 className="text-lg font-semibold mb-4 text-gray-800">Contact Information</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Email
-            </label>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Contact Person
-            </label>
-            <input
-              type="text"
-              name="contact_person"
-              value={formData.contact_person}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Telephone 1
-            </label>
-            <input
-              type="tel"
-              name="telephone"
-              value={formData.telephone}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Telephone 2
-            </label>
-            <input
-              type="tel"
-              name="telephone2"
-              value={formData.telephone2}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Fax
-            </label>
-            <input
-              type="tel"
-              name="fax"
-              value={formData.fax}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
+          <TextInput name="email" label="Email" type="email" />
+          <TextInput name="contact_person" label="Contact Person" />
+          <TextInput name="telephone" label="Telephone 1" type="tel" />
+          <TextInput name="telephone2" label="Telephone 2" type="tel" />
+          <TextInput name="fax" label="Fax" type="tel" />
         </div>
-      </div>
+      </section>
 
-      {/* Physical Address */}
-      <div>
+      {/* ── Physical Address ───────────────────────────────────────────────── */}
+      <section>
         <h3 className="text-lg font-semibold mb-4 text-gray-800">Physical Address</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Address Line 1
-            </label>
-            <input
-              type="text"
-              name="physical_address_line1"
-              value={formData.physical_address_line1}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Address Line 2
-            </label>
-            <input
-              type="text"
-              name="physical_address_line2"
-              value={formData.physical_address_line2}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Address Line 3
-            </label>
-            <input
-              type="text"
-              name="physical_address_line3"
-              value={formData.physical_address_line3}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              City
-            </label>
-            <input
-              type="text"
-              name="physical_city"
-              value={formData.physical_city}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Postal Code
-            </label>
-            <input
-              type="text"
-              name="physical_postal_code"
-              value={formData.physical_postal_code}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
+          <AddressInput name="physical_address_line1" label="Address Line 1" />
+          <AddressInput name="physical_address_line2" label="Address Line 2" />
+          <AddressInput name="physical_address_line3" label="Address Line 3" />
+          <AddressInput name="physical_city" label="City" />
+          <AddressInput name="physical_postal_code" label="Postal Code" />
         </div>
-      </div>
+      </section>
 
-      {/* Postal Address */}
-      <div>
+      {/* ── Postal Address ─────────────────────────────────────────────────── */}
+      <section>
         <h3 className="text-lg font-semibold mb-4 text-gray-800">Postal Address</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Address Line 1
-            </label>
-            <input
-              type="text"
-              name="postal_address_line1"
-              value={formData.postal_address_line1}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Address Line 2
-            </label>
-            <input
-              type="text"
-              name="postal_address_line2"
-              value={formData.postal_address_line2}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Address Line 3
-            </label>
-            <input
-              type="text"
-              name="postal_address_line3"
-              value={formData.postal_address_line3}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              City
-            </label>
-            <input
-              type="text"
-              name="postal_city"
-              value={formData.postal_city}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Postal Code
-            </label>
-            <input
-              type="text"
-              name="postal_postal_code"
-              value={formData.postal_postal_code}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
+          <AddressInput name="postal_address_line1" label="Address Line 1" />
+          <AddressInput name="postal_address_line2" label="Address Line 2" />
+          <AddressInput name="postal_address_line3" label="Address Line 3" />
+          <AddressInput name="postal_city" label="City" />
+          <AddressInput name="postal_postal_code" label="Postal Code" />
         </div>
-      </div>
+      </section>
 
-      {/* Account Settings */}
-      <div>
+      {/* ── Account Settings ───────────────────────────────────────────────── */}
+      <section>
         <h3 className="text-lg font-semibold mb-4 text-gray-800">Account Settings</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          {/* Account Type */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Account Type
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Account Type</label>
             <select
               name="account_type"
               value={formData.account_type}
               onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
+                fieldErrors.account_type ? 'border-red-500' : 'border-gray-300'
+              }`}
             >
               <option value="">-- Select Account Type --</option>
               <option value="BBF">Balance Brought Forward</option>
               <option value="OI">Open Item</option>
             </select>
+            {fieldErrors.account_type && (
+              <p className="mt-1 text-xs text-red-600">{fieldErrors.account_type}</p>
+            )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Our Account Number
-            </label>
-            <input
-              type="text"
-              name="our_account_number"
-              value={formData.our_account_number}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
+          <TextInput name="our_account_number" label="Our Account Number" />
 
+          {/* Credit Terms — shows spinner while loading, error if none available */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Credit Terms
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Credit Terms</label>
             <select
               name="credit_terms"
               value={formData.credit_terms ? String(formData.credit_terms) : ''}
               onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+              disabled={creditTermsOptions.length === 0 && loading}
+              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 ${
+                fieldErrors.credit_terms ? 'border-red-500' : 'border-gray-300'
+              }`}
             >
-              <option value="">-- Select Credit Terms --</option>
-              {creditTermsOptions.map(term => (
-                <option key={term.id} value={String(term.id)}>{term.name}</option>
-              ))}
+              {creditTermsOptions.length === 0 ? (
+                <option value="">-- No credit terms available --</option>
+              ) : (
+                <>
+                  <option value="">-- Select Credit Terms --</option>
+                  {creditTermsOptions.map(term => (
+                    <option key={term.id} value={String(term.id)}>
+                      {term.name}
+                    </option>
+                  ))}
+                </>
+              )}
             </select>
+            {fieldErrors.credit_terms && (
+              <p className="mt-1 text-xs text-red-600">{fieldErrors.credit_terms}</p>
+            )}
+            {creditTermsOptions.length === 0 && (
+              <p className="mt-1 text-xs text-amber-600">
+                ⚠ Credit terms could not be loaded. Check your connection or add terms in settings.
+              </p>
+            )}
           </div>
 
+          {/* Prompt Payment Discount */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Prompt Payment Discount (%)
@@ -555,10 +414,16 @@ export default function CreditorForm({ creditor, onSuccess, onCancel }: Creditor
               min="0"
               max="100"
               step="0.01"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
+                fieldErrors.prompt_payment_discount_percent ? 'border-red-500' : 'border-gray-300'
+              }`}
             />
+            {fieldErrors.prompt_payment_discount_percent && (
+              <p className="mt-1 text-xs text-red-600">{fieldErrors.prompt_payment_discount_percent}</p>
+            )}
           </div>
 
+          {/* Checkboxes */}
           <div className="flex items-center gap-2 mt-6">
             <input
               type="checkbox"
@@ -580,78 +445,30 @@ export default function CreditorForm({ creditor, onSuccess, onCancel }: Creditor
               onChange={handleInputChange}
               className="w-4 h-4 rounded border-gray-300"
             />
-            <label className="text-sm font-medium text-gray-700">
-              Active
-            </label>
+            <label className="text-sm font-medium text-gray-700">Active</label>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Banking Details */}
-      <div>
+      {/* ── Banking Details ────────────────────────────────────────────────── */}
+      <section>
         <h3 className="text-lg font-semibold mb-4 text-gray-800">Banking Details</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Bank Name
-            </label>
-            <input
-              type="text"
-              name="bank_name"
-              value={formData.bank_name}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Branch Code
-            </label>
-            <input
-              type="text"
-              name="bank_branch_code"
-              value={formData.bank_branch_code}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Account Number
-            </label>
-            <input
-              type="text"
-              name="bank_account_number"
-              value={formData.bank_account_number}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
+          <TextInput name="bank_name" label="Bank Name" />
+          <TextInput name="bank_branch_code" label="Branch Code" />
+          <TextInput name="bank_account_number" label="Account Number" />
         </div>
-      </div>
+      </section>
 
-      {/* VAT */}
-      <div>
+      {/* ── Tax Information ────────────────────────────────────────────────── */}
+      <section>
         <h3 className="text-lg font-semibold mb-4 text-gray-800">Tax Information</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              VAT Number
-            </label>
-            <input
-              type="text"
-              name="vat_number"
-              value={formData.vat_number}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
+          <TextInput name="vat_number" label="VAT Number" />
         </div>
-      </div>
+      </section>
 
-      {/* Form Actions */}
+      {/* ── Form Actions ───────────────────────────────────────────────────── */}
       <div className="flex gap-3 pt-6 border-t border-gray-200">
         <button
           type="submit"
