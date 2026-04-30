@@ -81,7 +81,7 @@ export default function StockAdjustments({ onBack }: StockAdjustmentsProps) {
     }
 
     const item = stockItems.find((s) => s.stock_code === selectedStockCode);
-    const currentQty = item?.quantity_on_hand || 0;
+    const currentQty = parseFloat(item?.quantity_on_hand) || 0;
     const difference = newQuantity - currentQty;
 
     const adjustment = {
