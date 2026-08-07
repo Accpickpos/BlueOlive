@@ -10,14 +10,24 @@ from .models import (
 )
 
 
+MARKUP_FIELD_LIMIT = Decimal('9999.99')  # markup_1/2/3 are DecimalField(max_digits=6, decimal_places=2)
+
+
 @receiver(pre_save, sender=StockItem)
 def calculate_stock_item_markups(sender, instance, **kwargs):
-    """Auto-calculate markup percentages when prices change"""
+    """
+    Auto-calculate markup percentages when prices change. Clamped to the
+    field's precision — a nominal cost_price (e.g. labour/service items
+    costed at R1) against a much higher selling price would otherwise
+    produce a markup in the tens of thousands of percent and overflow the
+    DecimalField at save time.
+    """
     if instance.cost_price > 0:
         for level in [1, 2, 3]:
             selling_price = getattr(instance, f'selling_price_{level}')
             if selling_price > 0:
                 markup = ((selling_price - instance.cost_price) / instance.cost_price) * 100
+                markup = max(-MARKUP_FIELD_LIMIT, min(MARKUP_FIELD_LIMIT, markup))
                 setattr(instance, f'markup_{level}', markup)
 
 

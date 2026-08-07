@@ -982,5 +982,161 @@ class BranchTransferInvoice(models.Model):
             models.Index(fields=['invoice_date']),
         ]
 
+
+# ============================================================================
+# Legacy DBF imports with no prior model home (serial_number.dbf,
+# prupdate.dbf, stock_promo.dbf, smast_discounts.dbf)
+# ============================================================================
+
+class SerializedStockItem(models.Model):
+    """Serial-number tracked stock item, mapped from serial_number.dbf"""
+    # SERIALNO C 20
+    serial_number = models.CharField(max_length=20, unique=True, help_text="SERIALNO")
+    # CODE C 13 - stock item this serial belongs to
+    stock_item = models.ForeignKey(
+        StockItem, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='serial_numbers', help_text="CODE"
+    )
+    # ITEMDETAIL C 30
+    item_detail = models.CharField(max_length=30, blank=True, help_text="ITEMDETAIL")
+    # DATE D 8
+    transaction_date = models.DateField(null=True, blank=True, help_text="DATE")
+    # TRANSTYPE C 2
+    transaction_type = models.CharField(max_length=2, blank=True, help_text="TRANSTYPE")
+    # TRANSNO N 6
+    transaction_number = models.PositiveIntegerField(null=True, blank=True, help_text="TRANSNO")
+    # VALUE N 12,2
+    value = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="VALUE")
+    # WARRANTPER N 3
+    warranty_period_months = models.PositiveIntegerField(null=True, blank=True, help_text="WARRANTPER")
+    # COMMENT1-4 C 30 each
+    comment1 = models.CharField(max_length=30, blank=True, help_text="COMMENT1")
+    comment2 = models.CharField(max_length=30, blank=True, help_text="COMMENT2")
+    comment3 = models.CharField(max_length=30, blank=True, help_text="COMMENT3")
+    comment4 = models.CharField(max_length=30, blank=True, help_text="COMMENT4")
+    # NAME C 40
+    customer_name = models.CharField(max_length=40, blank=True, help_text="NAME")
+    # ADD1-3 C 25 each
+    address_line1 = models.CharField(max_length=25, blank=True, help_text="ADD1")
+    address_line2 = models.CharField(max_length=25, blank=True, help_text="ADD2")
+    address_line3 = models.CharField(max_length=25, blank=True, help_text="ADD3")
+    # TEL C 15
+    telephone = models.CharField(max_length=15, blank=True, help_text="TEL")
+    # EMAIL C 50
+    email = models.CharField(max_length=50, blank=True, help_text="EMAIL")
+    # STOLEN L 1
+    is_stolen = models.BooleanField(default=False, help_text="STOLEN")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'serialized_stock_items'
+        ordering = ['serial_number']
+
+    def __str__(self):
+        return f"Serial {self.serial_number}"
+
+
+class StagedPriceUpdate(models.Model):
+    """Pending/staged price update, mapped from prupdate.dbf"""
+    # STOCKCODE C 13 — raw code, kept even when it doesn't resolve to a
+    # current StockItem (many legacy entries reference discontinued codes),
+    # so (stock_code, effective_date) is always a usable natural key on import.
+    stock_code = models.CharField(max_length=13, blank=True, help_text="STOCKCODE (raw)")
+    stock_item = models.ForeignKey(
+        StockItem, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='staged_price_updates', help_text="STOCKCODE"
+    )
+    # SUPNAME C 30 - no reliable FK key in this file, kept as plain text
+    supplier_name = models.CharField(max_length=30, blank=True, help_text="SUPNAME")
+    # DEPARTMENT C 20 - plain text, no reliable department code in this file
+    department_name = models.CharField(max_length=20, blank=True, help_text="DEPARTMENT")
+    # DESCRIP C 30
+    description = models.CharField(max_length=30, blank=True, help_text="DESCRIP")
+    # UNITOFMEAS C 10
+    unit_of_measure = models.CharField(max_length=10, blank=True, help_text="UNITOFMEAS")
+    # COST N 12,2
+    cost_price = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="COST")
+    # SELL1-3 N 12,2
+    sell_price_1 = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="SELL1")
+    sell_price_2 = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="SELL2")
+    sell_price_3 = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="SELL3")
+    # EFFECTDATE D 8
+    effective_date = models.DateField(null=True, blank=True, help_text="EFFECTDATE")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'staged_price_updates'
+        ordering = ['effective_date']
+
+    def __str__(self):
+        return f"Price update: {self.stock_item_id} ({self.effective_date})"
+
+
+class StockPromotion(models.Model):
+    """Promotional pricing/messaging, mapped from stock_promo.dbf"""
+    # CODE C 13
+    stock_item = models.ForeignKey(StockItem, on_delete=models.CASCADE, related_name='promotions', help_text="CODE")
+    # DEPT C 3
+    department = models.ForeignKey(
+        SalesDepartment, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='stock_promotions', help_text="DEPT"
+    )
+    # STARTDATE D 8
+    start_date = models.DateField(help_text="STARTDATE")
+    # ENDDATE D 8
+    end_date = models.DateField(help_text="ENDDATE")
+    # BASIS C 1
+    basis = models.CharField(max_length=1, blank=True, help_text="BASIS")
+    # AMOUNT N 12,2
+    amount = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="AMOUNT")
+    # MESSAGE1-2 C 40 each
+    message_line1 = models.CharField(max_length=40, blank=True, help_text="MESSAGE1")
+    message_line2 = models.CharField(max_length=40, blank=True, help_text="MESSAGE2")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'stock_promotions'
+        ordering = ['-start_date']
+
+    def __str__(self):
+        return f"Promo: {self.stock_item.stock_code} ({self.start_date} to {self.end_date})"
+
+
+class DepartmentTimeDiscount(models.Model):
+    """Day-of-week/time-window department discount, mapped from smast_discounts.dbf"""
+    # DEPT C 3
+    department = models.ForeignKey(
+        SalesDepartment, on_delete=models.CASCADE,
+        related_name='time_discounts', help_text="DEPT"
+    )
+    # DEPTNAME C 20 - denormalised cache from the legacy file
+    department_name_legacy = models.CharField(max_length=20, blank=True, help_text="DEPTNAME")
+    # DAYOFWEEK N 1
+    day_of_week = models.PositiveSmallIntegerField(help_text="DAYOFWEEK")
+    # START_TIME C/N (time)
+    start_time = models.TimeField(help_text="START_TIME")
+    # END_TIME C/N (time)
+    end_time = models.TimeField(help_text="END_TIME")
+    # DISCOUNT N 5,2
+    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0, help_text="DISCOUNT")
+    # TYPE C 1
+    discount_type = models.CharField(max_length=1, blank=True, help_text="TYPE")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'department_time_discounts'
+        ordering = ['department', 'day_of_week', 'start_time']
+
+    def __str__(self):
+        return f"{self.department_id} discount day {self.day_of_week} {self.start_time}-{self.end_time}"
+
     def __str__(self):
         return f"{self.invoice_number} - {self.status}"
