@@ -273,21 +273,28 @@ export interface StockTakeItem {
   stock_take: number;
   stock_item: string;
   stock_item_detail?: StockItem;
-  quantity_counted?: number;
-  quantity_system?: number;
-  variance?: number;
-  notes?: string;
-  counted_by?: string;
-  counted_at?: string;
+  quantity_on_hand: number;
+  quantity_counted: number;
+  variance_quantity?: number;
+  variance_value?: number;
+  cost_price_at_count?: number;
+  is_counted?: boolean;
+  count_date?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface StockTake {
   id: number;
-  stock_take_number: string;
   stock_take_date: string;
-  status: 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED';
+  status: 'IN_PROGRESS' | 'COMPLETED' | 'UPDATED';
+  description?: string;
+  reset_negatives_to_zero?: boolean;
+  set_uncounted_to_zero?: boolean;
+  is_after_trading?: boolean;
+  trading_start_date?: string;
+  item_count?: number;
   items?: StockTakeItem[];
-  notes?: string;
   completed_at?: string;
   created_by?: string;
   created_at?: string;
@@ -397,11 +404,11 @@ export interface PaginatedMonthlyStats {
 export interface Branch {
   branch_code: string;
   branch_name: string;
-  branch_type: 'RETAIL' | 'WAREHOUSE' | 'HEAD_OFFICE';
+  branch_type: 'RETAIL' | 'WAREHOUSE' | 'HQ';
   is_active: boolean;
+  is_default?: boolean;
   address?: string;
-  phone?: string;
-  email?: string;
+  contact_phone?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -479,13 +486,13 @@ export interface PaginatedGroupOrders {
 
 export interface BranchTransferItem {
   id: number;
-  branch_transfer: number;
+  transfer: number;
   stock_item: string;
   stock_item_detail?: StockItem;
   quantity_requested: number;
   quantity_dispatched?: number;
   quantity_received?: number;
-  unit_cost?: number;
+  variance?: number;
 }
 
 export interface BranchTransfer {
@@ -495,13 +502,14 @@ export interface BranchTransfer {
   from_branch_detail?: Branch;
   to_branch: string;
   to_branch_detail?: Branch;
-  status: 'PENDING' | 'APPROVED' | 'DISPATCHED' | 'IN_TRANSIT' | 'RECEIVED' | 'CANCELLED';
+  status: 'DRAFT' | 'PENDING' | 'APPROVED' | 'DISPATCHED' | 'IN_TRANSIT' | 'RECEIVED' | 'COMPLETED' | 'CANCELLED';
+  transfer_type?: 'STANDARD' | 'URGENT' | 'RETURN';
   items?: BranchTransferItem[];
-  transfer_date?: string;
-  dispatch_date?: string;
-  receive_date?: string;
+  requested_date?: string;
+  approved_date?: string;
+  dispatched_date?: string;
+  received_date?: string;
   notes?: string;
-  created_by?: string;
   created_at?: string;
   updated_at?: string;
 }

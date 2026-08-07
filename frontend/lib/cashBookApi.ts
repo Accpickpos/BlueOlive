@@ -56,12 +56,25 @@ export interface BankTransfer {
   [key: string]: any;
 }
 
+// Matches BankReconciliationSerializer (backend/core/apps/cash_book) —
+// reconciliation_number is server-generated on create.
 export interface BankReconciliation {
   id?: number;
+  reconciliation_number?: string;
   reconciliation_date: string;
-  bank_statement_balance: number;
-  system_balance: number;
-  variance: number;
+  bank_account_number: string;
+  statement_date: string;
+  statement_number?: string;
+  opening_balance: number;
+  closing_balance_per_statement: number;
+  closing_balance_per_books: number;
+  outstanding_deposits?: number;
+  outstanding_cheques?: number;
+  bank_errors?: number;
+  book_errors?: number;
+  status?: 'IN_PROGRESS' | 'COMPLETED' | 'REVIEWED';
+  is_balanced?: boolean;
+  difference?: number;
   notes?: string;
   created_at?: string;
   [key: string]: any;

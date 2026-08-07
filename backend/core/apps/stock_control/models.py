@@ -157,7 +157,15 @@ class StockItem(models.Model):
         max_length=1, blank=True, null=True,
         help_text="KVI - Known Value Item flag"
     )
-    
+
+    # Barcode - no legacy DBF equivalent, not unique (real-world barcode data
+    # is messy: duplicates, reused codes across suppliers) - stock_code
+    # already carries uniqueness as the primary key.
+    barcode = models.CharField(
+        max_length=20, blank=True, null=True,
+        help_text="Barcode/EAN for scanner lookup"
+    )
+
     # Flags
     is_active = models.BooleanField(default=True)
     
@@ -177,6 +185,7 @@ class StockItem(models.Model):
             models.Index(fields=['is_active']),
             models.Index(fields=['bin_number']),
             models.Index(fields=['is_active', 'department'], name='idx_stock_active_dept'),
+            models.Index(fields=['barcode'], name='idx_stockitem_barcode'),
         ]
 
     def __str__(self):
@@ -195,6 +204,18 @@ class StockItem(models.Model):
             selling_price = getattr(self, f'selling_price_{price_level}')
             return ((selling_price - self.cost_price) / self.cost_price) * 100
         return 0
+
+    def apply_markups(self):
+        """
+        Recompute selling_price_1/2/3 from cost_price and the stored markup
+        percentages. Inverse of calculate_markup(). Called when a supplier is
+        flagged to auto-update selling prices on goods receipt.
+        """
+        from decimal import Decimal
+        for level in (1, 2, 3):
+            markup = getattr(self, f'markup_{level}')
+            setattr(self, f'selling_price_{level}', self.cost_price * (1 + markup / Decimal('100')))
+        self.save(update_fields=['selling_price_1', 'selling_price_2', 'selling_price_3'])
 
     def calculate_gross_profit(self, price_level=1):
         """Calculate gross profit percentage"""

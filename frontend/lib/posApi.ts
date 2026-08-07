@@ -80,12 +80,22 @@ export interface ReceiptCreateData {
   notes?: string;
 }
 
+// Matches LaybyeDetailSerializer's writable fields (backend/core/apps/pos).
+// `lines`/`payments` are read_only on that serializer — there is currently
+// no API endpoint to attach stock line items to a laybye, so creation is
+// header-only (total_amount/deposit_amount entered directly).
 export interface LaybeyCreateData {
-  debtor_account_number: string;
-  description: string;
+  laybye_number: string;
+  customer_name: string;
+  telephone?: string;
+  laybye_date: string; // YYYY-MM-DD
+  expiry_date: string; // YYYY-MM-DD
+  total_amount: number;
   deposit_amount: number;
-  line_items: LineItem[];
-  notes?: string;
+  comment1?: string;
+  comment2?: string;
+  debtor_account_number?: number;
+  sales_area?: number;
 }
 
 export interface QuotationCreateData {
@@ -586,6 +596,59 @@ class POSTransactionAPI {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => {
         if (value) params.append(key, String(value));
+      });
+      if (params.toString()) {
+        endpoint += `?${params.toString()}`;
+      }
+    }
+    return this.request('GET', endpoint);
+  }
+
+  // ============================================================
+  // CASH RETURNS
+  // ============================================================
+
+  /**
+   * Create a cash return (refund against a prior sale).
+   * Matches CashReturnCreateSerializer on the backend.
+   */
+  async createCashReturn(data: {
+    return_number: string;
+    return_date: string;
+    original_sale_number: string;
+    customer_name?: string;
+    reason: string;
+    station_number?: number;
+    lines: Array<{ stock_code: string; description: string; quantity: number; unit_price: number; tax_code: number }>;
+  }): Promise<TransactionResponse> {
+    return this.request('POST', ENDPOINTS.POS.CASH_RETURNS, data);
+  }
+
+  /**
+   * Post a cash return — updates stock and the daily cash control totals.
+   */
+  async postCashReturn(returnId: string | number): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.CASH_RETURNS}${returnId}/post_return/`);
+  }
+
+  // ============================================================
+  // CASH CONTROL
+  // ============================================================
+
+  /**
+   * Get the daily cash control summary (till reconciliation) for a cashier.
+   * Matches CashControlViewSet.daily_summary on the backend.
+   */
+  async getCashControlDailySummary(filters?: {
+    date?: string;
+    cashier?: string | number;
+    station_number?: string | number;
+  }): Promise<any> {
+    let endpoint = `${ENDPOINTS.POS.CASH_CONTROL}daily_summary/`;
+    if (filters) {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') params.append(key, String(value));
       });
       if (params.toString()) {
         endpoint += `?${params.toString()}`;

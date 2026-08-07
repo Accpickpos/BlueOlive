@@ -93,7 +93,7 @@ class DebtorService:
         """
         Post a transaction to the debtor's account (DEBTRAN).
         Updates debtor balance and creates transaction record.
-        
+
         Args:
             debtor: Debtor instance
             dtype: Transaction type (IN=Invoice, CN=Credit Note, RCP=Receipt, etc.)
@@ -104,41 +104,41 @@ class DebtorService:
             custref: Customer reference
             del1-4: Delivery details
         """
-        if debtor.blockflag == 'Y':
+        if debtor.is_blocked:
             raise ValueError(f"Account {debtor.dno} is blocked")
-        
+
         # Calculate defaults if not provided
         if dtsub is None:
             dtsub = dttot
         if dtgst is None:
             dtgst = Decimal('0.00')
-        
+
         # Lock the debtor row to prevent concurrent transaction number generation
         debtor = Debtor.objects.select_for_update().get(pk=debtor.pk)
-        
+
         # Create sequential transaction number (within lock to prevent duplicates)
-        last_tran = DebtorTransaction.objects.filter(dno=debtor).order_by('-dtrano').first()
-        new_dtrano = str(int(last_tran.dtrano) + 1).zfill(6) if last_tran else '000001'
-        
+        last_tran = DebtorTransaction.objects.filter(debtor=debtor).order_by('-transaction_number').first()
+        new_dtrano = str(int(last_tran.transaction_number) + 1).zfill(6) if last_tran else '000001'
+
         # Create debtor transaction (DEBTRAN)
         trans = DebtorTransaction.objects.create(
-            dno=debtor,
-            dtrano=new_dtrano,
-            dtype=dtype,
-            dtdate=date.today(),
-            dtsub=dtsub,
-            dtgst=dtgst,
-            dttot=dttot,
-            dtaxstat='S',  # Default to Taxable
-            source='API',
-            ordno=ordno,
-            custref=custref,
-            del1=del1,
-            del2=del2,
-            del3=del3,
-            del4=del4,
+            debtor=debtor,
+            transaction_number=new_dtrano,
+            transaction_type=dtype,
+            transaction_date=date.today(),
+            subtotal=dtsub,
+            vat_amount=dtgst,
+            total_amount=dttot,
+            vat_status='S',  # Default to Taxable
+            source_type='MANUAL',
+            order_number=ordno,
+            customer_reference=custref,
+            description_line1=del1,
+            description_line2=del2,
+            description_line3=del3,
+            description_line4=del4,
         )
-        
+
         # Determine if transaction increases or decreases balance
         if dtype in ['IN', 'DM']:  # Invoice, Debit Memo
             balance_change = dttot
@@ -148,13 +148,13 @@ class DebtorService:
             balance_change = -dttot
         else:
             balance_change = dttot
-        
+
         # Update debtor balance (goes to current)
         debtor.dcrnt += balance_change
         debtor.dsalesm += dttot if dtype == 'IN' else Decimal('0.00')
         debtor.dsalesy += dttot if dtype == 'IN' else Decimal('0.00')
         debtor.save()
-        
+
         # Create open item record (DEBTOPEN) for Balance Forward accounts
         if debtor.acctype != 'O':  # Only for Balance Forward accounts
             Debtopen.objects.create(
@@ -164,10 +164,10 @@ class DebtorService:
                 date=date.today(),
                 total=abs(dttot),
                 balancedue=abs(dttot) if balance_change > 0 else Decimal('0.00'),
-                ageflag=0,  # Current
-                posted=True,
+                ageflag='0',  # Current
+                posted='Y',
             )
-        
+
         # Create audit record (DEBTORAUD)
         DebtorAudit.objects.create(
             dno=debtor,
@@ -178,7 +178,7 @@ class DebtorService:
             date=date.today(),
             amount=dttot,
         )
-        
+
         return trans
     
     @staticmethod
@@ -193,9 +193,9 @@ class DebtorService:
             ordno: Order reference
             custref: Customer reference
         """
-        if debtor.blockflag == 'Y':
+        if debtor.is_blocked:
             raise ValueError(f"Account {debtor.dno} is blocked")
-        
+
         if amount <= 0:
             raise ValueError("Receipt amount must be positive")
         
@@ -217,6 +217,37 @@ class DebtorService:
         
         return trans
     
+    @staticmethod
+    @transaction.atomic
+    def post_journal(debtor, journal_type, amount, custref=''):
+        """
+        Post a debit or credit journal adjustment to the debtor's account.
+
+        Args:
+            debtor: Debtor instance
+            journal_type: 'JD' (Journal Debit, increases balance owing) or
+                          'JC' (Journal Credit, reduces balance owing)
+            amount: Journal amount (positive)
+            custref: Customer reference / reason for the journal
+        """
+        if journal_type not in ('JD', 'JC'):
+            raise ValueError("journal_type must be 'JD' or 'JC'")
+
+        if debtor.is_blocked:
+            raise ValueError(f"Account {debtor.dno} is blocked")
+
+        if amount <= 0:
+            raise ValueError("Journal amount must be positive")
+
+        return DebtorService.post_debtran(
+            debtor=debtor,
+            dtype=journal_type,
+            dttot=amount,
+            dtsub=amount,
+            dtgst=Decimal('0.00'),
+            custref=custref,
+        )
+
     @staticmethod
     def calculate_interest(debtor, rate=0.01, start_period=2):
         """

@@ -431,9 +431,27 @@ class DebteopenSerializer(serializers.ModelSerializer):
 
 class DpdcSerializer(serializers.ModelSerializer):
     """Serializer for post-dated cheques."""
+    debtor_id = serializers.IntegerField(source='dno_id')
+    expected_date = serializers.DateField(source='date')
+
     class Meta:
         model = Dpdc
-        fields = '__all__'
+        fields = [
+            'id', 'debtor_id', 'cheque_number', 'bank', 'amount',
+            'expected_date', 'received_date', 'cleared_date', 'status',
+            'notes', 'created_at', 'updated_at',
+        ]
+
+    def update(self, instance, validated_data):
+        # updateStatus() on the frontend sends a `status_date` alongside the
+        # new status — route it to whichever date field matches the transition.
+        status_date = self.initial_data.get('status_date')
+        new_status = validated_data.get('status')
+        if status_date and new_status == 'RECEIVED':
+            instance.received_date = status_date
+        elif status_date and new_status == 'CLEARED':
+            instance.cleared_date = status_date
+        return super().update(instance, validated_data)
 
 
 class DebtorAuditSerializer(serializers.ModelSerializer):

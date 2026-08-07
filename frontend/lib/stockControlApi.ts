@@ -576,6 +576,18 @@ export const stockControlApi = {
   // ============ STOCK TAKE ITEMS ============
   stockTakeItems: {
     /**
+     * Add an item to a stock take, capturing the system quantity at the
+     * time it's added. Count it afterwards via recordCount().
+     */
+    create: async (data: { stock_take: number; stock_item: string; quantity_on_hand: number; cost_price_at_count?: number }) => {
+      const response = await api.post<StockTakeItem>(
+        ENDPOINTS.STOCK_CONTROL.STOCK_TAKE_ITEMS,
+        data
+      );
+      return response.data;
+    },
+
+    /**
      * Get single stock take item
      */
     get: async (id: number) => {
@@ -989,6 +1001,20 @@ export const stockControlApi = {
     cancel: async (id: number) => {
       const response = await api.post(
         ENDPOINTS.STOCK_CONTROL.TRANSFER_CANCEL(id)
+      );
+      return response.data;
+    },
+  },
+
+  // ============ BRANCH TRANSFER ITEMS ============
+  branchTransferItems: {
+    /**
+     * Add a line item to a branch transfer
+     */
+    create: async (data: { transfer: number; stock_item: string; quantity_requested: number }) => {
+      const response = await api.post(
+        ENDPOINTS.STOCK_CONTROL.BRANCH_TRANSFER_ITEMS,
+        data
       );
       return response.data;
     },

@@ -500,6 +500,11 @@ class CashControlSummarySerializer(serializers.Serializer):
     total_refunds = serializers.DecimalField(max_digits=12, decimal_places=2)
     total_receipts = serializers.DecimalField(max_digits=12, decimal_places=2)
     total_payouts = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_credits = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_cashed_cheques = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_new_laybyes = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_laybye_receipts = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_cancelled_laybyes = serializers.DecimalField(max_digits=12, decimal_places=2)
     cash_expected = serializers.DecimalField(max_digits=12, decimal_places=2)
     cash_takings = serializers.DecimalField(max_digits=12, decimal_places=2)
     cheque_takings = serializers.DecimalField(max_digits=12, decimal_places=2)
@@ -639,11 +644,64 @@ class CashReturnSerializer(serializers.ModelSerializer):
     """Serializer for cash returns."""
     lines = CashReturnLineSerializer(many=True, read_only=True)
     cashier_name = serializers.CharField(source='cashier.username', read_only=True)
-    
+
     class Meta:
         model = CashReturn
         fields = '__all__'
         read_only_fields = ['subtotal', 'vat_amount', 'total_amount', 'is_posted', 'created_at', 'updated_at']
+
+
+class CashReturnCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating cash returns (header + lines in one request)."""
+    lines = CashReturnLineSerializer(many=True)
+
+    class Meta:
+        model = CashReturn
+        fields = [
+            'return_number', 'return_date', 'original_sale_number', 'customer_name',
+            'reason', 'cashier', 'station_number', 'lines'
+        ]
+
+    def validate_return_number(self, value):
+        if CashReturn.objects.filter(return_number=value).exists():
+            raise serializers.ValidationError("Return number already exists.")
+        return value
+
+    @db_transaction.atomic
+    def create(self, validated_data):
+        lines_data = validated_data.pop('lines')
+
+        cash_return = CashReturn.objects.create(**validated_data)
+
+        subtotal = Decimal('0.00')
+        vat_total = Decimal('0.00')
+
+        for idx, line_data in enumerate(lines_data, start=1):
+            line_data['line_number'] = idx
+
+            quantity = line_data['quantity']
+            unit_price = line_data['unit_price']
+            tax_code = line_data.get('tax_code', 1)
+
+            line_subtotal = quantity * unit_price
+            vat_rate = Decimal('0.14') if tax_code == 1 else Decimal('0.00')
+            line_vat = line_subtotal * vat_rate
+            line_total = line_subtotal + line_vat
+
+            line_data['line_total'] = line_total
+            line_data['vat_amount'] = line_vat
+
+            CashReturnLine.objects.create(cash_return=cash_return, **line_data)
+
+            subtotal += line_subtotal
+            vat_total += line_vat
+
+        cash_return.subtotal = subtotal
+        cash_return.vat_amount = vat_total
+        cash_return.total_amount = subtotal + vat_total
+        cash_return.save()
+
+        return cash_return
 
 
 class CashAChequeSerializer(serializers.ModelSerializer):

@@ -43,6 +43,7 @@ from apps.settings.urls import router as settings_router
 from apps.general_ledger.urls import router as general_ledger_router
 from apps.messaging.urls import urlpatterns as messaging_urls
 from apps.stockfinder.urls import router as stockfinder_router
+from apps.rentals.urls import router as rentals_router
 
 # Import subscription router from tenancy
 from tenancy.urls import subscription_router
@@ -77,6 +78,7 @@ v1_api_patterns = [
     path('general-ledger/', include(general_ledger_router.urls)),
     path('messaging/', include(messaging_urls)),
     path('stockfinder/', include(stockfinder_router.urls)),
+    path('rentals/', include(rentals_router.urls)),
 ]
 
 urlpatterns = [

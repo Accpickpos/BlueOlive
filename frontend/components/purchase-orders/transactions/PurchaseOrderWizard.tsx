@@ -11,13 +11,15 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { PurchaseOrder, PurchaseOrderLineItem, PurchaseOrderStatus, OrderLayoutOption } from '@/lib/types/purchaseOrders';
+import { purchaseOrdersApi } from '@/lib/purchaseOrdersApi';
+import { creditorsApi } from '@/lib/creditors';
 
 interface PurchaseOrderWizardProps {
   onComplete: () => void;
   onCancel: () => void;
 }
 
-type WizardStep = 'supplier' | 'parameters' | 'line-items' | 'expenses' | 'review';
+type WizardStep = 'supplier' | 'parameters' | 'line-items' | 'review';
 
 interface FormData extends Partial<Omit<PurchaseOrder, 'status' | 'layout_option'>> {
   order_type: 'COST' | 'RETAIL';
@@ -41,7 +43,6 @@ export function PurchaseOrderWizard({ onComplete, onCancel }: PurchaseOrderWizar
     total_landed_cost: 0,
   });
   const [lineItems, setLineItems] = useState<PurchaseOrderLineItem[]>([]);
-  const [expenses, setExpenses] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -49,7 +50,6 @@ export function PurchaseOrderWizard({ onComplete, onCancel }: PurchaseOrderWizar
     { key: 'supplier', label: 'Supplier', icon: <Building2 className="w-5 h-5" /> },
     { key: 'parameters', label: 'Parameters', icon: <FileText className="w-5 h-5" /> },
     { key: 'line-items', label: 'Line Items', icon: <Package className="w-5 h-5" /> },
-    { key: 'expenses', label: 'Expenses', icon: <FileText className="w-5 h-5" /> },
     { key: 'review', label: 'Review', icon: <Check className="w-5 h-5" /> },
   ];
 
@@ -85,25 +85,32 @@ export function PurchaseOrderWizard({ onComplete, onCancel }: PurchaseOrderWizar
     setLoading(true);
     setError('');
     try {
-      // Calculate totals
-      const subtotal = lineItems.reduce((sum, item) => sum + item.total_cost, 0);
-      const vat = subtotal * 0.15;
-      const landedCost = expenses.reduce((sum, e) => sum + e.amount, 0);
+      const extractStockItems = formData.extract_stock_items || false;
 
       const payload = {
-        ...formData,
-        total_amount: subtotal,
-        total_vat: vat,
-        total_landed_cost: subtotal + vat + landedCost,
-        line_items: lineItems,
-        expenses: expenses,
+        supplier: formData.supplier_id,
+        order_date: formData.order_date,
+        delivery_date: formData.delivery_date,
+        pricing_method: formData.order_type,
+        notes: formData.reference || '',
+        // Backend only supports two extraction modes; REORDER_QUANTITY maps to
+        // "items below reorder level", anything else extracts all supplier items.
+        extract_all_items: extractStockItems && formData.layout_option !== 'REORDER_QUANTITY',
+        extract_below_reorder: extractStockItems && formData.layout_option === 'REORDER_QUANTITY',
+        line_items: extractStockItems
+          ? undefined
+          : lineItems.map((item) => ({
+              stock_item: item.stock_code,
+              quantity_ordered: item.quantity,
+              unit_cost: item.current_cost,
+              tax_code: item.tax_code === 'Z' ? 2 : 1,
+            })),
       };
 
-      console.log('Submitting order:', payload);
-      // API call would go here
+      await purchaseOrdersApi.orders.create(payload as any);
       onComplete();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create order');
+    } catch (err: any) {
+      setError(err?.response?.data?.error || (err instanceof Error ? err.message : 'Failed to create order'));
     } finally {
       setLoading(false);
     }
@@ -123,10 +130,8 @@ export function PurchaseOrderWizard({ onComplete, onCancel }: PurchaseOrderWizar
             extractStockItems={formData.extract_stock_items || false}
           />
         );
-      case 'expenses':
-        return <ExpensesStep expenses={expenses} setExpenses={setExpenses} />;
       case 'review':
-        return <ReviewStep formData={formData} lineItems={lineItems} expenses={expenses} />;
+        return <ReviewStep formData={formData} lineItems={lineItems} />;
       default:
         return null;
     }
@@ -134,7 +139,6 @@ export function PurchaseOrderWizard({ onComplete, onCancel }: PurchaseOrderWizar
 
   const lineItemsTotal = lineItems.reduce((sum, item) => sum + item.total_cost, 0);
   const vat = lineItemsTotal * 0.15;
-  const expensesTotal = expenses.reduce((sum, e) => sum + e.amount, 0);
 
   return (
     <div className="bg-white rounded-lg shadow-lg">
@@ -197,15 +201,9 @@ export function PurchaseOrderWizard({ onComplete, onCancel }: PurchaseOrderWizar
                 <span className="text-gray-600">VAT (15%):</span>
                 <span className="font-medium">R {vat.toFixed(2)}</span>
               </div>
-              {expensesTotal > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Expenses:</span>
-                  <span className="font-medium">R {expensesTotal.toFixed(2)}</span>
-                </div>
-              )}
               <div className="flex justify-between border-t pt-2 text-base">
                 <span className="font-semibold">Total:</span>
-                <span className="font-bold">R {(lineItemsTotal + vat + expensesTotal).toFixed(2)}</span>
+                <span className="font-bold">R {(lineItemsTotal + vat).toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -262,11 +260,18 @@ function SupplierStep({
   formData: FormData;
   setFormData: (data: FormData) => void;
 }) {
-  const suppliers = [
-    { id: 1, name: 'ABC Supplies', code: 'ABC001' },
-    { id: 2, name: 'XYZ Trading', code: 'XYZ001' },
-    { id: 3, name: 'Global Inc', code: 'GLB001' },
-  ];
+  const [suppliers, setSuppliers] = useState<{ id: number; name: string; code: string }[]>([]);
+
+  React.useEffect(() => {
+    creditorsApi.accounts
+      .list({ page_size: 500 } as any)
+      .then((res: any) =>
+        setSuppliers(
+          (res.results || []).map((c: any) => ({ id: c.id, name: c.name, code: c.supplier_number }))
+        )
+      )
+      .catch(() => setSuppliers([]));
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -558,129 +563,15 @@ function LineItemsStep({
   );
 }
 
-function ExpensesStep({
-  expenses,
-  setExpenses,
-}: {
-  expenses: any[];
-  setExpenses: (expenses: any[]) => void;
-}) {
-  const [newExpense, setNewExpense] = useState({
-    expense_category: 'TRANSPORT',
-    description: '',
-    amount: 0,
-    is_vat_inclusive: false,
-  });
-
-  const handleAddExpense = () => {
-    if (!newExpense.amount) return;
-    setExpenses([...expenses, newExpense]);
-    setNewExpense({
-      expense_category: 'TRANSPORT',
-      description: '',
-      amount: 0,
-      is_vat_inclusive: false,
-    });
-  };
-
-  return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-gray-900">Landed Cost Expenses</h3>
-      <p className="text-sm text-gray-500">
-        Add additional costs such as transport, handling, or import duties
-      </p>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 p-4 bg-gray-50 rounded-lg">
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
-          <select
-            value={newExpense.expense_category}
-            onChange={(e) => setNewExpense({ ...newExpense, expense_category: e.target.value })}
-            className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-          >
-            <option value="TRANSPORT">Transport</option>
-            <option value="HANDLING">Handling</option>
-            <option value="IMPORT">Import Duty</option>
-            <option value="INSURANCE">Insurance</option>
-            <option value="OTHER">Other</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
-          <input
-            type="text"
-            value={newExpense.description}
-            onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
-            className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Amount</label>
-          <input
-            type="number"
-            value={newExpense.amount}
-            onChange={(e) => setNewExpense({ ...newExpense, amount: parseFloat(e.target.value) || 0 })}
-            className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-            step="0.01"
-          />
-        </div>
-        <div className="flex items-end">
-          <button
-            type="button"
-            onClick={handleAddExpense}
-            className="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-medium"
-          >
-            Add Expense
-          </button>
-        </div>
-      </div>
-
-      {expenses.length > 0 && (
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="text-left px-3 py-2 text-xs font-medium text-gray-600">Category</th>
-              <th className="text-left px-3 py-2 text-xs font-medium text-gray-600">Description</th>
-              <th className="text-right px-3 py-2 text-xs font-medium text-gray-600">Amount</th>
-              <th className="text-center px-3 py-2 text-xs font-medium text-gray-600">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {expenses.map((expense, index) => (
-              <tr key={index} className="border-b">
-                <td className="px-3 py-2">{expense.expense_category}</td>
-                <td className="px-3 py-2">{expense.description}</td>
-                <td className="px-3 py-2 text-right">R {expense.amount.toFixed(2)}</td>
-                <td className="px-3 py-2 text-center">
-                  <button
-                    type="button"
-                    onClick={() => setExpenses(expenses.filter((_, i) => i !== index))}
-                    className="text-red-500 hover:text-red-700 text-xs font-medium"
-                  >
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
 function ReviewStep({
   formData,
   lineItems,
-  expenses,
 }: {
   formData: FormData;
   lineItems: PurchaseOrderLineItem[];
-  expenses: any[];
 }) {
   const subtotal = lineItems.reduce((sum, item) => sum + item.total_cost, 0);
   const vat = subtotal * 0.15;
-  const expensesTotal = expenses.reduce((sum, e) => sum + e.amount, 0);
 
   return (
     <div className="space-y-6">
@@ -726,15 +617,9 @@ function ReviewStep({
               <dt className="text-gray-600">VAT (15%):</dt>
               <dd className="font-medium">R {vat.toFixed(2)}</dd>
             </div>
-            {expensesTotal > 0 && (
-              <div className="flex justify-between">
-                <dt className="text-gray-600">Expenses:</dt>
-                <dd className="font-medium">R {expensesTotal.toFixed(2)}</dd>
-              </div>
-            )}
             <div className="flex justify-between border-t pt-3 text-base">
               <dt className="font-semibold">Total:</dt>
-              <dd className="font-bold">R {(subtotal + vat + expensesTotal).toFixed(2)}</dd>
+              <dd className="font-bold">R {(subtotal + vat).toFixed(2)}</dd>
             </div>
           </dl>
         </div>
@@ -742,8 +627,8 @@ function ReviewStep({
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <p className="text-sm text-blue-800">
-          <strong>Note:</strong> This order will be created as <strong>DRAFT</strong>. You can edit
-          or approve it later before sending to the supplier.
+          <strong>Note:</strong> This order will be created as <strong>Outstanding</strong> and is
+          immediately live — stock will show as on order for the supplier.
         </p>
       </div>
     </div>

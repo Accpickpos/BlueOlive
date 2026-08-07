@@ -36,6 +36,7 @@ interface StockItem {
   cost_price: number;
   allow_negative_quantities: boolean;
   bin_number?: number;
+  barcode?: string;
   markup_1?: number;
   markup_2?: number;
   markup_3?: number;
@@ -253,6 +254,7 @@ export default function StockItemMaintenance({ onBack }: StockItemMaintenancePro
       cost_price: 0,
       allow_negative_quantities: false,
       bin_number: undefined,
+      barcode: '',
       markup_1: 0,
       markup_2: 0,
       markup_3: 0,
@@ -486,6 +488,17 @@ export default function StockItemMaintenance({ onBack }: StockItemMaintenancePro
                 value={formData.bin_number || ''}
                 onChange={(e) => setFormData({ ...formData, bin_number: e.target.value ? parseInt(e.target.value) : undefined })}
                 placeholder="e.g., 12345"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Barcode</label>
+              <input
+                type="text"
+                value={formData.barcode || ''}
+                onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                placeholder="Scan or type barcode"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
             </div>

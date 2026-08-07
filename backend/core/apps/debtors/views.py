@@ -32,6 +32,7 @@ from .serializers import (
     DebtranListSerializer, DebtOpenListSerializer
 )
 from .filters import DebtorFilter, DebtorTransactionFilter
+from .services import DebtorService
 from .permissions import (
     HasDebtorPermission, CanModifyDebtor, CanPostInvoice,
     CanChargeInterest
@@ -158,7 +159,7 @@ class DebtorViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             debtor.set_blocked(True)
             return Response({
                 'status': 'success',
-                'message': f'Debtor {debtor.customer_number} blocked successfully'
+                'message': f'Debtor {debtor.dno} blocked successfully'
             })
         except Exception as e:
             return Response(
@@ -174,7 +175,7 @@ class DebtorViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             debtor.set_blocked(False)
             return Response({
                 'status': 'success',
-                'message': f'Debtor {debtor.customer_number} unblocked successfully'
+                'message': f'Debtor {debtor.dno} unblocked successfully'
             })
         except Exception as e:
             return Response(
@@ -188,7 +189,7 @@ class DebtorViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         try:
             debtor = self.get_object()
             balance_data = {
-                'customer_number': debtor.customer_number,
+                'customer_number': debtor.dno,
                 'name': debtor.dname,
                 'credit_limit': float(debtor.dclimit),
                 'balance_breakdown': {
@@ -206,15 +207,15 @@ class DebtorViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                     (debtor.total_balance / debtor.dclimit * 100)
                     if debtor.dclimit > 0 else 0
                 ),
-                'is_blocked': debtor.is_blocked(),
+                'is_blocked': debtor.is_blocked,
                 'is_active': debtor.is_active,
                 'last_payment': {
-                    'date': debtor.last_payment_date,
-                    'amount': float(debtor.last_payment_amount),
+                    'date': debtor.ddatlpd,
+                    'amount': float(debtor.damtlpd),
                 },
                 'sales': {
-                    'mtd': float(debtor.sales_month),
-                    'ytd': float(debtor.sales_year),
+                    'mtd': float(debtor.dsalesm),
+                    'ytd': float(debtor.dsalesy),
                 },
             }
             return Response(balance_data)
@@ -368,7 +369,7 @@ class DebtorViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 
             return Response({
                 'status': 'success',
-                'message': f'Debtor {debtor.customer_number} converted to category {new_category}'
+                'message': f'Debtor {debtor.dno} converted to category {new_category}'
             })
         except Exception as e:
             return Response(
@@ -498,6 +499,89 @@ class DebtorTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    @action(detail=False, methods=['post'])
+    def post_receipt(self, request):
+        """Record a receipt (payment) against a debtor's account."""
+        try:
+            debtor = Debtor.objects.get(pk=request.data.get('debtor_id'))
+            amount = Decimal(str(request.data.get('amount', 0)))
+            trans = DebtorService.post_receipt(
+                debtor=debtor,
+                amount=amount,
+                custref=request.data.get('reference_number', ''),
+            )
+            return Response(DebtorTransactionSerializer(trans).data, status=status.HTTP_201_CREATED)
+        except Debtor.DoesNotExist:
+            return Response({'status': 'error', 'message': 'Debtor not found'}, status=status.HTTP_404_NOT_FOUND)
+        except ValueError as e:
+            return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'])
+    def post_debit(self, request):
+        """Post a debit journal (increases the amount owing)."""
+        try:
+            debtor = Debtor.objects.get(pk=request.data.get('debtor_id'))
+            amount = Decimal(str(request.data.get('amount', 0)))
+            trans = DebtorService.post_journal(
+                debtor=debtor, journal_type='JD', amount=amount,
+                custref=request.data.get('description', ''),
+            )
+            return Response(DebtorTransactionSerializer(trans).data, status=status.HTTP_201_CREATED)
+        except Debtor.DoesNotExist:
+            return Response({'status': 'error', 'message': 'Debtor not found'}, status=status.HTTP_404_NOT_FOUND)
+        except ValueError as e:
+            return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'])
+    def post_credit(self, request):
+        """Post a credit journal (reduces the amount owing)."""
+        try:
+            debtor = Debtor.objects.get(pk=request.data.get('debtor_id'))
+            amount = Decimal(str(request.data.get('amount', 0)))
+            trans = DebtorService.post_journal(
+                debtor=debtor, journal_type='JC', amount=amount,
+                custref=request.data.get('description', ''),
+            )
+            return Response(DebtorTransactionSerializer(trans).data, status=status.HTTP_201_CREATED)
+        except Debtor.DoesNotExist:
+            return Response({'status': 'error', 'message': 'Debtor not found'}, status=status.HTTP_404_NOT_FOUND)
+        except ValueError as e:
+            return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'])
+    def charge_interest(self, request):
+        """
+        Charge interest on a single debtor's overdue balance. If `amount` is
+        given, that value is charged directly; otherwise it's computed from
+        the debtor's aged balances via DebtorService.calculate_interest.
+        """
+        try:
+            debtor = Debtor.objects.get(pk=request.data.get('debtor_id'))
+            raw_amount = request.data.get('amount')
+            interest = Decimal(str(raw_amount)) if raw_amount else DebtorService.calculate_interest(debtor)
+            if interest <= 0:
+                return Response(
+                    {'status': 'error', 'message': 'No interest to charge'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            trans = DebtorService.post_debtran(
+                debtor=debtor, dtype='INT', dttot=interest, dtsub=interest,
+                dtgst=Decimal('0.00'), custref='Interest Charge',
+            )
+            return Response(DebtorTransactionSerializer(trans).data, status=status.HTTP_201_CREATED)
+        except Debtor.DoesNotExist:
+            return Response({'status': 'error', 'message': 'Debtor not found'}, status=status.HTTP_404_NOT_FOUND)
+        except ValueError as e:
+            return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 class DebteopenViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
@@ -540,7 +624,7 @@ class DebteopenViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def allocate(self, request, pk=None):
-        """Allocate payment against open item."""
+        """Allocate payment against a single open item."""
         try:
             open_item = self.get_object()
             allocation_amount = Decimal(str(request.data.get('amount', 0)))
@@ -571,6 +655,61 @@ class DebteopenViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    @action(detail=False, methods=['post'], url_path='allocate')
+    def allocate_receipt(self, request):
+        """
+        Batch-allocate a single receipt across one or more open items for a
+        debtor. Payload: {debtor_id, receipt_amount, allocations: [{open_item_id, amount}, ...]}
+        """
+        debtor_id = request.data.get('debtor_id')
+        allocations = request.data.get('allocations') or []
+
+        if not allocations:
+            return Response(
+                {'status': 'error', 'message': 'No allocations provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        results = []
+        try:
+            with db_transaction.atomic():
+                for alloc in allocations:
+                    open_item = Debtopen.objects.select_for_update().get(
+                        pk=alloc['open_item_id'], dno_id=debtor_id
+                    )
+                    amount = Decimal(str(alloc['amount']))
+
+                    if amount <= 0:
+                        raise ValueError('Allocation amount must be greater than zero')
+                    if amount > open_item.balancedue:
+                        raise ValueError(
+                            f"Allocation of {amount} exceeds balance due {open_item.balancedue} on {open_item.dtrano}"
+                        )
+
+                    open_item.balancedue -= amount
+                    open_item.save(update_fields=['balancedue'])
+
+                    DebtorAudit.objects.create(
+                        dno=open_item.dno,
+                        dtrano=open_item.dtrano,
+                        type=open_item.type,
+                        thistype='AL',
+                        thistran=open_item.dtrano,
+                        date=date.today(),
+                        amount=amount,
+                    )
+
+                    results.append({'open_item_id': open_item.id, 'new_balance': float(open_item.balancedue)})
+
+            return Response({'status': 'success', 'allocations': results})
+        except Debtopen.DoesNotExist:
+            return Response(
+                {'status': 'error', 'message': 'Open item not found for this debtor'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except (ValueError, KeyError) as e:
+            return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 class DpdcViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
@@ -590,9 +729,9 @@ class DpdcViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def active(self, request):
-        """Get all active post-dated cheques."""
+        """Get all outstanding post-dated cheques."""
         try:
-            active = self.get_queryset().filter(status='A')
+            active = self.get_queryset().filter(status='OUTSTANDING')
 
             page = self.paginate_queryset(active)
             if page is not None:
@@ -612,7 +751,7 @@ class DpdcViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         """Get PDCs due today."""
         try:
             today = date.today()
-            pdcs = self.get_queryset().filter(date=today, status='A')
+            pdcs = self.get_queryset().filter(date=today, status='OUTSTANDING')
 
             if not pdcs.exists():
                 return Response({
@@ -631,20 +770,21 @@ class DpdcViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def process(self, request, pk=None):
-        """Mark cheque as processed."""
+        """Mark cheque as received (banked, awaiting clearance)."""
         try:
             pdc = self.get_object()
 
-            if pdc.status == 'P':
+            if pdc.status == 'CLEARED':
                 return Response(
-                    {'status': 'error', 'message': 'PDC already processed'},
+                    {'status': 'error', 'message': 'PDC already cleared'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            pdc.status = 'P'
-            pdc.save(update_fields=['status'])
+            pdc.status = 'RECEIVED'
+            pdc.received_date = date.today()
+            pdc.save(update_fields=['status', 'received_date'])
 
-            return Response({'status': 'success', 'message': 'PDC marked as processed'})
+            return Response({'status': 'success', 'message': 'PDC marked as received'})
         except Exception as e:
             return Response(
                 {'status': 'error', 'message': str(e)},
@@ -653,26 +793,26 @@ class DpdcViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
-        """Cancel a post-dated cheque."""
+        """Mark a post-dated cheque as dishonoured."""
         try:
             pdc = self.get_object()
 
-            if pdc.status == 'C':
+            if pdc.status == 'DISHONOURED':
                 return Response(
-                    {'error': 'PDC already cancelled'},
+                    {'error': 'PDC already marked dishonoured'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            if pdc.status == 'P':
+            if pdc.status == 'CLEARED':
                 return Response(
-                    {'error': 'Cannot cancel a processed PDC'},
+                    {'error': 'Cannot dishonour a cleared PDC'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            pdc.status = 'C'
+            pdc.status = 'DISHONOURED'
             pdc.save(update_fields=['status'])
 
-            return Response({'status': 'success', 'message': 'PDC cancelled successfully'})
+            return Response({'status': 'success', 'message': 'PDC marked as dishonoured'})
         except Exception as e:
             return Response(
                 {'error': str(e)},
@@ -739,7 +879,7 @@ class DocumentSearchViewSet(viewsets.ViewSet):
                 if doc_number:
                     invoices = invoices.filter(invoice_number__icontains=doc_number)
                 if debtor_id:
-                    invoices = invoices.filter(debtor__customer_number=debtor_id)
+                    invoices = invoices.filter(debtor__dno=debtor_id)
                 if doc_status:
                     invoices = invoices.filter(status=doc_status)
                 if date_from:

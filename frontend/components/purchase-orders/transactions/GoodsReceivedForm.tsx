@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Truck, Check, AlertTriangle, FileText } from 'lucide-react';
 import { GoodsReceivedNote, GRNAccountingLineItem } from '@/lib/types/purchaseOrders';
+import { purchaseOrdersApi } from '@/lib/purchaseOrdersApi';
 
 interface GoodsReceivedFormProps {
   orderId?: number;
@@ -30,39 +31,20 @@ export function GoodsReceivedForm({ orderId, onComplete, onCancel }: GoodsReceiv
 
   const fetchOrder = async () => {
     try {
-      // Simulated order fetch
-      const mockOrder = {
-        id: orderId,
-        order_number: 'PO-001',
-        supplier_name: 'ABC Supplies',
-        total_amount: 15000,
-        line_items: [
-          {
-            id: 1,
-            stock_code: 'ITEM-001',
-            stock_description: 'Product A',
-            quantity: 100,
-            current_cost: 75,
-            quantity_received: 0,
-          },
-          {
-            id: 2,
-            stock_code: 'ITEM-002',
-            stock_description: 'Product B',
-            quantity: 50,
-            current_cost: 150,
-            quantity_received: 0,
-          },
-        ],
-      };
-
-      setOrder(mockOrder);
+      const data = await purchaseOrdersApi.orders.get(orderId!);
+      setOrder(data);
       setLineItems(
-        mockOrder.line_items.map((item: any) => ({
-          ...item,
-          quantity_received: 0,
-          is_corrected: false,
-        }))
+        (data.line_items || [])
+          .filter((item: any) => Number(item.quantity_outstanding) > 0)
+          .map((item: any) => ({
+            id: item.id,
+            stock_code: item.stock_code,
+            stock_description: item.stock_description,
+            quantity: Number(item.quantity),
+            quantity_outstanding: Number(item.quantity_outstanding),
+            current_cost: Number(item.base_price),
+            quantity_received: 0,
+          }))
       );
     } catch (err) {
       setError('Failed to load order');
@@ -96,17 +78,24 @@ export function GoodsReceivedForm({ orderId, onComplete, onCancel }: GoodsReceiv
     setLoading(true);
     setError('');
     try {
-      const payload = {
-        po_id: orderId,
-        ...formData,
-        line_items: lineItems,
-        total_amount: subtotal,
-      };
-      console.log('Submitting GRN:', payload);
-      // API call would go here
+      const linesToReceive = lineItems.filter((item) => item.quantity_received > 0);
+      if (linesToReceive.length === 0) {
+        setError('Enter a received quantity for at least one line');
+        return;
+      }
+
+      await purchaseOrdersApi.orders.receiveStock(orderId!, {
+        receipt_date: formData.receipt_date,
+        invoice_number: formData.invoice_number,
+        line_items: linesToReceive.map((item) => ({
+          purchase_order_line_id: item.id,
+          quantity_received: item.quantity_received,
+          actual_unit_cost: item.current_cost,
+        })),
+      });
       onComplete();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to post GRN');
+    } catch (err: any) {
+      setError(err?.response?.data?.error || (err instanceof Error ? err.message : 'Failed to post GRN'));
     } finally {
       setLoading(false);
     }
@@ -211,7 +200,7 @@ export function GoodsReceivedForm({ orderId, onComplete, onCancel }: GoodsReceiv
             </thead>
             <tbody>
               {lineItems.map((item, index) => {
-                const outstanding = item.quantity - item.quantity_received;
+                const outstanding = item.quantity_outstanding - item.quantity_received;
                 return (
                   <tr key={index} className="border-b hover:bg-gray-50">
                     <td className="px-3 py-3 text-sm font-medium">{item.stock_code}</td>
@@ -224,7 +213,7 @@ export function GoodsReceivedForm({ orderId, onComplete, onCancel }: GoodsReceiv
                         onChange={(e) => handleQuantityChange(index, parseInt(e.target.value) || 0)}
                         className="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-right focus:ring-2 focus:ring-green-500"
                         min="0"
-                        max={item.quantity}
+                        max={item.quantity_outstanding}
                       />
                     </td>
                     <td className="px-3 py-3 text-sm text-right">
@@ -259,12 +248,12 @@ export function GoodsReceivedForm({ orderId, onComplete, onCancel }: GoodsReceiv
               <span className="font-medium">R {subtotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">VAT (15%):</span>
-              <span className="font-medium">R {(subtotal * 0.15).toFixed(2)}</span>
+              <span className="text-gray-600">VAT (14%):</span>
+              <span className="font-medium">R {(subtotal * 0.14).toFixed(2)}</span>
             </div>
             <div className="flex justify-between border-t pt-2">
               <span className="font-semibold">Total:</span>
-              <span className="font-bold text-lg">R {(subtotal * 1.15).toFixed(2)}</span>
+              <span className="font-bold text-lg">R {(subtotal * 1.14).toFixed(2)}</span>
             </div>
           </div>
         </div>

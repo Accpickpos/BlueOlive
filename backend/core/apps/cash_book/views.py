@@ -26,6 +26,7 @@ from .services import (
     TransactionService, VATService, BalanceCalculationService,
     SummaryService, ReconciliationService
 )
+from .business_services import CashBookTransactionService
 from .permissions import (
     CanCreateTransactions, CanViewTransactions, CanReconcile,
     CanModifyReconciledTransactions
@@ -152,25 +153,38 @@ class OtherIncomeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         """Create other income transaction"""
         serializer = CreateOtherIncomeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         try:
             data = serializer.validated_data
-            other_income = TransactionService.create_other_income(
+            # value_excl_vat + tax_code drive the base transaction; VAT/total
+            # are computed authoritatively by create_transaction() itself —
+            # the serializer's own tax_amount/total_incl_vat are for the
+            # client's pre-submit preview only, not sent to the DB layer.
+            base_transaction = CashBookTransactionService.create_transaction(
+                transaction_type='OTHER_INCOME',
                 transaction_date=data['transaction_date'],
-                income_category_id=data['income_category_id'],
-                amount=data['amount'],
-                description=data['description'],
-                is_vat_inclusive=data.get('is_vat_inclusive', True),
+                value_excl_vat=data['value_excl_vat'],
                 tax_code=data.get('tax_code', 1),
+                audit_type=data.get('audit_type', 2),
+                category_id=data.get('category_id'),
                 reference=data.get('reference', ''),
-                paid_into=data.get('paid_into', 'CASH'),
+                description=data['description'],
+                account_type='BANK' if data.get('paid_into') == 'BANK' else 'CASH',
                 bank_account_number=data.get('bank_account_number', ''),
-                created_by=request.user.username
+                created_by=request.user.username,
             )
-            
+            other_income = OtherIncome.objects.create(
+                transaction=base_transaction,
+                income_category_id=data['income_category_id'],
+                is_vat_inclusive=False,
+                vat_amount=base_transaction.tax_amount,
+                tax_code=data.get('tax_code', 1),
+                paid_into=data.get('paid_into', 'CASH'),
+            )
+
             response_serializer = OtherIncomeSerializer(other_income)
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
-        
+
         except ValidationError as e:
             return Response(
                 {'error': str(e)},
@@ -199,26 +213,35 @@ class OtherExpenseViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         """Create other expense transaction"""
         serializer = CreateOtherExpenseSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         try:
             data = serializer.validated_data
-            other_expense = TransactionService.create_other_expense(
+            base_transaction = CashBookTransactionService.create_transaction(
+                transaction_type='OTHER_EXPENSE',
                 transaction_date=data['transaction_date'],
-                expense_category_id=data['expense_category_id'],
-                amount=data['amount'],
-                description=data['description'],
-                is_vat_inclusive=data.get('is_vat_inclusive', True),
+                value_excl_vat=data['value_excl_vat'],
                 tax_code=data.get('tax_code', 1),
+                audit_type=data.get('audit_type', 4),
+                category_id=data.get('category_id'),
                 reference=data.get('reference', ''),
-                paid_from=data.get('paid_from', 'CASH'),
+                description=data['description'],
+                account_type='BANK' if data.get('paid_from') == 'BANK' else 'CASH',
                 bank_account_number=data.get('bank_account_number', ''),
-                petty_cash_slip_number=data.get('petty_cash_slip_number', ''),
-                created_by=request.user.username
+                created_by=request.user.username,
             )
-            
+            other_expense = OtherExpense.objects.create(
+                transaction=base_transaction,
+                expense_category_id=data['expense_category_id'],
+                is_vat_inclusive=False,
+                vat_amount=base_transaction.tax_amount,
+                tax_code=data.get('tax_code', 1),
+                paid_from=data.get('paid_from', 'CASH'),
+                petty_cash_slip_number=data.get('petty_cash_slip_number', ''),
+            )
+
             response_serializer = OtherExpenseSerializer(other_expense)
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
-        
+
         except ValidationError as e:
             return Response(
                 {'error': str(e)},

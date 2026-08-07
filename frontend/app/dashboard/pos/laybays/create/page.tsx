@@ -18,14 +18,14 @@ export default function CreateLaybyePage() {
   const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
-    reference: '',
+    laybye_number: '',
     customer_name: '',
+    telephone: '',
     total_amount: '',
-    paid_amount: '',
-    start_date: '',
-    status: 'active',
+    deposit_amount: '',
+    laybye_date: new Date().toISOString().split('T')[0],
+    expiry_date: '',
     item_description: '',
-    notes: '',
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -37,7 +37,7 @@ export default function CreateLaybyePage() {
   };
 
   const outstandingBalance =
-    parseFloat(String(formData.total_amount) || '0') - parseFloat(String(formData.paid_amount) || '0');
+    parseFloat(String(formData.total_amount) || '0') - parseFloat(String(formData.deposit_amount) || '0');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,32 +45,33 @@ export default function CreateLaybyePage() {
     setLoading(true);
 
     try {
-      if (!formData.reference.trim()) {
-        throw new Error('Reference is required');
-      }
       if (!formData.customer_name.trim()) {
         throw new Error('Customer name is required');
       }
       if (!formData.total_amount || parseFloat(formData.total_amount) <= 0) {
         throw new Error('Total amount must be greater than 0');
       }
+      if (!formData.expiry_date) {
+        throw new Error('Expiry date is required');
+      }
 
-      const laybayData = {
-        ...formData,
+      const laybyeNumber = formData.laybye_number.trim() || `LAY-${Date.now()}`;
+
+      await posAPI.createLaybye({
+        laybye_number: laybyeNumber,
+        customer_name: formData.customer_name,
+        telephone: formData.telephone,
+        laybye_date: formData.laybye_date,
+        expiry_date: formData.expiry_date,
         total_amount: parseFloat(formData.total_amount),
-        paid_amount: parseFloat(String(formData.paid_amount)) || 0,
-      };
+        deposit_amount: parseFloat(String(formData.deposit_amount)) || 0,
+        comment1: formData.item_description.slice(0, 30),
+      });
 
-      // API call would go here
-      // const response = await posAPI.laybays.create(laybayData);
-      // setSuccess('Laybye record created successfully');
-      // setTimeout(() => router.push('/dashboard/pos/laybays'), 2000);
-
-      // Placeholder success
       setSuccess('Laybye record created successfully');
       setTimeout(() => router.push('/dashboard/pos/laybays'), 2000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create laybye');
+    } catch (err: any) {
+      setError(err?.response?.data?.error || (err instanceof Error ? err.message : 'Failed to create laybye'));
     } finally {
       setLoading(false);
     }
@@ -121,15 +122,14 @@ export default function CreateLaybyePage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Reference *
+                    Laybye Number
                   </label>
                   <Input
                     type="text"
-                    name="reference"
-                    placeholder="LAY-001"
-                    value={formData.reference}
+                    name="laybye_number"
+                    placeholder="Auto-generated if left blank"
+                    value={formData.laybye_number}
                     onChange={handleChange}
-                    required
                   />
                 </div>
                 <div>
@@ -149,14 +149,28 @@ export default function CreateLaybyePage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Telephone
+                </label>
+                <Input
+                  type="text"
+                  name="telephone"
+                  placeholder="Customer telephone"
+                  value={formData.telephone}
+                  onChange={handleChange}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Item Description
                 </label>
                 <textarea
                   name="item_description"
-                  placeholder="What is on laybye?"
+                  placeholder="What is on laybye? (max 30 characters — there's no line-item support yet)"
                   value={formData.item_description}
                   onChange={handleChange}
                   rows={2}
+                  maxLength={30}
                   className="w-full px-3 py-2 border rounded-lg"
                 />
               </div>
@@ -178,15 +192,16 @@ export default function CreateLaybyePage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Initial Payment
+                    Deposit *
                   </label>
                   <Input
                     type="number"
-                    name="paid_amount"
+                    name="deposit_amount"
                     placeholder="0.00"
                     step="0.01"
-                    value={formData.paid_amount || ''}
+                    value={formData.deposit_amount || ''}
                     onChange={handleChange}
+                    required
                   />
                 </div>
                 <div>
@@ -202,44 +217,27 @@ export default function CreateLaybyePage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Start Date
+                    Laybye Date
                   </label>
                   <Input
                     type="date"
-                    name="start_date"
-                    value={formData.start_date}
+                    name="laybye_date"
+                    value={formData.laybye_date}
                     onChange={handleChange}
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Status
+                    Expiry Date *
                   </label>
-                  <select
-                    name="status"
-                    value={formData.status}
+                  <Input
+                    type="date"
+                    name="expiry_date"
+                    value={formData.expiry_date}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border rounded-lg bg-white"
-                  >
-                    <option value="active">Active</option>
-                    <option value="completed">Completed</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
+                    required
+                  />
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Notes
-                </label>
-                <textarea
-                  name="notes"
-                  placeholder="Additional notes"
-                  value={formData.notes}
-                  onChange={handleChange}
-                  rows={2}
-                  className="w-full px-3 py-2 border rounded-lg"
-                />
               </div>
             </CardContent>
           </Card>

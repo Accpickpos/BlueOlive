@@ -22,6 +22,95 @@ from .calculation_service import CalculationService
 logger = logging.getLogger(__name__)
 
 
+class CashControlService:
+    """
+    Shared helper for updating the daily CashControl totals for a cashier.
+    CashSaleService.update_cash_control() handles cash sales directly; every
+    other till-affecting transaction (returns, receipts, credits, payouts,
+    cashed cheques, laybyes) should post through here so the till reconciles.
+    """
+
+    @staticmethod
+    def _get_or_create(control_date, cashier, station_number=1):
+        control, _ = CashControl.objects.get_or_create(
+            control_date=control_date, cashier=cashier, station_number=station_number
+        )
+        return control
+
+    @staticmethod
+    def record_cash_return(control_date, cashier, station_number, amount):
+        control = CashControlService._get_or_create(control_date, cashier, station_number)
+        control.cash_refunds_count += 1
+        control.cash_refunds_total += amount
+        control.cash_refunds += amount
+        control.save()
+        return control
+
+    @staticmethod
+    def record_receipt(control_date, cashier, station_number, amount, tender_type='CASH'):
+        control = CashControlService._get_or_create(control_date, cashier, station_number)
+        control.receipts_count += 1
+        control.receipts_total += amount
+        if tender_type == 'CASH':
+            control.cash_takings += amount
+        elif tender_type == 'CHEQUE':
+            control.cheque_takings += amount
+        elif tender_type == 'SPEEDPOINT':
+            control.speedpoint_takings += amount
+        control.save()
+        return control
+
+    @staticmethod
+    def record_credit_note(control_date, cashier, station_number, amount):
+        control = CashControlService._get_or_create(control_date, cashier, station_number)
+        control.credits_count += 1
+        control.credits_total += amount
+        control.save()
+        return control
+
+    @staticmethod
+    def record_payout(control_date, cashier, station_number, amount):
+        control = CashControlService._get_or_create(control_date, cashier, station_number)
+        control.payouts_count += 1
+        control.payouts_total += amount
+        control.save()
+        return control
+
+    @staticmethod
+    def record_cashed_cheque(control_date, cashier, station_number, amount):
+        control = CashControlService._get_or_create(control_date, cashier, station_number)
+        control.cashed_cheques_count += 1
+        control.cashed_cheques_total += amount
+        control.save()
+        return control
+
+    @staticmethod
+    def record_new_laybye(control_date, cashier, station_number, deposit_amount):
+        control = CashControlService._get_or_create(control_date, cashier, station_number)
+        control.new_laybyes_count += 1
+        control.new_laybyes_total += deposit_amount
+        control.cash_takings += deposit_amount
+        control.save()
+        return control
+
+    @staticmethod
+    def record_laybye_receipt(control_date, cashier, station_number, amount):
+        control = CashControlService._get_or_create(control_date, cashier, station_number)
+        control.laybye_receipts_count += 1
+        control.laybye_receipts_total += amount
+        control.cash_takings += amount
+        control.save()
+        return control
+
+    @staticmethod
+    def record_laybye_cancel(control_date, cashier, station_number, refund_amount):
+        control = CashControlService._get_or_create(control_date, cashier, station_number)
+        control.cancelled_laybyes_count += 1
+        control.cancelled_laybyes_total += refund_amount
+        control.save()
+        return control
+
+
 class CashSaleService:
     """Service class for cash sale operations."""
     
@@ -207,29 +296,45 @@ class CashSaleService:
             filters &= Q(station_number=station_number)
         
         controls = CashControl.objects.filter(filters)
-        
+
         summary = controls.aggregate(
             total_sales=Sum('cash_sales_total'),
             total_refunds=Sum('cash_refunds_total'),
             total_receipts=Sum('receipts_total'),
             total_payouts=Sum('payouts_total'),
+            total_credits=Sum('credits_total'),
+            total_cashed_cheques=Sum('cashed_cheques_total'),
+            total_new_laybyes=Sum('new_laybyes_total'),
+            total_laybye_receipts=Sum('laybye_receipts_total'),
+            total_cancelled_laybyes=Sum('cancelled_laybyes_total'),
             cash_takings=Sum('cash_takings'),
             cheque_takings=Sum('cheque_takings'),
             speedpoint_takings=Sum('speedpoint_takings')
         )
-        
+
+        zero = Decimal('0.00')
         return {
             'control_date': control_date,
-            'total_sales': summary['total_sales'] or Decimal('0.00'),
-            'total_refunds': summary['total_refunds'] or Decimal('0.00'),
-            'total_receipts': summary['total_receipts'] or Decimal('0.00'),
-            'total_payouts': summary['total_payouts'] or Decimal('0.00'),
-            'cash_expected': (summary['total_sales'] or Decimal('0.00')) - 
-                           (summary['total_refunds'] or Decimal('0.00')) -
-                           (summary['total_payouts'] or Decimal('0.00')),
-            'cash_takings': summary['cash_takings'] or Decimal('0.00'),
-            'cheque_takings': summary['cheque_takings'] or Decimal('0.00'),
-            'speedpoint_takings': summary['speedpoint_takings'] or Decimal('0.00')
+            'total_sales': summary['total_sales'] or zero,
+            'total_refunds': summary['total_refunds'] or zero,
+            'total_receipts': summary['total_receipts'] or zero,
+            'total_payouts': summary['total_payouts'] or zero,
+            'total_credits': summary['total_credits'] or zero,
+            'total_cashed_cheques': summary['total_cashed_cheques'] or zero,
+            'total_new_laybyes': summary['total_new_laybyes'] or zero,
+            'total_laybye_receipts': summary['total_laybye_receipts'] or zero,
+            'total_cancelled_laybyes': summary['total_cancelled_laybyes'] or zero,
+            'cash_expected': (
+                (summary['total_sales'] or zero)
+                + (summary['total_new_laybyes'] or zero)
+                + (summary['total_laybye_receipts'] or zero)
+                - (summary['total_refunds'] or zero)
+                - (summary['total_payouts'] or zero)
+                - (summary['total_cashed_cheques'] or zero)
+            ),
+            'cash_takings': summary['cash_takings'] or zero,
+            'cheque_takings': summary['cheque_takings'] or zero,
+            'speedpoint_takings': summary['speedpoint_takings'] or zero,
         }
 
 

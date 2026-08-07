@@ -29,13 +29,13 @@ from .serializers import (
     JobCardListSerializer, JobCardDetailSerializer, JobCardLineSerializer,
     CashControlSerializer, CashControlSummarySerializer, ReceiptOnAccountSerializer,
     CreditNoteListSerializer, CreditNoteDetailSerializer, CreditNoteCreateSerializer,
-    CashReturnSerializer, CashReturnLineSerializer,
+    CashReturnSerializer, CashReturnLineSerializer, CashReturnCreateSerializer,
     CashAChequeSerializer, TransactionQuerySerializer,
     InvoiceListSerializer, InvoiceDetailSerializer, InvoiceCreateUpdateSerializer,
     InvoiceLineSerializer
 )
 from .services import (
-    CashSaleService, LaybyeService, QuotationService, RepairService
+    CashSaleService, LaybyeService, QuotationService, RepairService, CashControlService
 )
 from .exceptions import (
     InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException
@@ -290,29 +290,51 @@ class LaybyeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         if self.action == 'retrieve':
             queryset = queryset.prefetch_related('lines', 'payments')
         return queryset
-    
+
+    def perform_create(self, serializer):
+        # balance_due has no model default and is read_only on the
+        # serializer, so it must be computed here or save() fails outright.
+        total_amount = serializer.validated_data.get('total_amount') or Decimal('0')
+        deposit_amount = serializer.validated_data.get('deposit_amount') or Decimal('0')
+
+        # Laybye has no cashier FK (unlike CashSale/Payout/etc.) — attribute
+        # the till impact to whoever is logged in and made the request.
+        laybye = serializer.save(
+            balance_due=total_amount - deposit_amount,
+            amount_paid=deposit_amount,
+        )
+        station_number = self.request.data.get('station_number', 1)
+        if laybye.deposit_amount:
+            CashControlService.record_new_laybye(
+                laybye.laybye_date, self.request.user, station_number, laybye.deposit_amount
+            )
+
     @action(detail=True, methods=['post'])
     def make_payment(self, request, pk=None):
         """Make a payment on a laybye."""
         laybye = self.get_object()
         amount = request.data.get('amount')
         sales_area_id = request.data.get('sales_area')
-        
+
         if not amount:
             return Response(
                 {'error': 'Amount is required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         try:
             from decimal import Decimal
             amount = Decimal(str(amount))
-            
+
             from apps.settings.models import SalesArea
             sales_area = SalesArea.objects.get(id=sales_area_id) if sales_area_id else None
-            
+
             payment = LaybyeService.make_payment(laybye, amount, sales_area)
-            
+
+            CashControlService.record_laybye_receipt(
+                payment.payment_date, request.user, request.data.get('station_number', 1), amount
+            )
+
             return Response({
                 'status': 'success',
                 'message': 'Payment recorded successfully',
@@ -323,15 +345,23 @@ class LaybyeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
+
     @action(detail=True, methods=['post'])
     def cancel_laybye(self, request, pk=None):
         """Cancel a laybye."""
         laybye = self.get_object()
         retention_percentage = float(request.data.get('retention_percentage', 0))
-        
+
         try:
             LaybyeService.cancel_laybye(laybye, retention_percentage)
+
+            if laybye.refund_amount:
+                from datetime import date as _date
+                CashControlService.record_laybye_cancel(
+                    _date.today(), request.user, request.data.get('station_number', 1),
+                    laybye.refund_amount
+                )
+
             return Response({
                 'status': 'success',
                 'message': 'Laybye cancelled',
@@ -545,6 +575,12 @@ class PayoutViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     filterset_fields = ['payout_date', 'cashier', 'station_number']
     ordering_fields = ['payout_date', 'amount']
     ordering = ['-payout_date']
+
+    def perform_create(self, serializer):
+        payout = serializer.save(cashier=serializer.validated_data.get('cashier') or self.request.user)
+        CashControlService.record_payout(
+            payout.payout_date, payout.cashier, payout.station_number, payout.amount
+        )
 
 
 class RepairViewSet(ShopFilterMixin, viewsets.ModelViewSet):
@@ -862,7 +898,12 @@ class ReceiptOnAccountViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             # Update debtor balance (would integrate with debtors app)
             receipt.is_posted = True
             receipt.save()
-            
+
+            CashControlService.record_receipt(
+                receipt.receipt_date, receipt.cashier, receipt.station_number,
+                receipt.total_amount, receipt.tender_type
+            )
+
             return Response({
                 'status': 'success',
                 'message': f'Receipt {receipt.receipt_number} posted successfully'
@@ -957,7 +998,12 @@ class CreditNoteViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             
             credit_note.is_posted = True
             credit_note.save()
-            
+
+            CashControlService.record_credit_note(
+                credit_note.credit_date, credit_note.cashier, credit_note.station_number,
+                credit_note.total_amount
+            )
+
             return Response({
                 'status': 'success',
                 'message': f'Credit note {credit_note.credit_number} posted successfully'
@@ -987,16 +1033,16 @@ class CashReturnViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     def get_serializer_class(self):
         """Return appropriate serializer."""
         if self.action == 'create':
-            return CashReturnLineSerializer
+            return CashReturnCreateSerializer
         return CashReturnSerializer
-    
+
     def get_queryset(self):
         """Optimize queryset."""
         queryset = super().get_queryset()
         if self.action == 'retrieve':
             queryset = queryset.prefetch_related('lines')
         return queryset.select_related('cashier')
-    
+
     @action(detail=True, methods=['post'])
     def post_return(self, request, pk=None):
         """Post cash return to update stock."""
@@ -1034,7 +1080,12 @@ class CashReturnViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             
             cash_return.is_posted = True
             cash_return.save()
-            
+
+            CashControlService.record_cash_return(
+                cash_return.return_date, cash_return.cashier, cash_return.station_number,
+                cash_return.total_amount
+            )
+
             return Response({
                 'status': 'success',
                 'message': f'Cash return {cash_return.return_number} posted successfully'
@@ -1070,10 +1121,21 @@ class CashAChequeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     def process(self, request, pk=None):
         """Mark cheque as processed."""
         cheque = self.get_object()
-        
+
+        if cheque.is_processed:
+            return Response(
+                {'error': 'Cheque already processed'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         cheque.is_processed = True
         cheque.save()
-        
+
+        CashControlService.record_cashed_cheque(
+            cheque.transaction_date, cheque.cashier, cheque.station_number,
+            cheque.cash_paid
+        )
+
         return Response({
             'status': 'success',
             'message': f'Cheque {cheque.cheque_number} marked as processed'

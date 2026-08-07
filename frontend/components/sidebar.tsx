@@ -31,6 +31,7 @@ import {
   PanelLeftOpen,
   X,
   Key,
+  Repeat,
 } from "lucide-react";
 
 // ================== MENU CONFIG ==================
@@ -122,6 +123,7 @@ const menuConfig = [
       { type: "link", name: "Invoices", href: "/dashboard/pos/invoices", icon: FileText },
       { type: "link", name: "Receipts", href: "/dashboard/pos/receipts", icon: Receipt },
       { type: "link", name: "Cash Sales", href: "/dashboard/pos/cash-sales", icon: ShoppingCart },
+      { type: "link", name: "Rentals", href: "/dashboard/pos/rentals", icon: Repeat },
       { type: "link", name: "Cash Return", href: "/dashboard/pos/cash-return", icon: ArrowDownLeft },
       { type: "link", name: "Credit Note", href: "/dashboard/pos/credit-note", icon: CreditCard },
       { type: "link", name: "Cash Control", href: "/dashboard/pos/cash-control", icon: Lock },

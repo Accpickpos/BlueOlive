@@ -17,3 +17,11 @@ Key routing rules:
 - Save progress → invoke /context-save
 - Resume context → invoke /context-restore
 - Author a backlog-ready spec/issue → invoke /spec
+
+## Deferred scope — read before starting new sector work
+
+- **Grocery sector**: no committed customer, no code beyond a sector-agnostic
+  `barcode` field on `StockItem`. Before designing scale integration, expiry/
+  batch tracking, or anything else grocery-specific, read the Open Questions
+  section of `~/.gstack/projects/BootCodex-BlueOlive/accpi-main-design-20260729-001256.md`
+  — talk to 3-5 real grocery shop owners first, per that doc's Assignment.

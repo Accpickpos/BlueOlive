@@ -527,29 +527,39 @@ class Darea(TimeStampedModel):
 
 class Dpdc(TimeStampedModel):
     """Post-dated cheques (DPDC table)."""
-    
-    STATUS_CHOICES = [('A', 'Active'), ('I', 'Inactive'), ('P', 'Processed'), ('C', 'Cancelled')]
-    
+
+    STATUS_CHOICES = [
+        ('OUTSTANDING', 'Outstanding'),
+        ('RECEIVED', 'Received'),
+        ('CLEARED', 'Cleared'),
+        ('DISHONOURED', 'Dishonoured'),
+    ]
+
     dno = models.ForeignKey(Debtor, on_delete=models.CASCADE, related_name='dpdc_cheques', help_text="Debtor account number (DNO)")
-    date = models.DateField(db_index=True, help_text="Date of cheque")
+    date = models.DateField(db_index=True, help_text="Expected/cheque date")
     amount = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)], help_text="Cheque value")
-    status = models.CharField(max_length=1, choices=STATUS_CHOICES, default='A')
-    
+    cheque_number = models.CharField(max_length=30, blank=True, help_text="Cheque number")
+    bank = models.CharField(max_length=50, blank=True, help_text="Issuing bank")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='OUTSTANDING')
+    received_date = models.DateField(null=True, blank=True, help_text="Date the cheque was received/banked")
+    cleared_date = models.DateField(null=True, blank=True, help_text="Date the cheque cleared")
+    notes = models.TextField(blank=True)
+
     class Meta:
         ordering = ['date']
         verbose_name = 'Post-Dated Cheque (DPDC)'
         verbose_name_plural = 'Post-Dated Cheques (DPDC)'
         indexes = [models.Index(fields=['dno', 'date']), models.Index(fields=['status', 'date'])]
-    
+
     def __str__(self):
         return f"DPDC {self.dno.dno} - {self.date} - {self.amount}"
-    
+
     def clean(self):
         if self.amount <= 0:
             raise ValidationError('Cheque amount must be greater than zero.')
-        if self.date < date.today() and self.status == 'A':
-            raise ValidationError('Active cheque date cannot be in the past.')
-    
+        if self.date < date.today() and self.status == 'OUTSTANDING':
+            raise ValidationError('Outstanding cheque date cannot be in the past.')
+
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)

@@ -282,11 +282,11 @@ class PurchaseOrderLine(models.Model):
                 'quantity': float(quantity)
             }
         
-        if self.is_fully_received and self.quantity_received < self.quantity_ordered:
+        if self.is_fully_received and self.quantity_delivered < self.quantity:
             variance['quantity_variance'] = {
-                'ordered': float(self.quantity_ordered),
-                'received': float(self.quantity_received),
-                'short': float(self.quantity_ordered - self.quantity_received)
+                'ordered': float(self.quantity),
+                'received': float(self.quantity_delivered),
+                'short': float(self.quantity - self.quantity_delivered)
             }
         
         return variance
@@ -392,12 +392,12 @@ class PurchaseOrderReceiptLine(models.Model):
             self.line_vat = Decimal('0')
         
         self.line_inclusive = self.line_exclusive + self.line_vat
-        
+
         # Check for cost variance
-        if self.actual_unit_cost != self.purchase_order_line.unit_cost:
+        if self.actual_unit_cost != self.purchase_order_line.base_price:
             self.has_cost_variance = True
-            self.cost_variance_amount = (self.actual_unit_cost - self.purchase_order_line.unit_cost) * self.quantity_received
-        
+            self.cost_variance_amount = (self.actual_unit_cost - self.purchase_order_line.base_price) * self.quantity_received
+
         self.save()
 
 
@@ -487,9 +487,10 @@ class PurchaseOrderTemplate(models.Model):
                 purchase_order=order,
                 line_number=template_line.line_number,
                 stock_item=template_line.stock_item,
-                quantity_ordered=template_line.default_quantity,
-                unit_cost=template_line.stock_item.cost_price,
-                tax_code=template_line.stock_item.tax_code,
+                stock_code=template_line.stock_item.stock_code,
+                quantity=template_line.default_quantity,
+                base_price=template_line.stock_item.cost_price,
+                tax_code=template_line.stock_item.tax_code.code if template_line.stock_item.tax_code_id else 1,
                 quantity_on_hand_at_order=template_line.stock_item.quantity_on_hand,
                 monthly_sales_at_order=template_line.stock_item.sales_mtd_quantity
             )

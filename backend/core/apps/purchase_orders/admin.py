@@ -55,7 +55,7 @@ class PurchaseOrderAdmin(admin.ModelAdmin):
         }),
         ('Totals', {
             'fields': (
-                ('total_quantity_ordered', 'total_quantity_received', 'total_quantity_outstanding'),
+                ('quantity_ordered', 'total_quantity_received', 'total_quantity_outstanding'),
                 ('total_value_exclusive', 'total_value_vat', 'total_value_inclusive'),
                 ('outstanding_value_exclusive', 'outstanding_value_vat', 'outstanding_value_inclusive')
             )

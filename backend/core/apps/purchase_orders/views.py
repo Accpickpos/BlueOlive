@@ -12,6 +12,18 @@ from apps.shop_filter_mixin import ShopFilterMixin
 
 from apps.creditors.models import Creditor, GoodsReceivedNote, GRNLineItem
 from apps.stock_control.models import StockItem, StockTransaction
+from apps.settings.models import TaxCode
+
+
+def _tax_code_id(numeric_code):
+    """
+    PurchaseOrderLine.tax_code stores the legacy numeric code (1=standard,
+    2=zero-rated) as a plain int, but GRNLineItem.tax_code is a FK to
+    TaxCode. TaxCode's PK is a separate auto id from its `code` field, so
+    look the row up by code rather than assuming they coincide.
+    """
+    tax_code = TaxCode.objects.filter(code=numeric_code).first()
+    return tax_code.id if tax_code else None
 
 from .models import (
     PurchaseOrder, PurchaseOrderLine, PurchaseOrderReceipt,
@@ -61,12 +73,9 @@ class PurchaseOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         
         data = serializer.validated_data
-        
-        from creditors.models import Supplier
-        from stock_control.models import StockItem
-        
-        supplier = Supplier.objects.get(account_number=data['supplier'])
-        
+
+        supplier = Creditor.objects.get(pk=data['supplier'])
+
         # Create purchase order
         order = PurchaseOrder.objects.create(
             supplier=supplier,
@@ -115,21 +124,23 @@ class PurchaseOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         if data.get('line_items'):
             for line_data in data['line_items']:
                 stock_item = StockItem.objects.get(stock_code=line_data['stock_item'])
-                
+
                 unit_cost = line_data.get('unit_cost')
                 if not unit_cost:
-                    unit_cost = stock_item.cost_price if data['pricing_method'] == 'COST' else stock_item.retail_price_1
-                
-                PurchaseOrderLine.objects.create(
+                    unit_cost = stock_item.cost_price if data['pricing_method'] == 'COST' else stock_item.selling_price_1
+
+                line = PurchaseOrderLine.objects.create(
                     purchase_order=order,
                     line_number=line_number,
                     stock_item=stock_item,
-                    quantity_ordered=line_data['quantity_ordered'],
-                    unit_cost=unit_cost,
+                    stock_code=stock_item.stock_code,
+                    quantity=line_data['quantity_ordered'],
+                    base_price=unit_cost,
                     tax_code=line_data.get('tax_code', 1),
                     quantity_on_hand_at_order=stock_item.quantity_on_hand,
                     monthly_sales_at_order=stock_item.sales_mtd_quantity
                 )
+                line.calculate_totals()
                 line_number += 1
         
         # Calculate totals and update stock on order
@@ -146,21 +157,23 @@ class PurchaseOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         if pricing_method == 'COST':
             unit_cost = stock_item.cost_price
         else:
-            unit_cost = stock_item.retail_price_1
-        
+            unit_cost = stock_item.selling_price_1
+
         if not quantity:
             quantity = stock_item.sales_mtd_quantity or 1
-        
-        PurchaseOrderLine.objects.create(
+
+        line = PurchaseOrderLine.objects.create(
             purchase_order=order,
             line_number=line_number,
             stock_item=stock_item,
-            quantity_ordered=quantity,
-            unit_cost=unit_cost,
-            tax_code=stock_item.tax_code,
+            stock_code=stock_item.stock_code,
+            quantity=quantity,
+            base_price=unit_cost,
+            tax_code=stock_item.tax_code.code if stock_item.tax_code_id else 1,
             quantity_on_hand_at_order=stock_item.quantity_on_hand,
             monthly_sales_at_order=stock_item.sales_mtd_quantity
         )
+        line.calculate_totals()
     
     def _update_stock_on_order(self, order):
         """Update stock item on-order quantities"""
@@ -173,27 +186,28 @@ class PurchaseOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     def cancel_order(self, request, pk=None):
         """Cancel a purchase order"""
         order = self.get_object()
-        
-        if order.status == 'FULLY_RECEIVED':
+
+        if order.status == 'F':
             return Response(
                 {'error': 'Cannot cancel fully received order'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        if order.status == 'CANCELLED':
+
+        if order.status == 'C':
             return Response(
                 {'error': 'Order already cancelled'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Update stock on order quantities
         for line in order.line_items.all():
             stock_item = line.stock_item
             stock_item.quantity_on_order -= line.quantity_outstanding
             stock_item.save()
-        
+
         # Cancel order
-        order.status = 'CANCELLED'
+        order.status = 'C'
+        order.cancelled_at = timezone.now()
         order.save()
         
         return Response({
@@ -210,109 +224,114 @@ class PurchaseOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         
         data = serializer.validated_data
-        
+
         # Create GRN
         receipt = PurchaseOrderReceipt.objects.create(
             purchase_order=order,
             receipt_date=data.get('receipt_date', timezone.now().date()),
             invoice_number=data['invoice_number']
         )
-        
-        receipt_line_number = 1
+
         has_variance = False
-        
+
         for line_data in data['line_items']:
             po_line = PurchaseOrderLine.objects.get(id=line_data['purchase_order_line_id'])
-            
+
             if po_line.purchase_order != order:
                 return Response(
                     {'error': f'Line {po_line.id} does not belong to this order'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             quantity = line_data['quantity_received']
-            actual_cost = line_data.get('actual_unit_cost', po_line.unit_cost)
-            
+            actual_cost = line_data.get('actual_unit_cost') or po_line.base_price
+
             # Check variance
-            if quantity != po_line.quantity_outstanding or actual_cost != po_line.unit_cost:
+            if quantity != po_line.quantity_outstanding or actual_cost != po_line.base_price:
                 has_variance = True
-            
-            # Create receipt line
-            receipt_line = PurchaseOrderReceiptLine.objects.create(
+
+            # Create receipt line (calculate_totals() fills line_exclusive/vat/inclusive
+            # and the cost-variance flag, and persists the row)
+            receipt_line = PurchaseOrderReceiptLine(
                 receipt=receipt,
                 purchase_order_line=po_line,
                 quantity_received=quantity,
                 actual_unit_cost=actual_cost
             )
-            receipt_line_number += 1
-            
-            # Update PO line
-            po_line.quantity_received += quantity
-            po_line.quantity_outstanding = po_line.quantity_ordered - po_line.quantity_received
-            po_line.save()
-            
+            receipt_line.calculate_totals()
+
+            # Update PO line — quantity_delivered drives quantity_outstanding,
+            # totals and is_fully_received via calculate_totals()
+            po_line.quantity_delivered += quantity
+            po_line.calculate_totals()
+
             # Update stock item quantity
             stock_item = po_line.stock_item
             stock_item.quantity_on_hand += quantity
             stock_item.quantity_on_order -= quantity
-            
+
             # Update cost if different
             if actual_cost != stock_item.cost_price:
                 stock_item.cost_price = actual_cost
+                stock_item.save()
                 # Update selling prices based on markup if supplier has auto-update enabled
                 if order.supplier.update_selling_price_on_receipt:
-                    stock_item.calculate_markups()
-            
-            stock_item.save()
-            
-            # Create stock transaction
+                    stock_item.apply_markups()
+            else:
+                stock_item.save()
+
+            # Create stock transaction — this also drives average_cost via the
+            # stock_control post_save signal
             StockTransaction.objects.create(
                 transaction_type='INCOMING',
                 stock_item=stock_item,
+                transaction_date=receipt.receipt_date,
                 quantity_in=quantity,
                 unit_cost=actual_cost,
-                transaction_number=f"GRN-{receipt.id}",
-                reference=f"PO {order.order_number} - {data['invoice_number']}"
+                supplier=order.supplier,
+                comments=f"PO {order.order_number} GRN {receipt.id}"[:30],
             )
-        
+
         # Calculate receipt totals
         receipt.has_variance = has_variance
         receipt.calculate_totals()
-        
+
         # Update order status
         order.calculate_totals()
-        
+
         # Update to creditors if requested
         if data.get('update_supplier_account', True):
-            # Create Goods Received Note
+            # Create Goods Received Note. total_amount/subtotal/total_vat are
+            # rolled up from GRNLineItem by the creditors app's signals once
+            # the lines below are created.
             grn = GoodsReceivedNote.objects.create(
                 creditor=order.supplier,
                 transaction_date=receipt.receipt_date,
                 supplier_invoice_number=data['invoice_number'],
-                total_amount=receipt.total_inclusive
             )
-            
+
             # Create GRN line items
             for idx, receipt_line in enumerate(receipt.line_items.all(), 1):
+                po_line = receipt_line.purchase_order_line
                 GRNLineItem.objects.create(
                     grn=grn,
                     line_number=idx,
-                    stock_item=receipt_line.purchase_order_line.stock_item,
+                    stock_item=po_line.stock_item,
                     quantity_received=receipt_line.quantity_received,
                     unit_cost=receipt_line.actual_unit_cost,
-                    tax_code_id=receipt_line.purchase_order_line.tax_code
+                    tax_code_id=_tax_code_id(po_line.tax_code)
                 )
-            
+
             receipt.creditor_grn = grn
             receipt.save()
-        
+
         # Create back order if requested and there are short deliveries
         if data.get('create_back_order'):
             short_lines = [
                 line for line in order.line_items.all()
                 if line.quantity_outstanding > 0
             ]
-            
+
             if short_lines:
                 back_order = PurchaseOrder.objects.create(
                     supplier=order.supplier,
@@ -323,20 +342,29 @@ class PurchaseOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                     parent_order=order,
                     notes=f"Back order from PO {order.order_number}"
                 )
-                
+
                 bo_line_number = 1
                 for line in short_lines:
-                    PurchaseOrderLine.objects.create(
+                    bo_line = PurchaseOrderLine.objects.create(
                         purchase_order=back_order,
                         line_number=bo_line_number,
                         stock_item=line.stock_item,
-                        quantity_ordered=line.quantity_outstanding,
-                        unit_cost=line.unit_cost,
+                        stock_code=line.stock_item.stock_code,
+                        quantity=line.quantity_outstanding,
+                        base_price=line.base_price,
                         tax_code=line.tax_code,
                         quantity_on_hand_at_order=line.stock_item.quantity_on_hand,
                         monthly_sales_at_order=line.stock_item.sales_mtd_quantity
                     )
+                    bo_line.calculate_totals()
                     bo_line_number += 1
+
+                BackOrder.objects.create(
+                    original_order=order,
+                    back_order=back_order,
+                    reason=f"Short delivery on receipt against invoice {data['invoice_number']}",
+                    triggering_receipt=receipt,
+                )
                 
                 back_order.calculate_totals()
                 self._update_stock_on_order(back_order)
@@ -350,7 +378,7 @@ class PurchaseOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def outstanding(self, request):
         """Get all outstanding purchase orders"""
-        orders = self.get_queryset().exclude(status__in=['FULLY_RECEIVED', 'CANCELLED'])
+        orders = self.get_queryset().exclude(status__in=['F', 'C'])
         
         # Filter by overdue if requested
         if request.query_params.get('overdue') == 'true':
@@ -396,7 +424,7 @@ class PurchaseOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         
         for order in queryset:
             for line in order.line_items.all():
-                if line.quantity_received != line.quantity_ordered:
+                if line.quantity_delivered != line.quantity:
                     # Find the receipt with variance
                     for receipt_line in line.receipt_lines.all():
                         variance_data = {
@@ -404,14 +432,14 @@ class PurchaseOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                             'supplier_name': order.supplier.name,
                             'stock_code': line.stock_item.stock_code,
                             'description': line.stock_item.description,
-                            'quantity_ordered': line.quantity_ordered,
+                            'quantity_ordered': line.quantity,
                             'quantity_received': receipt_line.quantity_received,
-                            'quantity_short': line.quantity_ordered - receipt_line.quantity_received,
-                            'ordered_cost': line.unit_cost,
+                            'quantity_short': line.quantity - receipt_line.quantity_received,
+                            'ordered_cost': line.base_price,
                             'actual_cost': receipt_line.actual_unit_cost,
-                            'cost_variance': receipt_line.actual_unit_cost - line.unit_cost,
+                            'cost_variance': receipt_line.actual_unit_cost - line.base_price,
                             'value_variance': (
-                                (receipt_line.actual_unit_cost - line.unit_cost) *
+                                (receipt_line.actual_unit_cost - line.base_price) *
                                 receipt_line.quantity_received
                             )
                         }
@@ -538,23 +566,21 @@ class PurchaseOrderReportViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def stock_on_order(self, request):
         """Report showing stock on order"""
-        from stock_control.models import StockItem
-        
         items = StockItem.objects.filter(quantity_on_order__gt=0)
-        
+
         supplier_id = request.query_params.get('supplier')
         if supplier_id:
             items = items.filter(supplier_id=supplier_id)
-        
+
         report_data = []
-        
+
         for item in items:
             # Get all outstanding orders for this item
             orders = []
             po_lines = PurchaseOrderLine.objects.filter(
                 stock_item=item,
                 quantity_outstanding__gt=0,
-                purchase_order__status__in=['OUTSTANDING', 'PARTIALLY_RECEIVED']
+                purchase_order__status__in=['O', 'P']
             ).select_related('purchase_order')
             
             for line in po_lines:
@@ -580,8 +606,6 @@ class PurchaseOrderReportViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def pre_order_report(self, request):
         """Pre-order planning report"""
-        from stock_control.models import StockItem
-        
         supplier_id = request.query_params.get('supplier')
         
         # Items below reorder level

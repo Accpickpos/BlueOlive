@@ -46,6 +46,27 @@ export interface OtherIncomeTransaction extends CashBookTransaction {
   vat_inclusive?: boolean;
 }
 
+// Actual shape returned by OtherIncomeSerializer (backend/core/apps/cash_book):
+// the base CashBookTransaction fields are nested under `transaction`, not flat.
+export interface OtherIncomeEntry {
+  id: number;
+  transaction: {
+    id: number;
+    transaction_date: string;
+    value_excl_vat: string | number;
+    tax_amount: string | number;
+    total_incl_vat: string | number;
+    description: string;
+    reference?: string;
+  };
+  income_category: number;
+  category_name: string;
+  is_vat_inclusive: boolean;
+  vat_amount: string | number;
+  tax_code: number;
+  paid_into: 'CASH' | 'BANK';
+}
+
 export interface OtherExpenseTransaction extends CashBookTransaction {
   expense_category_id: number;
   vat_amount?: number;
@@ -114,17 +135,30 @@ export interface InterestReceived {
 }
 
 // ============ BANK RECONCILIATION ============
+// Matches BankReconciliation model / BankReconciliationSerializer
+// (backend/core/apps/cash_book) — reconciliation_number is server-generated.
 export interface BankReconciliation {
   id?: number;
+  reconciliation_number?: string;
   reconciliation_date: string;
-  bank_statement_balance: number;
-  system_balance: number;
-  variance: number;
+  bank_account_number: string;
+  statement_date: string;
+  statement_number?: string;
+  opening_balance: number;
+  closing_balance_per_statement: number;
+  closing_balance_per_books: number;
+  outstanding_deposits?: number;
+  outstanding_cheques?: number;
+  bank_errors?: number;
+  book_errors?: number;
+  status?: 'IN_PROGRESS' | 'COMPLETED' | 'REVIEWED';
+  is_balanced?: boolean;
+  difference?: number;
   notes?: string;
-  reconciled_by?: string;
+  completed_at?: string;
+  completed_by?: string;
   created_at?: string;
   updated_at?: string;
-  [key: string]: any;
 }
 
 export interface ReconciliationItem {

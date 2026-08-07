@@ -377,7 +377,7 @@ class CreditorInvoice(AgedBalanceMixin, CreditorTransaction):
         verbose_name_plural = 'Creditor Invoices'
 
     def save(self, *args, **kwargs):
-        self.transaction_type = 'INV'
+        self.transaction_type = 'IN'  # matches TRANSACTION_TYPE_CHOICES; field is max_length=2
         if not self.transaction_number:
             last = CreditorInvoice.objects.order_by('-id').first()
             try:
