@@ -36,6 +36,11 @@ staticfiles/media/
 logs/
 staticfiles/media/
 
+# Claude Code
+.claude/
+settings.json
+settings.local.json
+
 # IDE
 .vscode/
 .idea/
