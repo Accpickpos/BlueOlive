@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, AlertCircle, CheckCircle2 } from 'lucide-react';
 import cashBookApi from '@/lib/cashBookApi';
+import { getApiErrorMessage } from '@/lib/api';
 import { BankReconciliation } from '@/lib/types/cashBook';
 import { ReconciliationStatus, BalanceCard } from '@/components/cash-book';
 
@@ -83,7 +84,7 @@ export default function BankReconciliationPage() {
 
       await fetchData();
     } catch (err: any) {
-      setError(err?.response?.data?.error || (err instanceof Error ? err.message : 'Failed to create reconciliation'));
+      setError(getApiErrorMessage(err, 'Failed to create reconciliation'));
     } finally {
       setLoading(false);
     }

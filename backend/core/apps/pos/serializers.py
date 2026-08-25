@@ -407,11 +407,90 @@ class QuotationDetailSerializer(serializers.ModelSerializer):
     lines = QuotationLineSerializer(many=True, read_only=True)
     sales_area_detail = SalesAreaSimpleSerializer(source='sales_area', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
-    
+
     class Meta:
         model = Quotation
         fields = '__all__'
         read_only_fields = ['subtotal', 'vat_amount', 'total_amount', 'gross_profit', 'created_at', 'updated_at']
+
+
+class QuotationLineCreateSerializer(serializers.ModelSerializer):
+    """Writable line item serializer for quotation creation (QuotationLineSerializer's
+    'lines' field on QuotationDetailSerializer is read_only, so a dedicated nested
+    serializer is needed here - mirrors CreditNoteLineSerializer/CashReturnLineSerializer)."""
+
+    class Meta:
+        model = QuotationLine
+        fields = [
+            'line_number', 'stock_code', 'description', 'quantity', 'unit_price',
+            'discount_percentage', 'cost_price', 'tax_code', 'department', 'comments',
+            'line_total', 'vat_amount'
+        ]
+        read_only_fields = ['line_total', 'vat_amount']
+
+
+class QuotationCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating a quotation with line items in one request."""
+    lines = QuotationLineCreateSerializer(many=True)
+
+    class Meta:
+        model = Quotation
+        fields = [
+            'quotation_number', 'quotation_date', 'expiry_date', 'customer_name',
+            'address_line1', 'address_line2', 'address_line3', 'telephone',
+            'debtor_account', 'sales_area', 'station_number', 'comment1', 'comment2',
+            'price_level', 'lines'
+        ]
+
+    def validate_quotation_number(self, value):
+        """Validate unique quotation number."""
+        if Quotation.objects.filter(quotation_number=value).exists():
+            raise serializers.ValidationError("Quotation number already exists.")
+        return value
+
+    @db_transaction.atomic
+    def create(self, validated_data):
+        """Create quotation with lines, computing totals and gross profit."""
+        lines_data = validated_data.pop('lines')
+
+        quotation = Quotation.objects.create(**validated_data)
+
+        subtotal = Decimal('0.00')
+        vat_total = Decimal('0.00')
+        cost_total = Decimal('0.00')
+
+        for idx, line_data in enumerate(lines_data, start=1):
+            line_data['line_number'] = idx
+
+            quantity = line_data['quantity']
+            unit_price = line_data['unit_price']
+            discount_percentage = line_data.get('discount_percentage') or Decimal('0')
+            cost_price = line_data.get('cost_price') or Decimal('0')
+            tax_code = line_data.get('tax_code', 1)
+
+            gross_line = quantity * unit_price
+            discount_amount = gross_line * discount_percentage / Decimal('100')
+            line_subtotal = gross_line - discount_amount
+            vat_rate = Decimal('0.14') if tax_code == 1 else Decimal('0.00')
+            line_vat = line_subtotal * vat_rate
+            line_total = line_subtotal + line_vat
+
+            line_data['line_total'] = line_total
+            line_data['vat_amount'] = line_vat
+
+            QuotationLine.objects.create(quotation=quotation, **line_data)
+
+            subtotal += line_subtotal
+            vat_total += line_vat
+            cost_total += quantity * cost_price
+
+        quotation.subtotal = subtotal
+        quotation.vat_amount = vat_total
+        quotation.total_amount = subtotal + vat_total
+        quotation.gross_profit = subtotal - cost_total
+        quotation.save()
+
+        return quotation
 
 
 class PayoutSerializer(serializers.ModelSerializer):
@@ -509,6 +588,19 @@ class CashControlSummarySerializer(serializers.Serializer):
     cash_takings = serializers.DecimalField(max_digits=12, decimal_places=2)
     cheque_takings = serializers.DecimalField(max_digits=12, decimal_places=2)
     speedpoint_takings = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+
+class CashControlHourSerializer(serializers.Serializer):
+    """One hour's worth of cash sale movement, for the hourly analysis facility."""
+    hour = serializers.IntegerField()
+    transaction_count = serializers.IntegerField()
+    total_value = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+
+class CashControlHourlySerializer(serializers.Serializer):
+    """Sales movement on a 24-hour basis for a given date (legacy 'Hourly Analysis')."""
+    date = serializers.DateField()
+    hours = CashControlHourSerializer(many=True)
 
 
 class ReceiptOnAccountSerializer(serializers.ModelSerializer):

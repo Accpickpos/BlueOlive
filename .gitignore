@@ -61,3 +61,7 @@ coverage/
 
 # Legacy DBF source data (large, not source code)
 /pdf/
+.dbf
+/dbf-to-csv/
+CLAUDE.md
+TODO.md

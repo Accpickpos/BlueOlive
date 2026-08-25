@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, getApiErrorMessage } from '@/lib/api';
 
 interface ReceiptRecord {
   id: string;
@@ -141,7 +141,7 @@ export default function BatchReceiptPostingForm() {
         receipts: [{ id: '1', debtor_id: 0, debtor_name: '', amount: '', reference: '' }],
       });
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to post batch receipts');
+      setError(getApiErrorMessage(err, 'Failed to post batch receipts'));
     } finally {
       setLoading(false);
     }

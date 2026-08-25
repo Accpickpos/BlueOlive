@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/useAuth';
 import { usePOSAPI } from '@/lib/posApi';
+import { getApiErrorMessage } from '@/lib/api';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,15 +17,13 @@ export default function CreateCreditNotePage() {
   const posAPI = usePOSAPI(user?.tenant?.slug);
 
   const [formData, setFormData] = useState({
-    credit_note_date: new Date().toISOString().split('T')[0],
-    debtor_id: '',
-    debtor_name: '',
-    reference: '',
-    original_invoice: '', // Optional - can create standalone credit
-    reason: 'return', // return or standalone
-    reason_details: '',
-    line_items: [{ stock_code: '', description: '', qty: 1, price: 0, discount: 0, total: 0 }],
-    comments: '',
+    credit_date: new Date().toISOString().split('T')[0],
+    customer_name: '',
+    debtor_account: '',
+    original_sale_number: '',
+    refund_type: 'CASH',
+    reason: '',
+    line_items: [{ stock_code: '', description: '', qty: 1, price: 0, total: 0 }],
   });
 
   const [loading, setLoading] = useState(false);
@@ -39,14 +38,13 @@ export default function CreateCreditNotePage() {
   const handleLineItemChange = (index: number, field: string, value: any) => {
     const newItems = [...formData.line_items];
     newItems[index] = { ...newItems[index], [field]: value };
-    
-    if (field === 'qty' || field === 'price' || field === 'discount') {
+
+    if (field === 'qty' || field === 'price') {
       const qty = field === 'qty' ? value : newItems[index].qty;
       const price = field === 'price' ? value : newItems[index].price;
-      const discount = field === 'discount' ? value : newItems[index].discount;
-      newItems[index].total = (qty * price) - discount;
+      newItems[index].total = qty * price;
     }
-    
+
     setFormData(prev => ({ ...prev, line_items: newItems }));
   };
 
@@ -55,7 +53,7 @@ export default function CreateCreditNotePage() {
       ...prev,
       line_items: [
         ...prev.line_items,
-        { stock_code: '', description: '', qty: 1, price: 0, discount: 0, total: 0 }
+        { stock_code: '', description: '', qty: 1, price: 0, total: 0 }
       ]
     }));
   };
@@ -73,25 +71,41 @@ export default function CreateCreditNotePage() {
     setError(null);
 
     try {
-      if (!formData.debtor_id) {
-        setError('Please select a customer');
+      if (!formData.customer_name.trim()) {
+        setError('Please enter a customer name');
         return;
       }
-      if (formData.reason === 'return' && !formData.original_invoice) {
-        setError('Please select original invoice for return');
-        return;
-      }
-      if (formData.line_items.length === 0) {
+      if (formData.line_items.length === 0 || formData.line_items.every((i) => !i.stock_code && !i.description)) {
         setError('Please add at least one line item');
         return;
       }
 
-      // Submit to API
-      // const response = await posAPI.creditNotes.create(formData);
+      const creditNumber = `CN-${Date.now()}`;
+
+      await posAPI.createCreditNote({
+        credit_number: creditNumber,
+        credit_date: formData.credit_date,
+        customer_name: formData.customer_name,
+        debtor_account: formData.debtor_account || undefined,
+        original_sale_number: formData.original_sale_number || undefined,
+        refund_type: formData.refund_type as 'CASH' | 'ACCOUNT' | 'REPLACEMENT',
+        reason: formData.reason || undefined,
+        lines: formData.line_items
+          .filter((item) => item.description)
+          .map((item, index) => ({
+            line_number: index + 1,
+            stock_code: item.stock_code,
+            description: item.description,
+            quantity: item.qty,
+            unit_price: item.price,
+            tax_code: 1,
+          })),
+      });
+
       setSuccess(true);
       setTimeout(() => router.push('/dashboard/pos/credit-note'), 2000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create credit note');
+    } catch (err: any) {
+      setError(getApiErrorMessage(err, 'Failed to create credit note'));
     } finally {
       setLoading(false);
     }
@@ -142,25 +156,25 @@ export default function CreateCreditNotePage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Credit Note Date
+                    Credit Note Date *
                   </label>
                   <Input
                     type="date"
-                    name="credit_note_date"
-                    value={formData.credit_note_date}
+                    name="credit_date"
+                    value={formData.credit_date}
                     onChange={handleInputChange}
                     required
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Reference
+                    Debtor Account Number
                   </label>
                   <Input
                     type="text"
-                    name="reference"
-                    placeholder="Auto-generated or enter reference"
-                    value={formData.reference}
+                    name="debtor_account"
+                    placeholder="Optional"
+                    value={formData.debtor_account}
                     onChange={handleInputChange}
                   />
                 </div>
@@ -168,13 +182,13 @@ export default function CreateCreditNotePage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Customer
+                  Customer Name *
                 </label>
                 <Input
                   type="text"
-                  name="debtor_name"
-                  placeholder="Select customer"
-                  value={formData.debtor_name}
+                  name="customer_name"
+                  placeholder="Customer name"
+                  value={formData.customer_name}
                   onChange={handleInputChange}
                   required
                 />
@@ -183,43 +197,42 @@ export default function CreateCreditNotePage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Credit Note Type
+                    Refund Type
                   </label>
                   <select
-                    name="reason"
-                    value={formData.reason}
+                    name="refund_type"
+                    value={formData.refund_type}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="return">Return from Invoice</option>
-                    <option value="standalone">Standalone Credit</option>
+                    <option value="CASH">Cash</option>
+                    <option value="ACCOUNT">Credit to Account</option>
+                    <option value="REPLACEMENT">Replacement</option>
                   </select>
                 </div>
-                {formData.reason === 'return' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Original Invoice
-                    </label>
-                    <Input
-                      type="text"
-                      name="original_invoice"
-                      placeholder="Select invoice to return against"
-                      value={formData.original_invoice}
-                      onChange={handleInputChange}
-                    />
-                  </div>
-                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Original Invoice / Sale Number
+                  </label>
+                  <Input
+                    type="text"
+                    name="original_sale_number"
+                    placeholder="Optional"
+                    value={formData.original_sale_number}
+                    onChange={handleInputChange}
+                  />
+                </div>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Reason Details
+                  Reason
                 </label>
                 <textarea
-                  name="reason_details"
+                  name="reason"
                   rows={2}
-                  placeholder="Explain the reason for credit note"
-                  value={formData.reason_details}
+                  placeholder="Explain the reason for the credit note"
+                  value={formData.reason}
                   onChange={handleInputChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -241,7 +254,6 @@ export default function CreateCreditNotePage() {
                       <th className="text-left py-2">Description</th>
                       <th className="text-center py-2">Qty</th>
                       <th className="text-right py-2">Price</th>
-                      <th className="text-right py-2">Discount</th>
                       <th className="text-right py-2">Total</th>
                       <th className="text-center py-2"></th>
                     </tr>
@@ -286,15 +298,6 @@ export default function CreateCreditNotePage() {
                             className="w-24 text-right"
                           />
                         </td>
-                        <td className="py-2 px-2 text-right">
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={item.discount}
-                            onChange={(e) => handleLineItemChange(index, 'discount', parseFloat(e.target.value))}
-                            className="w-20 text-right"
-                          />
-                        </td>
                         <td className="py-2 px-2 text-right font-medium">
                           R{item.total?.toFixed(2) || '0.00'}
                         </td>
@@ -337,32 +340,12 @@ export default function CreateCreditNotePage() {
             </CardContent>
           </Card>
 
-          {/* Comments Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Additional Information</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <textarea
-                name="comments"
-                placeholder="Add any additional comments or notes"
-                rows={3}
-                value={formData.comments}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </CardContent>
-          </Card>
-
           {/* Action Buttons */}
           <div className="flex justify-between gap-4">
             <Link href="/dashboard/pos/credit-note">
               <Button variant="outline">Cancel</Button>
             </Link>
             <div className="flex gap-4">
-              <Button variant="outline" type="button">
-                Save as Draft
-              </Button>
               <Button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700">
                 {loading ? 'Creating...' : 'Create Credit Note'}
               </Button>

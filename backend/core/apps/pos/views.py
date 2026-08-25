@@ -9,7 +9,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
-from django.db.models import Sum
+from django.db.models import Sum, Count
+from django.db.models.functions import ExtractHour
 from datetime import date
 
 from apps.shop_filter_mixin import ShopFilterMixin
@@ -24,10 +25,11 @@ from .models import (
 from .serializers import (
     CashSaleListSerializer, CashSaleDetailSerializer, CashSaleCreateSerializer,
     LaybyeListSerializer, LaybyeDetailSerializer,
-    QuotationListSerializer, QuotationDetailSerializer,
+    QuotationListSerializer, QuotationDetailSerializer, QuotationCreateSerializer,
     PayoutSerializer, RepairSerializer,
     JobCardListSerializer, JobCardDetailSerializer, JobCardLineSerializer,
-    CashControlSerializer, CashControlSummarySerializer, ReceiptOnAccountSerializer,
+    CashControlSerializer, CashControlSummarySerializer, CashControlHourlySerializer,
+    ReceiptOnAccountSerializer,
     CreditNoteListSerializer, CreditNoteDetailSerializer, CreditNoteCreateSerializer,
     CashReturnSerializer, CashReturnLineSerializer, CashReturnCreateSerializer,
     CashAChequeSerializer, TransactionQuerySerializer,
@@ -477,6 +479,8 @@ class QuotationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         """Return appropriate serializer."""
         if self.action == 'list':
             return QuotationListSerializer
+        elif self.action == 'create':
+            return QuotationCreateSerializer
         return QuotationDetailSerializer
     
     def get_queryset(self):
@@ -851,12 +855,50 @@ class CashControlViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
         cash_control = self.get_object()
         cash_control.is_cleared = True
         cash_control.save()
-        
+
         return Response({
             'status': 'success',
             'message': 'Cash control cleared'
         })
-    
+
+    @action(detail=False, methods=['get'])
+    def hourly_analysis(self, request):
+        """
+        Sales movement on a 24-hour basis for a given date, per the legacy
+        spec's Hourly Analysis facility. CashControl only stores daily
+        aggregates, so this groups CashSale.sale_time by hour directly
+        rather than reading from CashControl.
+        """
+        control_date = request.query_params.get('date', date.today())
+        cashier_id = request.query_params.get('cashier')
+        station_number = request.query_params.get('station_number')
+
+        queryset = CashSale.objects.filter(sale_date=control_date, is_cancelled=False)
+        if cashier_id:
+            queryset = queryset.filter(cashier_id=cashier_id)
+        if station_number:
+            queryset = queryset.filter(station_number=station_number)
+
+        hourly = (
+            queryset
+            .annotate(hour=ExtractHour('sale_time'))
+            .values('hour')
+            .annotate(transaction_count=Count('id'), total_value=Sum('total_amount'))
+        )
+        hours_by_number = {row['hour']: row for row in hourly}
+
+        hours = [
+            {
+                'hour': hour,
+                'transaction_count': hours_by_number.get(hour, {}).get('transaction_count', 0),
+                'total_value': hours_by_number.get(hour, {}).get('total_value') or Decimal('0.00'),
+            }
+            for hour in range(24)
+        ]
+
+        serializer = CashControlHourlySerializer({'date': control_date, 'hours': hours})
+        return Response(serializer.data)
+
 
 
 
@@ -1264,7 +1306,8 @@ class TransactionQueryViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        from django.contrib.auth.models import User
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
         try:
             user = User.objects.get(id=assigned_to_id)
             query.assigned_to = user

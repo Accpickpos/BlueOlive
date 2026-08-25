@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Truck, Check, AlertTriangle, FileText } from 'lucide-react';
 import { GoodsReceivedNote, GRNAccountingLineItem } from '@/lib/types/purchaseOrders';
 import { purchaseOrdersApi } from '@/lib/purchaseOrdersApi';
+import { getApiErrorMessage } from '@/lib/api';
 
 interface GoodsReceivedFormProps {
   orderId?: number;
@@ -95,7 +96,7 @@ export function GoodsReceivedForm({ orderId, onComplete, onCancel }: GoodsReceiv
       });
       onComplete();
     } catch (err: any) {
-      setError(err?.response?.data?.error || (err instanceof Error ? err.message : 'Failed to post GRN'));
+      setError(getApiErrorMessage(err, 'Failed to post GRN'));
     } finally {
       setLoading(false);
     }

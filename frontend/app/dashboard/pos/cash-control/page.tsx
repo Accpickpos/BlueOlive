@@ -28,11 +28,17 @@ interface CashControlSummary {
   speedpoint_takings: number;
 }
 
+interface HourlyAnalysis {
+  date: string;
+  hours: Array<{ hour: number; transaction_count: number; total_value: number }>;
+}
+
 export default function CashControlPage() {
   const { user, isLoading: authLoading } = useAuth();
   const posAPI = usePOSAPI(user?.tenant?.slug);
   const [controlDate, setControlDate] = useState(new Date().toISOString().split('T')[0]);
   const [summary, setSummary] = useState<CashControlSummary | null>(null);
+  const [hourly, setHourly] = useState<HourlyAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,18 +51,22 @@ export default function CashControlPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await posAPI.getCashControlDailySummary({
-        date: controlDate,
-        cashier: user?.id,
-      });
-      setSummary(data);
+      const [summaryData, hourlyData] = await Promise.all([
+        posAPI.getCashControlDailySummary({ date: controlDate, cashier: user?.id }),
+        posAPI.getCashControlHourlyAnalysis({ date: controlDate, cashier: user?.id }),
+      ]);
+      setSummary(summaryData);
+      setHourly(hourlyData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load cash control');
       setSummary(null);
+      setHourly(null);
     } finally {
       setLoading(false);
     }
   };
+
+  const activeHours = (hourly?.hours ?? []).filter((h) => h.transaction_count > 0);
 
   const num = (v: number | undefined) => (v || 0).toFixed(2);
 
@@ -157,9 +167,43 @@ export default function CashControlPage() {
                   <span className="text-gray-600">Speedpoint / Card</span>
                   <span className="font-bold">R{num(summary?.speedpoint_takings)}</span>
                 </div>
-                <div className="text-center pt-6 text-sm text-gray-500">
-                  Hourly breakdown not yet available
-                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="md:col-span-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-purple-600" />
+                  Hourly Analysis
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {activeHours.length === 0 ? (
+                  <p className="text-center py-4 text-sm text-gray-500">
+                    No cash sales recorded for this date
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-2">Hour</th>
+                          <th className="text-right py-2">Transactions</th>
+                          <th className="text-right py-2">Sales Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeHours.map((h) => (
+                          <tr key={h.hour} className="border-b hover:bg-gray-50">
+                            <td className="py-2">{String(h.hour).padStart(2, '0')}:00</td>
+                            <td className="py-2 text-right">{h.transaction_count}</td>
+                            <td className="py-2 text-right font-medium">R{num(h.total_value)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Package, Loader, FileText, Wrench } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { api } from "@/lib/api";
+import { api, getApiErrorMessage } from "@/lib/api";
 
 interface StockFinderOrder {
   id: number;
@@ -75,7 +75,7 @@ export default function StockfinderOrdersPage() {
       setSuccess(`JobCard created: ${response.data.job_card_reference}`);
       loadOrders();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to create JobCard');
+      setError(getApiErrorMessage(err, 'Failed to create JobCard'));
     } finally {
       setActionLoading(null);
     }
@@ -90,7 +90,7 @@ export default function StockfinderOrdersPage() {
       setSuccess(`Invoice created: ${response.data.invoice_number}`);
       loadOrders();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to create Invoice');
+      setError(getApiErrorMessage(err, 'Failed to create Invoice'));
     } finally {
       setActionLoading(null);
     }

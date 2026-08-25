@@ -3,6 +3,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework.throttling import UserRateThrottle
 from datetime import date, timedelta
 from .models import Tenant, Shop, ShopConfiguration, SubscriptionPlan, Subscription, SubscriptionPayment
 from .serializers import (
@@ -12,6 +13,7 @@ from .serializers import (
 )
 from tenancy.tenant_context import get_current_tenant
 from tenancy.permissions import IsAdmin, IsTenantMember, CanCreateTenant
+from core.throttling import PublicReadThrottle
 import logging
 
 logger = logging.getLogger(__name__)
@@ -548,7 +550,12 @@ class SubscriptionPlanViewSet(viewsets.ModelViewSet):
     queryset = SubscriptionPlan.objects.all()
     serializer_class = SubscriptionPlanSerializer
     permission_classes = [IsAdminUserOrReadOnly]
-    
+    # Public reads (list/retrieve) are cheap and non-sensitive — give them their
+    # own scope instead of sharing the generic 100/hour anon bucket that also
+    # covers CSRF fetch, signup, etc. Authenticated admin writes still get the
+    # normal per-user rate via UserRateThrottle.
+    throttle_classes = [PublicReadThrottle, UserRateThrottle]
+
     def get_queryset(self):
         queryset = SubscriptionPlan.objects.all()
         # Filter by active status

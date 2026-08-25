@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/useAuth';
 import { usePOSAPI } from '@/lib/posApi';
+import { getApiErrorMessage } from '@/lib/api';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -97,7 +98,8 @@ export default function CreateCashReturnPage() {
         reason: formData.reason,
         lines: formData.line_items
           .filter((item) => item.stock_code)
-          .map((item) => ({
+          .map((item, index) => ({
+            line_number: index + 1,
             stock_code: item.stock_code,
             description: item.description,
             quantity: item.qty,
@@ -109,7 +111,7 @@ export default function CreateCashReturnPage() {
       setSuccess(true);
       setTimeout(() => router.push('/dashboard/pos/cash-return'), 2000);
     } catch (err: any) {
-      setError(err?.response?.data?.error || (err instanceof Error ? err.message : 'Failed to create cash return'));
+      setError(getApiErrorMessage(err, 'Failed to create cash return'));
     } finally {
       setLoading(false);
     }

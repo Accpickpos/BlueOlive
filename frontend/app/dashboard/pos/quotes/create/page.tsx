@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/useAuth';
 import { usePOSAPI } from '@/lib/posApi';
+import { getApiErrorMessage } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,13 +29,15 @@ export default function CreateQuotationPage() {
   const [formData, setFormData] = useState({
     quotation_number: '',
     customer_name: '',
+    telephone: '',
     delivery_address: '',
+    quote_date: new Date().toISOString().split('T')[0],
     expiry_date: '',
-    status: 'draft',
   });
 
   const [lineItems, setLineItems] = useState<any[]>([]);
   const [newItem, setNewItem] = useState({
+    stock_code: '',
     description: '',
     quantity: '',
     unit_rate: '',
@@ -64,6 +67,7 @@ export default function CreateQuotationPage() {
 
     const item = {
       id: Date.now(),
+      stock_code: newItem.stock_code,
       description: newItem.description,
       quantity: qty,
       unit_rate: rate,
@@ -74,7 +78,7 @@ export default function CreateQuotationPage() {
     };
 
     setLineItems([...lineItems, item]);
-    setNewItem({ description: '', quantity: '', unit_rate: '', discount_percent: '' });
+    setNewItem({ stock_code: '', description: '', quantity: '', unit_rate: '', discount_percent: '' });
     setError(null);
   };
 
@@ -104,22 +108,37 @@ export default function CreateQuotationPage() {
         throw new Error('At least one line item is required');
       }
 
-      const quotationData = {
-        ...formData,
-        line_items: lineItems,
-        totals,
-      };
+      // Address textarea splits across up to 3x 25-char lines to match the
+      // backend's address_line1/2/3 fields.
+      const addressLines = formData.delivery_address
+        .split('\n')
+        .flatMap((line) => line.match(/.{1,25}/g) ?? [])
+        .slice(0, 3);
 
-      // API call would go here
-      // const response = await posAPI.quotations.create(quotationData);
-      // setSuccess('Quotation created successfully');
-      // setTimeout(() => router.push('/dashboard/pos/quotes'), 2000);
+      await posAPI.createQuotation({
+        quotation_number: formData.quotation_number,
+        quotation_date: formData.quote_date,
+        expiry_date: formData.expiry_date,
+        customer_name: formData.customer_name,
+        telephone: formData.telephone,
+        address_line1: addressLines[0] ?? '',
+        address_line2: addressLines[1] ?? '',
+        address_line3: addressLines[2] ?? '',
+        lines: lineItems.map((item, index) => ({
+          line_number: index + 1,
+          stock_code: item.stock_code,
+          description: item.description,
+          quantity: item.quantity,
+          unit_price: item.unit_rate,
+          discount_percentage: item.discount_percent,
+          tax_code: 1,
+        })),
+      });
 
-      // Placeholder success
       setSuccess('Quotation created successfully');
       setTimeout(() => router.push('/dashboard/pos/quotes'), 2000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create quotation');
+    } catch (err: any) {
+      setError(getApiErrorMessage(err, 'Failed to create quotation'));
     } finally {
       setLoading(false);
     }
@@ -196,6 +215,33 @@ export default function CreateQuotationPage() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Telephone
+                  </label>
+                  <Input
+                    type="text"
+                    name="telephone"
+                    placeholder="Optional"
+                    value={formData.telephone}
+                    onChange={handleChange}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Quote Date *
+                  </label>
+                  <Input
+                    type="date"
+                    name="quote_date"
+                    value={formData.quote_date}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Delivery Address
@@ -210,33 +256,17 @@ export default function CreateQuotationPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Expiry Date
-                  </label>
-                  <Input
-                    type="date"
-                    name="expiry_date"
-                    value={formData.expiry_date}
-                    onChange={handleChange}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Status
-                  </label>
-                  <select
-                    name="status"
-                    value={formData.status}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border rounded-lg bg-white"
-                  >
-                    <option value="draft">Draft</option>
-                    <option value="sent">Sent</option>
-                    <option value="accepted">Accepted</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Expiry Date *
+                </label>
+                <Input
+                  type="date"
+                  name="expiry_date"
+                  value={formData.expiry_date}
+                  onChange={handleChange}
+                  required
+                />
               </div>
             </CardContent>
           </Card>
@@ -247,7 +277,20 @@ export default function CreateQuotationPage() {
               <CardTitle>Items</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-3 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Stock Code
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder="Optional"
+                    value={newItem.stock_code}
+                    onChange={(e) =>
+                      setNewItem({ ...newItem, stock_code: e.target.value })
+                    }
+                  />
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Description
@@ -318,6 +361,7 @@ export default function CreateQuotationPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead>Stock Code</TableHead>
                         <TableHead>Description</TableHead>
                         <TableHead className="text-right">Qty</TableHead>
                         <TableHead className="text-right">Unit Rate</TableHead>
@@ -329,6 +373,7 @@ export default function CreateQuotationPage() {
                     <TableBody>
                       {lineItems.map((item) => (
                         <TableRow key={item.id}>
+                          <TableCell>{item.stock_code || '—'}</TableCell>
                           <TableCell>{item.description}</TableCell>
                           <TableCell className="text-right">{item.quantity}</TableCell>
                           <TableCell className="text-right">
@@ -352,7 +397,7 @@ export default function CreateQuotationPage() {
                         </TableRow>
                       ))}
                       <TableRow className="bg-gray-50">
-                        <TableCell colSpan={2}></TableCell>
+                        <TableCell colSpan={3}></TableCell>
                         <TableCell colSpan={2} className="text-right font-bold">
                           Subtotal:
                         </TableCell>
@@ -362,7 +407,7 @@ export default function CreateQuotationPage() {
                         <TableCell></TableCell>
                       </TableRow>
                       <TableRow className="bg-gray-50">
-                        <TableCell colSpan={2}></TableCell>
+                        <TableCell colSpan={3}></TableCell>
                         <TableCell colSpan={2} className="text-right font-bold">
                           Total Discount:
                         </TableCell>
@@ -372,7 +417,7 @@ export default function CreateQuotationPage() {
                         <TableCell></TableCell>
                       </TableRow>
                       <TableRow className="bg-blue-50">
-                        <TableCell colSpan={2}></TableCell>
+                        <TableCell colSpan={3}></TableCell>
                         <TableCell colSpan={2} className="text-right font-bold text-blue-900">
                           Total:
                         </TableCell>

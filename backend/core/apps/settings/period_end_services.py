@@ -122,16 +122,17 @@ class DayEndService:
     def _generate_sales_summary(process_date: date, shop_id: int = None) -> Dict:
         """Generate daily sales summary"""
         try:
-            from apps.pos.models import Sale
-            
-            queryset = Sale.objects.filter(
-                sale_date__date=process_date,
-                status='completed'
+            from apps.pos.models import CashSale
+
+            queryset = CashSale.objects.filter(
+                sale_date=process_date,
+                is_posted=True,
+                is_cancelled=False
             )
-            
-            if shop_id:
-                queryset = queryset.filter(shop_id=shop_id)
-            
+
+            # Note: CashSale has no shop_id field yet - POS transactions aren't
+            # shop-scoped, so shop_id filtering isn't applicable here.
+
             total_sales = queryset.aggregate(
                 count=Count('id'),
                 total=Sum('total_amount')
@@ -353,26 +354,34 @@ class MonthEndService:
     def _generate_department_stats(process_date: date) -> Dict:
         """Generate monthly statistics for departments"""
         try:
-            from apps.pos.models import SaleItem
+            from apps.pos.models import CashSaleLine
+            from apps.stock_control.models import StockItem
             from apps.settings.models import SalesDepartment, DepartmentMonthlyStats
-            
+
             year = process_date.year
             month = process_date.month
-            
+
             # Get all departments
             departments = SalesDepartment.objects.filter(is_active=True)
             created_count = 0
-            
+
             for dept in departments:
+                # CashSaleLine has no direct FK to StockItem, only a stock_code
+                # CharField, so the department join goes through StockItem.
+                dept_stock_codes = StockItem.objects.filter(
+                    department=dept
+                ).values_list('stock_code', flat=True)
+
                 # Calculate stats for this department in the given month
-                stats = SaleItem.objects.filter(
-                    sale__sale_date__year=year,
-                    sale__sale_date__month=month,
-                    sale__status='completed',
-                    product__department=dept
+                stats = CashSaleLine.objects.filter(
+                    cash_sale__sale_date__year=year,
+                    cash_sale__sale_date__month=month,
+                    cash_sale__is_posted=True,
+                    cash_sale__is_cancelled=False,
+                    stock_code__in=dept_stock_codes
                 ).aggregate(
                     sales_value=Sum('line_total'),
-                    profit_value=Sum('profit'),
+                    profit_value=Sum('line_profit'),
                     count=Count('id')
                 )
                 
@@ -412,26 +421,27 @@ class MonthEndService:
     def _generate_sales_area_stats(process_date: date) -> Dict:
         """Generate monthly statistics for sales areas"""
         try:
-            from apps.pos.models import Sale
+            from apps.pos.models import CashSale
             from apps.settings.models import SalesArea, SalesAreaMonthlyStats
-            
+
             year = process_date.year
             month = process_date.month
-            
+
             # Get all sales areas
             areas = SalesArea.objects.filter(is_active=True)
             created_count = 0
-            
+
             for area in areas:
                 # Calculate stats for this area in the given month
-                sales = Sale.objects.filter(
+                sales = CashSale.objects.filter(
                     sale_date__year=year,
                     sale_date__month=month,
-                    status='completed',
+                    is_posted=True,
+                    is_cancelled=False,
                     sales_area=area
                 ).aggregate(
                     sales_value=Sum('total_amount'),
-                    profit_value=Sum('total_profit'),
+                    profit_value=Sum('gross_profit'),
                     count=Count('id')
                 )
                 
@@ -608,19 +618,20 @@ class YearEndService:
     def _generate_year_end_summary(process_year: int) -> Dict:
         """Generate year-end summary"""
         try:
-            from apps.pos.models import Sale
+            from apps.pos.models import CashSale
             from apps.cash_book.models import CashBookTransaction
             from apps.debtors.models import Debtor
             from apps.creditors.models import Creditor
-            
+
             # Sales summary
-            sales = Sale.objects.filter(
+            sales = CashSale.objects.filter(
                 sale_date__year=process_year,
-                status='completed'
+                is_posted=True,
+                is_cancelled=False
             ).aggregate(
                 count=Count('id'),
                 total=Sum('total_amount'),
-                profit=Sum('total_profit')
+                profit=Sum('gross_profit')
             )
             
             # Cash book summary
@@ -671,21 +682,27 @@ class YearEndService:
     def _generate_department_ytd(process_year: int) -> Dict:
         """Generate year-to-date statistics for departments"""
         try:
-            from apps.pos.models import SaleItem
+            from apps.pos.models import CashSaleLine
+            from apps.stock_control.models import StockItem
             from apps.settings.models import SalesDepartment, DepartmentMonthlyStats
-            
+
             # Aggregate all months for the year
             departments = SalesDepartment.objects.filter(is_active=True)
             created_count = 0
-            
+
             for dept in departments:
-                ytd_stats = SaleItem.objects.filter(
-                    sale__sale_date__year=process_year,
-                    sale__status='completed',
-                    product__department=dept
+                dept_stock_codes = StockItem.objects.filter(
+                    department=dept
+                ).values_list('stock_code', flat=True)
+
+                ytd_stats = CashSaleLine.objects.filter(
+                    cash_sale__sale_date__year=process_year,
+                    cash_sale__is_posted=True,
+                    cash_sale__is_cancelled=False,
+                    stock_code__in=dept_stock_codes
                 ).aggregate(
                     sales_value=Sum('line_total'),
-                    profit_value=Sum('profit')
+                    profit_value=Sum('line_profit')
                 )
                 
                 sales_value = ytd_stats['sales_value'] or Decimal('0')
@@ -711,20 +728,21 @@ class YearEndService:
     def _generate_sales_area_ytd(process_year: int) -> Dict:
         """Generate year-to-date statistics for sales areas"""
         try:
-            from apps.pos.models import Sale
+            from apps.pos.models import CashSale
             from apps.settings.models import SalesArea, SalesAreaMonthlyStats
-            
+
             areas = SalesArea.objects.filter(is_active=True)
             created_count = 0
-            
+
             for area in areas:
-                ytd_stats = Sale.objects.filter(
+                ytd_stats = CashSale.objects.filter(
                     sale_date__year=process_year,
-                    status='completed',
+                    is_posted=True,
+                    is_cancelled=False,
                     sales_area=area
                 ).aggregate(
                     sales_value=Sum('total_amount'),
-                    profit_value=Sum('total_profit')
+                    profit_value=Sum('gross_profit')
                 )
                 
                 sales_value = ytd_stats['sales_value'] or Decimal('0')

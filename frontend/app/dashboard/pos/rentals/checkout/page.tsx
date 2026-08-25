@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/useAuth';
 import { rentalsApi } from '@/lib/rentalsApi';
+import { getApiErrorMessage } from '@/lib/api';
 import { DebtorPicker } from '@/components/pos/DebtorPicker';
 import { StockItemPicker } from '@/components/pos/StockItemPicker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -59,11 +60,7 @@ export default function RentalCheckoutPage() {
       });
       router.push(`/dashboard/pos/rentals/${rental.id}`);
     } catch (err: any) {
-      const message =
-        err?.response?.data?.error ||
-        err?.response?.data?.detail ||
-        'Checkout failed — please check stock availability and try again.';
-      setError(message);
+      setError(getApiErrorMessage(err, 'Checkout failed — please check stock availability and try again.'));
     } finally {
       setLoading(false);
     }

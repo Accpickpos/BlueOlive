@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Settings, Plus, Trash2, Edit2, Loader, Zap, Upload, Download, Check, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { api } from "@/lib/api";
+import { api, getApiErrorMessage } from "@/lib/api";
 import UsersListPanel from "@/components/UsersListPanel";
 
 // Available fields for import mapping by model type
@@ -480,7 +480,7 @@ export default function AdminSettingsPage() {
       setTimeout(() => setSuccessMessage(null), 3000);
       setTimeout(() => loadData(), 1000);
     } catch (error: any) {
-      setSeedingError(error.response?.data?.error || `Failed to seed ${seedType} data`);
+      setSeedingError(getApiErrorMessage(error, `Failed to seed ${seedType} data`));
     } finally {
       setSeedingStatus((prev) => ({ ...prev, [seedType]: false }));
     }
@@ -513,7 +513,7 @@ export default function AdminSettingsPage() {
       setImportStep('map');
       setSuccessMessage(`File analyzed: ${response.data.total_rows} rows found`);
       setTimeout(() => setSuccessMessage(null), 3000);
-    } catch (error: any) { setError(error.response?.data?.error || 'Failed to analyze file'); }
+    } catch (error: any) { setError(getApiErrorMessage(error, 'Failed to analyze file')); }
     finally { setImportLoading(false); }
   };
 
@@ -530,7 +530,7 @@ export default function AdminSettingsPage() {
       setImportResult(response.data);
       setShowPreview(true);
       setImportStep('preview');
-    } catch (error: any) { setError(error.response?.data?.error || 'Failed to generate preview'); }
+    } catch (error: any) { setError(getApiErrorMessage(error, 'Failed to generate preview')); }
     finally { setImportLoading(false); }
   };
 
@@ -547,7 +547,7 @@ export default function AdminSettingsPage() {
       setImportStep('complete');
       setSuccessMessage(`Import complete! ${response.data.created || 0} records created, ${response.data.updated || 0} updated`);
       setTimeout(() => { setImportFile(null); setFileAnalysis(null); setImportMappings({}); setShowPreview(false); setImportStep('upload'); setImportResult(null); }, 3000);
-    } catch (error: any) { setError(error.response?.data?.error || 'Failed to import data'); setImportStep('preview'); }
+    } catch (error: any) { setError(getApiErrorMessage(error, 'Failed to import data')); setImportStep('preview'); }
     finally { setImportLoading(false); }
   };
 

@@ -1,9 +1,11 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
+import { useAuth } from "@/lib/useAuth";
+import { usePOSAPI } from "@/lib/posApi";
 
 interface Quote {
   id: number;
@@ -15,30 +17,48 @@ interface Quote {
 }
 
 export default function QuotesPage() {
+  const { user, isLoading: authLoading } = useAuth();
+  const posAPI = usePOSAPI(user?.tenant?.slug);
+  const posAPIRef = useRef(posAPI);
+
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
-    fetchQuotes();
-  }, []);
+    if (authLoading || !user) return;
+    let cancelled = false;
 
-  const fetchQuotes = async () => {
-    setLoading(true);
-    try {
-      setTimeout(() => {
-        setQuotes([
-          { id: 1, number: "QT-001", customer: "John Smith", amount: 3500.00, expiry: "2025-03-15", status: "sent" },
-          { id: 2, number: "QT-002", customer: "ABC Corp", amount: 5000.00, expiry: "2025-03-20", status: "accepted" },
-          { id: 3, number: "QT-003", customer: "Tech Solutions", amount: 2200.00, expiry: "2025-02-28", status: "draft" },
-        ]);
-      }, 300);
-    } catch (error) {
-      console.error("Error fetching quotes:", error);
-    } finally {
-      setTimeout(() => setLoading(false), 400);
-    }
-  };
+    const fetchQuotes = async () => {
+      setLoading(true);
+      try {
+        const response = await posAPIRef.current.listQuotations();
+        if (cancelled) return;
+
+        const raw: any[] = Array.isArray(response) ? response : (response as any).results ?? [];
+        setQuotes(
+          raw.map((q: any) => ({
+            id: q.id,
+            number: q.quotation_number ?? String(q.id),
+            customer: q.customer_name ?? "Unknown",
+            amount: Number(q.total_amount ?? 0),
+            expiry: q.expiry_date ?? "",
+            status: String(q.status ?? "ACTIVE").toLowerCase(),
+          }))
+        );
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Error fetching quotes:", error);
+          setQuotes([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchQuotes();
+    return () => { cancelled = true; };
+  }, [user, authLoading]);
 
   const filteredQuotes = quotes.filter((quote) =>
     quote.number.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -91,11 +111,11 @@ export default function QuotesPage() {
                       <td className="py-3">{quote.expiry}</td>
                       <td className="py-3">
                         <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          quote.status === "accepted" ? "bg-green-100 text-green-800" :
-                          quote.status === "draft" ? "bg-gray-100 text-gray-800" :
+                          quote.status === "converted_to_invoice" || quote.status === "invoiced" || quote.status === "job" ? "bg-green-100 text-green-800" :
+                          quote.status === "cancelled" || quote.status === "expired" ? "bg-gray-100 text-gray-800" :
                           "bg-blue-100 text-blue-800"
                         }`}>
-                          {quote.status}
+                          {quote.status.replace(/_/g, " ")}
                         </span>
                       </td>
                     </tr>
