@@ -89,34 +89,69 @@ class DayEndService:
             # 3. Generate daily stock movement summary
             stock_summary = DayEndService._generate_stock_summary(process_date, shop_id)
             details['operations'].append(stock_summary)
-            
+
+            # 3b. Apply due future pricing (manual §3.1 [313.htm]: "Accpick
+            # automatically updates the future prices for the following day
+            # when Day End procedures are run")
+            future_pricing_summary = DayEndService._apply_future_pricing(process_date)
+            details['operations'].append(future_pricing_summary)
+
             # 4. Update last day-end date in configuration
             DayEndService._update_day_end_date(process_date)
             
             # Check for any errors
             errors = [op['message'] for op in details['operations'] if not op.get('success', True)]
-            
+
             if errors:
-                return PeriodEndResult(
+                result = PeriodEndResult(
                     success=False,
                     message=f"Day-end completed with {len(errors)} errors",
                     details=details,
                     errors=errors
                 )
-            
-            return PeriodEndResult(
-                success=True,
-                message=f"Day-end completed successfully for {process_date}",
-                details=details
-            )
-            
+            else:
+                result = PeriodEndResult(
+                    success=True,
+                    message=f"Day-end completed successfully for {process_date}",
+                    details=details
+                )
+
+            DayEndService._save_report(process_date, shop_id, result)
+            return result
+
         except Exception as e:
             logger.error(f"Day-end process failed: {str(e)}")
-            return PeriodEndResult(
+            result = PeriodEndResult(
                 success=False,
                 message=f"Day-end process failed: {str(e)}",
                 errors=[str(e)]
             )
+            DayEndService._save_report(process_date, shop_id, result)
+            return result
+
+    @staticmethod
+    def _save_report(process_date: date, shop_id: Optional[int], result: 'PeriodEndResult'):
+        """Persist the run so it can be listed/reprinted later (manual §8.6)."""
+        try:
+            from apps.settings.models import DayEndReport
+
+            DayEndReport.objects.update_or_create(
+                process_date=process_date,
+                shop_id=shop_id,
+                defaults={
+                    'success': result.success,
+                    'message': result.message,
+                    'details': result.details,
+                    'errors': result.errors,
+                }
+            )
+        except Exception as e:
+            # logger.error, not .warning: run_day_end() still reports success
+            # to its caller even when this fails (the day-end operations
+            # themselves genuinely succeeded) — this is the only signal that
+            # the report itself, the whole point of this persistence layer,
+            # didn't actually get saved and won't be listed/reprintable.
+            logger.error(f"Could not save day-end report for {process_date} (shop_id={shop_id}): {e}")
     
     @staticmethod
     def _generate_sales_summary(process_date: date, shop_id: int = None) -> Dict:
@@ -222,7 +257,41 @@ class DayEndService:
                 'success': False,
                 'message': f"Stock summary failed: {str(e)}"
             }
-    
+
+    @staticmethod
+    def _apply_future_pricing(process_date: date) -> Dict:
+        """
+        Apply any FuturePricing records whose effective_date has arrived.
+        Manual (§3.1 [313.htm]): future prices are set ahead of time and
+        auto-applied "for the following day when Day End procedures are
+        run" — this was previously only reachable via the manual, one-at-
+        a-time FuturePricingViewSet.apply action (confirmed via repo-wide
+        grep: no automatic trigger existed anywhere).
+        """
+        try:
+            from apps.stock_control.models import FuturePricing
+
+            due = FuturePricing.objects.filter(
+                is_applied=False, effective_date__lte=process_date
+            )
+            applied_count = 0
+            for fp in due:
+                if fp.apply():
+                    applied_count += 1
+
+            return {
+                'operation': 'future_pricing',
+                'success': True,
+                'message': f"Future pricing: {applied_count} price change(s) applied",
+                'data': {'applied_count': applied_count}
+            }
+        except Exception as e:
+            return {
+                'operation': 'future_pricing',
+                'success': False,
+                'message': f"Future pricing apply failed: {str(e)}"
+            }
+
     @staticmethod
     def _update_day_end_date(process_date: date):
         """Update the last day-end date in system configuration"""
@@ -690,10 +759,12 @@ class YearEndService:
                 
                 sales_value = ytd_stats['sales_value'] or Decimal('0')
                 profit_value = ytd_stats['profit_value'] or Decimal('0')
-                
-                # Note: This overwrites the 12-month stats, could create separate YTD model
+
+                dept.sales_ytd = sales_value
+                dept.profit_ytd = profit_value
+                dept.save(update_fields=['sales_ytd', 'profit_ytd'])
                 created_count += 1
-            
+
             return {
                 'operation': 'department_ytd',
                 'success': True,
@@ -729,9 +800,12 @@ class YearEndService:
                 
                 sales_value = ytd_stats['sales_value'] or Decimal('0')
                 profit_value = ytd_stats['profit_value'] or Decimal('0')
-                
+
+                area.sales_ytd = sales_value
+                area.profit_ytd = profit_value
+                area.save(update_fields=['sales_ytd', 'profit_ytd'])
                 created_count += 1
-            
+
             return {
                 'operation': 'sales_area_ytd',
                 'success': True,

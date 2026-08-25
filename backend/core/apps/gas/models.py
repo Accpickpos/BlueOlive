@@ -1,5 +1,5 @@
 """
-Rentals models — LPG cylinder rental/deposit tracking.
+Gas app models — LPG cylinder rental/deposit tracking.
 
 No COBOL equivalent exists for this concept (per the /office-hours design doc);
 built greenfield. Cylinders are tracked as per-customer aggregate counts, not

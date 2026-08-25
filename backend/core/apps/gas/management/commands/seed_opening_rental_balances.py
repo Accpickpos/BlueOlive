@@ -26,7 +26,7 @@ from django.utils import timezone
 
 from apps.debtors.models import Debtor
 from apps.general_ledger.models import GLMast
-from apps.rentals.models import RentalSettings, RentalTransaction
+from apps.gas.models import RentalSettings, RentalTransaction
 from apps.stock_control.models import StockItem
 
 

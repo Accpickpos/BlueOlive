@@ -338,6 +338,33 @@ class FuturePricing(models.Model):
     def __str__(self):
         return f"Future Price: {self.stock_item.stock_code} (Effective: {self.effective_date})"
 
+    def apply(self):
+        """
+        Apply this future pricing to the parent stock item. Manual (§3.1
+        [313.htm]): "Accpick automatically updates the future prices for
+        the following day when Day End procedures are run" — see
+        DayEndService._apply_future_pricing in
+        apps/settings/period_end_services.py for the batch caller. Also
+        used directly by FuturePricingViewSet.apply for manual/immediate
+        application ("Where Day End is not normally processed, use the
+        Update facility").
+        """
+        if self.is_applied:
+            return False
+        item = self.stock_item
+        item.selling_price_1 = self.future_selling_price_1
+        item.selling_price_2 = self.future_selling_price_2
+        item.selling_price_3 = self.future_selling_price_3
+        item.markup_1 = self.future_markup_1
+        item.markup_2 = self.future_markup_2
+        item.markup_3 = self.future_markup_3
+        if self.future_cost_price:
+            item.cost_price = self.future_cost_price
+        item.save()
+        self.is_applied = True
+        self.save(update_fields=['is_applied'])
+        return True
+
 
 class ShrinkWrap(models.Model):
     """Shrink wrap relationships between bulk and individual items (SHRINK table)"""

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { rentalsApi, RentalTransaction, ReconciliationState } from '@/lib/rentalsApi';
+import { gasApi, RentalTransaction, ReconciliationState } from '@/lib/gasApi';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,7 @@ const RECONCILIATION_OPTIONS: { value: ReconciliationState; label: string; note:
   { value: 'DISPUTED', label: 'Disputed', note: 'Flag for investigation — no money moves yet. Requires Accountant/Admin.' },
 ];
 
-export default function RentalDetailPage() {
+export default function GasDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = Number(params.id);
@@ -37,7 +37,7 @@ export default function RentalDetailPage() {
   const fetchRental = async () => {
     setLoading(true);
     try {
-      const data = await rentalsApi.get(id);
+      const data = await gasApi.get(id);
       setRental(data);
     } catch (err) {
       console.error('Error fetching rental:', err);
@@ -57,7 +57,7 @@ export default function RentalDetailPage() {
 
     setReconciling(true);
     try {
-      const updated = await rentalsApi.returnCylinder(id, {
+      const updated = await gasApi.returnCylinder(id, {
         reconciliation_state: selectedState,
         replacement_unit_price:
           selectedState === 'BILLED_FOR_REPLACEMENT' ? Number(replacementPrice) : undefined,
@@ -228,8 +228,8 @@ export default function RentalDetailPage() {
           </div>
         )}
 
-        <Button type="button" variant="outline" onClick={() => router.push('/dashboard/pos/rentals')}>
-          Back to Rentals
+        <Button type="button" variant="outline" onClick={() => router.push('/dashboard/gas')}>
+          Back to Gas
         </Button>
       </div>
     </div>

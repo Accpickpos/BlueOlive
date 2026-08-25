@@ -321,9 +321,47 @@ class CashWithdrawalViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     serializer_class = CashWithdrawalSerializer
     permission_classes = [IsAuthenticated, CanCreateTransactions, CanModifyReconciledTransactions]
     ordering = ['-transaction__transaction_date']
-    
+
     def get_queryset(self):
         return CashWithdrawal.objects.select_related('transaction').all()
+
+    @db_transaction.atomic
+    def create(self, request, *args, **kwargs):
+        """
+        Create cash withdrawal transaction. Previously this endpoint was
+        non-functional: CashWithdrawalSerializer marks `transaction` as
+        read-only with no way to set it, so the default ModelViewSet.create()
+        could never succeed — CreateCashWithdrawalSerializer existed but was
+        never wired to any view. Fixed by mirroring the working
+        OtherIncomeViewSet/OtherExpenseViewSet pattern.
+        """
+        serializer = CreateCashWithdrawalSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            data = serializer.validated_data
+            base_transaction = CashBookTransactionService.create_transaction(
+                transaction_type='WITHDRAWAL',
+                transaction_date=data['transaction_date'],
+                value_excl_vat=data['value_excl_vat'],
+                tax_code=data.get('tax_code', 1),
+                audit_type=data.get('audit_type', 3),
+                category_id=data.get('category_number'),
+                reference=data.get('reference', ''),
+                description=data.get('purpose', ''),
+                account_type='BANK',
+                bank_account_number=data['bank_account_number'],
+                created_by=request.user.username,
+            )
+            withdrawal = CashWithdrawal.objects.create(
+                transaction=base_transaction,
+                withdrawal_slip_number=data.get('withdrawal_slip_number', ''),
+                withdrawn_by=data['withdrawn_by'],
+                purpose=data['purpose'],
+            )
+            return Response(CashWithdrawalSerializer(withdrawal).data, status=status.HTTP_201_CREATED)
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class BankTransferViewSet(ShopFilterMixin, viewsets.ModelViewSet):
@@ -331,9 +369,41 @@ class BankTransferViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     serializer_class = BankTransferSerializer
     permission_classes = [IsAuthenticated, CanCreateTransactions, CanModifyReconciledTransactions]
     ordering = ['-transaction__transaction_date']
-    
+
     def get_queryset(self):
         return BankTransfer.objects.select_related('transaction').all()
+
+    @db_transaction.atomic
+    def create(self, request, *args, **kwargs):
+        """Create bank transfer transaction (see CashWithdrawalViewSet.create for why this override exists)."""
+        serializer = CreateBankTransferSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            data = serializer.validated_data
+            base_transaction = CashBookTransactionService.create_transaction(
+                transaction_type='TRANSFER',
+                transaction_date=data['transaction_date'],
+                value_excl_vat=data['value_excl_vat'],
+                tax_code=data.get('tax_code', 1),
+                audit_type=data.get('audit_type', 3),
+                category_id=data.get('category_number'),
+                reference=data.get('reference', ''),
+                description=data.get('description', 'Bank transfer'),
+                account_type='BANK',
+                bank_account_number=data['from_account'],
+                created_by=request.user.username,
+            )
+            transfer = BankTransfer.objects.create(
+                transaction=base_transaction,
+                from_account=data['from_account'],
+                to_account=data['to_account'],
+                transfer_reference=data.get('transfer_reference', ''),
+                transfer_fee=data.get('transfer_fee', 0),
+            )
+            return Response(BankTransferSerializer(transfer).data, status=status.HTTP_201_CREATED)
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class BankChargeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
@@ -341,9 +411,39 @@ class BankChargeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     serializer_class = BankChargeSerializer
     permission_classes = [IsAuthenticated, CanCreateTransactions, CanModifyReconciledTransactions]
     ordering = ['-transaction__transaction_date']
-    
+
     def get_queryset(self):
         return BankCharge.objects.select_related('transaction').all()
+
+    @db_transaction.atomic
+    def create(self, request, *args, **kwargs):
+        """Create bank charge transaction (see CashWithdrawalViewSet.create for why this override exists)."""
+        serializer = CreateBankChargeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            data = serializer.validated_data
+            base_transaction = CashBookTransactionService.create_transaction(
+                transaction_type='BANK_CHARGE',
+                transaction_date=data['transaction_date'],
+                value_excl_vat=data['value_excl_vat'],
+                tax_code=data.get('tax_code', 1),
+                audit_type=data.get('audit_type', 4),
+                category_id=data.get('category_number'),
+                reference=data.get('reference', ''),
+                description=data.get('description', ''),
+                account_type='BANK',
+                bank_account_number=data['bank_account_number'],
+                created_by=request.user.username,
+            )
+            charge = BankCharge.objects.create(
+                transaction=base_transaction,
+                charge_type=data['charge_type'],
+                statement_reference=data.get('statement_reference', ''),
+            )
+            return Response(BankChargeSerializer(charge).data, status=status.HTTP_201_CREATED)
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class InterestReceivedViewSet(ShopFilterMixin, viewsets.ModelViewSet):
@@ -351,9 +451,40 @@ class InterestReceivedViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     serializer_class = InterestReceivedSerializer
     permission_classes = [IsAuthenticated, CanCreateTransactions, CanModifyReconciledTransactions]
     ordering = ['-transaction__transaction_date']
-    
+
     def get_queryset(self):
         return InterestReceived.objects.select_related('transaction').all()
+
+    @db_transaction.atomic
+    def create(self, request, *args, **kwargs):
+        """Create interest received transaction (see CashWithdrawalViewSet.create for why this override exists)."""
+        serializer = CreateInterestReceivedSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            data = serializer.validated_data
+            base_transaction = CashBookTransactionService.create_transaction(
+                transaction_type='INTEREST',
+                transaction_date=data['transaction_date'],
+                value_excl_vat=data['value_excl_vat'],
+                tax_code=data.get('tax_code', 1),
+                audit_type=data.get('audit_type', 2),
+                category_id=data.get('category_number'),
+                reference=data.get('reference', ''),
+                description=data.get('description', 'Interest received'),
+                account_type='BANK',
+                bank_account_number=data['bank_account_number'],
+                created_by=request.user.username,
+            )
+            interest = InterestReceived.objects.create(
+                transaction=base_transaction,
+                interest_period_start=data['interest_period_start'],
+                interest_period_end=data['interest_period_end'],
+                interest_rate=data.get('interest_rate', 0),
+            )
+            return Response(InterestReceivedSerializer(interest).data, status=status.HTTP_201_CREATED)
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class BankReconciliationViewSet(ShopFilterMixin, viewsets.ModelViewSet):

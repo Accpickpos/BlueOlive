@@ -10,7 +10,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from apps.shop_filter_mixin import ShopFilterMixin
 
 from .models import (
-    Creditor,
+    Creditor, CreditorTransaction,
     GoodsReceivedNote, GRNLineItem,
     CreditorInvoice, CreditorInvoiceLineItem,
     CreditorCreditNote, CreditorCreditNoteLineItem,
@@ -84,6 +84,37 @@ class CreditorViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         if self.action == 'age_analysis':
             return CreditorAgedBalanceSummarySerializer
         return CreditorSerializer
+
+    def perform_destroy(self, instance):
+        """
+        Manual (§4.1 [411.htm]): "Deletion is not permitted when: an
+        account has a balance, or where transactions were posted to this
+        account for the current month." Previously unenforced — unlike the
+        typed transaction viewsets (GRN/Invoice/CreditNote/Journal/Payment)
+        which already guard against deleting *posted* transactions, the
+        Creditor master itself had no destroy override at all.
+        """
+        from rest_framework.exceptions import ValidationError
+
+        if instance.total_outstanding_balance != 0:
+            raise ValidationError(
+                f"Cannot delete creditor {instance.supplier_number}: account has an "
+                f"outstanding balance of {instance.total_outstanding_balance}."
+            )
+
+        today = timezone.now().date()
+        has_transactions_this_month = CreditorTransaction.objects.filter(
+            creditor=instance,
+            transaction_date__year=today.year,
+            transaction_date__month=today.month,
+        ).exists()
+        if has_transactions_this_month:
+            raise ValidationError(
+                f"Cannot delete creditor {instance.supplier_number}: transactions were "
+                f"posted to this account in the current month."
+            )
+
+        super().perform_destroy(instance)
 
     # --- Session capture on create/update ---
     def _capture_session(self, serializer):

@@ -36,6 +36,7 @@ from .models import (
     DepartmentMonthlyStats,
     SalesAreaMonthlyStats,
     APIKey,
+    DayEndReport,
 )
 from .serializers import (
     SalesDepartmentSerializer,
@@ -57,6 +58,7 @@ from .serializers import (
     SystemConfigurationSerializer,
     DepartmentMonthlyStatsSerializer,
     SalesAreaMonthlyStatsSerializer,
+    DayEndReportSerializer,
     APIKeyListSerializer,
     APIKeyDetailSerializer,
     APIKeyCreateSerializer,
@@ -83,7 +85,25 @@ class BaseSettingsViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         """Set updated_by on update"""
         serializer.save(updated_by=self.request.user)
-    
+
+    def perform_destroy(self, instance):
+        """
+        Manual: "An Income/Expense category cannot be deleted if there have
+        been transactions recorded against it" — the same pattern applies
+        to every reference model here (departments, tax codes, etc, all
+        PROTECT-referenced by transaction tables). Previously this hit
+        Django's raw ProtectedError and surfaced as an unhandled 500
+        instead of a clean validation message.
+        """
+        from django.db.models import ProtectedError
+        from rest_framework.exceptions import ValidationError
+        try:
+            super().perform_destroy(instance)
+        except ProtectedError:
+            raise ValidationError(
+                f"Cannot delete {instance}: it is referenced by existing transactions."
+            )
+
     def get_serializer_class(self):
         """Use list serializer for list action, full serializer otherwise"""
         if self.action == 'list' and hasattr(self, 'list_serializer_class'):
@@ -879,8 +899,24 @@ class SalesAreaMonthlyStatsViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSe
         
         queryset = self.get_queryset().filter(year=year)
         serializer = self.get_serializer(queryset, many=True)
-        
+
         return Response(serializer.data)
+
+
+class DayEndReportViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+    """
+    Read-only ViewSet for persisted Day End Reports (manual §8.6
+    "Printing a Previous Day End Report").
+
+    List: GET /api/settings/day-end-reports/
+    Retrieve (reprint): GET /api/settings/day-end-reports/{id}/
+    """
+    queryset = DayEndReport.objects.all()
+    serializer_class = DayEndReportSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['process_date', 'shop_id', 'success']
+    ordering_fields = ['process_date']
+    ordering = ['-process_date']
 
 
 class APIKeyViewSet(ShopFilterMixin, viewsets.ModelViewSet):

@@ -123,7 +123,6 @@ const menuConfig = [
       { type: "link", name: "Invoices", href: "/dashboard/pos/invoices", icon: FileText },
       { type: "link", name: "Receipts", href: "/dashboard/pos/receipts", icon: Receipt },
       { type: "link", name: "Cash Sales", href: "/dashboard/pos/cash-sales", icon: ShoppingCart },
-      { type: "link", name: "Rentals", href: "/dashboard/pos/rentals", icon: Repeat },
       { type: "link", name: "Cash Return", href: "/dashboard/pos/cash-return", icon: ArrowDownLeft },
       { type: "link", name: "Credit Note", href: "/dashboard/pos/credit-note", icon: CreditCard },
       { type: "link", name: "Cash Control", href: "/dashboard/pos/cash-control", icon: Lock },
@@ -138,6 +137,8 @@ const menuConfig = [
       { type: "link", name: "Settings", href: "/dashboard/pos/settings", icon: Settings },
     ],
   },
+
+  { type: "link", name: "Gas", href: "/dashboard/gas", icon: Repeat },
 
   { type: "link", name: "Messaging", href: "/dashboard/messaging", icon: MessageSquare },
   { type: "link", name: "Expenses", href: "/dashboard/expenses", icon: DollarSign },

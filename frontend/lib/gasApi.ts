@@ -1,8 +1,8 @@
 /**
- * Rentals API Client — LPG cylinder rental/deposit tracking.
+ * Gas API Client — LPG cylinder rental/deposit tracking.
  *
- * Base URL: /api/v1/rentals/rentals/
- * Backend: apps/rentals (checkout / returned actions on RentalTransactionViewSet)
+ * Base URL: /api/v1/gas/
+ * Backend: apps/gas (checkout / returned actions on RentalTransactionViewSet)
  */
 
 import { api } from './api';
@@ -57,24 +57,24 @@ export interface PaginatedResponse<T> {
   results: T[];
 }
 
-export const rentalsApi = {
+export const gasApi = {
   /** List rentals — pass { status: 'OPEN' } etc. as needed by the backend filter. */
   list: async (params?: Record<string, string | number | boolean>) => {
     const response = await api.get<PaginatedResponse<RentalTransaction>>(
-      ENDPOINTS.RENTALS.BASE,
+      ENDPOINTS.GAS.BASE,
       { params }
     );
     return response.data;
   },
 
   get: async (id: number) => {
-    const response = await api.get<RentalTransaction>(ENDPOINTS.RENTALS.DETAIL(id));
+    const response = await api.get<RentalTransaction>(ENDPOINTS.GAS.DETAIL(id));
     return response.data;
   },
 
   /** Check a cylinder out to a customer against a held deposit. */
   checkout: async (data: RentalCheckoutData) => {
-    const response = await api.post<RentalTransaction>(ENDPOINTS.RENTALS.CHECKOUT, data);
+    const response = await api.post<RentalTransaction>(ENDPOINTS.GAS.CHECKOUT, data);
     return response.data;
   },
 
@@ -84,9 +84,9 @@ export const rentalsApi = {
    * user as a permission message, not a generic error.
    */
   returnCylinder: async (id: number, data: RentalReturnData) => {
-    const response = await api.post<RentalTransaction>(ENDPOINTS.RENTALS.RETURN(id), data);
+    const response = await api.post<RentalTransaction>(ENDPOINTS.GAS.RETURN(id), data);
     return response.data;
   },
 };
 
-export default rentalsApi;
+export default gasApi;

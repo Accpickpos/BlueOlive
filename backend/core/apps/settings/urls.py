@@ -21,6 +21,7 @@ from .views import (
     SystemConfigurationViewSet,
     DepartmentMonthlyStatsViewSet,
     SalesAreaMonthlyStatsViewSet,
+    DayEndReportViewSet,
     APIKeyViewSet,
     EmailDocumentView,
 )
@@ -41,6 +42,7 @@ router.register(r'credit-terms', CreditTermsViewSet, basename='credit-terms')
 router.register(r'system-config', SystemConfigurationViewSet, basename='system-config')
 router.register(r'department-stats', DepartmentMonthlyStatsViewSet, basename='department-stats')
 router.register(r'sales-area-stats', SalesAreaMonthlyStatsViewSet, basename='sales-area-stats')
+router.register(r'day-end-reports', DayEndReportViewSet, basename='day-end-report')
 router.register(r'import', ImportViewSet, basename='import')
 router.register(r'api-keys', APIKeyViewSet, basename='api-key')
 

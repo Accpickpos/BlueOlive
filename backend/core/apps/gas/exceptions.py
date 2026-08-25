@@ -1,5 +1,5 @@
 """
-Custom exceptions for the Rentals app.
+Custom exceptions for the Gas app (cylinder rental/deposit tracking).
 Mirrors apps/pos/exceptions.py's granular hierarchy — no catch-all handling.
 """
 
