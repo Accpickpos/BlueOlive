@@ -1,3 +1,5 @@
+from decimal import Decimal
+from django.db import transaction
 from django.db.models import Q, Sum, F
 from django.utils import timezone
 from rest_framework import viewsets, status, filters
@@ -56,7 +58,7 @@ class StockItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['department', 'supplier', 'is_active', 'tax_code', 'kvi_flag']
-    search_fields = ['stock_code', 'description', 'supplier_code', 'bin_number']
+    search_fields = ['stock_code', 'description', 'supplier_code', 'bin_number', 'barcode']
     ordering_fields = ['stock_code', 'description', 'quantity_on_hand', 'cost_price', 'selling_price_1']
     ordering = ['stock_code']
 
@@ -70,6 +72,36 @@ class StockItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         serializer.save(updated_by=self.request.user.username)
+
+    def perform_destroy(self, instance):
+        """
+        Manual (§3.1 [311.htm]): "Accpick only allows a stock item to be
+        deleted when there is no stock on hand, nor any stock movement for
+        the current period." Previously unenforced — deletion was only
+        incidentally blocked by PROTECT on FKs referencing StockItem
+        (unrelated to QOH or "current period").
+        """
+        from rest_framework.exceptions import ValidationError
+
+        if instance.quantity_on_hand != 0:
+            raise ValidationError(
+                f"Cannot delete stock item {instance.stock_code}: quantity on hand is "
+                f"{instance.quantity_on_hand}, not zero."
+            )
+
+        today = timezone.now().date()
+        has_movement_this_period = StockTransaction.objects.filter(
+            stock_item=instance,
+            transaction_date__year=today.year,
+            transaction_date__month=today.month,
+        ).exists()
+        if has_movement_this_period:
+            raise ValidationError(
+                f"Cannot delete stock item {instance.stock_code}: it has stock movement "
+                f"in the current period."
+            )
+
+        super().perform_destroy(instance)
 
     @action(detail=True, methods=['get'])
     def pricing(self, request, pk=None):
@@ -229,19 +261,8 @@ class FuturePricingViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         fp = self.get_object()
         if fp.is_applied:
             return Response({'error': 'Already applied.'}, status=status.HTTP_400_BAD_REQUEST)
-        item = fp.stock_item
-        item.selling_price_1 = fp.future_selling_price_1
-        item.selling_price_2 = fp.future_selling_price_2
-        item.selling_price_3 = fp.future_selling_price_3
-        item.markup_1 = fp.future_markup_1
-        item.markup_2 = fp.future_markup_2
-        item.markup_3 = fp.future_markup_3
-        if fp.future_cost_price:
-            item.cost_price = fp.future_cost_price
-        item.save()
-        fp.is_applied = True
-        fp.save(update_fields=['is_applied'])
-        return Response({'message': 'Future pricing applied.', 'stock_code': item.stock_code})
+        fp.apply()
+        return Response({'message': 'Future pricing applied.', 'stock_code': fp.stock_item.stock_code})
 
 
 # ─────────────────────────────────────────────
@@ -379,9 +400,25 @@ class StockTakeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             counted = item.quantity_counted
             if take.reset_negatives_to_zero and counted < 0:
                 counted = 0
-            item.stock_item.quantity_on_hand = counted
-            item.stock_item.save(update_fields=['quantity_on_hand'])
+
+            stock_item = item.stock_item
+            adjustment = Decimal(str(counted)) - stock_item.quantity_on_hand
+
+            stock_item.quantity_on_hand = counted
+            stock_item.save(update_fields=['quantity_on_hand'])
             item.calculate_variance()
+
+            if adjustment != 0:
+                StockTransaction.objects.create(
+                    transaction_type='STOCK_TAKE',
+                    stock_item=stock_item,
+                    transaction_date=take.stock_take_date,
+                    quantity_in=adjustment if adjustment > 0 else Decimal('0'),
+                    quantity_out=-adjustment if adjustment < 0 else Decimal('0'),
+                    unit_cost=item.cost_price_at_count,
+                    comments=f"Stock take #{take.id}"[:30],
+                )
+
             updated += 1
         take.status = 'UPDATED'
         take.save(update_fields=['status'])
@@ -588,6 +625,12 @@ class BranchTransferViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             return BranchTransferListSerializer
         return BranchTransferSerializer
 
+    def perform_create(self, serializer):
+        # DRAFT (the model default) has no transition action to move it
+        # forward — a transfer only becomes actionable once it's PENDING, so
+        # start it there instead of leaving it stuck.
+        serializer.save(requested_by=self.request.user, status='PENDING')
+
     def _transition(self, pk, allowed_from, new_status, timestamp_field, user_field):
         transfer = self.get_object()
         if transfer.status not in allowed_from:
@@ -607,13 +650,62 @@ class BranchTransferViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def dispatch(self, request, pk=None):
-        return self._transition(pk, ['APPROVED'], 'DISPATCHED', 'dispatched_date', 'dispatched_by')
+        """
+        Dispatch the transfer: decrements BranchStock at from_branch for each
+        item and records quantity_dispatched. Optionally accepts per-item
+        dispatched quantities in body: { "items": [ { "id": <BranchTransferItemId>,
+        "quantity_dispatched": <n> } ] } — defaults to quantity_requested for
+        any item not specified.
+        """
+        transfer = self.get_object()
+        if transfer.status not in ('APPROVED',):
+            return Response(
+                {'error': f"Cannot transition from '{transfer.status}' to 'DISPATCHED'."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        item_overrides = {
+            entry['id']: entry['quantity_dispatched']
+            for entry in request.data.get('items', [])
+            if 'id' in entry and 'quantity_dispatched' in entry
+        }
+
+        with transaction.atomic():
+            for item in transfer.items.select_related('stock_item').select_for_update():
+                qty = Decimal(str(item_overrides.get(item.id, item.quantity_requested)))
+
+                branch_stock = BranchStock.objects.select_for_update().filter(
+                    branch=transfer.from_branch, stock_item=item.stock_item
+                ).first()
+                available = branch_stock.quantity if branch_stock else Decimal('0')
+                if qty > available:
+                    return Response(
+                        {'error': f"Insufficient stock for {item.stock_item.stock_code} at "
+                                  f"{transfer.from_branch.branch_code}: requested {qty}, available {available}."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                item.quantity_dispatched = qty
+                item.save(update_fields=['quantity_dispatched'])
+
+                branch_stock.quantity = F('quantity') - qty
+                branch_stock.save(update_fields=['quantity'])
+
+            transfer.status = 'DISPATCHED'
+            transfer.dispatched_date = timezone.now()
+            transfer.dispatched_by = request.user
+            transfer.save(update_fields=['status', 'dispatched_date', 'dispatched_by'])
+
+        transfer.refresh_from_db()
+        return Response(BranchTransferSerializer(transfer).data)
 
     @action(detail=True, methods=['post'])
     def receive(self, request, pk=None):
         """
-        Mark transfer as received. Optionally accepts per-item received quantities
-        in body: { "items": [ { "id": <BranchTransferItemId>, "quantity_received": <n> } ] }
+        Mark transfer as received: increments BranchStock at to_branch for each
+        item. Optionally accepts per-item received quantities in body:
+        { "items": [ { "id": <BranchTransferItemId>, "quantity_received": <n> } ] }
+        — defaults to quantity_dispatched for any item not specified.
         """
         transfer = self.get_object()
         if transfer.status not in ('DISPATCHED', 'IN_TRANSIT'):
@@ -621,18 +713,32 @@ class BranchTransferViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 {'error': f"Cannot receive a transfer with status '{transfer.status}'."},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        item_data = request.data.get('items', [])
-        for entry in item_data:
-            try:
-                ti = transfer.items.get(id=entry['id'])
-                ti.quantity_received = entry['quantity_received']
-                ti.save()
-            except (BranchTransferItem.DoesNotExist, KeyError):
-                pass
-        transfer.status = 'RECEIVED'
-        transfer.received_date = timezone.now()
-        transfer.received_by = request.user
-        transfer.save(update_fields=['status', 'received_date', 'received_by'])
+
+        item_overrides = {
+            entry['id']: entry['quantity_received']
+            for entry in request.data.get('items', [])
+            if 'id' in entry and 'quantity_received' in entry
+        }
+
+        with transaction.atomic():
+            for item in transfer.items.select_related('stock_item').select_for_update():
+                qty = Decimal(str(item_overrides.get(item.id, item.quantity_dispatched)))
+
+                item.quantity_received = qty
+                item.save()  # save() also recalculates `variance`
+
+                branch_stock, _ = BranchStock.objects.select_for_update().get_or_create(
+                    branch=transfer.to_branch, stock_item=item.stock_item
+                )
+                branch_stock.quantity = F('quantity') + qty
+                branch_stock.save(update_fields=['quantity'])
+
+            transfer.status = 'RECEIVED'
+            transfer.received_date = timezone.now()
+            transfer.received_by = request.user
+            transfer.save(update_fields=['status', 'received_date', 'received_by'])
+
+        transfer.refresh_from_db()
         return Response(BranchTransferSerializer(transfer).data)
 
     @action(detail=True, methods=['post'])

@@ -1084,9 +1084,53 @@ class SalesAreaMonthlyStats(models.Model):
         ]
         verbose_name = 'Sales Area Monthly Statistics'
         verbose_name_plural = 'Sales Area Monthly Statistics'
-    
+
     def __str__(self):
         return f"{self.sales_area.name} - {self.year}/{self.month:02d}"
+
+
+class DayEndReport(TimeStampedModel):
+    """
+    Persisted result of a DayEndService.run_day_end() run (manual §8.6
+    [86.htm], "Printing a Previous Day End Report" — reprinting a prior
+    day's report requires it to have been kept somewhere; previously
+    run_day_end()'s result was only ever returned in the HTTP/Celery
+    response and then discarded).
+    """
+    process_date = models.DateField()
+    shop_id = models.IntegerField(null=True, blank=True, help_text="Shop filter used for this run, if any")
+    success = models.BooleanField(default=True)
+    message = models.CharField(max_length=255, blank=True)
+    details = models.JSONField(default=dict, blank=True)
+    errors = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        db_table = 'day_end_reports'
+        ordering = ['-process_date']
+        # NOT unique_together: Postgres treats NULL != NULL, so a plain
+        # (process_date, shop_id) unique_together would let concurrent
+        # tenant-wide runs (shop_id=None) insert duplicate rows for the same
+        # date. Two partial constraints close that gap explicitly.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['process_date', 'shop_id'],
+                condition=models.Q(shop_id__isnull=False),
+                name='unique_day_end_report_per_shop',
+            ),
+            models.UniqueConstraint(
+                fields=['process_date'],
+                condition=models.Q(shop_id__isnull=True),
+                name='unique_day_end_report_tenant_wide',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['process_date']),
+        ]
+        verbose_name = 'Day End Report'
+        verbose_name_plural = 'Day End Reports'
+
+    def __str__(self):
+        return f"Day End {self.process_date}" + (f" (shop {self.shop_id})" if self.shop_id else "")
 
 
 class APIKey(TimeStampedModel):

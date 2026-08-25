@@ -950,3 +950,63 @@ class UnpresentedCheque(models.Model):
                 ).count(),
             }
         }
+
+
+class DailyTillTransaction(models.Model):
+    """
+    Daily till/POS reconciliation row, mapped from the legacy per-trading-day
+    cf<DDMMYY>.dbf files (e.g. cf010224.dbf = 2024-02-01). One row per till
+    transaction captured that day.
+    """
+    # Trading date is not a DBF field — parsed from the source filename
+    trading_date = models.DateField(help_text="Parsed from cf<DDMMYY>.dbf filename")
+    # SOURCE C 2
+    source = models.CharField(max_length=2, blank=True, help_text="SOURCE")
+    # CASHDAY N 12,2
+    cash_total = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="CASHDAY")
+    # CHEQDAY N 12,2
+    cheque_total = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="CHEQDAY")
+    # CARDDAY N 12,2
+    card_total = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="CARDDAY")
+    # INVTOT N 12,2
+    invoice_total = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="INVTOT")
+    # CNOTETOT N 12,2
+    credit_note_total = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="CNOTETOT")
+    # RECONACC N 12,2
+    reconciliation_account_total = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="RECONACC")
+    # OUTVAT N 12,2
+    output_vat = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="OUTVAT")
+    # INVAT N 12,2
+    input_vat = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="INVAT")
+    # TIME C 5
+    transaction_time = models.CharField(max_length=5, blank=True, help_text="TIME")
+    # TRANO N 6
+    transaction_number = models.PositiveIntegerField(default=0, help_text="TRANO")
+    # TYPE C 2
+    transaction_type = models.CharField(max_length=2, blank=True, help_text="TYPE")
+    # CHANGE N 12,2
+    change_given = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="CHANGE")
+    # LAYBYE N 12,2
+    laybye_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="LAYBYE")
+    # COMMENTS C 75
+    comments = models.CharField(max_length=75, blank=True, help_text="COMMENTS")
+    # SPEEDPOINT N 12,2
+    speedpoint_total = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="SPEEDPOINT")
+    # ADJUST N 10,2
+    adjustment = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="ADJUST")
+    # USER C 25
+    captured_by_user = models.CharField(max_length=25, blank=True, help_text="USER")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'daily_till_transactions'
+        ordering = ['trading_date', 'transaction_number']
+        unique_together = ['trading_date', 'transaction_number', 'source']
+        indexes = [
+            models.Index(fields=['trading_date']),
+        ]
+
+    def __str__(self):
+        return f"Till {self.trading_date} #{self.transaction_number}"

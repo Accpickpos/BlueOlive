@@ -500,6 +500,11 @@ class CashControlSummarySerializer(serializers.Serializer):
     total_refunds = serializers.DecimalField(max_digits=12, decimal_places=2)
     total_receipts = serializers.DecimalField(max_digits=12, decimal_places=2)
     total_payouts = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_credits = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_cashed_cheques = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_new_laybyes = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_laybye_receipts = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_cancelled_laybyes = serializers.DecimalField(max_digits=12, decimal_places=2)
     cash_expected = serializers.DecimalField(max_digits=12, decimal_places=2)
     cash_takings = serializers.DecimalField(max_digits=12, decimal_places=2)
     cheque_takings = serializers.DecimalField(max_digits=12, decimal_places=2)
@@ -639,11 +644,64 @@ class CashReturnSerializer(serializers.ModelSerializer):
     """Serializer for cash returns."""
     lines = CashReturnLineSerializer(many=True, read_only=True)
     cashier_name = serializers.CharField(source='cashier.username', read_only=True)
-    
+
     class Meta:
         model = CashReturn
         fields = '__all__'
         read_only_fields = ['subtotal', 'vat_amount', 'total_amount', 'is_posted', 'created_at', 'updated_at']
+
+
+class CashReturnCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating cash returns (header + lines in one request)."""
+    lines = CashReturnLineSerializer(many=True)
+
+    class Meta:
+        model = CashReturn
+        fields = [
+            'return_number', 'return_date', 'original_sale_number', 'customer_name',
+            'reason', 'cashier', 'station_number', 'lines'
+        ]
+
+    def validate_return_number(self, value):
+        if CashReturn.objects.filter(return_number=value).exists():
+            raise serializers.ValidationError("Return number already exists.")
+        return value
+
+    @db_transaction.atomic
+    def create(self, validated_data):
+        lines_data = validated_data.pop('lines')
+
+        cash_return = CashReturn.objects.create(**validated_data)
+
+        subtotal = Decimal('0.00')
+        vat_total = Decimal('0.00')
+
+        for idx, line_data in enumerate(lines_data, start=1):
+            line_data['line_number'] = idx
+
+            quantity = line_data['quantity']
+            unit_price = line_data['unit_price']
+            tax_code = line_data.get('tax_code', 1)
+
+            line_subtotal = quantity * unit_price
+            vat_rate = Decimal('0.14') if tax_code == 1 else Decimal('0.00')
+            line_vat = line_subtotal * vat_rate
+            line_total = line_subtotal + line_vat
+
+            line_data['line_total'] = line_total
+            line_data['vat_amount'] = line_vat
+
+            CashReturnLine.objects.create(cash_return=cash_return, **line_data)
+
+            subtotal += line_subtotal
+            vat_total += line_vat
+
+        cash_return.subtotal = subtotal
+        cash_return.vat_amount = vat_total
+        cash_return.total_amount = subtotal + vat_total
+        cash_return.save()
+
+        return cash_return
 
 
 class CashAChequeSerializer(serializers.ModelSerializer):
@@ -692,7 +750,7 @@ class TransactionQuerySerializer(serializers.ModelSerializer):
 
 class InvoiceLineSerializer(serializers.ModelSerializer):
     """Serializer for invoice line items."""
-    
+
     def to_representation(self, instance):
         """Add detailed error handling for serialization."""
         try:
@@ -700,7 +758,48 @@ class InvoiceLineSerializer(serializers.ModelSerializer):
         except Exception as e:
             logger.error(f"Error serializing InvoiceLine {instance.id}: {type(e).__name__}: {str(e)}", exc_info=True)
             raise
-    
+
+    def validate(self, data):
+        """
+        Enforce maximum discount % and surface below-cost/price warnings,
+        mirroring CashSaleLineSerializer.validate() — same manual-documented
+        rule ("Where a maximum discount has been set... this may not be
+        exceeded"), previously only enforced on CashSaleLine.
+        """
+        stock_code = data.get('stock_code')
+        unit_price = data.get('unit_price')
+        quantity = data.get('quantity', 1)
+        discount_percent = data.get('discount_percentage', 0)
+
+        if stock_code and unit_price:
+            try:
+                result = PriceValidationService.validate_line_item_price(
+                    stock_code=stock_code,
+                    quantity=quantity,
+                    unit_price=unit_price,
+                    discount_percent=discount_percent,
+                    price_level=1,
+                    transaction_date=date.today()
+                )
+
+                if not result['price_valid']:
+                    self.context['price_warnings'] = result.get('warnings', [])
+
+                if not result['discount_valid']:
+                    raise serializers.ValidationError(
+                        f"Discount {discount_percent}% exceeds maximum allowed for this item. "
+                        f"Maximum: {result.get('max_discount_allowed')}%"
+                    )
+
+            except Exception as e:
+                # Don't fail if stock item doesn't exist - it might be a manual entry
+                if "not found" in str(e):
+                    pass
+                else:
+                    raise
+
+        return data
+
     class Meta:
         model = InvoiceLine
         fields = [
@@ -883,7 +982,7 @@ class InvoiceCreateUpdateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Create invoice with line items."""
         lines_data = validated_data.pop('lines', [])
-        
+
         # Set default sales_area if not provided
         if 'sales_area' not in validated_data or not validated_data.get('sales_area'):
             from apps.settings.models import SalesArea
@@ -893,13 +992,24 @@ class InvoiceCreateUpdateSerializer(serializers.ModelSerializer):
             else:
                 # Fallback: use a default sales area code
                 validated_data['sales_area'] = '01'
-        
+
         with db_transaction.atomic():
             invoice = Invoice.objects.create(**validated_data)
-            
+
+            # Trade Discount (manual §2.1: "Enter % discount (if any) by which
+            # each line item at POS will automatically be reduced") — applied
+            # as the default when a line doesn't specify its own discount,
+            # matching the DOS Discount % prompt being pre-filled but
+            # editable. Cash Sales aren't debtor-account transactions, so
+            # this only applies to Invoice.
+            debtor = validated_data.get('debtor')
+            trade_discount = debtor.ddiscper if debtor and debtor.ddiscper else None
+
             for line_data in lines_data:
+                if trade_discount and 'discount_percentage' not in line_data:
+                    line_data['discount_percentage'] = trade_discount
                 InvoiceLine.objects.create(invoice=invoice, **line_data)
-        
+
         return invoice
     
     def update(self, instance, validated_data):

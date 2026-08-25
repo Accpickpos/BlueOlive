@@ -2,14 +2,26 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+} from "recharts";
 import { api } from "@/lib/api";
 
 interface Invoice {
   id: number;
   invoice_number?: string;
   debtor_name?: string;
-  total_amount?: number;
+  total_amount?: number | string;
   status?: string;
   invoice_date?: string;
 }
@@ -17,7 +29,7 @@ interface Invoice {
 interface CashSale {
   id: number;
   sale_date?: string;
-  total_amount?: number;
+  total_amount?: number | string;
   transaction_date?: string;
 }
 
@@ -30,6 +42,12 @@ interface DashboardData {
 }
 
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444"];
+
+// Helper to safely parse numeric values that may come back as strings from DRF
+const toNumber = (value: number | string | undefined | null): number => {
+  const parsed = Number(value);
+  return isNaN(parsed) ? 0 : parsed;
+};
 
 function DashboardContent() {
   const [data, setData] = useState<DashboardData>({
@@ -54,70 +72,49 @@ function DashboardContent() {
       let invoices: Invoice[] = [];
       let cashSales: CashSale[] = [];
 
-      // First, test if API is accessible with a simple endpoint
+      // Test API connectivity
       try {
-        console.log("Testing API connection with /api/shops/");
-        const testResponse = await api.get("/api/shops/");
-        console.log("API connection successful, test response:", testResponse.data);
+        await api.get("/api/shops/");
       } catch (testError: any) {
         console.warn("API test endpoint failed:", testError.response?.status, testError.message);
       }
 
-      // Try to fetch invoices - first with query to see all available
+      // Fetch invoices
       try {
-        console.log("Attempting to fetch invoices from /api/debtors/invoices/");
         const invoicesResponse = await api.get("/api/debtors/invoices/", {
-          params: { limit: 100 }
+          params: { limit: 100 },
         });
-        console.log("Invoices response:", invoicesResponse.status, invoicesResponse.data);
-        const invoicesData = invoicesResponse.data.results || invoicesResponse.data || [];
+        const invoicesData =
+          invoicesResponse.data.results || invoicesResponse.data || [];
         invoices = Array.isArray(invoicesData) ? invoicesData : [];
       } catch (invoiceError: any) {
-        console.warn("Failed to fetch invoices from debtors/invoices:", {
-          status: invoiceError.response?.status,
-          statusText: invoiceError.response?.statusText,
-          data: invoiceError.response?.data,
-          message: invoiceError.message
-        });
-        
-        // Try alternative: just debtors
+        console.warn("Failed to fetch invoices:", invoiceError.response?.status);
         try {
-          console.log("Attempting fallback: /api/debtors/");
           const debtorsResponse = await api.get("/api/debtors/", {
-            params: { limit: 100 }
+            params: { limit: 100 },
           });
-          console.log("Debtors response:", debtorsResponse.status, debtorsResponse.data);
-          const debtorsData = debtorsResponse.data.results || debtorsResponse.data || [];
+          const debtorsData =
+            debtorsResponse.data.results || debtorsResponse.data || [];
           invoices = Array.isArray(debtorsData) ? debtorsData : [];
         } catch (altError: any) {
           console.warn("Fallback debtors endpoint failed:", altError.response?.status);
         }
       }
 
-      // Try to fetch cash sales
+      // Fetch cash sales
       try {
-        console.log("Attempting to fetch cash sales from /api/pos/cash-sales/");
         const cashSalesResponse = await api.get("/api/pos/cash-sales/", {
-          params: { limit: 100 }
+          params: { limit: 100 },
         });
-        console.log("Cash sales response:", cashSalesResponse.status, cashSalesResponse.data);
-        const cashSalesData = cashSalesResponse.data.results || cashSalesResponse.data || [];
+        const cashSalesData =
+          cashSalesResponse.data.results || cashSalesResponse.data || [];
         cashSales = Array.isArray(cashSalesData) ? cashSalesData : [];
       } catch (cashError: any) {
-        console.warn("Failed to fetch cash sales from pos/cash-sales:", {
-          status: cashError.response?.status,
-          statusText: cashError.response?.statusText,
-          data: cashError.response?.data,
-          message: cashError.message
-        });
-        
-        // Try alternative: just pos
+        console.warn("Failed to fetch cash sales:", cashError.response?.status);
         try {
-          console.log("Attempting fallback: /api/pos/");
           const posResponse = await api.get("/api/pos/", {
-            params: { limit: 100 }
+            params: { limit: 100 },
           });
-          console.log("POS response:", posResponse.status, posResponse.data);
           const posData = posResponse.data.results || posResponse.data || [];
           cashSales = Array.isArray(posData) ? posData : [];
         } catch (altError: any) {
@@ -125,9 +122,9 @@ function DashboardContent() {
         }
       }
 
-      // Calculate KPIs
+      // ✅ FIX: Use toNumber() to ensure string decimals from DRF are parsed correctly
       const totalRevenue = cashSales.reduce((sum: number, sale: CashSale) => {
-        return sum + (sale.total_amount || 0);
+        return sum + toNumber(sale.total_amount);
       }, 0);
 
       const pendingInvoices = invoices.filter(
@@ -140,30 +137,28 @@ function DashboardContent() {
         const date = new Date(sale.sale_date || sale.transaction_date || "");
         if (!isNaN(date.getTime())) {
           const month = date.toLocaleDateString("en-US", { month: "short" });
-          revenueByMonth[month] = (revenueByMonth[month] || 0) + (sale.total_amount || 0);
+          // ✅ FIX: Use toNumber() here too
+          revenueByMonth[month] =
+            (revenueByMonth[month] || 0) + toNumber(sale.total_amount);
         }
       });
 
       const revenueData = Object.entries(revenueByMonth)
         .map(([month, revenue]) => ({ month, revenue }))
-        .slice(-6); // Last 6 months
+        .slice(-6);
 
       setData({
-        invoices: invoices.slice(0, 10), // Show last 10 invoices
+        invoices: invoices.slice(0, 10),
         cashSales,
         revenueData: revenueData.length > 0 ? revenueData : [],
         totalRevenue,
         pendingInvoices,
       });
-
-      console.log("Dashboard data fetched successfully:", {
-        invoices: invoices.length,
-        cashSales: cashSales.length,
-        totalRevenue
-      });
     } catch (err: any) {
       console.error("Error fetching dashboard data:", err);
-      setError("Failed to load dashboard data. Check browser console for API endpoint details.");
+      setError(
+        "Failed to load dashboard data. Check browser console for API endpoint details."
+      );
     } finally {
       setLoading(false);
     }
@@ -211,16 +206,25 @@ function DashboardContent() {
     { category: "Supplies", value: 500 },
   ];
 
+  // ✅ FIX: toNumber() on expense values too for safety
+  const totalExpenses = expenseData.reduce(
+    (sum, item) => sum + toNumber(item.value),
+    0
+  );
+
   return (
     <div className="grid grid-cols-3 gap-6">
       {/* KPI Cards */}
       <Card>
         <CardContent className="p-6">
           <h2 className="text-lg font-semibold">Total Revenue</h2>
-          <p className="text-2xl mt-2">R{data.totalRevenue.toLocaleString("en-ZA", { maximumFractionDigits: 2 })}</p>
+          <p className="text-2xl mt-2">
+            R{data.totalRevenue.toLocaleString("en-ZA", { maximumFractionDigits: 2 })}
+          </p>
           <p className="text-sm text-gray-500 mt-1">{data.cashSales.length} sales</p>
         </CardContent>
       </Card>
+
       <Card>
         <CardContent className="p-6">
           <h2 className="text-lg font-semibold">Outstanding Invoices</h2>
@@ -228,10 +232,11 @@ function DashboardContent() {
           <p className="text-sm text-gray-500 mt-1">of {data.invoices.length} total</p>
         </CardContent>
       </Card>
+
       <Card>
         <CardContent className="p-6">
           <h2 className="text-lg font-semibold">Expenses This Month</h2>
-          <p className="text-2xl mt-2">R{expenseData.reduce((sum, item) => sum + item.value, 0).toLocaleString()}</p>
+          <p className="text-2xl mt-2">R{totalExpenses.toLocaleString("en-ZA")}</p>
           <p className="text-sm text-gray-500 mt-1">{expenseData.length} categories</p>
         </CardContent>
       </Card>
@@ -245,8 +250,19 @@ function DashboardContent() {
               <LineChart data={data.revenueData}>
                 <XAxis dataKey="month" />
                 <YAxis />
-                <Tooltip />
-                <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} />
+                <Tooltip
+                  formatter={(value: number | undefined) =>
+                    value !== undefined
+                      ? `R${value.toLocaleString("en-ZA", { maximumFractionDigits: 2 })}`
+                      : "N/A"
+                  }
+                />
+                <Line
+                  type="monotone"
+                  dataKey="revenue"
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                />
               </LineChart>
             </ResponsiveContainer>
           ) : (
@@ -275,7 +291,13 @@ function DashboardContent() {
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip
+                  formatter={(value: number | undefined) =>
+                    value !== undefined
+                      ? `R${value.toLocaleString("en-ZA")}`
+                      : "N/A"
+                  }
+                />
               </PieChart>
             </ResponsiveContainer>
           ) : (
@@ -304,9 +326,16 @@ function DashboardContent() {
               <tbody>
                 {data.invoices.map((invoice) => (
                   <tr key={invoice.id} className="hover:bg-gray-50">
-                    <td className="p-3 border-b">{invoice.invoice_number || `INV-${invoice.id}`}</td>
+                    <td className="p-3 border-b">
+                      {invoice.invoice_number || `INV-${invoice.id}`}
+                    </td>
                     <td className="p-3 border-b">{invoice.debtor_name || "N/A"}</td>
-                    <td className="p-3 border-b">R{(invoice.total_amount || 0).toLocaleString("en-ZA", { maximumFractionDigits: 2 })}</td>
+                    <td className="p-3 border-b">
+                      {/* ✅ FIX: toNumber() ensures string decimals display correctly */}
+                      R{toNumber(invoice.total_amount).toLocaleString("en-ZA", {
+                        maximumFractionDigits: 2,
+                      })}
+                    </td>
                     <td className="p-3 border-b">
                       {invoice.invoice_date
                         ? new Date(invoice.invoice_date).toLocaleDateString("en-ZA")
@@ -315,9 +344,9 @@ function DashboardContent() {
                     <td className="p-3 border-b">
                       <span
                         className={`px-2 py-1 rounded text-sm font-medium capitalize ${
-                          invoice.status === "paid" || invoice.status === "Paid"
+                          invoice.status?.toLowerCase() === "paid"
                             ? "bg-green-100 text-green-700"
-                            : invoice.status === "pending" || invoice.status === "Pending"
+                            : invoice.status?.toLowerCase() === "pending"
                             ? "bg-yellow-100 text-yellow-700"
                             : "bg-red-100 text-red-700"
                         }`}
@@ -330,9 +359,7 @@ function DashboardContent() {
               </tbody>
             </table>
           ) : (
-            <div className="py-8 text-center text-gray-500">
-              No data to display
-            </div>
+            <div className="py-8 text-center text-gray-500">No data to display</div>
           )}
         </CardContent>
       </Card>

@@ -623,25 +623,29 @@ class InvoiceLine(TimeStampedModel):
     
     def save(self, *args, **kwargs):
         """Auto-calculate line totals before saving."""
-        # Calculate line total: quantity × price × (1 - discount%)
-        discount_factor = Decimal('1') - (self.discount_percentage / Decimal('100'))
-        gross_amount = self.quantity * self.unit_price
-        self.line_total = gross_amount * discount_factor
-        
-        # Calculate VAT
-        if self.tax_code == 1:  # Standard rated
-            self.vat_amount = self.line_total * (self.vat_rate / Decimal('100'))
-        else:  # Exempt or zero-rated
-            self.vat_amount = Decimal('0.00')
-        
-        # Calculate cost and profit
-        self.line_cost = self.quantity * self.cost_price
-        self.line_profit = self.line_total - self.line_cost
-        
+        from .calculation_service import CalculationService
+
+        calc = CalculationService.calculate_line_totals(
+            quantity=self.quantity,
+            unit_price=self.unit_price,
+            discount_percentage=self.discount_percentage,
+            tax_code=self.tax_code,
+            cost_price=self.cost_price,
+            vat_rate=self.vat_rate,
+            quantize_places=Decimal('0.0001'),  # preserve this model's 4dp fields
+        )
+        # NOTE: this model's `line_total` is excl-VAT ("before discount, after
+        # VAT" per help_text) — map from the service's line_total_before_vat,
+        # not its VAT-inclusive line_total key.
+        self.line_total = calc['line_total_before_vat']
+        self.vat_amount = calc['vat_amount']
+        self.line_cost = calc['line_cost']
+        self.line_profit = calc['line_profit']
+
         # Skip Django validation for this save to avoid Decimal precision issues
         # Validation is not skipped entirely - we just don't call full_clean()
         super(InvoiceLine, self).save(*args, **kwargs)
-        
+
         # Update invoice totals
         if self.invoice_id:
             self.invoice.recalculate_totals()

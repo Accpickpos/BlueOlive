@@ -93,7 +93,7 @@ class DebtorService:
         """
         Post a transaction to the debtor's account (DEBTRAN).
         Updates debtor balance and creates transaction record.
-        
+
         Args:
             debtor: Debtor instance
             dtype: Transaction type (IN=Invoice, CN=Credit Note, RCP=Receipt, etc.)
@@ -104,41 +104,41 @@ class DebtorService:
             custref: Customer reference
             del1-4: Delivery details
         """
-        if debtor.blockflag == 'Y':
+        if debtor.is_blocked:
             raise ValueError(f"Account {debtor.dno} is blocked")
-        
+
         # Calculate defaults if not provided
         if dtsub is None:
             dtsub = dttot
         if dtgst is None:
             dtgst = Decimal('0.00')
-        
+
         # Lock the debtor row to prevent concurrent transaction number generation
         debtor = Debtor.objects.select_for_update().get(pk=debtor.pk)
-        
+
         # Create sequential transaction number (within lock to prevent duplicates)
-        last_tran = DebtorTransaction.objects.filter(dno=debtor).order_by('-dtrano').first()
-        new_dtrano = str(int(last_tran.dtrano) + 1).zfill(6) if last_tran else '000001'
-        
+        last_tran = DebtorTransaction.objects.filter(debtor=debtor).order_by('-transaction_number').first()
+        new_dtrano = str(int(last_tran.transaction_number) + 1).zfill(6) if last_tran else '000001'
+
         # Create debtor transaction (DEBTRAN)
         trans = DebtorTransaction.objects.create(
-            dno=debtor,
-            dtrano=new_dtrano,
-            dtype=dtype,
-            dtdate=date.today(),
-            dtsub=dtsub,
-            dtgst=dtgst,
-            dttot=dttot,
-            dtaxstat='S',  # Default to Taxable
-            source='API',
-            ordno=ordno,
-            custref=custref,
-            del1=del1,
-            del2=del2,
-            del3=del3,
-            del4=del4,
+            debtor=debtor,
+            transaction_number=new_dtrano,
+            transaction_type=dtype,
+            transaction_date=date.today(),
+            subtotal=dtsub,
+            vat_amount=dtgst,
+            total_amount=dttot,
+            vat_status='S',  # Default to Taxable
+            source_type='MANUAL',
+            order_number=ordno,
+            customer_reference=custref,
+            description_line1=del1,
+            description_line2=del2,
+            description_line3=del3,
+            description_line4=del4,
         )
-        
+
         # Determine if transaction increases or decreases balance
         if dtype in ['IN', 'DM']:  # Invoice, Debit Memo
             balance_change = dttot
@@ -148,15 +148,25 @@ class DebtorService:
             balance_change = -dttot
         else:
             balance_change = dttot
-        
+
         # Update debtor balance (goes to current)
         debtor.dcrnt += balance_change
         debtor.dsalesm += dttot if dtype == 'IN' else Decimal('0.00')
         debtor.dsalesy += dttot if dtype == 'IN' else Decimal('0.00')
         debtor.save()
-        
-        # Create open item record (DEBTOPEN) for Balance Forward accounts
-        if debtor.acctype != 'O':  # Only for Balance Forward accounts
+
+        # Create open item record (DEBTOPEN) for Open Item accounts only.
+        # BBF accounts track balance purely via the aging buckets updated
+        # above (dcrnt/d30/.../d180) — they don't need per-transaction
+        # tracking. Open Item accounts need EVERY transaction individually
+        # trackable until matched/settled (manual: "all outstanding and
+        # unmatched transaction types are listed"; receipts "must be
+        # allocated to specific transactions"). This condition was
+        # previously inverted (`!= 'O'`), which meant Open Item debtors —
+        # the ones this mechanism exists for — never got any open-item
+        # records at all, breaking enquiry screens and receipt allocation
+        # for that account type entirely.
+        if debtor.acctype == 'O':
             Debtopen.objects.create(
                 dno=debtor,
                 dtrano=new_dtrano,
@@ -164,10 +174,10 @@ class DebtorService:
                 date=date.today(),
                 total=abs(dttot),
                 balancedue=abs(dttot) if balance_change > 0 else Decimal('0.00'),
-                ageflag=0,  # Current
-                posted=True,
+                ageflag='0',  # Current
+                posted='Y',
             )
-        
+
         # Create audit record (DEBTORAUD)
         DebtorAudit.objects.create(
             dno=debtor,
@@ -178,7 +188,7 @@ class DebtorService:
             date=date.today(),
             amount=dttot,
         )
-        
+
         return trans
     
     @staticmethod
@@ -193,9 +203,9 @@ class DebtorService:
             ordno: Order reference
             custref: Customer reference
         """
-        if debtor.blockflag == 'Y':
+        if debtor.is_blocked:
             raise ValueError(f"Account {debtor.dno} is blocked")
-        
+
         if amount <= 0:
             raise ValueError("Receipt amount must be positive")
         
@@ -218,57 +228,104 @@ class DebtorService:
         return trans
     
     @staticmethod
-    def calculate_interest(debtor, rate=0.01, start_period=2):
+    @transaction.atomic
+    def post_journal(debtor, journal_type, amount, custref=''):
+        """
+        Post a debit or credit journal adjustment to the debtor's account.
+
+        Args:
+            debtor: Debtor instance
+            journal_type: 'JD' (Journal Debit, increases balance owing) or
+                          'JC' (Journal Credit, reduces balance owing)
+            amount: Journal amount (positive)
+            custref: Customer reference / reason for the journal
+        """
+        if journal_type not in ('JD', 'JC'):
+            raise ValueError("journal_type must be 'JD' or 'JC'")
+
+        if debtor.is_blocked:
+            raise ValueError(f"Account {debtor.dno} is blocked")
+
+        if amount <= 0:
+            raise ValueError("Journal amount must be positive")
+
+        # Manual §2.2: "enter a short explanation motivating the journal.
+        # This information appears on the Debtor's Statement, the Journal
+        # Transactions Report and on the General Ledger Integration" —
+        # implies it's expected, not optional, for an audit trail entry.
+        if not custref or not custref.strip():
+            raise ValueError("A reference/motivation is required for journal entries")
+
+        return DebtorService.post_debtran(
+            debtor=debtor,
+            dtype=journal_type,
+            dttot=amount,
+            dtsub=amount,
+            dtgst=Decimal('0.00'),
+            custref=custref,
+        )
+
+    @staticmethod
+    def calculate_interest(debtor, rate=0.01, start_period=2, charge_credit_balances=False):
         """
         Calculate interest on overdue balances.
-        
+
         Args:
             debtor: Debtor instance
             rate: Monthly interest rate (default 1%)
             start_period: Period from which to charge interest
                          (2=30days, 3=60days, etc.)
-        
+            charge_credit_balances: manual §2.2 "Pay Interest on Credit
+                Balances" Y/N option. When False (default, matching common
+                practice), a bucket in credit (negative) contributes 0
+                rather than reducing interest owed on other buckets. When
+                True, buckets are summed as-is including negative ones.
+
         Returns:
             Decimal: Interest amount
         """
         if debtor.dintflag != 'Y':
             return Decimal('0.00')
-        
-        interest_base = Decimal('0.00')
-        
+
+        buckets = []
         if start_period <= 2:
-            interest_base += debtor.d30
+            buckets.append(debtor.d30)
         if start_period <= 3:
-            interest_base += debtor.d60
+            buckets.append(debtor.d60)
         if start_period <= 4:
-            interest_base += debtor.d90
+            buckets.append(debtor.d90)
         if start_period <= 5:
-            interest_base += debtor.d120
+            buckets.append(debtor.d120)
         if start_period <= 6:
-            interest_base += debtor.d150
+            buckets.append(debtor.d150)
         if start_period <= 7:
-            interest_base += debtor.d180
-        
+            buckets.append(debtor.d180)
+
+        if charge_credit_balances:
+            interest_base = sum(buckets, Decimal('0.00'))
+        else:
+            interest_base = sum((b for b in buckets if b > 0), Decimal('0.00'))
+
         interest = interest_base * Decimal(str(rate))
         return interest.quantize(Decimal('0.01'))
     
     @staticmethod
     @transaction.atomic
-    def charge_interest_batch(rate=0.01, start_period=2):
+    def charge_interest_batch(rate=0.01, start_period=2, charge_credit_balances=False):
         """
         Charge interest on all debtors who have dintflag=Y.
-        
+
         Returns:
             dict: Summary of interest charged
         """
         debtors = Debtor.objects.filter(dintflag='Y')
-        
+
         total_interest = Decimal('0.00')
         debtors_charged = 0
-        
+
         for debtor in debtors:
             interest = DebtorService.calculate_interest(
-                debtor, rate, start_period
+                debtor, rate, start_period, charge_credit_balances
             )
             
             if interest > 0:

@@ -17,12 +17,11 @@ export default function CreateCashReturnPage() {
 
   const [formData, setFormData] = useState({
     return_date: new Date().toISOString().split('T')[0],
-    reference: '',
-    original_sale_reference: '',
+    original_sale_number: '',
+    customer_name: '',
     line_items: [{ stock_code: '', description: '', qty: 1, price: 0, total: 0 }],
     return_total: 0,
-    refund_method: 'cash', // cash, card, or credit
-    comments: '',
+    reason: '',
   });
 
   const [loading, setLoading] = useState(false);
@@ -75,21 +74,42 @@ export default function CreateCashReturnPage() {
     setError(null);
 
     try {
-      if (!formData.original_sale_reference) {
-        setError('Please select original sale');
+      if (!formData.original_sale_number) {
+        setError('Please enter the original sale number');
         return;
       }
-      if (formData.line_items.length === 0) {
+      if (!formData.reason) {
+        setError('Please enter a reason for the return');
+        return;
+      }
+      if (formData.line_items.length === 0 || formData.line_items.every((i) => !i.stock_code)) {
         setError('Please add at least one line item');
         return;
       }
 
-      // Submit to API
-      // const response = await posAPI.cashReturns.create(formData);
+      const returnNumber = `CR-${Date.now()}`;
+
+      await posAPI.createCashReturn({
+        return_number: returnNumber,
+        return_date: formData.return_date,
+        original_sale_number: formData.original_sale_number,
+        customer_name: formData.customer_name,
+        reason: formData.reason,
+        lines: formData.line_items
+          .filter((item) => item.stock_code)
+          .map((item) => ({
+            stock_code: item.stock_code,
+            description: item.description,
+            quantity: item.qty,
+            unit_price: item.price,
+            tax_code: 1,
+          })),
+      });
+
       setSuccess(true);
       setTimeout(() => router.push('/dashboard/pos/cash-return'), 2000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create cash return');
+    } catch (err: any) {
+      setError(err?.response?.data?.error || (err instanceof Error ? err.message : 'Failed to create cash return'));
     } finally {
       setLoading(false);
     }
@@ -150,13 +170,13 @@ export default function CreateCashReturnPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Reference
+                    Customer Name
                   </label>
                   <Input
                     type="text"
-                    name="reference"
-                    placeholder="Auto-generated reference"
-                    value={formData.reference}
+                    name="customer_name"
+                    placeholder="Optional"
+                    value={formData.customer_name}
                     onChange={handleInputChange}
                   />
                 </div>
@@ -164,13 +184,13 @@ export default function CreateCashReturnPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Original Sale Reference
+                  Original Sale Number *
                 </label>
                 <Input
                   type="text"
-                  name="original_sale_reference"
-                  placeholder="Click to search original sale"
-                  value={formData.original_sale_reference}
+                  name="original_sale_number"
+                  placeholder="e.g. CS-000123"
+                  value={formData.original_sale_number}
                   onChange={handleInputChange}
                   required
                 />
@@ -178,21 +198,25 @@ export default function CreateCashReturnPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Refund Method
+                  Reason *
                 </label>
-                <select
-                  name="refund_method"
-                  value={formData.refund_method}
+                <textarea
+                  name="reason"
+                  placeholder="Reason for the return"
+                  rows={2}
+                  value={formData.reason}
                   onChange={handleInputChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="cash">Cash Refund</option>
-                  <option value="card">Card Refund</option>
-                  <option value="credit">Store Credit</option>
-                </select>
+                  required
+                />
               </div>
             </CardContent>
           </Card>
+
+          <p className="text-sm text-gray-500 -mt-2">
+            Cash returns always refund from the till. To credit a debtor account or arrange a
+            replacement instead, use a Credit Note.
+          </p>
 
           {/* Items Returned Section */}
           <Card>
@@ -289,23 +313,6 @@ export default function CreateCashReturnPage() {
                 <p className="text-sm text-gray-600 mb-1">Total Refund Amount</p>
                 <p className="text-3xl font-bold text-red-900">R{formData.return_total.toFixed(2)}</p>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Comments Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Notes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <textarea
-                name="comments"
-                placeholder="Add any comments or reason for return"
-                rows={3}
-                value={formData.comments}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
             </CardContent>
           </Card>
 

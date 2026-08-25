@@ -255,10 +255,20 @@ class PriceValidationService:
         price_valid, price_warning, price_info = PriceValidationService.validate_unit_price(
             stock_code, unit_price, price_level, transaction_date
         )
-        
+
         if not price_valid and price_warning:
             warnings.append(price_warning)
-        
+
+        # Below-cost warning (manual: "Where a stock item is sold below
+        # cost, a warning is sounded and displayed" — informational, not a
+        # hard block, matching how price/discount warnings behave here).
+        cost_price = prices.get('cost_price', Decimal(0))
+        below_cost = cost_price > 0 and unit_price < cost_price
+        if below_cost:
+            warnings.append(
+                f"Sold BELOW COST: selling price {unit_price} is less than cost price {cost_price}"
+            )
+
         # Validate discount
         if discount_percent is None:
             discount_percent = Decimal(0)

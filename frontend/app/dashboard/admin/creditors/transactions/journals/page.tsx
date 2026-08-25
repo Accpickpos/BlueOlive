@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { creditorsApi } from '@/lib/creditorsApi';
+import type { CreditorJournal } from '@/lib/types/creditors';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,8 +17,7 @@ export default function JournalEntriesPage() {
   const { data: journals, isLoading } = useQuery({
     queryKey: ['journal-entries', page],
     queryFn: () =>
-      creditorsApi.transactions.list({
-        transaction_type: 'JOURNAL',
+      creditorsApi.journals.list({
         page,
         page_size: 25,
         ordering: '-transaction_date',
@@ -64,24 +64,24 @@ export default function JournalEntriesPage() {
               </tr>
             </thead>
             <tbody>
-              {journals?.results?.map((entry: any) => (
+              {journals?.results?.map((entry: CreditorJournal) => (
                 <tr key={entry.id} className="border-b hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium">{entry.reference_number}</td>
-                  <td className="px-4 py-3">{entry.supplier_name}</td>
+                  <td className="px-4 py-3 font-medium">{entry.transaction_reference || entry.transaction_number}</td>
+                  <td className="px-4 py-3">{entry.creditor_name}</td>
                   <td className="px-4 py-3 text-sm">
                     {new Date(entry.transaction_date).toLocaleDateString('en-ZA')}
                   </td>
-                  <td className="px-4 py-3 text-xs text-gray-600">{entry.description}</td>
+                  <td className="px-4 py-3 text-xs text-gray-600">{entry.additional_reference}</td>
                   <td className="px-4 py-3 text-right font-bold">
-                    R {entry.amount?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
+                    R {entry.journal_amount?.toLocaleString('en-ZA', { maximumFractionDigits: 2 })}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-1 text-xs rounded font-medium ${
-                      entry.entry_type === 'DEBIT' 
+                      entry.journal_type === 'DJ'
                         ? 'bg-red-100 text-red-800'
                         : 'bg-blue-100 text-blue-800'
                     }`}>
-                      {entry.entry_type}
+                      {entry.journal_type === 'DJ' ? 'Debit' : 'Credit'}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center">

@@ -1,14 +1,21 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react';
+import { Plus, AlertCircle, CheckCircle2 } from 'lucide-react';
 import cashBookApi from '@/lib/cashBookApi';
-import { IncomeCategory, OtherIncomeTransaction } from '@/lib/types/cashBook';
-import { TransactionTypeBadge, BalanceCard } from '@/components/cash-book';
+import { IncomeCategory, OtherIncomeEntry } from '@/lib/types/cashBook';
+import { BalanceCard } from '@/components/cash-book';
 
-interface OtherIncomeEntry extends OtherIncomeTransaction {
-  vat_rate?: number;
-}
+// Backend only supports these discrete tax codes — there is no free-form
+// VAT-rate input (see CashBookVATService.TAX_CODE_MAP).
+const TAX_CODES = [
+  { value: 1, label: 'Standard Rated (14%)', rate: 0.14 },
+  { value: 2, label: 'Zero-rated (0%)', rate: 0 },
+  { value: 3, label: 'Exempt (0%)', rate: 0 },
+  { value: 4, label: 'Foreign Transaction (0%)', rate: 0 },
+];
+
+const num = (v: string | number | undefined) => (typeof v === 'string' ? parseFloat(v) || 0 : v || 0);
 
 export default function OtherIncomeEntryPage() {
   const [categories, setCategories] = useState<IncomeCategory[]>([]);
@@ -18,20 +25,20 @@ export default function OtherIncomeEntryPage() {
   const [success, setSuccess] = useState('');
 
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState<Partial<OtherIncomeEntry>>({
-    date: new Date().toISOString().split('T')[0],
+  const [formData, setFormData] = useState({
+    transaction_date: new Date().toISOString().split('T')[0],
     description: '',
-    amount: 0,
+    value_excl_vat: 0,
     income_category_id: 0,
-    vat_amount: 0,
-    vat_rate: 15,
-    vat_inclusive: false,
+    tax_code: 1,
     reference: '',
     notes: '',
+    paid_into: 'CASH' as 'CASH' | 'BANK',
+    bank_account_number: '',
   });
 
   const [totals, setTotals] = useState({
-    totalAmount: 0,
+    totalExclVat: 0,
     totalVAT: 0,
     totalInclusive: 0,
   });
@@ -48,8 +55,9 @@ export default function OtherIncomeEntryPage() {
         cashBookApi.otherIncome.list(),
       ]);
       setCategories(categoriesRes.results || []);
-      setTransactions((transactionsRes.results || []) as OtherIncomeEntry[]);
-      calculateTotals((transactionsRes.results || []) as OtherIncomeEntry[]);
+      const entries = (transactionsRes.results || []) as unknown as OtherIncomeEntry[];
+      setTransactions(entries);
+      calculateTotals(entries);
     } catch (err) {
       setError('Failed to load data');
       console.error(err);
@@ -58,42 +66,30 @@ export default function OtherIncomeEntryPage() {
     }
   };
 
-  const calculateTotals = (trans: OtherIncomeEntry[]) => {
-    const totals = trans.reduce(
-      (acc, t) => ({
-        totalAmount: acc.totalAmount + (t.amount || 0),
-        totalVAT: acc.totalVAT + (t.vat_amount || 0),
-        totalInclusive: acc.totalInclusive + ((t.amount || 0) + (t.vat_amount || 0)),
+  const calculateTotals = (entries: OtherIncomeEntry[]) => {
+    const totals = entries.reduce(
+      (acc, e) => ({
+        totalExclVat: acc.totalExclVat + num(e.transaction?.value_excl_vat),
+        totalVAT: acc.totalVAT + num(e.transaction?.tax_amount),
+        totalInclusive: acc.totalInclusive + num(e.transaction?.total_incl_vat),
       }),
-      { totalAmount: 0, totalVAT: 0, totalInclusive: 0 }
+      { totalExclVat: 0, totalVAT: 0, totalInclusive: 0 }
     );
     setTotals(totals);
   };
 
-  const calculateVAT = (amount: number, rate: number = 15, inclusive: boolean = false) => {
-    if (inclusive) {
-      // Amount includes VAT, so we need to extract it
-      return amount - amount / (1 + rate / 100);
-    } else {
-      return amount * (rate / 100);
-    }
-  };
+  const vatPreview = (() => {
+    const rate = TAX_CODES.find((t) => t.value === formData.tax_code)?.rate || 0;
+    const vat = formData.value_excl_vat * rate;
+    return { vat, total: formData.value_excl_vat + vat };
+  })();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
-
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: type === 'number' ? parseFloat(value) : type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
+      [name]: type === 'number' ? parseFloat(value) || 0 : value,
     }));
-
-    // Recalculate VAT if amount or rate changes
-    if ((name === 'amount' || name === 'vat_rate') && formData.amount) {
-      const amount = name === 'amount' ? parseFloat(value) : formData.amount;
-      const rate = name === 'vat_rate' ? parseFloat(value) : formData.vat_rate || 15;
-      const vatAmount = calculateVAT(amount, rate, formData.vat_inclusive);
-      setFormData(prev => ({ ...prev, vat_amount: vatAmount }));
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -101,7 +97,7 @@ export default function OtherIncomeEntryPage() {
     setError('');
     setSuccess('');
 
-    if (!formData.income_category_id || !formData.amount || !formData.description || !formData.date) {
+    if (!formData.income_category_id || !formData.value_excl_vat || !formData.description || !formData.transaction_date) {
       setError('Please fill in all required fields');
       return;
     }
@@ -109,52 +105,41 @@ export default function OtherIncomeEntryPage() {
     setLoading(true);
 
     try {
+      // description is the only free-text field the backend stores per
+      // transaction — fold "notes" into it rather than silently dropping it.
+      const description = formData.notes
+        ? `${formData.description} — ${formData.notes}`
+        : formData.description;
+
       await cashBookApi.otherIncome.create({
-        date: formData.date,
-        description: formData.description,
-        amount: formData.amount,
-        category_id: formData.income_category_id,
-        vat_amount: formData.vat_amount,
+        transaction_date: formData.transaction_date,
+        description,
+        value_excl_vat: formData.value_excl_vat,
+        income_category_id: formData.income_category_id,
+        tax_code: formData.tax_code,
         reference: formData.reference,
-        notes: formData.notes,
+        paid_into: formData.paid_into,
+        bank_account_number: formData.paid_into === 'BANK' ? formData.bank_account_number : '',
       });
 
       setSuccess('Other income entry created successfully!');
-      
-      // Reset form
+
       setFormData({
-        date: new Date().toISOString().split('T')[0],
+        transaction_date: new Date().toISOString().split('T')[0],
         description: '',
-        amount: 0,
+        value_excl_vat: 0,
         income_category_id: 0,
-        vat_amount: 0,
-        vat_rate: 15,
-        vat_inclusive: false,
+        tax_code: 1,
         reference: '',
         notes: '',
+        paid_into: 'CASH',
+        bank_account_number: '',
       });
       setShowForm(false);
 
-      // Refresh list
       await fetchData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create entry');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteTransaction = async (id: number | undefined) => {
-    if (!id || !confirm('Delete this transaction?')) return;
-
-    setLoading(true);
-    try {
-      // Note: depends on backend supporting DELETE on transactions
-      // await cashBookApi.otherIncome.delete(id);
-      setSuccess('Transaction deleted successfully!');
-      await fetchData();
-    } catch (err) {
-      setError('Failed to delete transaction');
+    } catch (err: any) {
+      setError(err?.response?.data?.error || (err instanceof Error ? err.message : 'Failed to create entry'));
     } finally {
       setLoading(false);
     }
@@ -185,21 +170,9 @@ export default function OtherIncomeEntryPage() {
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <BalanceCard
-            title="Total Income"
-            amount={totals.totalAmount}
-            variant="income"
-          />
-          <BalanceCard
-            title="Total VAT"
-            amount={totals.totalVAT}
-            variant="default"
-          />
-          <BalanceCard
-            title="Gross Amount"
-            amount={totals.totalInclusive}
-            variant="balance"
-          />
+          <BalanceCard title="Total Income (Excl. VAT)" amount={totals.totalExclVat} variant="income" />
+          <BalanceCard title="Total VAT" amount={totals.totalVAT} variant="default" />
+          <BalanceCard title="Gross Amount" amount={totals.totalInclusive} variant="balance" />
         </div>
 
         {/* Entry Form */}
@@ -210,13 +183,11 @@ export default function OtherIncomeEntryPage() {
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Date *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
                   <input
                     type="date"
-                    name="date"
-                    value={formData.date || ''}
+                    name="transaction_date"
+                    value={formData.transaction_date}
                     onChange={handleInputChange}
                     required
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -224,18 +195,16 @@ export default function OtherIncomeEntryPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Income Category *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Income Category *</label>
                   <select
                     name="income_category_id"
-                    value={formData.income_category_id || 0}
+                    value={formData.income_category_id}
                     onChange={handleInputChange}
                     required
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                   >
                     <option value={0}>Select Category</option>
-                    {categories.filter(c => c.is_active).map(cat => (
+                    {categories.filter((c) => c.is_active).map((cat) => (
                       <option key={cat.id} value={cat.id || 0}>
                         {cat.code} - {cat.name}
                       </option>
@@ -245,13 +214,11 @@ export default function OtherIncomeEntryPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Description *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description *</label>
                 <input
                   type="text"
                   name="description"
-                  value={formData.description || ''}
+                  value={formData.description}
                   onChange={handleInputChange}
                   placeholder="e.g., Commission received from partner"
                   required
@@ -261,13 +228,11 @@ export default function OtherIncomeEntryPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Amount (Excl. VAT) *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Amount (Excl. VAT) *</label>
                   <input
                     type="number"
-                    name="amount"
-                    value={formData.amount || 0}
+                    name="value_excl_vat"
+                    value={formData.value_excl_vat}
                     onChange={handleInputChange}
                     placeholder="0.00"
                     step="0.01"
@@ -278,57 +243,67 @@ export default function OtherIncomeEntryPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    VAT Rate (%)
-                  </label>
-                  <input
-                    type="number"
-                    name="vat_rate"
-                    value={formData.vat_rate || 15}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tax Code</label>
+                  <select
+                    name="tax_code"
+                    value={formData.tax_code}
                     onChange={handleInputChange}
-                    placeholder="15"
-                    step="0.01"
-                    min="0"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                  />
+                  >
+                    {TAX_CODES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    VAT Amount
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">VAT Amount (calculated)</label>
                   <input
-                    type="number"
-                    name="vat_amount"
-                    value={formData.vat_amount || 0}
-                    onChange={handleInputChange}
+                    type="text"
+                    value={vatPreview.vat.toFixed(2)}
                     disabled
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  name="vat_inclusive"
-                  checked={formData.vat_inclusive || false}
-                  onChange={handleInputChange}
-                  className="w-4 h-4 border-gray-300 rounded"
-                />
-                <label className="text-sm font-medium text-gray-700">
-                  Amount is VAT inclusive
-                </label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Paid Into</label>
+                  <select
+                    name="paid_into"
+                    value={formData.paid_into}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                  >
+                    <option value="CASH">Cash Till</option>
+                    <option value="BANK">Bank Account</option>
+                  </select>
+                </div>
+                {formData.paid_into === 'BANK' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Bank Account Number</label>
+                    <input
+                      type="text"
+                      name="bank_account_number"
+                      value={formData.bank_account_number}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+                )}
               </div>
 
+              <p className="text-sm text-gray-500">
+                Total (incl. VAT): <span className="font-semibold text-gray-900">R{vatPreview.total.toFixed(2)}</span>
+              </p>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Reference
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reference</label>
                 <input
                   type="text"
                   name="reference"
-                  value={formData.reference || ''}
+                  value={formData.reference}
                   onChange={handleInputChange}
                   placeholder="e.g., Invoice #, Cheque #"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -336,14 +311,12 @@ export default function OtherIncomeEntryPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Notes
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
                 <textarea
                   name="notes"
-                  value={formData.notes || ''}
+                  value={formData.notes}
                   onChange={handleInputChange}
-                  placeholder="Additional information"
+                  placeholder="Additional information (appended to the description)"
                   rows={3}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                 />
@@ -400,35 +373,26 @@ export default function OtherIncomeEntryPage() {
                   <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">Amount</th>
                   <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">VAT</th>
                   <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">Total</th>
-                  <th className="px-6 py-3 text-center text-sm font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {transactions.map(trans => (
-                  <tr key={trans.id} className="border-b border-gray-200 hover:bg-gray-50">
+                {transactions.map((entry) => (
+                  <tr key={entry.id} className="border-b border-gray-200 hover:bg-gray-50">
                     <td className="px-6 py-3 text-sm text-gray-900">
-                      {new Date(trans.date).toLocaleDateString('en-ZA')}
+                      {entry.transaction?.transaction_date
+                        ? new Date(entry.transaction.transaction_date).toLocaleDateString('en-ZA')
+                        : '-'}
                     </td>
-                    <td className="px-6 py-3 text-sm text-gray-900">{trans.description}</td>
-                    <td className="px-6 py-3 text-sm text-gray-600">
-                      {categories.find(c => c.id === trans.income_category_id)?.code}
-                    </td>
+                    <td className="px-6 py-3 text-sm text-gray-900">{entry.transaction?.description}</td>
+                    <td className="px-6 py-3 text-sm text-gray-600">{entry.category_name}</td>
                     <td className="px-6 py-3 text-sm text-right font-medium text-gray-900">
-                      R{(trans.amount || 0).toFixed(2)}
+                      R{num(entry.transaction?.value_excl_vat).toFixed(2)}
                     </td>
                     <td className="px-6 py-3 text-sm text-right text-gray-600">
-                      R{(trans.vat_amount || 0).toFixed(2)}
+                      R{num(entry.transaction?.tax_amount).toFixed(2)}
                     </td>
                     <td className="px-6 py-3 text-sm text-right font-semibold text-gray-900">
-                      R{((trans.amount || 0) + (trans.vat_amount || 0)).toFixed(2)}
-                    </td>
-                    <td className="px-6 py-3 text-center">
-                      <button
-                        onClick={() => trans.id && handleDeleteTransaction(trans.id)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      R{num(entry.transaction?.total_incl_vat).toFixed(2)}
                     </td>
                   </tr>
                 ))}

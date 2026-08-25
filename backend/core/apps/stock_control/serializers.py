@@ -162,7 +162,7 @@ class StockItemSerializer(serializers.ModelSerializer):
             'balance_bfwd_quantity', 'balance_bfwd_value', 'closing_stock_balance',
             'job_card_bfwd_value', 'laybye_bfwd_value', 'rfc_bfwd_value',
             # Physical
-            'bin_number', 'weight', 'pack_code', 'kvi_flag', 'stock_count_flag',
+            'bin_number', 'weight', 'pack_code', 'kvi_flag', 'stock_count_flag', 'barcode',
             # Dates
             'date_last_purchased', 'date_last_sold',
             # Audit
@@ -182,7 +182,7 @@ class StockItemListSerializer(serializers.ModelSerializer):
             'stock_code', 'description', 'department', 'supplier',
             'cost_price', 'selling_price_1',
             'quantity_on_hand', 'available_quantity',
-            'reorder_quantity', 'is_active', 'tax_code',
+            'reorder_quantity', 'is_active', 'tax_code', 'barcode',
         ]
 
 # ─────────────────────────────────────────────

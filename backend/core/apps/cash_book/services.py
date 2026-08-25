@@ -175,9 +175,13 @@ class BalanceCalculationService:
                 else:
                     bank_balance -= txn.amount
             
-            txn.running_balance_cash = cash_balance
-            txn.running_balance_bank = bank_balance
-            txn.save(update_fields=['running_balance_cash', 'running_balance_bank'])
+            # .update() (not .save()) — this method IS the post_save handler's
+            # own recalculation step; calling .save() here would re-fire
+            # post_save on every transaction in the loop, which calls back
+            # into this same method → infinite recursion.
+            CashBookTransaction.objects.filter(pk=txn.pk).update(
+                running_balance_cash=cash_balance, running_balance_bank=bank_balance
+            )
     
     @staticmethod
     def get_current_balances() -> Dict[str, Decimal]:

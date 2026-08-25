@@ -22,8 +22,7 @@ export default function StocktakePage() {
   // Form state
   const [newTake, setNewTake] = useState({
     stock_take_date: new Date().toISOString().split('T')[0],
-    reference: '',
-    notes: '',
+    description: '',
   });
 
   // Count form state
@@ -31,6 +30,7 @@ export default function StocktakePage() {
     stock_code: '',
     quantity_counted: 0,
   });
+  const [selectedStockItem, setSelectedStockItem] = useState<any>(null);
   const [searchResults, setSearchResults] = useState<any[]>([]);
 
   // Fetch all stock takes
@@ -81,8 +81,31 @@ export default function StocktakePage() {
     },
   });
 
+  // Add + count an item in one step: create the StockTakeItem (capturing the
+  // system quantity at this moment) then immediately record the count.
+  const addItemMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedTakeId || !selectedStockItem) {
+        throw new Error('Select a stock item first');
+      }
+      const item = await stockControlApi.stockTakeItems.create({
+        stock_take: selectedTakeId,
+        stock_item: selectedStockItem.stock_code,
+        quantity_on_hand: selectedStockItem.quantity_on_hand,
+        cost_price_at_count: selectedStockItem.cost_price,
+      });
+      return stockControlApi.stockTakeItems.recordCount(item.id, countForm.quantity_counted);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock-take', selectedTakeId] });
+      setCountForm({ stock_code: '', quantity_counted: 0 });
+      setSelectedStockItem(null);
+    },
+  });
+
   const handleSearch = (value: string) => {
     setCountForm(prev => ({ ...prev, stock_code: value }));
+    setSelectedStockItem(null);
     if (value.length >= 2 && stockItems) {
       const filtered = stockItems.results.filter((item: any) =>
         item.stock_code.toLowerCase().includes(value.toLowerCase()) ||
@@ -110,9 +133,10 @@ export default function StocktakePage() {
     }
   };
 
-  const pendingTakes = stockTakes?.results?.filter((t: any) => t.status === 'PENDING') || [];
+  // The backend has no "not yet started" state — a stock take is created
+  // directly as IN_PROGRESS, so there is no PENDING bucket to filter for.
   const inProgressTakes = stockTakes?.results?.filter((t: any) => t.status === 'IN_PROGRESS') || [];
-  const completedTakes = stockTakes?.results?.filter((t: any) => t.status === 'COMPLETED') || [];
+  const completedTakes = stockTakes?.results?.filter((t: any) => t.status === 'COMPLETED' || t.status === 'UPDATED') || [];
 
   return (
     <div className="space-y-6">
@@ -145,21 +169,21 @@ export default function StocktakePage() {
             </div>
           ) : (
             <div className="space-y-6">
-              {/* Pending */}
+              {/* In Progress */}
               <Card className="p-6">
                 <h3 className="font-semibold mb-4 flex items-center">
                   <Activity className="w-5 h-5 mr-2 text-amber-500" />
-                  Pending Stock Takes
+                  Newly Created (not yet counted)
                 </h3>
-                {pendingTakes.length > 0 ? (
+                {inProgressTakes.filter((t: any) => !t.item_count).length > 0 ? (
                   <div className="space-y-2">
-                    {pendingTakes.map((take: any) => (
+                    {inProgressTakes.filter((t: any) => !t.item_count).map((take: any) => (
                       <div key={take.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
                         <div>
                           <p className="font-medium">Stock Take #{take.id}</p>
                           <p className="text-sm text-gray-500">
                             {take.stock_take_date ? new Date(take.stock_take_date).toLocaleDateString('en-ZA') : 'No date'}
-                            {take.reference && ` - ${take.reference}`}
+                            {take.description && ` - ${take.description}`}
                           </p>
                         </div>
                         <Button onClick={() => { setSelectedTakeId(take.id); setActiveTab('count'); }} size="sm">
@@ -169,7 +193,7 @@ export default function StocktakePage() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-gray-500">No pending stock takes</p>
+                  <p className="text-gray-500">No stock takes waiting to be counted</p>
                 )}
               </Card>
 
@@ -179,9 +203,9 @@ export default function StocktakePage() {
                   <Package className="w-5 h-5 mr-2 text-blue-500" />
                   In Progress
                 </h3>
-                {inProgressTakes.length > 0 ? (
+                {inProgressTakes.filter((t: any) => t.item_count).length > 0 ? (
                   <div className="space-y-2">
-                    {inProgressTakes.map((take: any) => (
+                    {inProgressTakes.filter((t: any) => t.item_count).map((take: any) => (
                       <div key={take.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
                         <div>
                           <p className="font-medium">Stock Take #{take.id}</p>
@@ -253,20 +277,12 @@ export default function StocktakePage() {
                   onChange={(e) => setNewTake(prev => ({ ...prev, stock_take_date: e.target.value }))}
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Reference</label>
-                <Input
-                  placeholder="Optional reference"
-                  value={newTake.reference}
-                  onChange={(e) => setNewTake(prev => ({ ...prev, reference: e.target.value }))}
-                />
-              </div>
               <div className="md:col-span-2">
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Notes</label>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Description</label>
                 <Input
-                  placeholder="Optional notes"
-                  value={newTake.notes}
-                  onChange={(e) => setNewTake(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Optional description"
+                  value={newTake.description}
+                  onChange={(e) => setNewTake(prev => ({ ...prev, description: e.target.value }))}
                 />
               </div>
             </div>
@@ -332,6 +348,7 @@ export default function StocktakePage() {
                               key={item.stock_code}
                               onClick={() => {
                                 setCountForm(prev => ({ ...prev, stock_code: item.stock_code }));
+                                setSelectedStockItem(item);
                                 setSearchResults([]);
                               }}
                               className="w-full px-4 py-2 text-left hover:bg-gray-50"
@@ -341,6 +358,11 @@ export default function StocktakePage() {
                             </button>
                           ))}
                         </div>
+                      )}
+                      {selectedStockItem && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          System qty on hand: {selectedStockItem.quantity_on_hand}
+                        </p>
                       )}
                     </div>
                     <div>
@@ -352,22 +374,60 @@ export default function StocktakePage() {
                       />
                     </div>
                     <div className="flex items-end">
-                      <Button className="w-full" disabled>
+                      <Button
+                        className="w-full"
+                        disabled={!selectedStockItem || addItemMutation.isPending}
+                        onClick={() => addItemMutation.mutate()}
+                      >
                         <Plus className="w-4 h-4 mr-2" />
-                        Add Item
+                        {addItemMutation.isPending ? 'Adding...' : 'Add Item'}
                       </Button>
                     </div>
                   </div>
-                  <p className="text-sm text-gray-500 mt-2">Stock take item management would be connected to backend API</p>
+                  {addItemMutation.isError && (
+                    <p className="text-sm text-red-600 mt-2">
+                      {(addItemMutation.error as any)?.message || 'Failed to add item'}
+                    </p>
+                  )}
                 </Card>
               )}
 
               {/* Counted Items */}
               <Card className="p-6">
                 <h3 className="font-semibold mb-4">Counted Items</h3>
-                <p className="text-gray-500 text-center py-8">
-                  Stock take item listing would display here with API integration
-                </p>
+                {selectedTake.items && selectedTake.items.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="border-b bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium">Stock Code</th>
+                          <th className="px-3 py-2 text-left font-medium">Description</th>
+                          <th className="px-3 py-2 text-right font-medium">System Qty</th>
+                          <th className="px-3 py-2 text-right font-medium">Counted</th>
+                          <th className="px-3 py-2 text-right font-medium">Variance</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedTake.items.map((item: any) => (
+                          <tr key={item.id} className="border-b hover:bg-gray-50">
+                            <td className="px-3 py-2 font-mono">{item.stock_item}</td>
+                            <td className="px-3 py-2 text-gray-600">{item.stock_item_detail?.description}</td>
+                            <td className="px-3 py-2 text-right">{item.quantity_on_hand}</td>
+                            <td className="px-3 py-2 text-right">{item.quantity_counted}</td>
+                            <td className={`px-3 py-2 text-right font-medium ${
+                              item.variance_quantity > 0 ? 'text-green-600' :
+                              item.variance_quantity < 0 ? 'text-red-600' : 'text-gray-500'
+                            }`}>
+                              {item.variance_quantity}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-center py-8">No items counted yet</p>
+                )}
               </Card>
             </div>
           ) : (

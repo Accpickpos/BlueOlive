@@ -33,7 +33,7 @@ class PurchaseOrderLineSerializer(serializers.ModelSerializer):
         model = PurchaseOrderLine
         fields = '__all__'
         read_only_fields = [
-            'quantity_received', 'quantity_outstanding', 'total_exclusive', 'total_vat',
+            'quantity_delivered', 'quantity_outstanding', 'total_exclusive', 'total_vat',
             'total_inclusive', 'outstanding_exclusive', 'outstanding_vat', 'outstanding_inclusive',
             'quantity_on_hand_at_order', 'monthly_sales_at_order', 'is_fully_received',
             'created_at', 'updated_at'
@@ -50,12 +50,12 @@ class PurchaseOrderListSerializer(serializers.ModelSerializer):
         model = PurchaseOrder
         fields = [
             'order_number', 'supplier', 'supplier_name', 'order_date', 'delivery_date',
-            'status', 'status_display', 'total_quantity_ordered', 'total_quantity_outstanding',
+            'status', 'status_display', 'quantity_ordered', 'total_quantity_outstanding',
             'outstanding_value_inclusive', 'is_overdue', 'is_back_order'
         ]
-    
+
     def get_is_overdue(self, obj):
-        if obj.status in ['FULLY_RECEIVED', 'CANCELLED']:
+        if obj.status in ['F', 'C']:
             return False
         return obj.delivery_date < timezone.now().date()
 
@@ -77,25 +77,25 @@ class PurchaseOrderDetailSerializer(serializers.ModelSerializer):
         model = PurchaseOrder
         fields = '__all__'
         read_only_fields = [
-            'status', 'total_quantity_ordered', 'total_quantity_received', 'total_quantity_outstanding',
+            'status', 'quantity_ordered', 'total_quantity_received', 'total_quantity_outstanding',
             'total_value_exclusive', 'total_value_vat', 'total_value_inclusive',
             'outstanding_value_exclusive', 'outstanding_value_vat', 'outstanding_value_inclusive',
             'cancelled_at', 'created_at', 'updated_at'
         ]
-    
+
     def get_is_overdue(self, obj):
-        if obj.status in ['FULLY_RECEIVED', 'CANCELLED']:
+        if obj.status in ['F', 'C']:
             return False
         return obj.delivery_date < timezone.now().date()
-    
+
     def get_days_until_delivery(self, obj):
         delta = obj.delivery_date - timezone.now().date()
         return delta.days
-    
+
     def get_completion_percentage(self, obj):
-        if obj.total_quantity_ordered == 0:
+        if obj.quantity_ordered == 0:
             return 0
-        return (obj.total_quantity_received / obj.total_quantity_ordered) * 100
+        return (obj.total_quantity_received / obj.quantity_ordered) * 100
 
 
 class PurchaseOrderCreateLineSerializer(serializers.Serializer):
@@ -153,7 +153,7 @@ class PurchaseOrderReceiptLineSerializer(serializers.ModelSerializer):
         read_only=True
     )
     ordered_cost = serializers.DecimalField(
-        source='purchase_order_line.unit_cost',
+        source='purchase_order_line.base_price',
         read_only=True,
         max_digits=10,
         decimal_places=2

@@ -121,10 +121,32 @@ export const purchaseOrdersApi = {
     /**
      * Cancel purchase order
      */
-    cancel: async (id: number | string, reason: string) => {
+    cancel: async (id: number | string) => {
       const response = await api.post(
-        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}${id}/cancel/`,
-        { reason }
+        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}${id}/cancel_order/`
+      );
+      return response.data;
+    },
+
+    /**
+     * Receive stock against a purchase order (creates a GRN and, optionally,
+     * a back order for any short delivery). Matches the receive_stock action
+     * on PurchaseOrderViewSet.
+     */
+    receiveStock: async (id: number | string, data: {
+      receipt_date?: string;
+      invoice_number: string;
+      line_items: Array<{
+        purchase_order_line_id: number;
+        quantity_received: number;
+        actual_unit_cost?: number;
+      }>;
+      update_supplier_account?: boolean;
+      create_back_order?: boolean;
+    }) => {
+      const response = await api.post(
+        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}${id}/receive_stock/`,
+        data
       );
       return response.data;
     },

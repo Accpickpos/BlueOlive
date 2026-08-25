@@ -67,57 +67,52 @@ class GLMastListSerializer(serializers.ModelSerializer):
 
 class GLTranSerializer(serializers.ModelSerializer):
     """Serializer for GL Transactions"""
-    drorcr_display = serializers.CharField(source='get_drorcr_display', read_only=True)
+    type_display = serializers.CharField(source='get_type_display', read_only=True)
     source_display = serializers.CharField(source='get_source_display', read_only=True)
-    
+
     class Meta:
         model = GLTran
         fields = [
             'id',
             'accno',
             'batchno',
-            'capturedat',
             'date',
             'time',
-            'drorcr',
-            'drorcr_display',
+            'type',
+            'type_display',
             'source',
             'source_display',
             'station',
             'reference',
             'details',
             'amount',
-            'postdate',
-            'postime',
-            'period',
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'drorcr_display', 'source_display']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'type_display', 'source_display']
 
 
 class GLTranListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for GL Transaction list views"""
-    drorcr_display = serializers.CharField(source='get_drorcr_display', read_only=True)
+    type_display = serializers.CharField(source='get_type_display', read_only=True)
     source_display = serializers.CharField(source='get_source_display', read_only=True)
-    
+
     class Meta:
         model = GLTran
         fields = [
             'id',
             'accno',
             'batchno',
-            'capturedat',
             'date',
-            'drorcr',
-            'drorcr_display',
+            'type',
+            'type_display',
             'source',
             'source_display',
             'reference',
             'details',
             'amount',
         ]
-        read_only_fields = ['id', 'drorcr_display', 'source_display']
+        read_only_fields = ['id', 'type_display', 'source_display']
 
 
 class GLTranDetailSerializer(GLTranSerializer):

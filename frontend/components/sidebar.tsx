@@ -31,6 +31,7 @@ import {
   PanelLeftOpen,
   X,
   Key,
+  Repeat,
 } from "lucide-react";
 
 // ================== MENU CONFIG ==================
@@ -136,6 +137,8 @@ const menuConfig = [
       { type: "link", name: "Settings", href: "/dashboard/pos/settings", icon: Settings },
     ],
   },
+
+  { type: "link", name: "Gas", href: "/dashboard/gas", icon: Repeat },
 
   { type: "link", name: "Messaging", href: "/dashboard/messaging", icon: MessageSquare },
   { type: "link", name: "Expenses", href: "/dashboard/expenses", icon: DollarSign },

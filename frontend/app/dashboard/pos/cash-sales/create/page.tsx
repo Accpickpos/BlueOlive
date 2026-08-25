@@ -54,7 +54,7 @@ export default function CreateCashSale() {
         const lineAmount = item.quantity * item.unit_price;
         const discount = (lineAmount * (item.discount_percentage || 0)) / 100;
         const taxableAmount = lineAmount - discount;
-        const taxRate = item.tax_code === 0 ? 0 : item.tax_code === 1 ? 0.15 : 0;
+        const taxRate = item.tax_code === 0 ? 0 : item.tax_code === 1 ? 0.14 : 0;
         const tax = taxableAmount * taxRate;
 
         return {
@@ -234,7 +234,7 @@ export default function CreateCashSale() {
                     const lineAmount = item.quantity * item.unit_price;
                     const discount = (lineAmount * (item.discount_percentage || 0)) / 100;
                     const taxableAmount = lineAmount - discount;
-                    const taxRate = item.tax_code === 0 ? 0 : item.tax_code === 1 ? 0.15 : 0;
+                    const taxRate = item.tax_code === 0 ? 0 : item.tax_code === 1 ? 0.14 : 0;
                     const tax = taxableAmount * taxRate;
                     const lineTotal = taxableAmount + tax;
                     const costPrice = Number(costPrices[index]) || 0;
@@ -321,9 +321,8 @@ export default function CreateCashSale() {
                             }
                             className="w-full px-2 py-1 border rounded text-sm"
                           >
-                            <option value={0}>Zero (0%)</option>
-                            <option value={1}>Standard (15%)</option>
-                            <option value={2}>Reduced (7.5%)</option>
+                            <option value={0}>Zero-rated (0%)</option>
+                            <option value={1}>Standard (14%)</option>
                           </select>
                         </td>
                         <td className="px-2 py-2 text-right">
