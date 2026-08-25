@@ -1,0 +1,74 @@
+Restructure BlueOlive so gas/cash_book/general_ledger are optional per-tenant addons, and audit their behavior against the legacy Accpick manual.
+
+Context: BlueOlive (this repo) is a modern multi-tenant rewrite (Django backend/core/apps/*, Next.js frontend) of a legacy Accpick Xcellence POS+accounting system. Reference doc for documented Accpick behavior:
+C:\Users\accpi\OneDrive\Documents\gas\accpickx\accpickxgas\ACCPICK_XCELLENCE_MANUAL_FULL.md
+— covers modules 1-8 (Point of Sale, Debtors, Stock Control, Creditors, Cash Book,
+Purchase Orders, General Ledger, Utilities) plus a reconstructed "Gas Controller"
+section (from gas_gen.acc, no manual exists for it — LPG cylinder delivery/hire/
+contract-pricing logic).
+
+Read ACCPICK_XCELLENCE_MANUAL_FULL.md, CLAUDE.md, and TODOS.md in full before doing anything.
+
+CURRENT STATE: backend/core/core/settings.py defines SHOP_APP_LABELS — every app
+in that list (settings, cash_book, creditors, debtors, general_ledger,
+stock_control, purchase_orders, pos, stockfinder, rentals) is migrated into
+EVERY tenant's schema unconditionally. There is no enable/disable concept
+anywhere in the codebase (checked: no addon/feature-flag/module-toggle pattern
+exists yet).
+
+TARGET: cash_book, general_ledger, and rentals (the gas module) become optional
+per-tenant addons. pos, debtors, creditors, stock_control, and purchase_orders
+remain core (always installed). A tenant can be provisioned WITHOUT cash_book/
+general_ledger/rentals — e.g. a shop that has no LPG cylinders, or that doesn't
+use the formal cash book / GL.
+
+PHASE 1 — Design and build the addon toggle mechanism:
+1. Decide where "which addons are enabled for this tenant" is recorded — most
+   likely a field/model change in the tenancy or saas_admin app, alongside
+   however the Tenant/Shop record already works. Check plans/tenant-creation-flow-spec.md
+   first for the existing provisioning flow you'd be hooking into.
+2. Make tenant provisioning conditionally migrate cash_book/general_ledger/rentals
+   based on the enabled-addons setting, instead of the current unconditional
+   SHOP_APP_LABELS loop. Watch the existing FK dependency order (rentals depends
+   on debtors + stock_control + general_ledger — if GL is disabled but rentals is
+   enabled for a tenant, that's a real dependency conflict to resolve or reject
+   at provisioning time, not discover at runtime).
+3. Gate the relevant API routes/URLs and frontend nav items so a disabled addon
+   doesn't appear or respond for tenants that don't have it.
+4. This is real architecture work — if the FK-dependency conflict in #2 (or
+   anything else) surfaces a design question you can't resolve confidently,
+   stop and report it rather than guessing. Don't silently pick an answer for
+   something with real downstream consequences.
+
+PHASE 2 — Audit and fix cash_book, general_ledger, and rentals against the manual:
+Module correspondence:
+- 5. Cash Book       → backend/core/apps/cash_book
+- 7. General Ledger  → backend/core/apps/general_ledger
+- Gas Controller     → backend/core/apps/rentals
+
+For each of these three apps:
+1. Compare documented behavior (manual sections above) against what's actually
+   implemented (models.py, services.py, views.py, serializers.py, and for
+   rentals also the management commands report_outstanding_deposits.py /
+   setup_rental_gl_accounts.py). Build a gap list: Implemented / Partial / Missing
+   per documented feature.
+2. For rentals specifically, verify against the Gas Controller section: delivery
+   note capture (cylinders taken/returned per client), invoice generation from
+   delivery notes, cylinder movement allocation/reconciliation, per-client
+   contract pricing, price sync against stock_control's price master, and the
+   report set (Cylinder Holding, Movement by Area, Contract Pricing, No Activity,
+   Invoice Line-ups, month-end hire-charge invoicing).
+3. Do NOT replicate legacy UI/keyboard mechanics (F-key macros, "Tender Routine"
+   keystroke sequences, DOS menu navigation). Only port the underlying business
+   rules, data model, and workflow outcomes, expressed through this repo's
+   existing API/frontend patterns.
+4. Fix small, local gaps directly (missing field, missing endpoint, wrong
+   calculation), following existing patterns (SchemaMiddleware tenancy,
+   LedgerPostingService for ledger posting).
+5. For gaps that are real new scope (a whole missing report type, an undesigned
+   workflow) — do not silently implement. Log to TODOS.md in the existing
+   What/Why/Pros/Cons/Context/Depends format, or flag for /plan-eng-review.
+
+Deliverable: a written report after each phase (addon-toggle design decisions
+made in Phase 1; module-by-module gap list and fixes made in Phase 2), plus
+a clear list of anything deferred to TODOS.md rather than auto-implemented.
