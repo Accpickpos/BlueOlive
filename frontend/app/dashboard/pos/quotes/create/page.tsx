@@ -17,6 +17,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ArrowLeft, AlertCircle, CheckCircle, Plus, Trash2 } from 'lucide-react';
+import { DebtorPicker, StockItemPicker } from '@/components/pos';
 
 export default function CreateQuotationPage() {
   const router = useRouter();
@@ -204,6 +205,12 @@ export default function CreateQuotationPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Customer Name *
                   </label>
+                  <DebtorPicker
+                    onSelect={(debtor) =>
+                      setFormData((prev) => ({ ...prev, customer_name: debtor.name }))
+                    }
+                    placeholder="Search customers or type below..."
+                  />
                   <Input
                     type="text"
                     name="customer_name"
@@ -211,6 +218,7 @@ export default function CreateQuotationPage() {
                     value={formData.customer_name}
                     onChange={handleChange}
                     required
+                    className="mt-2"
                   />
                 </div>
               </div>
@@ -282,13 +290,16 @@ export default function CreateQuotationPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Stock Code
                   </label>
-                  <Input
-                    type="text"
-                    placeholder="Optional"
-                    value={newItem.stock_code}
-                    onChange={(e) =>
-                      setNewItem({ ...newItem, stock_code: e.target.value })
+                  <StockItemPicker
+                    onSelect={(item) =>
+                      setNewItem((prev) => ({
+                        ...prev,
+                        stock_code: item.stock_code,
+                        description: item.description,
+                        unit_rate: String(item.selling_price),
+                      }))
                     }
+                    placeholder={newItem.stock_code || 'Search stock (optional)...'}
                   />
                 </div>
                 <div>

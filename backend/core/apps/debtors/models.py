@@ -326,6 +326,10 @@ class DebtorTransaction(TimeStampedModel):
     description_line4 = models.CharField(max_length=100, blank=True, db_column='del4', help_text="Delivery/Description Line 4 (DEL4)")
     source_type = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='POS', help_text="Source of transaction")
     source_reference = models.CharField(max_length=100, blank=True, help_text="Link to original record")
+    settlement_discount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0.00'),
+        help_text="Settlement/prompt-payment discount granted on this receipt (RCP transactions only)"
+    )
     is_allocated = models.BooleanField(default=False, db_index=True, help_text="Whether transaction has been fully allocated/paid")
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='posted', help_text="Transaction status")
     created_by = models.CharField(max_length=50, blank=True, help_text="User who created transaction")
@@ -612,9 +616,51 @@ class Debtopen(TimeStampedModel):
     
     def get_allocated_amount(self):
         return self.total - self.balancedue
-    
+
     def is_fully_allocated(self):
         return self.balancedue == 0
+
+
+class ReceiptAllocation(TimeStampedModel):
+    """
+    One receipt's payment against one open item (DEBTOPEN row). Mirrors
+    apps.creditors.OpenItemAllocation's pattern on the debtor side — see
+    DebtorService.apply_receipt_allocation for the validation/mutation
+    logic (full-settlement-only discount rule, balance subtraction).
+
+    FKs to DebtorTransaction (not pos.ReceiptOnAccount) because
+    DebtorTransaction is the one ledger record both the POS receipt flow
+    and the direct debtors-app allocate endpoint converge on.
+    """
+    receipt = models.ForeignKey(
+        DebtorTransaction,
+        on_delete=models.CASCADE,
+        related_name='allocations',
+        help_text="The RCP DebtorTransaction this allocation was made from"
+    )
+    open_item = models.ForeignKey(
+        Debtopen,
+        on_delete=models.CASCADE,
+        related_name='allocations',
+        help_text="The open item (invoice/etc.) this allocation was applied to"
+    )
+    amount_paid = models.DecimalField(max_digits=14, decimal_places=2, validators=[MinValueValidator(Decimal('0'))])
+    settlement_discount = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0.00'),
+        validators=[MinValueValidator(Decimal('0'))]
+    )
+    allocated_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'debtor_receipt_allocations'
+        ordering = ['allocated_at']
+        indexes = [
+            models.Index(fields=['receipt']),
+            models.Index(fields=['open_item']),
+        ]
+
+    def __str__(self):
+        return f"Allocation {self.amount_paid} from {self.receipt.transaction_number} to {self.open_item.dtrano}"
 
 
 class DebtorAudit(models.Model):

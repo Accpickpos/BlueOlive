@@ -4,12 +4,13 @@ Business logic for POS operations based on PointOfSale.pdf
 """
 from django.db import transaction
 from django.db.models import Sum, F, Q
+from django.utils import timezone
 from decimal import Decimal
 from datetime import date, timedelta
 import logging
 
 from .models import (
-    CashSale, CashSaleLine, Laybye, LaybyeLine, LaybyePayment,
+    CashSale, CashSaleLine, Tender, Laybye, LaybyeLine, LaybyePayment,
     Quotation, QuotationLine, JobCard, JobCardLine, CashControl, Repair, Invoice, InvoiceLine
 )
 from apps.stock_control.models import StockItem, StockTransaction
@@ -107,6 +108,89 @@ class CashControlService:
         control = CashControlService._get_or_create(control_date, cashier, station_number)
         control.cancelled_laybyes_count += 1
         control.cancelled_laybyes_total += refund_amount
+        control.save()
+        return control
+
+    # ------------------------------------------------------------------
+    # Reversal helpers — undo exactly what the matching record_*() call
+    # above added, for the generic transaction reverse/void gaps (Credit
+    # Note, Cash Return, Receipt on Account, Cash A Cheque, and Cash Sale's
+    # own cancel_cash_sale, which previously reversed stock but never the
+    # till). Each is a no-op if no CashControl row exists for that
+    # date/cashier/station (nothing was ever recorded to undo).
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _get_existing(control_date, cashier, station_number):
+        return CashControl.objects.filter(
+            control_date=control_date, cashier=cashier, station_number=station_number
+        ).first()
+
+    @staticmethod
+    def reverse_cash_sale(cash_sale):
+        control = CashControlService._get_existing(
+            cash_sale.sale_date, cash_sale.cashier, cash_sale.station_number
+        )
+        if not control:
+            return None
+        control.cash_sales_count = max(0, control.cash_sales_count - 1)
+        control.cash_sales_total -= cash_sale.total_amount
+        for tender in cash_sale.tenders.all():
+            if tender.tender_type == 'CASH':
+                control.cash_takings -= tender.amount
+            elif tender.tender_type == 'CHEQUE':
+                control.cheque_takings -= tender.amount
+            elif tender.tender_type == 'VOUCHER':
+                control.voucher_takings -= tender.amount
+            elif tender.tender_type == 'SPEEDPOINT':
+                control.speedpoint_takings -= tender.amount
+        control.save()
+        return control
+
+    @staticmethod
+    def reverse_receipt(control_date, cashier, station_number, amount, tender_type='CASH'):
+        control = CashControlService._get_existing(control_date, cashier, station_number)
+        if not control:
+            return None
+        control.receipts_count = max(0, control.receipts_count - 1)
+        control.receipts_total -= amount
+        if tender_type == 'CASH':
+            control.cash_takings -= amount
+        elif tender_type == 'CHEQUE':
+            control.cheque_takings -= amount
+        elif tender_type == 'SPEEDPOINT':
+            control.speedpoint_takings -= amount
+        control.save()
+        return control
+
+    @staticmethod
+    def reverse_credit_note(control_date, cashier, station_number, amount):
+        control = CashControlService._get_existing(control_date, cashier, station_number)
+        if not control:
+            return None
+        control.credits_count = max(0, control.credits_count - 1)
+        control.credits_total -= amount
+        control.save()
+        return control
+
+    @staticmethod
+    def reverse_cash_return(control_date, cashier, station_number, amount):
+        control = CashControlService._get_existing(control_date, cashier, station_number)
+        if not control:
+            return None
+        control.cash_refunds_count = max(0, control.cash_refunds_count - 1)
+        control.cash_refunds_total -= amount
+        control.cash_refunds -= amount
+        control.save()
+        return control
+
+    @staticmethod
+    def reverse_cashed_cheque(control_date, cashier, station_number, amount):
+        control = CashControlService._get_existing(control_date, cashier, station_number)
+        if not control:
+            return None
+        control.cashed_cheques_count = max(0, control.cashed_cheques_count - 1)
+        control.cashed_cheques_total -= amount
         control.save()
         return control
 
@@ -263,10 +347,15 @@ class CashSaleService:
                         logger.warning(
                             f"Stock item {line.stock_code} not found for reversal"
                         )
-        
+
+            # Also reverse the till totals update_cash_control() made when
+            # this sale was posted — previously only stock was reversed,
+            # leaving CashControl permanently overstated after a cancel.
+            CashControlService.reverse_cash_sale(cash_sale)
+
         cash_sale.is_cancelled = True
         cash_sale.save()
-        
+
         logger.info(f"Cancelled cash sale {cash_sale.sale_number}. Reason: {reason}")
         return cash_sale
     
@@ -346,6 +435,180 @@ class CashSaleService:
             'cheque_takings': summary['cheque_takings'] or zero,
             'speedpoint_takings': summary['speedpoint_takings'] or zero,
         }
+
+
+class CreditNoteService:
+    """Service class for credit note operations."""
+
+    @staticmethod
+    @transaction.atomic
+    def cancel_credit_note(credit_note, reason=''):
+        """
+        Cancel a credit note — reverses exactly what post_credit did: the
+        stock increment per line (a credit note returns stock, so cancelling
+        removes it again) and the CashControl credits total.
+        """
+        if credit_note.is_cancelled:
+            raise InvalidDocumentState(
+                'Credit Note', credit_note.credit_number, 'CANCELLED', 'cancel'
+            )
+
+        if credit_note.is_posted:
+            for line in credit_note.lines.all():
+                if line.stock_code:
+                    try:
+                        stock_item = StockItem.objects.get(stock_code=line.stock_code)
+                        stock_item.quantity_on_hand -= line.quantity
+                        stock_item.save()
+                        StockTransaction.objects.create(
+                            stock_item=stock_item,
+                            transaction_type='SALE',
+                            transaction_date=date.today(),
+                            comments=f"CANC-{credit_note.credit_number}"[:30],
+                            quantity_out=line.quantity,
+                            quantity_balance=stock_item.quantity_on_hand,
+                            unit_price=line.unit_price,
+                            station_number=credit_note.station_number,
+                        )
+                    except StockItem.DoesNotExist:
+                        logger.warning(f"Stock item {line.stock_code} not found for reversal")
+
+            CashControlService.reverse_credit_note(
+                credit_note.credit_date, credit_note.cashier, credit_note.station_number,
+                credit_note.total_amount
+            )
+
+        credit_note.is_cancelled = True
+        credit_note.cancel_reason = reason
+        credit_note.cancelled_at = timezone.now()
+        credit_note.save()
+
+        logger.info(f"Cancelled credit note {credit_note.credit_number}. Reason: {reason}")
+        return credit_note
+
+
+class CashReturnService:
+    """Service class for cash return operations."""
+
+    @staticmethod
+    @transaction.atomic
+    def cancel_cash_return(cash_return, reason=''):
+        """
+        Cancel a cash return — reverses exactly what post_return did: the
+        stock increment per line and the CashControl cash-refunds total.
+        """
+        if cash_return.is_cancelled:
+            raise InvalidDocumentState(
+                'Cash Return', cash_return.return_number, 'CANCELLED', 'cancel'
+            )
+
+        if cash_return.is_posted:
+            for line in cash_return.lines.all():
+                if line.stock_code:
+                    try:
+                        stock_item = StockItem.objects.get(stock_code=line.stock_code)
+                        stock_item.quantity_on_hand -= line.quantity
+                        stock_item.save()
+                        StockTransaction.objects.create(
+                            stock_item=stock_item,
+                            transaction_type='SALE',
+                            transaction_date=date.today(),
+                            comments=f"CANC-{cash_return.return_number}"[:30],
+                            quantity_out=line.quantity,
+                            quantity_balance=stock_item.quantity_on_hand,
+                            unit_price=line.unit_price,
+                            station_number=cash_return.station_number,
+                        )
+                    except StockItem.DoesNotExist:
+                        logger.warning(f"Stock item {line.stock_code} not found for reversal")
+
+            CashControlService.reverse_cash_return(
+                cash_return.return_date, cash_return.cashier, cash_return.station_number,
+                cash_return.total_amount
+            )
+
+        cash_return.is_cancelled = True
+        cash_return.cancel_reason = reason
+        cash_return.cancelled_at = timezone.now()
+        cash_return.save()
+
+        logger.info(f"Cancelled cash return {cash_return.return_number}. Reason: {reason}")
+        return cash_return
+
+
+class ReceiptOnAccountService:
+    """Service class for receipt-on-account operations."""
+
+    @staticmethod
+    @transaction.atomic
+    def cancel_receipt(receipt, reason=''):
+        """
+        Cancel a receipt on account — reverses the CashControl receipts
+        total, and if the receipt was actually posted to the debtor's
+        ledger (apps.debtors.DebtorService.post_receipt via
+        ReceiptOnAccountViewSet.post_receipt), reverses that too with an
+        equal-and-opposite journal debit rather than mutating history,
+        matching DebtorService.post_journal's existing JD/JC pattern.
+        """
+        if receipt.is_cancelled:
+            raise InvalidDocumentState(
+                'Receipt', receipt.receipt_number, 'CANCELLED', 'cancel'
+            )
+
+        if receipt.is_posted:
+            CashControlService.reverse_receipt(
+                receipt.receipt_date, receipt.cashier, receipt.station_number,
+                receipt.total_amount, receipt.tender_type
+            )
+
+            if receipt.debtor_transaction_id:
+                from apps.debtors.services import DebtorService
+                try:
+                    DebtorService.post_journal(
+                        debtor=receipt.debtor_transaction.debtor,
+                        journal_type='JD',
+                        amount=receipt.total_amount,
+                        custref=f"CANC-{receipt.receipt_number}"[:10],
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to reverse debtor ledger for cancelled receipt "
+                        f"{receipt.receipt_number}: {e}"
+                    )
+
+        receipt.is_cancelled = True
+        receipt.cancel_reason = reason
+        receipt.cancelled_at = timezone.now()
+        receipt.save()
+
+        logger.info(f"Cancelled receipt {receipt.receipt_number}. Reason: {reason}")
+        return receipt
+
+
+class CashAChequeService:
+    """Service class for cash-a-cheque operations."""
+
+    @staticmethod
+    @transaction.atomic
+    def cancel_cash_a_cheque(cheque, reason=''):
+        """Cancel a cash-a-cheque transaction — reverses the CashControl cashed-cheques total."""
+        if cheque.is_cancelled:
+            raise InvalidDocumentState(
+                'Cash A Cheque', cheque.transaction_number, 'CANCELLED', 'cancel'
+            )
+
+        if cheque.is_processed:
+            CashControlService.reverse_cashed_cheque(
+                cheque.transaction_date, cheque.cashier, cheque.station_number, cheque.cash_paid
+            )
+
+        cheque.is_cancelled = True
+        cheque.cancel_reason = reason
+        cheque.cancelled_at = timezone.now()
+        cheque.save()
+
+        logger.info(f"Cancelled cash-a-cheque {cheque.transaction_number}. Reason: {reason}")
+        return cheque
 
 
 class LaybyeService:
@@ -1056,15 +1319,155 @@ class RepairService:
     
     @staticmethod
     @transaction.atomic
-    def invoice_customer(repair):
-        """Mark repair as invoiced."""
+    def invoice_customer(repair, charge_type, lines_data, debtor_id=None,
+                          new_debtor_data=None, tenders_data=None,
+                          cashier=None, station_number=1):
+        """
+        Manual §R "5. Charge for the Repair": a genuine two-way branch, not
+        a status flip. Cash option creates a real Cash Sale ending in a
+        Tender Routine. Account option resolves an existing Debtor or
+        captures a new one on the fly, then creates a real Invoice. In BOTH
+        branches, line items are manually re-captured at charge time (with
+        a cost-price toggle in the DOS UI) — they are NOT auto-copied from
+        RepairLine, which is a separate supplier-side issue/receipt trail.
+
+        Args:
+            repair: Repair instance (must be status 'R' — Received)
+            charge_type: 'cash' or 'account'
+            lines_data: list of dicts — stock_code, description, quantity,
+                unit_price, discount_percentage, tax_code, cost_price
+            debtor_id: existing Debtor pk (account branch)
+            new_debtor_data: dict for DebtorCreateUpdateSerializer to create
+                a debtor on the fly (account branch, "New Debtor")
+            tenders_data: list of tender dicts (cash branch)
+            cashier, station_number: for the created CashSale (cash branch)
+
+        Returns:
+            dict: {'charge_type': ..., 'document': CashSale or Invoice}
+        """
         if repair.status != 'R':
             raise ValueError("Repair must be RECEIVED before invoicing")
-        
-        # This would create an invoice for the customer
-        # Implementation depends on invoice creation logic
-        
+
+        if charge_type not in ('cash', 'account'):
+            raise ValueError("charge_type must be 'cash' or 'account'")
+
+        if not lines_data:
+            raise POSValidationException("At least one line item is required to charge the repair")
+
+        # Normalize line dicts once — request.data delivers strings/floats,
+        # every DecimalField write below (CashSaleLine/InvoiceLine, plus
+        # CalculationService) expects real Decimals.
+        lines_data = [
+            {
+                **line_data,
+                'quantity': Decimal(str(line_data['quantity'])),
+                'unit_price': Decimal(str(line_data['unit_price'])),
+                'discount_percentage': Decimal(str(line_data.get('discount_percentage') or 0)),
+                'cost_price': Decimal(str(line_data.get('cost_price') or 0)),
+            }
+            for line_data in lines_data
+        ]
+
+        if charge_type == 'cash':
+            import uuid
+            sale_number = f"CS-{uuid.uuid4().hex[:8].upper()}"
+            cash_sale = CashSale.objects.create(
+                sale_number=sale_number,
+                sale_date=date.today(),
+                customer_name=repair.customer_name,
+                telephone=repair.telephone,
+                cashier=cashier,
+                station_number=station_number,
+            )
+
+            subtotal = Decimal('0.00')
+            vat_total = Decimal('0.00')
+            cost_total = Decimal('0.00')
+            for idx, line_data in enumerate(lines_data, start=1):
+                calc = CalculationService.calculate_line_totals(
+                    quantity=line_data['quantity'],
+                    unit_price=line_data['unit_price'],
+                    discount_percentage=line_data.get('discount_percentage', Decimal('0.00')),
+                    tax_code=line_data.get('tax_code', 1),
+                    cost_price=line_data.get('cost_price', Decimal('0.00')),
+                )
+                CashSaleLine.objects.create(
+                    cash_sale=cash_sale,
+                    line_number=idx,
+                    stock_code=line_data.get('stock_code', ''),
+                    description=line_data.get('description', ''),
+                    quantity=line_data['quantity'],
+                    unit_price=line_data['unit_price'],
+                    discount_percentage=line_data.get('discount_percentage', Decimal('0.00')),
+                    tax_code=line_data.get('tax_code', 1),
+                    line_total=calc['line_total'],
+                    vat_amount=calc['vat_amount'],
+                    cost_price=line_data.get('cost_price', Decimal('0.00')),
+                    line_profit=calc['line_profit'],
+                )
+                subtotal += calc['line_total_before_vat']
+                vat_total += calc['vat_amount']
+                cost_total += calc['line_cost']
+
+            cash_sale.subtotal = subtotal
+            cash_sale.vat_amount = vat_total
+            cash_sale.total_amount = subtotal + vat_total
+            cash_sale.total_cost = cost_total
+            cash_sale.gross_profit = subtotal - cost_total
+            cash_sale.save()
+
+            for tender_data in (tenders_data or []):
+                tender_data = dict(tender_data)
+                tender_data['amount'] = Decimal(str(tender_data.get('amount', 0)))
+                Tender.objects.create(cash_sale=cash_sale, **tender_data)
+
+            CashSaleService.post_cash_sale(cash_sale)
+
+            repair.status = 'V'
+            repair.save()
+
+            logger.info(f"Repair {repair.repair_number} charged as Cash Sale {cash_sale.sale_number}")
+            return {'charge_type': 'cash', 'document': cash_sale}
+
+        # Account branch
+        if debtor_id:
+            debtor = Debtor.objects.get(pk=debtor_id)
+        elif new_debtor_data:
+            from apps.debtors.serializers import DebtorCreateUpdateSerializer
+            debtor_serializer = DebtorCreateUpdateSerializer(data=new_debtor_data)
+            debtor_serializer.is_valid(raise_exception=True)
+            debtor = debtor_serializer.save()
+        else:
+            raise ValueError("debtor_id or new_debtor_data is required for the Account charge option")
+
+        invoice = Invoice.objects.create(
+            debtor=debtor,
+            invoice_number=f"INV-REP-{repair.repair_number}",
+            invoice_date=date.today(),
+            delivery_name=repair.customer_name,
+            delivery_address_line1=repair.address_line1,
+            delivery_telephone=repair.telephone,
+            order_number=repair.order_number,
+        )
+
+        for idx, line_data in enumerate(lines_data, start=1):
+            InvoiceLine.objects.create(
+                invoice=invoice,
+                line_number=idx,
+                stock_code=line_data.get('stock_code', ''),
+                description=line_data.get('description', ''),
+                quantity=line_data['quantity'],
+                unit_price=line_data['unit_price'],
+                discount_percentage=line_data.get('discount_percentage', Decimal('0.00')),
+                tax_code=line_data.get('tax_code', 1),
+                cost_price=line_data.get('cost_price', Decimal('0.00')),
+            )
+
+        invoice.post()
+
         repair.status = 'V'
+        repair.debtor = debtor
         repair.save()
-        
-        return repair
+
+        logger.info(f"Repair {repair.repair_number} charged as Invoice {invoice.invoice_number}")
+        return {'charge_type': 'account', 'document': invoice}

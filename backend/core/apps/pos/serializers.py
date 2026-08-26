@@ -560,7 +560,7 @@ class RepairSerializer(serializers.ModelSerializer):
     class Meta:
         model = Repair
         fields = '__all__'
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = ['debtor', 'created_at', 'updated_at']
 
 
 class JobCardLineSerializer(serializers.ModelSerializer):
@@ -658,7 +658,11 @@ class ReceiptOnAccountSerializer(serializers.ModelSerializer):
     class Meta:
         model = ReceiptOnAccount
         fields = '__all__'
-        read_only_fields = ['total_amount', 'is_posted', 'created_at', 'updated_at']
+        read_only_fields = [
+            'total_amount', 'is_posted', 'debtor_transaction',
+            'is_cancelled', 'cancel_reason', 'cancelled_at',
+            'created_at', 'updated_at'
+        ]
     
     def validate(self, data):
         """Calculate total amount."""
@@ -705,7 +709,11 @@ class CreditNoteDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = CreditNote
         fields = '__all__'
-        read_only_fields = ['subtotal', 'vat_amount', 'total_amount', 'is_posted', 'created_at', 'updated_at']
+        read_only_fields = [
+            'subtotal', 'vat_amount', 'total_amount', 'is_posted',
+            'is_cancelled', 'cancel_reason', 'cancelled_at',
+            'created_at', 'updated_at'
+        ]
 
 
 class CreditNoteCreateSerializer(serializers.ModelSerializer):
@@ -784,7 +792,11 @@ class CashReturnSerializer(serializers.ModelSerializer):
     class Meta:
         model = CashReturn
         fields = '__all__'
-        read_only_fields = ['subtotal', 'vat_amount', 'total_amount', 'is_posted', 'created_at', 'updated_at']
+        read_only_fields = [
+            'subtotal', 'vat_amount', 'total_amount', 'is_posted',
+            'is_cancelled', 'cancel_reason', 'cancelled_at',
+            'created_at', 'updated_at'
+        ]
 
 
 class CashReturnCreateSerializer(serializers.ModelSerializer):
@@ -847,7 +859,10 @@ class CashAChequeSerializer(serializers.ModelSerializer):
     class Meta:
         model = CashACheque
         fields = '__all__'
-        read_only_fields = ['is_processed', 'created_at', 'updated_at']
+        read_only_fields = [
+            'is_processed', 'is_cancelled', 'cancel_reason', 'cancelled_at',
+            'created_at', 'updated_at'
+        ]
     
     def validate(self, data):
         """Calculate cash paid."""
@@ -999,7 +1014,8 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
     balance_due = serializers.ReadOnlyField()
     is_overdue = serializers.ReadOnlyField()
     days_overdue = serializers.ReadOnlyField()
-    
+    requires_cash_tender = serializers.ReadOnlyField()
+
     def to_representation(self, instance):
         """Add detailed error handling for serialization."""
         try:
@@ -1048,6 +1064,7 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
             'balance_due',
             'is_overdue',
             'days_overdue',
+            'requires_cash_tender',
             'created_by',
             'notes',
             'lines',
@@ -1061,6 +1078,7 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
             'balance_due',
             'is_overdue',
             'days_overdue',
+            'requires_cash_tender',
             'created_at',
             'updated_at'
         ]

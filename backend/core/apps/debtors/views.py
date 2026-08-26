@@ -25,7 +25,7 @@ from .models import (
 from apps.pos.models import CreditNote, CashSale, JobCard, Invoice
 from apps.purchase_orders.models import PurchaseOrder
 from .serializers import (
-    DebtorListSerializer, DebtorDetailSerializer,
+    DebtorListSerializer, DebtorDetailSerializer, DebtorLookupSerializer,
     DebtorCreateUpdateSerializer, DebtorTransactionSerializer,
     DebteopenSerializer, DpdcSerializer, DebtorAuditSerializer,
     DareaSerializer, AgeAnalysisSerializer, DebtorSummarySerializer,
@@ -38,14 +38,16 @@ from .permissions import (
     CanChargeInterest
 )
 from apps.common.permissions import BaseModelPermission, CanPostTransaction
+from apps.common.mixins import LookupActionMixin
 
 
-class DebtorViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class DebtorViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing debtors (customers) - DMAST table.
     """
     queryset = Debtor.objects.all()
     lookup_field = 'dno'
+    lookup_serializer_class = DebtorLookupSerializer
     permission_classes = [IsAuthenticated, HasDebtorPermission]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = DebtorFilter
@@ -699,35 +701,34 @@ class DebteopenViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        receipt_id = request.data.get('receipt_transaction_id') or request.data.get('receipt_id')
+
         results = []
         try:
             with db_transaction.atomic():
+                # Route through the same DebtorTransaction the receipt was
+                # posted against — required now that allocations persist a
+                # ReceiptAllocation row (FK to DebtorTransaction). Falls back
+                # to synthesizing one for callers that only ever used this
+                # endpoint's old "just reduce balancedue" behavior without
+                # posting a receipt first.
+                if receipt_id:
+                    receipt_transaction = DebtorTransaction.objects.get(pk=receipt_id, debtor_id=debtor_id)
+                else:
+                    debtor = Debtor.objects.select_for_update().get(pk=debtor_id)
+                    total_amount = sum(Decimal(str(a['amount'])) for a in allocations)
+                    receipt_transaction = DebtorService.post_receipt(debtor=debtor, amount=total_amount)
+
                 for alloc in allocations:
                     open_item = Debtopen.objects.select_for_update().get(
                         pk=alloc['open_item_id'], dno_id=debtor_id
                     )
-                    amount = Decimal(str(alloc['amount']))
-
-                    if amount <= 0:
-                        raise ValueError('Allocation amount must be greater than zero')
-                    if amount > open_item.balancedue:
-                        raise ValueError(
-                            f"Allocation of {amount} exceeds balance due {open_item.balancedue} on {open_item.dtrano}"
-                        )
-
-                    open_item.balancedue -= amount
-                    open_item.save(update_fields=['balancedue'])
-
-                    DebtorAudit.objects.create(
-                        dno=open_item.dno,
-                        dtrano=open_item.dtrano,
-                        type=open_item.type,
-                        thistype='AL',
-                        thistran=open_item.dtrano,
-                        date=date.today(),
-                        amount=amount,
+                    allocation = DebtorService.apply_receipt_allocation(
+                        open_item=open_item,
+                        amount_paid=alloc['amount'],
+                        settlement_discount=alloc.get('settlement_discount', 0),
+                        receipt_transaction=receipt_transaction,
                     )
-
                     results.append({'open_item_id': open_item.id, 'new_balance': float(open_item.balancedue)})
 
             return Response({'status': 'success', 'allocations': results})

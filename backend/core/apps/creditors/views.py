@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 
 from apps.shop_filter_mixin import ShopFilterMixin
+from apps.common.mixins import LookupActionMixin
 
 from .models import (
     Creditor, CreditorTransaction,
@@ -50,7 +51,7 @@ from .serializers import (
 # CREDITOR (SUPPLIER) MASTER
 # ============================================================================
 
-class CreditorViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class CreditorViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     CRUD for Creditor master accounts.
 
@@ -68,6 +69,7 @@ class CreditorViewSet(ShopFilterMixin, viewsets.ModelViewSet):
       GET  /creditors/{id}/ledger/             — full suptran ledger for this creditor
       GET  /creditors/{id}/transactions/       — summary of all transaction types
       GET  /creditors/age_analysis/            — age analysis across ALL creditors
+      GET  /creditors/lookup/?search=&limit=   — thin typeahead for supplier pickers
     """
 
     queryset         = Creditor.objects.select_related('credit_terms', 'sales_area')
@@ -77,6 +79,7 @@ class CreditorViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     search_fields    = ['supplier_number', 'name', 'telephone', 'email']
     ordering_fields  = ['supplier_number', 'name', 'total_outstanding_balance']
     ordering         = ['supplier_number']
+    lookup_serializer_class = CreditorListSerializer
 
     def get_serializer_class(self):
         if self.action == 'list':

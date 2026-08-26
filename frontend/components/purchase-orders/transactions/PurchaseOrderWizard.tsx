@@ -12,8 +12,9 @@ import {
 } from 'lucide-react';
 import { PurchaseOrder, PurchaseOrderLineItem, PurchaseOrderStatus, OrderLayoutOption } from '@/lib/types/purchaseOrders';
 import { purchaseOrdersApi } from '@/lib/purchaseOrdersApi';
-import { creditorsApi } from '@/lib/creditors';
 import { getApiErrorMessage } from '@/lib/api';
+import { CreditorPicker } from '@/components/creditors';
+import { StockItemPicker } from '@/components/pos';
 
 interface PurchaseOrderWizardProps {
   onComplete: () => void;
@@ -261,19 +262,6 @@ function SupplierStep({
   formData: FormData;
   setFormData: (data: FormData) => void;
 }) {
-  const [suppliers, setSuppliers] = useState<{ id: number; name: string; code: string }[]>([]);
-
-  React.useEffect(() => {
-    creditorsApi.accounts
-      .list({ page_size: 500 } as any)
-      .then((res: any) =>
-        setSuppliers(
-          (res.results || []).map((c: any) => ({ id: c.id, name: c.name, code: c.supplier_number }))
-        )
-      )
-      .catch(() => setSuppliers([]));
-  }, []);
-
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold text-gray-900">Select Supplier</h3>
@@ -301,18 +289,22 @@ function SupplierStep({
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">Supplier *</label>
-        <select
-          value={formData.supplier_id || ''}
-          onChange={(e) => setFormData({ ...formData, supplier_id: parseInt(e.target.value) })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          <option value="">Select supplier...</option>
-          {suppliers.map((sup) => (
-            <option key={sup.id} value={sup.id}>
-              {sup.code} - {sup.name}
-            </option>
-          ))}
-        </select>
+        <CreditorPicker
+          onSelect={(creditor) =>
+            setFormData({
+              ...formData,
+              supplier_id: Number(creditor.id),
+              supplier_name: creditor.name,
+              supplier_code: creditor.account_number,
+            })
+          }
+          placeholder="Search suppliers..."
+        />
+        {formData.supplier_id ? (
+          <p className="text-sm text-gray-600 mt-1">
+            Selected: {formData.supplier_code} - {formData.supplier_name}
+          </p>
+        ) : null}
       </div>
 
       <div>
@@ -464,12 +456,16 @@ function LineItemsStep({
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3 p-4 bg-gray-50 rounded-lg">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Stock Code *</label>
-            <input
-              type="text"
-              value={newItem.stock_code}
-              onChange={(e) => setNewItem({ ...newItem, stock_code: e.target.value })}
-              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
-              placeholder="SKU"
+            <StockItemPicker
+              onSelect={(item) =>
+                setNewItem((prev) => ({
+                  ...prev,
+                  stock_code: item.stock_code,
+                  stock_description: item.description,
+                  current_cost: item.cost_price,
+                }))
+              }
+              placeholder={newItem.stock_code || 'Search stock...'}
             />
           </div>
           <div>

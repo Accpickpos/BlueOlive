@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, AlertCircle, CheckCircle } from 'lucide-react';
+import { DebtorPicker } from '@/components/pos';
 
 export default function CreateRepairPage() {
   const router = useRouter();
@@ -120,6 +121,18 @@ export default function CreateRepairPage() {
               <CardTitle>Repair Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Look Up Existing Customer
+                </label>
+                <DebtorPicker
+                  onSelect={(debtor) =>
+                    setFormData((prev) => ({ ...prev, customer_name: debtor.name }))
+                  }
+                  placeholder="Search customers, or enter a new one below..."
+                />
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">

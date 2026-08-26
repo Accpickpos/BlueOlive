@@ -456,7 +456,7 @@ class Invoice(TimeStampedModel):
     def recalculate_totals(self):
         """Recalculate all totals from line items."""
         lines = self.lines.all()
-        
+
         self.subtotal = sum(line.line_total for line in lines)
         self.discount_amount = sum(
             line.quantity * line.unit_price * (line.discount_percentage / 100)
@@ -466,9 +466,122 @@ class Invoice(TimeStampedModel):
         self.total_amount = self.subtotal + self.vat_amount
         self.total_cost = sum(line.line_cost for line in lines)
         self.gross_profit = self.subtotal - self.total_cost
-        
+
         # Save without triggering full validation
         super(Invoice, self).save()
+
+    @property
+    def requires_cash_tender(self):
+        """
+        Manual §1 "1. Invoice - Cash Debtors": "Where the Debtor's Account
+        Category is set to C in Debtor's File Maintenance and their payment
+        terms are set to 0, the invoice transaction will end with a Tender
+        Routine, as in a Cash Sale. An invoice plus a payment will be posted
+        to the Cash Debtor's Account."
+        """
+        return bool(self.debtor_id) and self.debtor.acctype == 'C' and self.debtor.terms == 0
+
+    def apply_subtotal_discount(self, percentage):
+        """
+        Manual §1 "1. Invoice - Subtotal Discount Facility": "Enter the
+        Discount % which will automatically be applied to all the line
+        items on the invoice. A minus (-) discount will automatically
+        increase the unit price of all line items."
+
+        Applied by scaling each line's unit_price directly (rather than
+        folding into discount_percentage, which is capped 0-100 and can't
+        represent the "minus discount increases price" case) — the whole
+        operation is rejected up front if it would exceed a line's stock
+        item's maximum_discount_percent; no partial apply.
+        """
+        from apps.stock_control.models import StockItem
+
+        percentage = Decimal(str(percentage))
+        factor = (Decimal(100) - percentage) / Decimal(100)
+        if factor < 0:
+            raise ValidationError('Subtotal discount cannot exceed 100%.')
+
+        lines = list(self.lines.exclude(quantity=0))
+        if not lines:
+            raise ValidationError('Invoice has no line items to discount.')
+
+        if percentage > 0:
+            for line in lines:
+                if not line.stock_code:
+                    continue
+                try:
+                    stock_item = StockItem.objects.get(stock_code=line.stock_code)
+                except StockItem.DoesNotExist:
+                    continue
+                if percentage > stock_item.maximum_discount_percent:
+                    raise ValidationError(
+                        f"Subtotal discount of {percentage}% exceeds the maximum discount "
+                        f"of {stock_item.maximum_discount_percent}% allowed for line "
+                        f"{line.line_number} ({line.stock_code})."
+                    )
+
+        for line in lines:
+            line.unit_price = (line.unit_price * factor).quantize(Decimal('0.0001'))
+            line.save()
+
+        self.refresh_from_db()
+        return self
+
+    def apply_set_price(self, target_total):
+        """
+        Manual §1 "1. Invoice - Set Selling Price Facility": "Enter the
+        revised inclusive Total Amount of the Invoice. The system
+        automatically adjusts the prices of individual items in proportion
+        to the new total price."
+        """
+        from .calculation_service import CalculationService
+
+        target_total = Decimal(str(target_total))
+        if target_total <= 0:
+            raise ValidationError('Target total must be greater than zero.')
+
+        lines = [l for l in self.lines.exclude(quantity=0) if (l.line_total + l.vat_amount) > 0]
+        if not lines:
+            raise ValidationError('Invoice has no priced line items to adjust.')
+
+        current_total = self.total_amount
+        if current_total <= 0:
+            raise ValidationError('Invoice has no current total to scale from.')
+
+        ratio = target_total / current_total
+        largest_line_id = max(lines, key=lambda l: (l.line_total + l.vat_amount)).pk
+
+        for line in lines:
+            current_incl = line.line_total + line.vat_amount
+            new_incl = (current_incl * ratio).quantize(Decimal('0.01'))
+
+            is_taxable = line.tax_code in CalculationService.TAXABLE_TAX_CODES
+            vat_factor = (Decimal(1) + line.vat_rate / Decimal(100)) if is_taxable else Decimal(1)
+            new_excl = new_incl / vat_factor
+
+            discount_factor = (Decimal(100) - line.discount_percentage) / Decimal(100)
+            if discount_factor <= 0 or line.quantity <= 0:
+                continue
+            line.unit_price = (new_excl / (line.quantity * discount_factor)).quantize(Decimal('0.0001'))
+            line.save()
+
+        # Cent-rounding residual (proportional scaling across N lines rarely
+        # divides evenly) goes onto the single largest line so the header
+        # total matches the target exactly.
+        self.refresh_from_db()
+        residual = target_total - self.total_amount
+        if residual != 0:
+            largest_line = self.lines.get(pk=largest_line_id)
+            is_taxable = largest_line.tax_code in CalculationService.TAXABLE_TAX_CODES
+            vat_factor = (Decimal(1) + largest_line.vat_rate / Decimal(100)) if is_taxable else Decimal(1)
+            discount_factor = (Decimal(100) - largest_line.discount_percentage) / Decimal(100)
+            if discount_factor > 0 and largest_line.quantity > 0:
+                unit_price_delta = residual / vat_factor / discount_factor / largest_line.quantity
+                largest_line.unit_price = (largest_line.unit_price + unit_price_delta).quantize(Decimal('0.0001'))
+                largest_line.save()
+
+        self.refresh_from_db()
+        return self
 
 
 class InvoiceLine(TimeStampedModel):
@@ -764,7 +877,10 @@ class Tender(TimeStampedModel):
         ('EFT', 'EFT'),
     ]
     
-    # Link to transaction
+    # Link to transaction — exactly one of these must be set (see clean()/
+    # the CheckConstraint below). Mirrors the typed-nullable-FK pattern
+    # apps.creditors.CreditorOpenItem already uses for "one record, several
+    # possible parent types" rather than a generic/contenttypes FK.
     cash_sale = models.ForeignKey(
         CashSale,
         on_delete=models.CASCADE,
@@ -772,29 +888,49 @@ class Tender(TimeStampedModel):
         blank=True,
         related_name='tenders'
     )
-    # Could also link to debtor receipt, etc.
-    
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='tenders'
+    )
+
     tender_type = models.CharField(max_length=15, choices=TENDER_TYPE_CHOICES)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
-    
+
     # For cheques
     drawer_name = models.CharField(max_length=200, blank=True)
     bank_name = models.CharField(max_length=100, blank=True)
     bank_account = models.CharField(max_length=50, blank=True)
     id_number = models.CharField(max_length=50, blank=True)
     telephone = models.CharField(max_length=50, blank=True)
-    
+
     # For speedpoint
     card_type = models.CharField(max_length=50, blank=True)
     authorization_code = models.CharField(max_length=50, blank=True)
-    
+
     class Meta:
         ordering = ['created_at']
         indexes = [
             models.Index(fields=['tender_type']),
             models.Index(fields=['cash_sale', 'tender_type'], name='idx_receipt_tender'),
         ]
-    
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    models.Q(cash_sale__isnull=False, invoice__isnull=True) |
+                    models.Q(cash_sale__isnull=True, invoice__isnull=False)
+                ),
+                name='tender_exactly_one_parent',
+            ),
+        ]
+
+    def clean(self):
+        linked = [pk for pk in (self.cash_sale_id, self.invoice_id) if pk]
+        if len(linked) != 1:
+            raise ValidationError('Tender must be linked to exactly one of cash_sale or invoice.')
+
     def __str__(self):
         return f"{self.tender_type} - {self.amount}"
 
@@ -1093,7 +1229,19 @@ class Repair(TimeStampedModel):
     ]
     
     repair_number = models.CharField(max_length=20, unique=True, db_index=True)
-    
+
+    # Debtor relationship — set when the repair is charged to an account
+    # (manual §R "Charge for the Repair", Account option). Nullable because
+    # most of a repair's lifecycle (created/issued/received) has no debtor
+    # yet, and a Cash-charged repair never gets one at all.
+    debtor = models.ForeignKey(
+        Debtor,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='repairs'
+    )
+
     # Customer details
     customer_name = models.CharField(max_length=40)
     address_line1 = models.CharField(max_length=25, blank=True)
@@ -1249,9 +1397,98 @@ class JobCard(TimeStampedModel):
         indexes = [
             models.Index(fields=['status']),
         ]
-    
+
     def __str__(self):
         return f"Job {self.job_number}"
+
+    def apply_subtotal_discount(self, percentage):
+        """
+        Manual §J "Job Costing", Update Transaction "S" option: same
+        Subtotal Discount facility as Invoice — see Invoice.apply_subtotal_discount.
+        """
+        from apps.stock_control.models import StockItem
+
+        percentage = Decimal(str(percentage))
+        factor = (Decimal(100) - percentage) / Decimal(100)
+        if factor < 0:
+            raise ValidationError('Subtotal discount cannot exceed 100%.')
+
+        lines = list(self.lines.exclude(quantity=0))
+        if not lines:
+            raise ValidationError('Job card has no line items to discount.')
+
+        if percentage > 0:
+            for line in lines:
+                if not line.stock_code:
+                    continue
+                try:
+                    stock_item = StockItem.objects.get(stock_code=line.stock_code)
+                except StockItem.DoesNotExist:
+                    continue
+                if percentage > stock_item.maximum_discount_percent:
+                    raise ValidationError(
+                        f"Subtotal discount of {percentage}% exceeds the maximum discount "
+                        f"of {stock_item.maximum_discount_percent}% allowed for line "
+                        f"{line.line_number} ({line.stock_code})."
+                    )
+
+        for line in lines:
+            line.unit_price = (line.unit_price * factor).quantize(Decimal('0.0001'))
+            line.save()
+
+        self.refresh_from_db()
+        return self
+
+    def apply_set_price(self, target_total):
+        """
+        Manual §J "Job Costing", Update Transaction "Set Price" option: same
+        Set Selling Price facility as Invoice — see Invoice.apply_set_price.
+        Note JobCardLine.line_total is VAT-inclusive (unlike InvoiceLine),
+        so unlike Invoice this doesn't need to add a separate vat_amount.
+        """
+        from .calculation_service import CalculationService
+
+        target_total = Decimal(str(target_total))
+        if target_total <= 0:
+            raise ValidationError('Target total must be greater than zero.')
+
+        lines = [l for l in self.lines.exclude(quantity=0) if l.line_total > 0]
+        if not lines:
+            raise ValidationError('Job card has no priced line items to adjust.')
+
+        current_total = self.total_amount
+        if current_total <= 0:
+            raise ValidationError('Job card has no current total to scale from.')
+
+        ratio = target_total / current_total
+        largest_line_id = max(lines, key=lambda l: l.line_total).pk
+
+        for line in lines:
+            new_incl = (line.line_total * ratio).quantize(Decimal('0.01'))
+            is_taxable = line.tax_code in CalculationService.TAXABLE_TAX_CODES
+            vat_factor = (Decimal(1) + CalculationService.VAT_RATE) if is_taxable else Decimal(1)
+            new_excl = new_incl / vat_factor
+
+            discount_factor = (Decimal(100) - line.discount_percentage) / Decimal(100)
+            if discount_factor <= 0 or line.quantity <= 0:
+                continue
+            line.unit_price = (new_excl / (line.quantity * discount_factor)).quantize(Decimal('0.0001'))
+            line.save()
+
+        self.refresh_from_db()
+        residual = target_total - self.total_amount
+        if residual != 0:
+            largest_line = self.lines.get(pk=largest_line_id)
+            is_taxable = largest_line.tax_code in CalculationService.TAXABLE_TAX_CODES
+            vat_factor = (Decimal(1) + CalculationService.VAT_RATE) if is_taxable else Decimal(1)
+            discount_factor = (Decimal(100) - largest_line.discount_percentage) / Decimal(100)
+            if discount_factor > 0 and largest_line.quantity > 0:
+                unit_price_delta = residual / vat_factor / discount_factor / largest_line.quantity
+                largest_line.unit_price = (largest_line.unit_price + unit_price_delta).quantize(Decimal('0.0001'))
+                largest_line.save()
+
+        self.refresh_from_db()
+        return self
 
 
 class JobCardLine(TimeStampedModel):
@@ -1288,10 +1525,21 @@ class ReceiptOnAccount(TimeStampedModel):
     """Receipt on account for debtor payments at POS."""
     receipt_number = models.CharField(max_length=20, unique=True, db_index=True)
     receipt_date = models.DateField(db_index=True)
-    
+
     # Debtor details
     debtor_account = models.CharField(max_length=20, db_index=True)
     debtor_name = models.CharField(max_length=200)
+
+    # Set by post_receipt() once posted — links back to the debtors-app
+    # ledger record actually created (apps.debtors.DebtorService.post_receipt),
+    # so this receipt can be reversed/cancelled correctly later.
+    debtor_transaction = models.ForeignKey(
+        'debtors.DebtorTransaction',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pos_receipts'
+    )
     
     # Amounts
     amount = models.DecimalField(max_digits=12, decimal_places=2)
@@ -1331,14 +1579,16 @@ class ReceiptOnAccount(TimeStampedModel):
     # Status
     is_posted = models.BooleanField(default=False)
     is_cancelled = models.BooleanField(default=False)
-    
+    cancel_reason = models.TextField(blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         ordering = ['-receipt_date']
         indexes = [
             models.Index(fields=['debtor_account', 'receipt_date']),
             models.Index(fields=['is_posted']),
         ]
-    
+
     def __str__(self):
         return f"Receipt {self.receipt_number} - {self.debtor_name}"
 
@@ -1391,14 +1641,16 @@ class CreditNote(TimeStampedModel):
     # Status
     is_posted = models.BooleanField(default=False)
     is_cancelled = models.BooleanField(default=False)
-    
+    cancel_reason = models.TextField(blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         ordering = ['-credit_date']
         indexes = [
             models.Index(fields=['debtor_account', 'credit_date']),
             models.Index(fields=['is_posted']),
         ]
-    
+
     def __str__(self):
         return f"Credit Note {self.credit_number}"
 
@@ -1454,16 +1706,19 @@ class CashReturn(TimeStampedModel):
         related_name='cash_returns'
     )
     station_number = models.PositiveIntegerField(default=1)
-    
+
     # Status
     is_posted = models.BooleanField(default=False)
-    
+    is_cancelled = models.BooleanField(default=False)
+    cancel_reason = models.TextField(blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         ordering = ['-return_date']
         indexes = [
             models.Index(fields=['original_sale_number']),
         ]
-    
+
     def __str__(self):
         return f"Cash Return {self.return_number}"
 
@@ -1529,15 +1784,18 @@ class CashACheque(TimeStampedModel):
     
     # Status
     is_processed = models.BooleanField(default=False)
+    is_cancelled = models.BooleanField(default=False)
+    cancel_reason = models.TextField(blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
-    
+
     class Meta:
         ordering = ['-transaction_date']
         indexes = [
             models.Index(fields=['drawer_name']),
             models.Index(fields=['cheque_number']),
         ]
-    
+
     def __str__(self):
         return f"Cash Cheque {self.transaction_number} - {self.drawer_name}"
 
