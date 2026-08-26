@@ -3,7 +3,9 @@ Point of Sale views.
 API viewsets for all POS operations based on PointOfSale.pdf
 """
 from decimal import Decimal
+import logging
 
+from django.core.exceptions import ValidationError
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -19,7 +21,7 @@ from apps.shop_filter_mixin import ShopFilterMixin
 from .calculation_service import CalculationService
 from .models import (
     ReceiptOnAccount, CreditNote, CashReturn,
-    CashACheque, TransactionQuery,
+    CashACheque, TransactionQuery, Tender,
     CashSale, Laybye, Quotation, JobCard, JobCardLine, Payout, Repair, CashControl,
     Invoice, InvoiceLine
 )
@@ -36,10 +38,11 @@ from .serializers import (
     CashReturnSerializer, CashReturnLineSerializer, CashReturnCreateSerializer,
     CashAChequeSerializer, TransactionQuerySerializer,
     InvoiceListSerializer, InvoiceDetailSerializer, InvoiceCreateUpdateSerializer,
-    InvoiceLineSerializer
+    InvoiceLineSerializer, TenderSerializer
 )
 from .services import (
-    CashSaleService, LaybyeService, QuotationService, RepairService, CashControlService
+    CashSaleService, LaybyeService, QuotationService, RepairService, CashControlService,
+    CreditNoteService, CashReturnService, ReceiptOnAccountService, CashAChequeService
 )
 from .exceptions import (
     InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException
@@ -47,6 +50,8 @@ from .exceptions import (
 from .filters import (
     CashSaleFilter, LaybyeFilter, QuotationFilter, JobCardFilter
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CashSaleViewSet(ShopFilterMixin, viewsets.ModelViewSet):
@@ -694,14 +699,56 @@ class RepairViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def invoice_customer(self, request, pk=None):
-        """Invoice customer for repair."""
+        """
+        Charge for the repair. Manual §R '5. Charge for the Repair': Cash
+        option ends in a Tender Routine; Account option resolves an
+        existing Debtor or captures a new one on the fly. Line items are
+        manually re-captured here, not copied from the repair's supplier
+        issue/receipt trail.
+
+        POST data:
+        {
+            "charge_type": "cash" | "account",
+            "lines": [{"stock_code": "...", "description": "...", "quantity": 1,
+                       "unit_price": "100.00", "discount_percentage": 0,
+                       "tax_code": 1, "cost_price": "0.00"}, ...],
+            "tenders": [{"tender_type": "CASH", "amount": "100.00"}, ...],  # cash only
+            "debtor_id": 1,               # account, existing debtor
+            "new_debtor_data": {...}      # account, new debtor on the fly
+        }
+        """
         repair = self.get_object()
-        
+        charge_type = request.data.get('charge_type')
+        lines_data = request.data.get('lines', [])
+        tenders_data = request.data.get('tenders', [])
+        debtor_id = request.data.get('debtor_id')
+        new_debtor_data = request.data.get('new_debtor_data')
+
+        if not charge_type:
+            return Response({'error': 'charge_type is required'}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
-            RepairService.invoice_customer(repair)
+            result = RepairService.invoice_customer(
+                repair,
+                charge_type=charge_type,
+                lines_data=lines_data,
+                debtor_id=debtor_id,
+                new_debtor_data=new_debtor_data,
+                tenders_data=tenders_data,
+                cashier=request.user if request.user and request.user.is_authenticated else None,
+                station_number=request.data.get('station_number', 1),
+            )
+
+            if result['charge_type'] == 'cash':
+                document_data = CashSaleDetailSerializer(result['document']).data
+            else:
+                document_data = InvoiceDetailSerializer(result['document']).data
+
             return Response({
                 'status': 'success',
-                'message': 'Repair invoiced to customer'
+                'message': f'Repair {repair.repair_number} charged ({result["charge_type"]})',
+                'charge_type': result['charge_type'],
+                'document': document_data,
             })
         except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
             return Response(
@@ -797,7 +844,49 @@ class JobCardViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         
         serializer = JobCardLineSerializer(created_lines, many=True)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-    
+
+    @action(detail=True, methods=['post'])
+    def apply_subtotal_discount(self, request, pk=None):
+        """Manual §J 'Job Costing', Update Transaction 'S' option."""
+        job_card = self.get_object()
+        percentage = request.data.get('percentage')
+
+        if percentage is None:
+            return Response({'error': 'percentage is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            job_card.apply_subtotal_discount(Decimal(str(percentage)))
+            return Response({
+                'status': 'success',
+                'message': f'Subtotal discount of {percentage}% applied to job card {job_card.job_number}',
+                'job_card': JobCardDetailSerializer(job_card).data
+            })
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def apply_set_price(self, request, pk=None):
+        """Manual §J 'Job Costing', Update Transaction 'Set Price' option."""
+        job_card = self.get_object()
+        target_total = request.data.get('target_total')
+
+        if target_total is None:
+            return Response({'error': 'target_total is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            job_card.apply_set_price(Decimal(str(target_total)))
+            return Response({
+                'status': 'success',
+                'message': f'Job card {job_card.job_number} total set to {target_total}',
+                'job_card': JobCardDetailSerializer(job_card).data
+            })
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
     @action(detail=True, methods=['post'])
     def convert_to_invoice(self, request, pk=None):
         """Convert job card to customer invoice."""
@@ -967,17 +1056,57 @@ class ReceiptOnAccountViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def post_receipt(self, request, pk=None):
-        """Post receipt to debtor account."""
+        """
+        Post receipt to debtor account. Manual §1 '2. Receipts on Account'
+        describes two distinct flows by account category:
+        - Balance Brought Forward: amount due + amount tendered are entered;
+          the difference is the settlement discount.
+        - Open Item: payment is allocated line-by-line against specific
+          open transactions; a settlement discount is only permitted on a
+          FULL settlement of an item.
+
+        Optional POST data (on top of the existing receipt record):
+        {
+            "amount_due": "500.00",   # BBF debtors — enables settlement discount
+            "allocations": [{"open_item_id": 1, "amount": "100.00",
+                              "settlement_discount": "0.00"}, ...]  # Open Item debtors
+        }
+        """
         receipt = self.get_object()
-        
+
         if receipt.is_posted:
             return Response(
                 {'error': 'Receipt already posted'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         try:
-            # Update debtor balance (would integrate with debtors app)
+            from apps.debtors.models import Debtor, Debtopen
+            from apps.debtors.services import DebtorService
+
+            try:
+                debtor = Debtor.objects.get(dno=int(receipt.debtor_account))
+            except (Debtor.DoesNotExist, ValueError, TypeError):
+                debtor = None
+
+            if debtor:
+                amount_due = request.data.get('amount_due')
+                allocations = request.data.get('allocations')
+
+                trans = DebtorService.post_receipt(
+                    debtor=debtor,
+                    amount=receipt.amount,
+                    amount_due=Decimal(str(amount_due)) if amount_due is not None else None,
+                    allocations=allocations,
+                    custref=receipt.reference[:10] if receipt.reference else '',
+                )
+                receipt.debtor_transaction = trans
+            else:
+                logger.warning(
+                    f"Receipt {receipt.receipt_number}: debtor account "
+                    f"'{receipt.debtor_account}' not found — posting till/CashControl only"
+                )
+
             receipt.is_posted = True
             receipt.save()
 
@@ -990,23 +1119,46 @@ class ReceiptOnAccountViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 'status': 'success',
                 'message': f'Receipt {receipt.receipt_number} posted successfully'
             })
-        except Exception as e:
+        except Debtopen.DoesNotExist:
+            return Response(
+                {'error': 'One or more allocations reference an open item not found for this debtor'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except (ValueError, KeyError, POSValidationException) as e:
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Cancel a receipt on account."""
+        receipt = self.get_object()
+        reason = request.data.get('reason', '')
+
+        try:
+            ReceiptOnAccountService.cancel_receipt(receipt, reason)
+            return Response({
+                'status': 'success',
+                'message': f'Receipt {receipt.receipt_number} cancelled'
+            })
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
     @action(detail=False, methods=['get'])
     def daily_total(self, request):
         """Get total receipts for a specific date."""
         receipt_date = request.query_params.get('date', date.today())
-        
+
         from django.db.models import Sum
         total = ReceiptOnAccount.objects.filter(
             receipt_date=receipt_date,
             is_posted=True
         ).aggregate(total=Sum('total_amount'))
-        
+
         return Response({
             'date': receipt_date,
             'total_receipts': total['total'] or 0
@@ -1098,6 +1250,24 @@ class CreditNoteViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Cancel a credit note."""
+        credit_note = self.get_object()
+        reason = request.data.get('reason', '')
+
+        try:
+            CreditNoteService.cancel_credit_note(credit_note, reason)
+            return Response({
+                'status': 'success',
+                'message': f'Credit note {credit_note.credit_number} cancelled'
+            })
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
 
 class CashReturnViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
@@ -1182,6 +1352,24 @@ class CashReturnViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Cancel a cash return."""
+        cash_return = self.get_object()
+        reason = request.data.get('reason', '')
+
+        try:
+            CashReturnService.cancel_cash_return(cash_return, reason)
+            return Response({
+                'status': 'success',
+                'message': f'Cash return {cash_return.return_number} cancelled'
+            })
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
 
 class CashAChequeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
@@ -1226,7 +1414,25 @@ class CashAChequeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             'status': 'success',
             'message': f'Cheque {cheque.cheque_number} marked as processed'
         })
-    
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Cancel a cash-a-cheque transaction."""
+        cheque = self.get_object()
+        reason = request.data.get('reason', '')
+
+        try:
+            CashAChequeService.cancel_cash_a_cheque(cheque, reason)
+            return Response({
+                'status': 'success',
+                'message': f'Cheque {cheque.cheque_number} cancelled'
+            })
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
     @action(detail=False, methods=['get'])
     def unprocessed(self, request):
         """Get all unprocessed cheques."""
@@ -1262,59 +1468,68 @@ class TransactionQueryViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         """Optimize queryset."""
         return super().get_queryset().select_related('assigned_to', 'resolved_by')
     
+    # Maps each declared transaction_type choice to how to search it and how
+    # to project results into a common shape:
+    # {transaction_type, number, date, party_name, total_amount, status}.
+    # 'status' is None for types with no status/state-machine field.
+    _SEARCH_CONFIG = {
+        'CASH_SALE': (CashSale, 'sale_number', 'sale_date', 'customer_name', 'total_amount', None),
+        'INVOICE': (Invoice, 'invoice_number', 'invoice_date', None, 'total_amount', 'status'),
+        'RECEIPT': (ReceiptOnAccount, 'receipt_number', 'receipt_date', 'debtor_name', 'total_amount', None),
+        'CREDIT_NOTE': (CreditNote, 'credit_number', 'credit_date', 'customer_name', 'total_amount', None),
+        'LAYBYE': (Laybye, 'laybye_number', 'laybye_date', 'customer_name', 'total_amount', 'status'),
+        'QUOTATION': (Quotation, 'quotation_number', 'quotation_date', 'customer_name', 'total_amount', 'status'),
+        'JOB_CARD': (JobCard, 'job_number', 'job_date', 'customer_name', 'total_amount', 'status'),
+        'REPAIR': (Repair, 'repair_number', 'created_at', 'customer_name', 'selling_price', 'status'),
+        'PAYOUT': (Payout, None, 'payout_date', 'payee', 'amount', None),
+    }
+
     @action(detail=False, methods=['post'])
     def search(self, request):
-        """Search for transactions."""
+        """
+        Search for transactions across any of the 9 documented transaction
+        types (manual §1 '6. Transaction Query'). Every branch is projected
+        into one common result shape so a single caller can render results
+        regardless of query_type.
+        """
         query_type = request.data.get('query_type')
         transaction_number = request.data.get('transaction_number', '')
         customer_name = request.data.get('customer_name', '')
         date_from = request.data.get('date_from')
         date_to = request.data.get('date_to')
-        
+
+        config = self._SEARCH_CONFIG.get(query_type)
+        if not config:
+            return Response({
+                'query_type': query_type,
+                'results_count': 0,
+                'results': [],
+                'error': f"Unknown or unsupported query_type: {query_type}" if query_type else None,
+            })
+
+        model, number_field, date_field, name_field, amount_field, status_field = config
+
+        qs = model.objects.all()
+        if transaction_number and number_field:
+            qs = qs.filter(**{f"{number_field}__icontains": transaction_number})
+        if customer_name and name_field:
+            qs = qs.filter(**{f"{name_field}__icontains": customer_name})
+        if date_from:
+            qs = qs.filter(**{f"{date_field}__gte": date_from})
+        if date_to:
+            qs = qs.filter(**{f"{date_field}__lte": date_to})
+
         results = []
-        
-        # Search based on query type
-        if query_type == 'CASH_SALE':
-            qs = CashSale.objects.all()
-            if transaction_number:
-                qs = qs.filter(sale_number__icontains=transaction_number)
-            if customer_name:
-                qs = qs.filter(customer_name__icontains=customer_name)
-            if date_from:
-                qs = qs.filter(sale_date__gte=date_from)
-            if date_to:
-                qs = qs.filter(sale_date__lte=date_to)
-            
-            results = list(qs.values('sale_number', 'sale_date', 'customer_name', 'total_amount'))
-        
-        elif query_type == 'LAYBYE':
-            qs = Laybye.objects.all()
-            if transaction_number:
-                qs = qs.filter(laybye_number__icontains=transaction_number)
-            if customer_name:
-                qs = qs.filter(customer_name__icontains=customer_name)
-            if date_from:
-                qs = qs.filter(laybye_date__gte=date_from)
-            if date_to:
-                qs = qs.filter(laybye_date__lte=date_to)
-            
-            results = list(qs.values('laybye_number', 'laybye_date', 'customer_name', 'total_amount', 'status'))
-        
-        elif query_type == 'QUOTATION':
-            qs = Quotation.objects.all()
-            if transaction_number:
-                qs = qs.filter(quotation_number__icontains=transaction_number)
-            if customer_name:
-                qs = qs.filter(customer_name__icontains=customer_name)
-            if date_from:
-                qs = qs.filter(quotation_date__gte=date_from)
-            if date_to:
-                qs = qs.filter(quotation_date__lte=date_to)
-            
-            results = list(qs.values('quotation_number', 'quotation_date', 'customer_name', 'total_amount', 'status'))
-        
-        # More query types can be added...
-        
+        for obj in qs:
+            results.append({
+                'transaction_type': query_type,
+                'number': getattr(obj, number_field, None) if number_field else str(obj.pk),
+                'date': getattr(obj, date_field, None),
+                'party_name': getattr(obj, name_field, None) if name_field else None,
+                'total_amount': getattr(obj, amount_field, None) if amount_field else None,
+                'status': getattr(obj, status_field, None) if status_field else None,
+            })
+
         return Response({
             'query_type': query_type,
             'results_count': len(results),
@@ -1551,3 +1766,83 @@ class InvoiceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         count = Invoice.objects.filter(invoice_date=today).count() + 1
         invoice_number = f"INV-{today.year}{today.month:02d}{today.day:02d}-{count:05d}"
         return Response({'invoice_number': invoice_number})
+
+    @action(detail=True, methods=['post'])
+    def apply_subtotal_discount(self, request, pk=None):
+        """Manual §1 'Invoice - Subtotal Discount Facility'."""
+        invoice = self.get_object()
+        percentage = request.data.get('percentage')
+
+        if percentage is None:
+            return Response({'error': 'percentage is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            invoice.apply_subtotal_discount(Decimal(str(percentage)))
+            return Response({
+                'status': 'success',
+                'message': f'Subtotal discount of {percentage}% applied to invoice {invoice.invoice_number}',
+                'invoice': InvoiceDetailSerializer(invoice).data
+            })
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def apply_set_price(self, request, pk=None):
+        """Manual §1 'Invoice - Set Selling Price Facility'."""
+        invoice = self.get_object()
+        target_total = request.data.get('target_total')
+
+        if target_total is None:
+            return Response({'error': 'target_total is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            invoice.apply_set_price(Decimal(str(target_total)))
+            return Response({
+                'status': 'success',
+                'message': f'Invoice {invoice.invoice_number} total set to {target_total}',
+                'invoice': InvoiceDetailSerializer(invoice).data
+            })
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def tender(self, request, pk=None):
+        """
+        Manual §1 'Invoice - Cash Debtors': collect a tender against this
+        invoice and apply it as a payment, in one step — for Cash Debtors
+        (acctype='C', terms=0) this is what "the invoice transaction will
+        end with a Tender Routine" means in this API. Not restricted to
+        only invoices where requires_cash_tender is true; any invoice may
+        be tendered this way if the caller chooses to.
+        """
+        invoice = self.get_object()
+        tenders_data = request.data.get('tenders', [])
+
+        if not tenders_data:
+            return Response({'error': 'tenders is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            total = Decimal('0.00')
+            created_tenders = []
+            for tender_data in tenders_data:
+                serializer = TenderSerializer(data=tender_data)
+                serializer.is_valid(raise_exception=True)
+                tender_obj = Tender.objects.create(invoice=invoice, **serializer.validated_data)
+                created_tenders.append(tender_obj)
+                total += tender_obj.amount
+
+            invoice.apply_payment(total)
+
+            return Response({
+                'status': 'success',
+                'message': f'Tender of {total} applied to invoice {invoice.invoice_number}',
+                'invoice': InvoiceDetailSerializer(invoice).data
+            })
+        except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 
 from apps.shop_filter_mixin import ShopFilterMixin
+from apps.common.mixins import LookupActionMixin
 
 from .models import (
     StockItem, SpecialDeal, FuturePricing, ShrinkWrap,
@@ -39,7 +40,7 @@ from .serializers import (
 # StockItem
 # ─────────────────────────────────────────────
 
-class StockItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class StockItemViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     CRUD for stock items with filtering, search, and helper actions.
 
@@ -51,6 +52,7 @@ class StockItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
       GET  /stock-items/low-stock/             — items at or below reorder qty
       GET  /stock-items/needs-reorder/         — alias for low-stock
       POST /stock-items/{pk}/adjust-stock/     — manual qty adjustment
+      GET  /stock-items/lookup/?search=&limit= — thin typeahead for line-item pickers
     """
     queryset = StockItem.objects.select_related(
         'department', 'supplier', 'tax_code', 'last_supplier'
@@ -61,6 +63,7 @@ class StockItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     search_fields = ['stock_code', 'description', 'supplier_code', 'bin_number', 'barcode']
     ordering_fields = ['stock_code', 'description', 'quantity_on_hand', 'cost_price', 'selling_price_1']
     ordering = ['stock_code']
+    lookup_serializer_class = StockItemListSerializer
 
     def get_serializer_class(self):
         if self.action == 'list':

@@ -440,6 +440,15 @@ class POSTransactionAPI {
     return this.request('GET', `${ENDPOINTS.DEBTORS.ACCOUNTS}?search=${encodeURIComponent(query)}&limit=20`);
   }
 
+  /**
+   * Thin typeahead lookup for debtor pickers — hits DebtorViewSet.lookup
+   * (LookupActionMixin), returns a flat array (no pagination envelope) of
+   * DebtorLookupSerializer rows: {account_number, name, balance, credit_limit, ...}.
+   */
+  async lookupDebtors(query: string, limit = 20): Promise<any[]> {
+    return this.request('GET', `${ENDPOINTS.DEBTORS.ACCOUNTS}lookup/?search=${encodeURIComponent(query)}&limit=${limit}`);
+  }
+
   // ============================================================
   // STOCK SEARCH (for invoice line items)
   // ============================================================

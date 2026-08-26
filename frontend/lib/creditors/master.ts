@@ -53,6 +53,19 @@ export const creditorsMasterApi = {
       return data;
     },
 
+    /**
+     * Thin typeahead lookup for creditor/supplier pickers — hits
+     * CreditorViewSet.lookup (LookupActionMixin), returns a flat array (no
+     * pagination envelope) of CreditorListSerializer rows.
+     */
+    lookup: async (query: string, limit = 20): Promise<CreditorAccount[]> => {
+      const { data } = await api.get<CreditorAccount[]>(
+        `${ENDPOINTS.CREDITORS.ACCOUNTS}lookup/`,
+        { params: { search: query, limit } }
+      );
+      return data;
+    },
+
     get: async (id: string | number) => {
       const { data } = await api.get<CreditorAccount>(
         `${ENDPOINTS.CREDITORS.ACCOUNTS}${id}/`

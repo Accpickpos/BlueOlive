@@ -16,6 +16,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ArrowLeft, AlertCircle, CheckCircle, Plus, Trash2 } from 'lucide-react';
+import { DebtorPicker } from '@/components/pos';
 
 export default function EditJobCardPage() {
   const router = useRouter();
@@ -228,6 +229,12 @@ export default function EditJobCardPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Customer Name *
                   </label>
+                  <DebtorPicker
+                    onSelect={(debtor) =>
+                      setFormData((prev) => ({ ...prev, customer_name: debtor.name }))
+                    }
+                    placeholder="Search customers, or edit below..."
+                  />
                   <Input
                     type="text"
                     name="customer_name"
@@ -235,6 +242,7 @@ export default function EditJobCardPage() {
                     value={formData.customer_name}
                     onChange={handleChange}
                     required
+                    className="mt-2"
                   />
                 </div>
               </div>

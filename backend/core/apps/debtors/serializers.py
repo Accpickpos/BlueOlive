@@ -19,6 +19,41 @@ from .models import (
 from apps.common.serializers import AuditFieldsMixin, BaseModelSerializer
 
 
+class DebtorLookupSerializer(serializers.ModelSerializer):
+    """
+    Thin serializer for the debtor typeahead/lookup endpoint
+    (DebtorViewSet.lookup, via LookupActionMixin) — DebtorListSerializer is
+    too heavy for a search dropdown (duplicates ~30 fields under two names
+    each). Exposes both the raw model field names and the friendly aliases
+    the frontend picker components expect, so no field-name-guessing
+    fallback chain is needed on the frontend side.
+    """
+    account_number = serializers.IntegerField(source='dno', read_only=True)
+    name = serializers.CharField(source='dname', read_only=True)
+    balance = serializers.SerializerMethodField()
+    credit_limit = serializers.DecimalField(source='dclimit', max_digits=12, decimal_places=2, read_only=True)
+    is_blocked = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Debtor
+        fields = [
+            'id', 'dno', 'dname', 'dsname', 'dtel', 'acctype', 'blockflag',
+            'account_number', 'name', 'balance', 'credit_limit', 'is_blocked',
+        ]
+
+    def get_balance(self, obj):
+        try:
+            return float(obj.total_balance)
+        except (AttributeError, TypeError):
+            return 0
+
+    def get_is_blocked(self, obj):
+        try:
+            return obj.is_blocked
+        except (AttributeError, TypeError):
+            return False
+
+
 class DebtorListSerializer(serializers.ModelSerializer):
     """Serializer for debtor list view (DMAST)."""
     

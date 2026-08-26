@@ -72,6 +72,19 @@ export const stockControlApi = {
     },
 
     /**
+     * Thin typeahead lookup for stock item pickers — hits
+     * StockItemViewSet.lookup (LookupActionMixin), returns a flat array (no
+     * pagination envelope) of StockItemListSerializer rows.
+     */
+    lookup: async (query: string, limit = 20): Promise<StockItem[]> => {
+      const response = await api.get<StockItem[]>(
+        `${ENDPOINTS.STOCK_CONTROL.STOCK_ITEMS}lookup/`,
+        { params: { search: query, limit } }
+      );
+      return response.data;
+    },
+
+    /**
      * Get single stock item by code
      */
     get: async (stockCode: string) => {

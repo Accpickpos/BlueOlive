@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, Plus, Trash2, AlertCircle } from 'lucide-react';
+import { StockItemPicker } from '@/components/pos';
 
 export default function CreateCashReturnPage() {
   const router = useRouter();
@@ -47,6 +48,23 @@ export default function CreateCashReturnPage() {
     const newData = { ...formData, line_items: newItems };
     newData.return_total = newData.line_items.reduce((sum, item) => sum + (item.total || 0), 0);
     setFormData(newData);
+  };
+
+  const handleLineItemStockSelect = (
+    index: number,
+    item: { stock_code: string; description: string; selling_price: number }
+  ) => {
+    const newItems = [...formData.line_items];
+    const qty = newItems[index].qty || 1;
+    newItems[index] = {
+      ...newItems[index],
+      stock_code: item.stock_code,
+      description: item.description,
+      price: item.selling_price,
+      total: qty * item.selling_price,
+    };
+    const return_total = newItems.reduce((sum, i) => sum + (i.total || 0), 0);
+    setFormData((prev) => ({ ...prev, line_items: newItems, return_total }));
   };
 
   const addLineItem = () => {
@@ -241,14 +259,10 @@ export default function CreateCashReturnPage() {
                   <tbody>
                     {formData.line_items.map((item, index) => (
                       <tr key={index} className="border-b hover:bg-gray-50">
-                        <td className="py-2">
-                          <Input
-                            type="text"
-                            placeholder="Stock code"
-                            value={item.stock_code}
-                            onChange={(e) => handleLineItemChange(index, 'stock_code', e.target.value)}
-                            className="w-full"
-                            size={10}
+                        <td className="py-2 min-w-[180px]">
+                          <StockItemPicker
+                            onSelect={(stockItem) => handleLineItemStockSelect(index, stockItem)}
+                            placeholder={item.stock_code || 'Search stock...'}
                           />
                         </td>
                         <td className="py-2 px-2">

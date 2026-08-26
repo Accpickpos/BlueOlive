@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, Plus, Trash2, AlertCircle } from 'lucide-react';
+import { DebtorPicker, StockItemPicker } from '@/components/pos';
 
 export default function CreateCreditNotePage() {
   const router = useRouter();
@@ -46,6 +47,22 @@ export default function CreateCreditNotePage() {
     }
 
     setFormData(prev => ({ ...prev, line_items: newItems }));
+  };
+
+  const handleLineItemStockSelect = (
+    index: number,
+    item: { stock_code: string; description: string; selling_price: number }
+  ) => {
+    const newItems = [...formData.line_items];
+    const qty = newItems[index].qty || 1;
+    newItems[index] = {
+      ...newItems[index],
+      stock_code: item.stock_code,
+      description: item.description,
+      price: item.selling_price,
+      total: qty * item.selling_price,
+    };
+    setFormData((prev) => ({ ...prev, line_items: newItems }));
   };
 
   const addLineItem = () => {
@@ -170,12 +187,15 @@ export default function CreateCreditNotePage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Debtor Account Number
                   </label>
-                  <Input
-                    type="text"
-                    name="debtor_account"
-                    placeholder="Optional"
-                    value={formData.debtor_account}
-                    onChange={handleInputChange}
+                  <DebtorPicker
+                    onSelect={(debtor) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        debtor_account: debtor.account_number,
+                        customer_name: debtor.name,
+                      }))
+                    }
+                    placeholder="Search customers (optional)..."
                   />
                 </div>
               </div>
@@ -261,14 +281,10 @@ export default function CreateCreditNotePage() {
                   <tbody>
                     {formData.line_items.map((item, index) => (
                       <tr key={index} className="border-b hover:bg-gray-50">
-                        <td className="py-2">
-                          <Input
-                            type="text"
-                            placeholder="Stock code"
-                            value={item.stock_code}
-                            onChange={(e) => handleLineItemChange(index, 'stock_code', e.target.value)}
-                            className="w-full"
-                            size={10}
+                        <td className="py-2 min-w-[180px]">
+                          <StockItemPicker
+                            onSelect={(stockItem) => handleLineItemStockSelect(index, stockItem)}
+                            placeholder={item.stock_code || 'Search stock...'}
                           />
                         </td>
                         <td className="py-2 px-2">

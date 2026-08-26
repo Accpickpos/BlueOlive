@@ -193,39 +193,153 @@ class DebtorService:
     
     @staticmethod
     @transaction.atomic
-    def post_receipt(debtor, amount, ordno='', custref=''):
+    def post_receipt(debtor, amount, amount_due=None, allocations=None, ordno='', custref=''):
         """
         Post a receipt (payment) to the debtor's account.
-        
+
         Args:
             debtor: Debtor instance
-            amount: Payment amount
+            amount: Actual amount tendered/received
+            amount_due: Balance Brought Forward debtors only — manual §1
+                "2. Receipts on Account": "Accpick will automatically
+                calculate the settlement discount amount. This is the
+                difference between the amount due and the amount
+                tendered." When given, the FULL amount_due clears the
+                balance (posted as dttot) and the difference is recorded
+                as settlement_discount on the transaction — the
+                amount-difference-to-percent direction, opposite of
+                CalculationService.apply_settlement_discount (which goes
+                percent-to-amount and isn't the right tool for this flow).
+                When omitted, behaves exactly as before: `amount` alone is
+                posted, no discount — fully backward compatible.
+            allocations: Open Item debtors only — list of
+                {'open_item_id', 'amount', 'settlement_discount'}
+                dicts. Manual: payment is "allocated to the correct ageing
+                periods" line-by-line against specific open transactions,
+                with "No Settlement Discount on part payments". Applied via
+                apply_receipt_allocation against caller-specified Debtopen
+                rows belonging to this debtor.
             ordno: Order reference
             custref: Customer reference
         """
         if debtor.is_blocked:
             raise ValueError(f"Account {debtor.dno} is blocked")
 
+        amount = Decimal(str(amount))
         if amount <= 0:
             raise ValueError("Receipt amount must be positive")
-        
-        # Create receipt transaction
+
+        settlement_discount = Decimal('0.00')
+        post_total = amount
+
+        if amount_due is not None:
+            amount_due = Decimal(str(amount_due))
+            if amount_due < amount:
+                raise ValueError("Amount due cannot be less than amount tendered")
+            settlement_discount = amount_due - amount
+            post_total = amount_due
+
+        # Create receipt transaction. dttot is the full amount cleared
+        # against the balance (amount_due when given, else the amount
+        # tendered) — this is what makes the settlement discount "free"
+        # money from the debtor's perspective rather than a partial payment.
         trans = DebtorService.post_debtran(
             debtor=debtor,
             dtype='RCP',
-            dttot=amount,
-            dtsub=amount,
+            dttot=post_total,
+            dtsub=post_total,
             dtgst=Decimal('0.00'),
             ordno=ordno,
             custref=custref,
         )
-        
+        if settlement_discount:
+            trans.settlement_discount = settlement_discount
+            trans.save(update_fields=['settlement_discount'])
+
         # Update payment tracking
         debtor.ddatlpd = date.today()
         debtor.damtlpd = amount
         debtor.save()
-        
+
+        if debtor.acctype == 'O' and allocations:
+            for alloc in allocations:
+                open_item = Debtopen.objects.select_for_update().get(
+                    pk=alloc['open_item_id'], dno=debtor
+                )
+                # 'amount' matches DebteopenViewSet.allocate_receipt's
+                # pre-existing allocations-list contract — kept the same key
+                # name here since both routes feed apply_receipt_allocation.
+                DebtorService.apply_receipt_allocation(
+                    open_item=open_item,
+                    amount_paid=alloc['amount'],
+                    settlement_discount=alloc.get('settlement_discount', 0),
+                    receipt_transaction=trans,
+                )
+
         return trans
+
+    @staticmethod
+    @transaction.atomic
+    def apply_receipt_allocation(open_item, amount_paid, settlement_discount, receipt_transaction):
+        """
+        Allocate part of a receipt against one open item (DEBTOPEN row).
+
+        Manual §1 "2. Receipts on Account" (Open Item debtors — see also the
+        "Full Payment [*] vs Part Payment" note): a settlement discount is
+        only permitted when the allocation fully settles the open item's
+        balance due — "No Settlement Discount on part payments". Mirrors
+        apps.creditors.OpenItemAllocationSerializer's validation rule, but
+        (unlike apps.creditors' open_item_allocation_post_save signal, which
+        only subtracts amount_paid) correctly subtracts
+        amount_paid + settlement_discount together when reducing the open
+        item's balance, so a discounted full settlement actually zeroes out.
+
+        Used both by DebtorService.post_receipt (Open Item branch) and
+        DebteopenViewSet.allocate_receipt, so there's one place this rule
+        lives rather than two independently-maintained copies.
+        """
+        from .models import ReceiptAllocation
+
+        amount_paid = Decimal(str(amount_paid))
+        settlement_discount = Decimal(str(settlement_discount or 0))
+
+        if amount_paid <= 0:
+            raise ValueError("Allocation amount must be greater than zero")
+        if settlement_discount < 0:
+            raise ValueError("Settlement discount cannot be negative")
+
+        total_applied = amount_paid + settlement_discount
+        if total_applied > open_item.balancedue:
+            raise ValueError(
+                f"Allocation of {total_applied} exceeds open item balance of {open_item.balancedue}"
+            )
+        if settlement_discount > 0 and total_applied < open_item.balancedue:
+            raise ValueError(
+                "Settlement discount is not permitted on a partial payment — it may only "
+                "be applied when the allocation fully settles the open item."
+            )
+
+        allocation = ReceiptAllocation.objects.create(
+            receipt=receipt_transaction,
+            open_item=open_item,
+            amount_paid=amount_paid,
+            settlement_discount=settlement_discount,
+        )
+
+        open_item.balancedue -= total_applied
+        open_item.save(update_fields=['balancedue'])
+
+        DebtorAudit.objects.create(
+            dno=open_item.dno,
+            dtrano=open_item.dtrano,
+            type=open_item.type,
+            thistype='AL',
+            thistran=receipt_transaction.transaction_number,
+            date=date.today(),
+            amount=amount_paid,
+        )
+
+        return allocation
     
     @staticmethod
     @transaction.atomic
