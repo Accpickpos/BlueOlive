@@ -77,11 +77,12 @@ from django.http import StreamingHttpResponse
 from rest_framework import status
 from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.parsers import MultiPartParser
-from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from tenancy.models import Shop, Tenant
 from tenancy.tenant_context import clear_current, set_current_shop, set_current_tenant
 from tenancy.utils import register_tenant_connection
+
+from .permissions import IsPlatformSuperuser
 
 _tl = _threading.local()
 
@@ -1096,7 +1097,7 @@ def _uoc(manager, lookup, defaults, mode, schema_name=None):
 
 
 @api_view(["GET"])
-@permission_classes([IsAdminUser])
+@permission_classes([IsPlatformSuperuser])
 def list_tenants_and_shops(request):
     """
     Return all tenants with their shops for the import UI dropdown.
@@ -1126,7 +1127,7 @@ def list_tenants_and_shops(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAdminUser])
+@permission_classes([IsPlatformSuperuser])
 @parser_classes([MultiPartParser])
 def analyze_csv(request):
     """
@@ -1199,7 +1200,7 @@ def analyze_csv(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAdminUser])
+@permission_classes([IsPlatformSuperuser])
 @parser_classes([MultiPartParser])
 def import_csv(request):
     """

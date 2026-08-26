@@ -28,15 +28,32 @@ load_dotenv(BASE_DIR / ".env")
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-change-me-in-production")
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
-LOGGING_CONFIG = None
+# SECURITY WARNING: keep the secret key used in production secret!
+# Fail closed: a missing SECRET_KEY in production must not silently fall back
+# to a well-known placeholder value. Only DEBUG (local dev) gets the fallback,
+# and even then it's logged loudly so it can't go unnoticed.
+_INSECURE_SECRET_KEY_FALLBACK = "django-insecure-change-me-in-production"
+SECRET_KEY = os.environ.get("SECRET_KEY")
+if not SECRET_KEY:
+    if DEBUG:
+        logging.getLogger(__name__).warning(
+            "SECRET_KEY environment variable is not set; falling back to an "
+            "insecure, publicly-known placeholder key. This is only safe for "
+            "local development and must never happen in production."
+        )
+        SECRET_KEY = _INSECURE_SECRET_KEY_FALLBACK
+    else:
+        from django.core.exceptions import ImproperlyConfigured
 
-logging.basicConfig(level=logging.DEBUG)
+        raise ImproperlyConfigured(
+            "SECRET_KEY environment variable must be set when DEBUG=False. "
+            "Refusing to start with a known placeholder secret key."
+        )
+
+LOGGING_CONFIG = None
 
 
 # SUBDOMAIN SUPPORT
@@ -145,6 +162,10 @@ SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_HSTS_SECONDS = 0 if DEBUG else 31536000
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_HSTS_PRELOAD = not DEBUG
+SECURE_SSL_REDIRECT = not DEBUG
 
 
 # JWT Configuration
@@ -381,6 +402,12 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Media files (user uploads)
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+
+# Stockfinder webhook — shared secret used to HMAC-verify incoming webhook
+# payloads (see apps/stockfinder/services.py:verify_webhook_signature). Must
+# be set in production; an unset/empty secret causes signature verification
+# to fail closed (StockFinderWebhookView rejects every request with 403).
+STOCKFINDER_WEBHOOK_SECRET = os.environ.get("STOCKFINDER_WEBHOOK_SECRET", "")
 
 # Email Configuration
 # Default email backend - use 'console' for development, 'smtp' for production

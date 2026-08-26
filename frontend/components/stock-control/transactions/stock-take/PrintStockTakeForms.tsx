@@ -9,6 +9,21 @@ interface PrintStockTakeFormsProps {
   onBack: () => void;
 }
 
+/**
+ * Escape a value for safe interpolation into an HTML string.
+ * Used because the generated HTML here is sunk via document.write(), where
+ * unescaped `<script>` tags in user-controllable data would execute.
+ */
+function escapeHtml(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export default function PrintStockTakeForms({ onBack }: PrintStockTakeFormsProps) {
   const [sortOrder, setSortOrder] = useState('code');
   const [filterDepartment, setFilterDepartment] = useState('');
@@ -76,9 +91,9 @@ export default function PrintStockTakeForms({ onBack }: PrintStockTakeFormsProps
                     .map(
                       (item: any) => `
                     <tr>
-                      <td>${item.stock_code}</td>
-                      <td>${item.description}</td>
-                      <td>${item.quantity_on_hand}</td>
+                      <td>${escapeHtml(item.stock_code)}</td>
+                      <td>${escapeHtml(item.description)}</td>
+                      <td>${escapeHtml(item.quantity_on_hand)}</td>
                       <td style="text-align: center;" class="lines"></td>
                       <td style="text-align: center;" class="lines"></td>
                     </tr>

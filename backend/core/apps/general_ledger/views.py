@@ -12,10 +12,11 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
 from rest_framework.response import Response
 
 from .models import GLBatch, GLMast, GLSpread, GLStJnl, GLTran
+from .permissions import CanManageGL
 from .serializers import (
     GLMastDetailSerializer,
     GLMastListSerializer,
@@ -54,6 +55,16 @@ class GLMastViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     search_fields = ["accno", "name"]
     ordering_fields = ["accno", "name", "type", "drorcr", "balbfwd"]
     ordering = ["accno"]
+
+    def get_permissions(self):
+        """Read (list/retrieve/summary/etc.) stays open to any authenticated
+        user; create/update/delete require CanManageGL's Accountant/Admin
+        role check."""
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, CanManageGL]
+        return [permission() for permission in permission_classes]
 
     def get_serializer_class(self):
         """Return appropriate serializer based on action."""
@@ -246,6 +257,22 @@ class GLTranViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     ordering_fields = ["date", "accno", "amount", "batchno"]
     ordering = ["-date", "-time", "accno"]
 
+    # Fields that identify *what* a ledger posting was — once a GLTran
+    # exists it's a historical entry (there is no draft/posted distinction
+    # on this model, unlike cash_book's is_reconciled), so these must not be
+    # silently rewritten via PATCH/PUT after the fact.
+    IMMUTABLE_FIELDS_ON_UPDATE = ("accno", "amount", "date", "type")
+
+    def get_permissions(self):
+        """Read (list/retrieve/by_batch/etc.) stays open to any authenticated
+        user; create/update/delete require CanManageGL's Accountant/Admin
+        role check."""
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, CanManageGL]
+        return [permission() for permission in permission_classes]
+
     def get_serializer_class(self):
         """Return appropriate serializer based on action."""
         if self.action == "list":
@@ -253,6 +280,22 @@ class GLTranViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         elif self.action == "retrieve":
             return GLTranDetailSerializer
         return GLTranSerializer
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        for field in self.IMMUTABLE_FIELDS_ON_UPDATE:
+            if field in request.data and str(request.data[field]) != str(
+                getattr(instance, field)
+            ):
+                raise ValidationError(
+                    f"Cannot change '{field}' on an existing GL transaction "
+                    f"— it is a historical ledger posting."
+                )
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs["partial"] = True
+        return self.update(request, *args, **kwargs)
 
     @action(detail=False, methods=["get"])
     def by_batch(self, request):
@@ -462,6 +505,15 @@ class GLStJnlViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     ordering_fields = ["accno", "journalno", "amount", "stperiod", "nextperiod"]
     ordering = ["accno", "journalno"]
 
+    def get_permissions(self):
+        """Read stays open to any authenticated user; create/update/delete
+        require CanManageGL's Accountant/Admin role check."""
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, CanManageGL]
+        return [permission() for permission in permission_classes]
+
     def get_serializer_class(self):
         """Return appropriate serializer based on action."""
         if self.action == "list":
@@ -611,6 +663,15 @@ class GLSpreadViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         "curcredit",
     ]
     ordering = ["accno"]
+
+    def get_permissions(self):
+        """Read stays open to any authenticated user; create/update/delete
+        require CanManageGL's Accountant/Admin role check."""
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, CanManageGL]
+        return [permission() for permission in permission_classes]
 
     def get_serializer_class(self):
         """Return appropriate serializer based on action."""

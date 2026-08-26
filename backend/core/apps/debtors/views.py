@@ -19,7 +19,7 @@ from django.db.models.functions import TruncMonth
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
 from rest_framework.response import Response
 
 from .filters import DebtorFilter, DebtorTransactionFilter
@@ -68,6 +68,20 @@ class DebtorViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     search_fields = ["dno", "dname", "dsname", "dcontact"]
     ordering_fields = ["dno", "dname", "dcrnt", "created_at"]
     ordering = ["dno"]
+
+    def get_permissions(self):
+        """
+        Read (list/retrieve/lookup/summary/etc — SAFE_METHODS) stays open to
+        any authenticated user via HasDebtorPermission's own SAFE_METHODS
+        bypass. Writes (create/update/partial_update/destroy and the POST
+        actions below: block/unblock/convert_category) additionally require
+        CanModifyDebtor's ADMIN/MANAGER role check.
+        """
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated, HasDebtorPermission]
+        else:
+            permission_classes = [IsAuthenticated, HasDebtorPermission, CanModifyDebtor]
+        return [permission() for permission in permission_classes]
 
     def get_queryset(self):
         """Override to add logging for debugging 500 errors."""
@@ -610,7 +624,11 @@ class DebtorTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-    @action(detail=False, methods=["post"])
+    @action(
+        detail=False,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, CanPostInvoice],
+    )
     def post_receipt(self, request):
         """Record a receipt (payment) against a debtor's account."""
         try:
@@ -640,7 +658,11 @@ class DebtorTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-    @action(detail=False, methods=["post"])
+    @action(
+        detail=False,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, CanPostInvoice],
+    )
     def post_debit(self, request):
         """Post a debit journal (increases the amount owing)."""
         try:
@@ -671,7 +693,11 @@ class DebtorTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-    @action(detail=False, methods=["post"])
+    @action(
+        detail=False,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, CanPostInvoice],
+    )
     def post_credit(self, request):
         """Post a credit journal (reduces the amount owing)."""
         try:
@@ -702,7 +728,11 @@ class DebtorTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-    @action(detail=False, methods=["post"])
+    @action(
+        detail=False,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, CanChargeInterest],
+    )
     def charge_interest(self, request):
         """
         Charge interest on a single debtor's overdue balance. If `amount` is
@@ -787,7 +817,11 @@ class DebteopenViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-    @action(detail=True, methods=["post"])
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, CanPostInvoice],
+    )
     def allocate(self, request, pk=None):
         """Allocate payment against a single open item."""
         try:
@@ -828,7 +862,12 @@ class DebteopenViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-    @action(detail=False, methods=["post"], url_path="allocate")
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="allocate",
+        permission_classes=[IsAuthenticated, CanPostInvoice],
+    )
     def allocate_receipt(self, request):
         """
         Batch-allocate a single receipt across one or more open items for a

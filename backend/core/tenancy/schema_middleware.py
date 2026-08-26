@@ -15,6 +15,7 @@ Example:
 import logging
 
 from django.db import connections
+from psycopg2 import sql
 from tenancy.tenant_context import get_current_shop, get_current_tenant
 
 logger = logging.getLogger(__name__)
@@ -57,8 +58,16 @@ class SchemaMiddleware:
                         f"[SchemaMiddleware] Connection found: {conn.settings_dict.get('NAME')}"
                     )
                     with conn.cursor() as cursor:
-                        # Set search_path: shop schema first, then public schema
-                        cursor.execute(f"SET search_path TO {shop_schema}, public")
+                        # Set search_path: shop schema first, then public schema.
+                        # Built via sql.Identifier (not an f-string) so a schema
+                        # name can never break out of the SET statement, even
+                        # though schema_name is currently only ever server-
+                        # generated (slugify()) rather than client-supplied.
+                        cursor.execute(
+                            sql.SQL("SET search_path TO {}, public").format(
+                                sql.Identifier(shop_schema)
+                            )
+                        )
                         logger.debug(f"Set search_path to: {shop_schema}, public")
                 except Exception as e:
                     logger.warning(f"Failed to set search_path: {str(e)}")

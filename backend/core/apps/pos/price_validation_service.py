@@ -225,6 +225,7 @@ class PriceValidationService:
         discount_percent: Decimal = None,
         price_level: int = 1,
         transaction_date: date = None,
+        enforce: bool = False,
     ) -> Dict:
         """
         Comprehensive price validation for a line item.
@@ -236,6 +237,20 @@ class PriceValidationService:
             discount_percent: Discount percentage applied
             price_level: Which price level used
             transaction_date: Transaction date
+            enforce: When True, raise POSValidationException instead of
+                only returning warnings if the submitted unit_price
+                doesn't match a configured price level (or active special
+                deal) or the discount exceeds the item's maximum allowed
+                discount. Only applies once a StockItem has actually been
+                located for stock_code — a line for a stock_code that
+                doesn't exist (a manual/non-inventory entry) is never
+                blocked here, matching how callers already treat "not
+                found" as a legitimate manual entry. There is no
+                manager-override concept elsewhere in this codebase; a
+                deliberate reduction off the configured price should go
+                through discount_percent (still capped by
+                maximum_discount_percent), not by tampering with
+                unit_price directly.
 
         Returns:
             Dictionary with validation results:
@@ -245,6 +260,10 @@ class PriceValidationService:
                 - warnings: List of warning messages
                 - suggestions: List of suggestions
                 - price_info: Pricing details
+
+        Raises:
+            POSValidationException: If enforce=True and the price/discount
+                is invalid for a StockItem that was found.
         """
         warnings = []
         suggestions = []
@@ -324,7 +343,7 @@ class PriceValidationService:
                 if level_price > 0 and level != price_level:
                     suggestions.append(f"Price level {level}: {level_price}")
 
-        return {
+        result = {
             "is_valid": price_valid and discount_valid,
             "price_valid": price_valid,
             "discount_valid": discount_valid,
@@ -334,6 +353,16 @@ class PriceValidationService:
             "discount_percent": discount_percent,
             "max_discount_allowed": max_discount,
         }
+
+        if enforce and not result["is_valid"]:
+            raise POSValidationException(
+                f"Price validation failed for {stock_code}: "
+                + "; ".join(
+                    warnings or ["submitted price/discount does not match configured pricing"]
+                )
+            )
+
+        return result
 
     @staticmethod
     def get_price_analysis(stock_code: str, transaction_date: date = None) -> Dict:

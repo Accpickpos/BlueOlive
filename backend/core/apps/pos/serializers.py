@@ -12,6 +12,7 @@ from apps.settings.models import SalesArea
 from django.db import transaction as db_transaction
 from rest_framework import serializers
 
+from .exceptions import POSValidationException
 from .models import (
     CashACheque,
     CashControl,
@@ -164,18 +165,16 @@ class CashSaleLineSerializer(serializers.ModelSerializer):
                     discount_percent=discount_percent,
                     price_level=1,
                     transaction_date=date.today(),
+                    enforce=True,
                 )
 
-                # Add warnings to context for later access
-                if not result["price_valid"]:
-                    self.context["price_warnings"] = result.get("warnings", [])
+                # Keep any warnings (e.g. below-cost) around for the
+                # response even when validation otherwise passed.
+                if result.get("warnings"):
+                    self.context["price_warnings"] = result["warnings"]
 
-                if not result["discount_valid"]:
-                    raise serializers.ValidationError(
-                        f"Discount {discount_percent}% exceeds maximum allowed for this item. "
-                        f"Maximum: {result.get('max_discount_allowed')}%"
-                    )
-
+            except POSValidationException as e:
+                raise serializers.ValidationError(str(e))
             except Exception as e:
                 # Don't fail if stock item doesn't exist - it might be a manual entry
                 if "not found" in str(e):
@@ -238,6 +237,7 @@ class CashSaleDetailSerializer(serializers.ModelSerializer):
             "gross_profit",
             "change_given",
             "is_posted",
+            "is_cancelled",
             "created_at",
             "updated_at",
         ]
@@ -471,6 +471,8 @@ class LaybyeDetailSerializer(serializers.ModelSerializer):
         model = Laybye
         fields = "__all__"
         read_only_fields = [
+            "status",
+            "deposit_amount",
             "amount_paid",
             "balance_due",
             "refund_amount",
@@ -601,6 +603,7 @@ class QuotationDetailSerializer(serializers.ModelSerializer):
         model = Quotation
         fields = "__all__"
         read_only_fields = [
+            "status",
             "subtotal",
             "vat_amount",
             "total_amount",
@@ -615,6 +618,43 @@ class QuotationLineCreateSerializer(serializers.ModelSerializer):
     'lines' field on QuotationDetailSerializer is read_only, so a dedicated nested
     serializer is needed here - mirrors CreditNoteLineSerializer/CashReturnLineSerializer).
     """
+
+    def validate(self, data):
+        """
+        Enforce price/discount validation, mirroring CashSaleLineSerializer
+        and InvoiceLineSerializer.validate() — previously quotation lines
+        had no price validation at all.
+        """
+        stock_code = data.get("stock_code")
+        unit_price = data.get("unit_price")
+        quantity = data.get("quantity", 1)
+        discount_percent = data.get("discount_percentage", 0)
+
+        if stock_code and unit_price:
+            try:
+                result = PriceValidationService.validate_line_item_price(
+                    stock_code=stock_code,
+                    quantity=quantity,
+                    unit_price=unit_price,
+                    discount_percent=discount_percent,
+                    price_level=1,
+                    transaction_date=date.today(),
+                    enforce=True,
+                )
+
+                if result.get("warnings"):
+                    self.context["price_warnings"] = result["warnings"]
+
+            except POSValidationException as e:
+                raise serializers.ValidationError(str(e))
+            except Exception as e:
+                # Don't fail if stock item doesn't exist - it might be a manual entry
+                if "not found" in str(e):
+                    pass
+                else:
+                    raise
+
+        return data
 
     class Meta:
         model = QuotationLine
@@ -736,7 +776,20 @@ class RepairSerializer(serializers.ModelSerializer):
     class Meta:
         model = Repair
         fields = "__all__"
-        read_only_fields = ["debtor", "created_at", "updated_at"]
+        # status/repair_cost change only through RepairService
+        # (issue_to_supplier/receive_from_supplier/invoice_customer), and
+        # selling_price similarly should not be client-editable after
+        # creation — it is not currently set by any service method either,
+        # so this locks it to server/admin control until a proper flow
+        # exists for it.
+        read_only_fields = [
+            "debtor",
+            "status",
+            "repair_cost",
+            "selling_price",
+            "created_at",
+            "updated_at",
+        ]
 
 
 class JobCardLineSerializer(serializers.ModelSerializer):
@@ -1209,17 +1262,14 @@ class InvoiceLineSerializer(serializers.ModelSerializer):
                     discount_percent=discount_percent,
                     price_level=1,
                     transaction_date=date.today(),
+                    enforce=True,
                 )
 
-                if not result["price_valid"]:
-                    self.context["price_warnings"] = result.get("warnings", [])
+                if result.get("warnings"):
+                    self.context["price_warnings"] = result["warnings"]
 
-                if not result["discount_valid"]:
-                    raise serializers.ValidationError(
-                        f"Discount {discount_percent}% exceeds maximum allowed for this item. "
-                        f"Maximum: {result.get('max_discount_allowed')}%"
-                    )
-
+            except POSValidationException as e:
+                raise serializers.ValidationError(str(e))
             except Exception as e:
                 # Don't fail if stock item doesn't exist - it might be a manual entry
                 if "not found" in str(e):
@@ -1512,4 +1562,18 @@ class InvoiceCreateUpdateSerializer(serializers.ModelSerializer):
             "notes",
             "lines",
             "line_items",  # Frontend uses this (alias for lines)
+        ]
+        # Totals are always server-computed (InvoiceLine.save() ->
+        # Invoice.recalculate_totals()); status only ever changes through
+        # the dedicated post()/cancel()/void()/apply_payment() state-machine
+        # methods, exposed as InvoiceViewSet actions. None of these may be
+        # set directly by the client.
+        read_only_fields = [
+            "subtotal",
+            "discount_amount",
+            "vat_amount",
+            "total_amount",
+            "total_cost",
+            "gross_profit",
+            "status",
         ]

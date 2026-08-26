@@ -31,7 +31,10 @@ export default function NotificationBell() {
     if (!notification.is_read) {
       markReadMutation.mutate(notification.id);
     }
-    if (notification.link) {
+    // Only ever navigate to a same-origin relative path — notification.link
+    // is server-authored today, but nothing enforces that at the model
+    // level, so don't trust it as a navigable URL without checking.
+    if (notification.link && /^\/(?!\/)/.test(notification.link)) {
       window.location.href = notification.link;
     }
     setIsOpen(false);

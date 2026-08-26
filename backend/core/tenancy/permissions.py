@@ -326,8 +326,10 @@ class IsShopMember(BasePermission):
         if request.user.role == "ADMIN" and request.user.tenant_id == tenant.id:
             return True
 
-        # Other users only have access to assigned shops
+        # Other users only have access to assigned shops. Delegate to the
+        # ShopUser model's own can_access_shop() instead of reading
+        # .shop_ids directly, so access-control logic lives in one place.
         if hasattr(obj, "id"):
-            return obj.id in request.user.shop_ids
+            return request.user.can_access_shop(obj.id)
 
         return False

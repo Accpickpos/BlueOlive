@@ -10,7 +10,10 @@ from unittest.mock import MagicMock, patch
 import psycopg2
 from apps.saas_admin.import_views import _import_department_record, _uoc
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase
+from rest_framework import status
+from rest_framework.test import APIClient, APITestCase
 
 
 class ImportDepartmentRecordTestCase(SimpleTestCase):
@@ -192,3 +195,109 @@ class UocNotNullForeignKeyTestCase(SimpleTestCase):
         finally:
             conn.close()
         self.assertEqual(row[0], dept_id)
+
+
+# ============================================================
+# Access-control regression tests
+#
+# Confirmed critical finding: every endpoint in this app used DRF's stock
+# `rest_framework.permissions.IsAdminUser`, which only checks
+# `request.user.is_staff`. ShopUser.save() (shop_users/models.py) sets
+# `is_staff = role in ("ADMIN", "MANAGER", "STAFF")` for ANY tenant
+# employee above cashier level, so any regular tenant staff member — from
+# any tenant — could reach this "superuser only" cross-tenant admin app.
+# Fixed by apps.saas_admin.permissions.IsPlatformSuperuser, which checks
+# the real `request.user.is_superuser` flag instead. These tests lock in
+# that a merely-is_staff tenant user is rejected and a real superuser is
+# allowed.
+# ============================================================
+
+User = get_user_model()
+
+
+class PlatformAdminAccessControlTestCase(APITestCase):
+    """
+    Regression tests for the IsAdminUser -> IsPlatformSuperuser fix.
+
+    tenant_id on ShopUser is a plain IntegerField (no FK constraint - see
+    shop_users/models.py), so these tests use arbitrary tenant_id values
+    without needing real Tenant rows.
+    """
+
+    TENANT_STAFF_PASSWORD = "tenant-staff-pass-123"  # nosec B105 - test fixture
+    SUPERUSER_PASSWORD = "platform-super-pass-123"  # nosec B105 - test fixture
+    TARGET_PASSWORD = "old-password-123"  # nosec B105 - test fixture
+
+    def setUp(self):
+        self.client = APIClient()
+
+        # A regular tenant employee: is_staff=True (via role), but NOT a
+        # real Django superuser. This is exactly the account type the bug
+        # let through.
+        self.tenant_staff = User.objects.create_user(
+            username="tenant_staff_user",
+            email="tenant_staff@example.com",
+            password=self.TENANT_STAFF_PASSWORD,
+            tenant_id=4242,
+            role="STAFF",
+        )
+        self.assertTrue(self.tenant_staff.is_staff)
+        self.assertFalse(self.tenant_staff.is_superuser)
+
+        # A real platform superuser (as created by createsuperuser_admin).
+        self.superuser = User.objects.create_superuser(
+            username="platform_superuser",
+            email="platform_admin@example.com",
+            password=self.SUPERUSER_PASSWORD,
+        )
+        self.assertTrue(self.superuser.is_superuser)
+
+        # A target user whose password the superuser will reset.
+        self.target_user = User.objects.create_user(
+            username="target_user",
+            email="target_user@example.com",
+            password=self.TARGET_PASSWORD,
+            tenant_id=4242,
+            role="CASHIER",
+        )
+
+    def test_tenant_staff_cannot_list_tenants(self):
+        """Non-superuser tenant staff must not reach the tenant list endpoint."""
+        self.client.force_authenticate(user=self.tenant_staff)
+        response = self.client.get("/api/v1/saas-admin/tenants/")
+        self.assertIn(
+            response.status_code,
+            (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN),
+        )
+
+    def test_tenant_staff_cannot_reset_password(self):
+        """Non-superuser tenant staff must not reach the reset-password endpoint."""
+        self.client.force_authenticate(user=self.tenant_staff)
+        response = self.client.post(
+            "/api/v1/saas-admin/users/reset-password/",
+            {"user_id": self.target_user.id, "new_password": "hacked-password-123"},
+        )
+        self.assertIn(
+            response.status_code,
+            (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN),
+        )
+        # Confirm the password was NOT actually changed.
+        self.target_user.refresh_from_db()
+        self.assertTrue(self.target_user.check_password(self.TARGET_PASSWORD))
+
+    def test_superuser_can_list_tenants(self):
+        """A real platform superuser must be able to reach the tenant list endpoint."""
+        self.client.force_authenticate(user=self.superuser)
+        response = self.client.get("/api/v1/saas-admin/tenants/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_superuser_can_reset_password(self):
+        """A real platform superuser must be able to reset another user's password."""
+        self.client.force_authenticate(user=self.superuser)
+        response = self.client.post(
+            "/api/v1/saas-admin/users/reset-password/",
+            {"user_id": self.target_user.id, "new_password": "new-password-456"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.target_user.refresh_from_db()
+        self.assertTrue(self.target_user.check_password("new-password-456"))

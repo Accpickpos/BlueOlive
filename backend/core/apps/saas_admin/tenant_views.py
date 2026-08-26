@@ -1,16 +1,17 @@
 """
 SaaS Admin — Tenant Management API
 Dedicated REST API for managing tenants and shops.
-All endpoints require superuser (IsAdminUser) permission.
+All endpoints require platform superuser (IsPlatformSuperuser) permission.
 This API is completely separate from business logic APIs.
 """
 
 from django.conf import settings
 from rest_framework import status, viewsets
-from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from tenancy.models import Shop, Tenant
 from tenancy.serializers import TenantSerializer
+
+from .permissions import IsPlatformSuperuser
 
 
 class TenantViewSet(viewsets.ModelViewSet):
@@ -24,10 +25,10 @@ class TenantViewSet(viewsets.ModelViewSet):
     - UPDATE/PARTIAL_UPDATE: Updates tenant details
     - DESTROY: Deactivates a tenant (soft delete)
 
-    All operations require IsAdminUser permission.
+    All operations require IsPlatformSuperuser permission.
     """
 
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsPlatformSuperuser]
     queryset = Tenant.objects.all()
     serializer_class = TenantSerializer
     lookup_field = "id"
@@ -80,10 +81,10 @@ class ShopViewSet(viewsets.ModelViewSet):
     - UPDATE/PARTIAL_UPDATE: Updates shop details
     - DESTROY: Deactivates a shop
 
-    All operations require IsAdminUser permission.
+    All operations require IsPlatformSuperuser permission.
     """
 
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsPlatformSuperuser]
     queryset = Shop.objects.all()
     lookup_field = "id"
 
@@ -148,7 +149,7 @@ class TenantStatsViewSet(viewsets.ReadOnlyModelViewSet):
     - RETRIEVE: Returns statistics for a specific tenant
     """
 
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsPlatformSuperuser]
     queryset = Tenant.objects.all()
     lookup_field = "id"
 

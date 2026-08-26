@@ -4,6 +4,11 @@ import logging
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
+# Hard cap on uploaded CSV size — these views read the whole file into
+# memory (no streaming), so an unbounded upload is a memory-exhaustion
+# risk on top of being a plain nuisance.
+MAX_CSV_UPLOAD_SIZE = 20 * 1024 * 1024  # 20MB
+
 from django.db import connections, transaction
 from django.db.models import Sum
 from rest_framework import status
@@ -334,6 +339,14 @@ def _detect_delimiter(text):
 
 def _read_csv(file_obj):
     """Read file → (headers_uppercase, rows, delimiter, error_str)."""
+    size = getattr(file_obj, "size", None)
+    if size is not None and size > MAX_CSV_UPLOAD_SIZE:
+        return (
+            None,
+            None,
+            None,
+            f"File exceeds the maximum upload size of {MAX_CSV_UPLOAD_SIZE // (1024 * 1024)}MB",
+        )
     try:
         file_obj.seek(0)
         text = file_obj.read().decode("utf-8", errors="ignore")
@@ -349,31 +362,57 @@ def _read_csv(file_obj):
 
 
 def _resolve_tenant_shop(request):
+    """
+    Resolve the tenant/shop to import into.
+
+    SECURITY: tenant is always derived from the authenticated requester
+    (request.user.tenant_id), never trusted from the request body. A
+    submitted tenant_id must match the requester's own tenant, and the
+    resolved shop must belong to that tenant — this never falls back to
+    "any shop regardless of tenant_id".
+    """
     tid = request.data.get("tenant_id")
     sid = request.data.get("shop_id")
-    if not tid or not sid:
+    if not sid:
+        return None, None, Response({"error": "shop_id is required"}, status=400)
+
+    requester_tenant_id = getattr(request.user, "tenant_id", None)
+    if not requester_tenant_id:
         return (
             None,
             None,
-            Response({"error": "tenant_id and shop_id are required"}, status=400),
+            Response(
+                {"error": "Your account is not associated with a tenant"}, status=403
+            ),
+        )
+    if tid and str(tid) != str(requester_tenant_id):
+        return (
+            None,
+            None,
+            Response(
+                {"error": "tenant_id does not match your account's tenant"},
+                status=403,
+            ),
         )
 
-    # First, get the shop to find its tenant (allows importing to any shop regardless of tenant_id param)
     try:
-        shop = Shop.objects.select_related("tenant").get(id=sid, is_active=True)
-    except Shop.DoesNotExist:
-        return None, None, Response({"error": f"Shop {sid} not found"}, status=404)
-
-    # Use the shop's actual tenant - this ensures we import to the correct tenant
-    # regardless of what tenant_id was sent in the request
-    tenant = shop.tenant
-
-    # Verify the tenant is active
-    if not tenant.is_active:
+        tenant = Tenant.objects.get(id=requester_tenant_id, is_active=True)
+    except Tenant.DoesNotExist:
         return (
             None,
             None,
-            Response({"error": f"Tenant for shop {sid} is not active"}, status=400),
+            Response({"error": "Tenant not found or inactive"}, status=400),
+        )
+
+    try:
+        shop = Shop.objects.select_related("tenant").get(
+            id=sid, tenant=tenant, is_active=True
+        )
+    except Shop.DoesNotExist:
+        return (
+            None,
+            None,
+            Response({"error": f"Shop {sid} not found in your tenant"}, status=403),
         )
 
     return tenant, shop, None
@@ -443,8 +482,20 @@ def _add_error(errors, row_num, msg):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def list_tenants_and_shops(request):
-    """GET /api/v1/creditors/import/tenants/"""
-    tenants = Tenant.objects.filter(is_active=True).order_by("name")
+    """
+    GET /api/v1/creditors/import/tenants/
+    Scoped to the requester's own tenant only — same leak pattern fixed in
+    stock_control/import_smast_csv.py and debtors/import_csv.py's
+    list_tenants_and_shops (this endpoint was returning every tenant/shop
+    on the platform to any authenticated user).
+    """
+    requester_tenant_id = getattr(request.user, "tenant_id", None)
+    if not requester_tenant_id:
+        return Response([])
+
+    tenants = Tenant.objects.filter(
+        id=requester_tenant_id, is_active=True
+    ).order_by("name")
     return Response(
         [
             {

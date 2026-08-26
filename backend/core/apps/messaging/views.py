@@ -1,6 +1,9 @@
 import logging
+import os
+import re
 
 from apps.shop_filter_mixin import ShopFilterMixin
+from django.conf import settings
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -17,6 +20,91 @@ from .serializers import (
 
 logger = logging.getLogger(__name__)
 
+# Business-document allowlist — mirrors the kind of files a shop actually
+# exchanges over messaging (quotes, invoices, photos of parts/vehicles).
+ALLOWED_ATTACHMENT_EXTENSIONS = {
+    "pdf",
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+    "doc",
+    "docx",
+    "xls",
+    "xlsx",
+    "txt",
+    "csv",
+}
+
+# Explicitly blocked regardless of allowlist — these are the actual
+# XSS/execution risk if served back to a browser.
+DANGEROUS_ATTACHMENT_EXTENSIONS = {
+    "html",
+    "htm",
+    "svg",
+    "js",
+    "mjs",
+    "exe",
+    "bat",
+    "cmd",
+    "sh",
+    "php",
+    "phtml",
+    "jsp",
+}
+
+MAX_ATTACHMENT_SIZE = getattr(
+    settings, "MAX_MESSAGE_ATTACHMENT_SIZE", 10 * 1024 * 1024
+)  # 10MB default
+
+_UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9._\- ]")
+
+
+def _sanitize_filename(name):
+    """
+    Strip anything that isn't a safe filename character before storing the
+    raw client-supplied name in the `filename` field (this is reflected via
+    the API, separately from the sanitized storage path Django generates).
+    """
+    name = os.path.basename(name or "")
+    name = _UNSAFE_FILENAME_CHARS.sub("_", name).strip()
+    return name[:255] or "attachment"
+
+
+def _validate_attachment(file):
+    """
+    Validate an uploaded message attachment.
+    Returns an error message string if invalid, otherwise None.
+    """
+    ext = os.path.splitext(file.name or "")[1].lower().lstrip(".")
+
+    if not ext or ext in DANGEROUS_ATTACHMENT_EXTENSIONS:
+        return f"File type '.{ext or '?'}' is not allowed for security reasons."
+
+    if ext not in ALLOWED_ATTACHMENT_EXTENSIONS:
+        return (
+            f"File type '.{ext}' is not supported. Allowed types: "
+            + ", ".join(sorted(ALLOWED_ATTACHMENT_EXTENSIONS))
+        )
+
+    if file.size and file.size > MAX_ATTACHMENT_SIZE:
+        return f"File exceeds the maximum size of {MAX_ATTACHMENT_SIZE // (1024 * 1024)}MB."
+
+    # Verify magic bytes for images — catches a spoofed extension on a
+    # non-image payload (e.g. an HTML/script file renamed to .png).
+    if ext in ("png", "jpg", "jpeg", "gif"):
+        try:
+            from PIL import Image
+
+            file.seek(0)
+            Image.open(file).verify()
+        except Exception:
+            return "File content does not match a valid image."
+        finally:
+            file.seek(0)
+
+    return None
+
 
 class ConversationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     serializer_class = ConversationSerializer
@@ -28,14 +116,10 @@ class ConversationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         """Create a new conversation with participants."""
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        conversation = serializer.save()
-
-        # Add the current user as a participant
-        conversation.participants.add(request.user)
-
-        # Add additional participants from the request
+        # Resolve & validate participants BEFORE creating anything — a user
+        # may only add other ShopUsers who share a tenant AND at least one
+        # shop with them, otherwise this endpoint lets anyone pull any user
+        # on the platform into a conversation.
         participant_ids = request.data.get("participants", [])
         if isinstance(participant_ids, str):
             # Handle comma-separated string
@@ -45,12 +129,50 @@ class ConversationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 
         from shop_users.models import ShopUser
 
+        requester_shop_ids = set(
+            request.user.get_active_shops().values_list("id", flat=True)
+        )
+
+        resolved_participants = []
+        invalid_participant_ids = []
         for participant_id in participant_ids:
             try:
                 participant = ShopUser.objects.get(id=participant_id)
-                conversation.participants.add(participant)
             except ShopUser.DoesNotExist:
-                pass
+                invalid_participant_ids.append(participant_id)
+                continue
+
+            if participant.tenant_id != request.user.tenant_id:
+                invalid_participant_ids.append(participant_id)
+                continue
+
+            participant_shop_ids = set(
+                participant.get_active_shops().values_list("id", flat=True)
+            )
+            if not (requester_shop_ids & participant_shop_ids):
+                invalid_participant_ids.append(participant_id)
+                continue
+
+            resolved_participants.append(participant)
+
+        if invalid_participant_ids:
+            return Response(
+                {
+                    "error": "Some participants are not valid members of your shop(s)",
+                    "invalid_participant_ids": invalid_participant_ids,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        conversation = serializer.save()
+
+        # Add the current user as a participant
+        conversation.participants.add(request.user)
+
+        for participant in resolved_participants:
+            conversation.participants.add(participant)
 
         # Create conversation invite notifications for other participants
         for participant in conversation.participants.exclude(id=request.user.id):
@@ -85,18 +207,27 @@ class ConversationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         # Handle content from either form data or JSON
         content = request.data.get("content", "")
 
+        # Validate attachments before creating anything
+        files = request.FILES.getlist("files")
+        for file in files:
+            error = _validate_attachment(file)
+            if error:
+                return Response(
+                    {"error": f"{file.name}: {error}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         # Create the message
         message = Message.objects.create(
             conversation=conversation, sender=request.user, content=content
         )
 
         # Handle file attachments
-        files = request.FILES.getlist("files")
         for file in files:
             MessageAttachment.objects.create(
                 message=message,
                 file=file,
-                filename=file.name,
+                filename=_sanitize_filename(file.name),
                 content_type=file.content_type,
                 file_size=file.size,
             )
@@ -136,12 +267,20 @@ class ConversationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             )
 
         files = request.FILES.getlist("files")
+        for file in files:
+            error = _validate_attachment(file)
+            if error:
+                return Response(
+                    {"error": f"{file.name}: {error}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         attachments = []
         for file in files:
             attachment = MessageAttachment.objects.create(
                 message=message,
                 file=file,
-                filename=file.name,
+                filename=_sanitize_filename(file.name),
                 content_type=file.content_type,
                 file_size=file.size,
             )

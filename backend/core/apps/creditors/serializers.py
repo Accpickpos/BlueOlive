@@ -739,6 +739,17 @@ class OpenItemAllocationSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         open_item = data["open_item"]
+        payment = data.get("payment")
+        # Manual §4.2: an allocation must settle an open item belonging to
+        # the same creditor the payment was recorded against — otherwise a
+        # payment on Creditor A's account could be used to settle Creditor
+        # B's open item. `payment` is already a resolved CreditorPayment
+        # instance here (PrimaryKeyRelatedField resolves it during
+        # field-level validation, before this object-level validate() runs).
+        if payment is not None and open_item.creditor_id != payment.creditor_id:
+            raise serializers.ValidationError(
+                "Open item does not belong to this payment's creditor."
+            )
         settlement_discount = data.get("settlement_discount", 0)
         amount = data["amount_paid"] + settlement_discount
         if amount > open_item.balance_due:
