@@ -351,11 +351,21 @@ class Invoice(TimeStampedModel):
         
         self.save()
         
-        # Create debtor transaction
+        # Create debtor transaction. transaction_number is a 6-char field
+        # (legacy DTRANO sequence) — invoice_number (e.g. "INV-20260729-00001")
+        # doesn't fit it, so generate the same per-debtor sequence
+        # DebtorService.post_debtran uses rather than truncating and risking
+        # a collision.
         from apps.debtors.models import DebtorTransaction
+        last_tran = DebtorTransaction.objects.filter(debtor=self.debtor).order_by('-transaction_number').first()
+        try:
+            new_dtrano = str(int(last_tran.transaction_number) + 1).zfill(6) if last_tran else '000001'
+        except (ValueError, TypeError):
+            new_dtrano = '000001'
+
         DebtorTransaction.objects.create(
             debtor=self.debtor,
-            transaction_number=self.invoice_number,
+            transaction_number=new_dtrano,
             transaction_type='IN',
             transaction_date=self.invoice_date,
             subtotal=self.subtotal,

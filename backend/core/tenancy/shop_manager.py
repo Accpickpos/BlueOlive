@@ -517,23 +517,31 @@ def migrate_tenant_database(tenant):
             },
         ]
         
+        # Apps whose migration actually failed - tracked so we can raise at
+        # the end instead of silently reporting success. Previously this
+        # loop only logged failures and moved on, so a caller (including the
+        # setup_tenant_database_async Celery task) had no way to know the
+        # tenant's database was left partially migrated - it would happily
+        # mark setup_status as 'db_ready' regardless.
+        failed_apps = []
+
         for phase in migration_phases:
             phase_name = phase['name']
             phase_apps = phase['apps']
-            
+
             logger.info(f"\n{'='*60}")
             logger.info(f"Phase: {phase_name}")
             logger.info(f"{'='*60}")
-            
+
             for app_label in phase_apps:
                 # Skip apps that don't have migrations
                 if app_label in ['messages', 'rest_framework', 'rest_framework_simplejwt']:
                     logger.info(f"  Skipping {app_label} (no migrations)")
                     continue
-                
+
                 try:
                     logger.info(f"  Migrating {app_label}...")
-                    
+
                     call_command(
                         'migrate',
                         app_label,
@@ -541,32 +549,47 @@ def migrate_tenant_database(tenant):
                         verbosity=2,
                         interactive=False,
                     )
-                    
+
                     # CRITICAL: Ensure the connection commits the migration changes
                     # This forces django_migrations to be updated in the database
                     conn = connections[alias]
                     if conn.in_atomic_block:
                         logger.warning(f"  ⚠️ {app_label} migrated but connection is in atomic block, committing...")
                         conn.commit()
-                    
+
                     logger.info(f"  ✓ {app_label} migrated")
-                    
+
                 except Exception as e:
                     logger.error(f"  ✗ {app_label}: {str(e)}")
                     import traceback
                     logger.error(f"  Traceback: {traceback.format_exc()}")
-                    # Continue with other apps
-        
+                    failed_apps.append(app_label)
+                    # Continue attempting other apps so the log shows the
+                    # full picture, but this run is still going to raise.
+
         logger.info(f"\n✓ Tenant database migration complete: {tenant.db_name}")
         logger.info(f"  Public schema apps: {apps_for_public_schema}")
         logger.info(f"  Shop schema apps (not migrated): {shop_app_labels}")
-        
+
         # CRITICAL FIX: Always verify and create missing tables manually
         # Migrations might mark as applied without actually creating tables due to transaction issues
         # This fallback ensures 100% table creation reliability
         logger.info(f"\nVerifying all required tables exist...")
         verify_and_create_missing_tables(tenant, alias)
-        
+
+        if failed_apps:
+            # The fallback above only guards a fixed list of 12 known
+            # tables - it can't detect a failed migration for some other
+            # app, and even where it patches over a missing table, a
+            # migration that errored may have left columns/indexes short of
+            # what the model defines. Always surface the failure so the
+            # caller's retry/failed-status logic actually runs instead of
+            # this looking like a clean success.
+            raise RuntimeError(
+                f"Migration failed for app(s): {', '.join(failed_apps)} "
+                f"(tenant database: {tenant.db_name})"
+            )
+
     except Exception as e:
         logger.error(f"Tenant database migration failed: {str(e)}")
         raise

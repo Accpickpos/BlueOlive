@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from tenancy.models import Tenant, Shop
 
 User = get_user_model()
@@ -118,7 +118,12 @@ def create_tenant_admin(request):
                     'is_active': user.is_active,
                 }
             }, status=status.HTTP_201_CREATED)
-    
+
+    except IntegrityError:
+        return Response(
+            {'error': 'A user with this username or email already exists'},
+            status=status.HTTP_409_CONFLICT
+        )
     except Exception as e:
         return Response(
             {'error': f'Failed to create user: {str(e)}'},

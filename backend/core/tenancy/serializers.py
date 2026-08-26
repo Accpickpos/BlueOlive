@@ -1,5 +1,6 @@
 # tenancy/serializers.py
 from rest_framework import serializers
+from django.db import transaction
 from .models import Tenant, Shop, ShopConfiguration, SubscriptionPlan, Subscription, SubscriptionPayment
 from shop_users.models import ShopUser
 from django.utils.text import slugify
@@ -26,11 +27,11 @@ class TenantSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Tenant
-        fields = ['id', 'name', 'phone', 'email', 'password', 'slug', 'subdomain', 
+        fields = ['id', 'name', 'phone', 'email', 'password', 'slug', 'subdomain',
                   'company_name', 'company_address', 'vat_number', 'registration_number',
                   'currency_symbol', 'currency_code', 'decimal_places',
                   'default_interest_rate', 'charge_interest_on_overdue', 'financial_year_start_month',
-                  'db_name', 'db_user', 'db_password', 'db_host', 'db_port', 'created_at']
+                  'db_name', 'db_user', 'db_password', 'db_host', 'db_port', 'setup_status', 'created_at']
         extra_kwargs = {
             'id': {'read_only': True},
             'slug': {'required': False},
@@ -40,6 +41,7 @@ class TenantSerializer(serializers.ModelSerializer):
             'db_password': {'required': False, 'write_only': True},  # Now optional
             'db_host': {'required': False, 'default': 'postgres'},
             'db_port': {'required': False, 'default': 5432},
+            'setup_status': {'read_only': True},
             'created_at': {'read_only': True},
         }
 
@@ -86,65 +88,21 @@ class TenantSerializer(serializers.ModelSerializer):
         
         validated_data['subdomain'] = validated_data['slug']
         
-        # Create tenant - signals will handle database creation and migration
+        # Create tenant row. Tenant's post_save signal queues async physical
+        # database creation + migrations (tenancy.tasks.setup_tenant_database_async).
+        # Hash the password now - it must never be sent as plaintext through the
+        # Celery broker - and queue the default shop + admin user creation to run
+        # once that database provisioning finishes (see complete_tenant_signup_async,
+        # which itself retries until setup_status reflects the DB being ready).
         logger.info(f"Creating tenant: {name}")
         tenant = super().create(validated_data)
-        logger.info(f"✓ Tenant created: {tenant.name}")
+        logger.info(f"✓ Tenant created: {tenant.name} (setup_status={tenant.setup_status})")
 
-        try:
-            # Give signals time to complete
-            import time
-            time.sleep(1)
-            
-            # Create default shop - signals will handle schema creation and migration
-            logger.info("Creating default shop...")
-            shop = Shop.objects.create(
-                tenant=tenant,
-                name='Main Office',
-                schema_name=f"{validated_data['slug']}_main",
-                subdomain='main',
-                is_head_office=True
-            )
-            logger.info(f"✓ Default shop created: {shop.name}")
-            
-            # Give signals time to complete
-            time.sleep(1)
-
-            # Run migrations on tenant database before creating users
-            logger.info("Running migrations on tenant database...")
-            from tenancy.utils import register_tenant_connection
-            from tenancy.shop_manager import migrate_tenant_database
-            register_tenant_connection(tenant)
-            migrate_tenant_database(tenant)
-            logger.info("✓ Tenant database migrations completed")
-
-            # Give migrations time to complete
-            time.sleep(1)
-
-            # Create admin user in tenant database
-            logger.info("Creating admin user...")
-            
-            # Create in tenant database (authentication backend knows how to find it there)
-            admin_user = ShopUser.objects.using(tenant.db_alias).create(
-                username=validated_data['email'],
-                email=validated_data['email'],
-                first_name=name.split()[0] if name else '',
-                password=make_password(password),
-                is_staff=True,
-                is_superuser=False,
-                role='ADMIN',
-                tenant_id=tenant.id,  # Use tenant_id instead of tenant
-                is_active=True,
-            )
-            logger.info(f"✓ Admin user created: {admin_user.username}")
-            
-        except Exception as e:
-            logger.error(f"Error in post-tenant setup: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            raise serializers.ValidationError(
-                f"Tenant created but setup incomplete: {str(e)}"
-            )
+        admin_password_hash = make_password(password)
+        from tenancy.tasks import complete_tenant_signup_async
+        transaction.on_commit(
+            lambda: complete_tenant_signup_async.delay(tenant.pk, admin_password_hash)
+        )
 
         return tenant
 
@@ -193,8 +151,8 @@ class TenantListSerializer(serializers.ModelSerializer):
                   'company_name', 'company_address', 'vat_number', 'registration_number',
                   'currency_symbol', 'currency_code', 'decimal_places',
                   'default_interest_rate', 'charge_interest_on_overdue', 'financial_year_start_month',
-                  'db_name', 'created_at', 'shops', 'user_count']
-        read_only_fields = ['id', 'slug', 'subdomain', 'db_name', 'created_at']
+                  'db_name', 'setup_status', 'created_at', 'shops', 'user_count']
+        read_only_fields = ['id', 'slug', 'subdomain', 'db_name', 'setup_status', 'created_at']
 
     def get_shops(self, obj):
         """

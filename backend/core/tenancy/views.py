@@ -1,4 +1,5 @@
 from django.shortcuts import render
+from django.db import transaction, IntegrityError
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
@@ -103,8 +104,13 @@ class TenantViewSet(viewsets.ModelViewSet):
             return [CanCreateTenant()]
         elif self.action in ['update', 'partial_update', 'destroy']:
             return [IsAdmin()]
+        elif self.action == 'check_setup_status':
+            # Unauthenticated on purpose - no admin user exists yet to log in
+            # with immediately after signup, so the frontend must be able to
+            # poll this before the tenant has any usable credentials.
+            return [permissions.AllowAny()]
         else:  # list, retrieve
-            return [permissions.IsAuthenticated]
+            return [permissions.IsAuthenticated()]
 
     def get_serializer_class(self):
         """
@@ -117,6 +123,30 @@ class TenantViewSet(viewsets.ModelViewSet):
         return TenantListSerializer  # Exclude password for read operations
 
     # perform_create removed since serializer.create handles user creation
+
+    @action(detail=True, methods=['get'], permission_classes=[permissions.AllowAny])
+    def check_setup_status(self, request, pk=None):
+        """
+        Check signup/provisioning status for a tenant.
+        Deliberately unauthenticated: right after signup no admin user exists
+        yet to log in with, so the frontend must be able to poll this before
+        the tenant has any usable credentials. Only exposes status, nothing
+        sensitive.
+        Returns 'pending' -> 'db_ready' -> 'ready', or 'failed'.
+        """
+        tenant = self.get_object()
+        return Response({
+            'id': tenant.id,
+            'name': tenant.name,
+            'setup_status': tenant.setup_status,
+            'is_ready': tenant.setup_status == 'ready',
+            'message': {
+                'pending': 'Your account is being set up. This may take a few moments...',
+                'db_ready': 'Database ready, finishing account setup...',
+                'ready': 'Your account is ready! You can now log in.',
+                'failed': 'Account setup failed. Please contact support.',
+            }.get(tenant.setup_status, 'Unknown status')
+        })
 
 
 class ShopViewSet(viewsets.ModelViewSet):
@@ -274,27 +304,33 @@ def create_tenant_and_shop(request):
         )
     
     try:
-        # Create tenant
-        tenant = Tenant.objects.create(
-            name=tenant_name,
-            slug=subdomain
-        )
-        
-        # Create shop
-        shop = Shop.objects.create(
-            tenant=tenant,
-            name=shop_name,
-            schema_name=f"{subdomain}_shop",
-            subdomain=subdomain,
-            shop_code=shop_code
-        )
-        
+        with transaction.atomic():
+            # Create tenant
+            tenant = Tenant.objects.create(
+                name=tenant_name,
+                slug=subdomain
+            )
+
+            # Create shop
+            shop = Shop.objects.create(
+                tenant=tenant,
+                name=shop_name,
+                schema_name=f"{subdomain}_shop",
+                subdomain=subdomain,
+                code=shop_code
+            )
+
         return Response({
             'status': 'success',
             'tenant': TenantSerializer(tenant).data,
             'shop': ShopSerializer(shop).data
         }, status=status.HTTP_201_CREATED)
-        
+
+    except IntegrityError:
+        return Response(
+            {'detail': 'A tenant or shop with this name, subdomain, or code already exists.'},
+            status=status.HTTP_409_CONFLICT
+        )
     except Exception as e:
         return Response(
             {'detail': f'Error creating tenant: {str(e)}'},

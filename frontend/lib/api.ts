@@ -374,13 +374,30 @@ export async function signup(signupData: {
   subdomain: string;
   subscription_plan_id?: number;
 }): Promise<AxiosResponse> {
+  // Signup no longer logs the user in inline - creating the tenant's
+  // database + admin user happens in the background (Celery), since it
+  // can take several seconds to tens of seconds. The response only
+  // confirms the tenant row was created and returns its id/slug plus
+  // setup_status: 'pending'. Callers must poll checkTenantSetupStatus()
+  // until is_ready, then call login() with the same username/password.
   const response = await api.post('/api/v1/users/auth/signup/', signupData);
-  
-  // Backend returns user object, tokens are in httpOnly cookies set by the server
-  // Reset CSRF token cache after successful signup
-  csrfToken = null;
-  
   return response;
+}
+
+export interface TenantSetupStatusResponse {
+  id: number;
+  name: string;
+  setup_status: 'pending' | 'db_ready' | 'ready' | 'failed';
+  is_ready: boolean;
+  message: string;
+}
+
+// Poll this after signup() until is_ready is true (or setup_status is
+// 'failed'). Unauthenticated on purpose - no admin user exists to log in
+// with until provisioning finishes.
+export async function checkTenantSetupStatus(tenantId: number): Promise<TenantSetupStatusResponse> {
+  const response = await api.get(`/api/v1/tenants/${tenantId}/check_setup_status/`);
+  return response.data;
 }
 
 // Subdomain validation for real-time availability checking

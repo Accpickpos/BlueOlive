@@ -250,6 +250,13 @@ class SubscriptionPayment(models.Model):
 
 
 class Tenant(models.Model):
+    SETUP_STATUS_CHOICES = [
+        ('pending', 'Pending Setup'),
+        ('db_ready', 'Database Ready'),
+        ('ready', 'Ready for Use'),
+        ('failed', 'Setup Failed'),
+    ]
+
     name = models.CharField(max_length=200, unique=True)  # Company name
     slug = models.SlugField(unique=True)
     subdomain = models.CharField(max_length=100, unique=True, default='default', help_text="Subdomain for tenant access, e.g., 'tenant1'")
@@ -277,6 +284,12 @@ class Tenant(models.Model):
     db_host = models.CharField(max_length=200, default='postgres')
     db_port = models.IntegerField(default=5432)
     is_active = models.BooleanField(default=True, help_text="Whether this tenant is active")
+    setup_status = models.CharField(
+        max_length=20,
+        choices=SETUP_STATUS_CHOICES,
+        default='pending',
+        help_text="Status of tenant database/signup provisioning"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     tenant_control = models.BooleanField(default=True)
     

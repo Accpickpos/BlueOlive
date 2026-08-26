@@ -11,6 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Sum, Count
 from django.db.models.functions import ExtractHour
+from django.utils import timezone
 from datetime import date
 
 from apps.shop_filter_mixin import ShopFilterMixin
@@ -25,7 +26,7 @@ from .models import (
 
 from .serializers import (
     CashSaleListSerializer, CashSaleDetailSerializer, CashSaleCreateSerializer,
-    LaybyeListSerializer, LaybyeDetailSerializer,
+    LaybyeListSerializer, LaybyeDetailSerializer, LaybyeCreateSerializer,
     QuotationListSerializer, QuotationDetailSerializer, QuotationCreateSerializer,
     PayoutSerializer, RepairSerializer,
     JobCardListSerializer, JobCardDetailSerializer, JobCardLineSerializer,
@@ -285,8 +286,10 @@ class LaybyeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         """Return appropriate serializer."""
         if self.action == 'list':
             return LaybyeListSerializer
+        if self.action == 'create':
+            return LaybyeCreateSerializer
         return LaybyeDetailSerializer
-    
+
     def get_queryset(self):
         """Optimize queryset."""
         queryset = super().get_queryset()
@@ -294,23 +297,44 @@ class LaybyeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             queryset = queryset.prefetch_related('lines', 'payments')
         return queryset
 
-    def perform_create(self, serializer):
-        # balance_due has no model default and is read_only on the
-        # serializer, so it must be computed here or save() fails outright.
-        total_amount = serializer.validated_data.get('total_amount') or Decimal('0')
-        deposit_amount = serializer.validated_data.get('deposit_amount') or Decimal('0')
+    def create(self, request, *args, **kwargs):
+        """
+        Create a laybye with its stock lines in one request, routed through
+        LaybyeService.create_laybye so the lines actually reserve goods into
+        "laybye stock" (LAYBYE_IN movement) — LaybyeDetailSerializer marks
+        `lines` read_only, so a bare ModelViewSet create() can't do this.
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
 
-        # Laybye has no cashier FK (unlike CashSale/Payout/etc.) — attribute
-        # the till impact to whoever is logged in and made the request.
-        laybye = serializer.save(
-            balance_due=total_amount - deposit_amount,
-            amount_paid=deposit_amount,
-        )
-        station_number = self.request.data.get('station_number', 1)
+        today = timezone.now().date()
+        lines_data = data.pop('lines')
+        for line in lines_data:
+            line.setdefault('transaction_date', today)
+            line.setdefault('transaction_time', timezone.now().time())
+
+        laybye_number = data.pop('laybye_number', '') or f"LAY-{int(timezone.now().timestamp() * 1000)}"
+        laybye_date = data.pop('laybye_date', None) or today
+
+        laybye_data = {
+            **data,
+            'laybye_number': laybye_number,
+            'laybye_date': laybye_date,
+        }
+
+        try:
+            laybye = LaybyeService.create_laybye(laybye_data, lines_data)
+        except (InsufficientStock, POSValidationException) as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        station_number = request.data.get('station_number', 1)
         if laybye.deposit_amount:
             CashControlService.record_new_laybye(
-                laybye.laybye_date, self.request.user, station_number, laybye.deposit_amount
+                laybye.laybye_date, request.user, station_number, laybye.deposit_amount
             )
+
+        return Response(LaybyeDetailSerializer(laybye).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'])
     def make_payment(self, request, pk=None):
@@ -332,17 +356,26 @@ class LaybyeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             from apps.settings.models import SalesArea
             sales_area = SalesArea.objects.get(id=sales_area_id) if sales_area_id else None
 
-            payment = LaybyeService.make_payment(laybye, amount, sales_area)
+            payment, invoice = LaybyeService.make_payment(laybye, amount, sales_area)
 
             CashControlService.record_laybye_receipt(
                 payment.payment_date, request.user, request.data.get('station_number', 1), amount
             )
 
-            return Response({
+            response_data = {
                 'status': 'success',
                 'message': 'Payment recorded successfully',
-                'new_balance': float(laybye.balance_due)
-            })
+                'new_balance': float(laybye.balance_due),
+                'laybye_status': laybye.status,
+            }
+            if invoice:
+                response_data['message'] = (
+                    f'Payment recorded — laybye fully paid, invoice {invoice.invoice_number} created'
+                )
+                response_data['invoice_id'] = invoice.id
+                response_data['invoice_number'] = invoice.invoice_number
+
+            return Response(response_data)
         except (ValueError, InvalidDocumentState, InsufficientStock, POSValidationException, POSStateException) as e:
             return Response(
                 {'error': str(e)},
@@ -1031,12 +1064,14 @@ class CreditNoteViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                         stock_item.quantity_on_hand += line.quantity
                         stock_item.save()
                         
-                        # Create stock movement
+                        # Create stock movement. transaction_number is an
+                        # IntegerField — credit_number is a string, use
+                        # comments instead so this doesn't raise.
                         StockTransaction.objects.create(
                             stock_item=stock_item,
                             transaction_type='RETURN',
                             transaction_date=credit_note.credit_date,
-                            transaction_number=credit_note.credit_number,
+                            comments=credit_note.credit_number[:30],
                             quantity_in=line.quantity,
                             quantity_balance=stock_item.quantity_on_hand,
                             unit_price=line.unit_price,
@@ -1113,12 +1148,14 @@ class CashReturnViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                         stock_item.quantity_on_hand += line.quantity
                         stock_item.save()
                         
-                        # Create stock movement
+                        # Create stock movement. transaction_number is an
+                        # IntegerField — return_number is a string, use
+                        # comments instead so this doesn't raise.
                         StockTransaction.objects.create(
                             stock_item=stock_item,
                             transaction_type='RETURN',
                             transaction_date=cash_return.return_date,
-                            transaction_number=cash_return.return_number,
+                            comments=cash_return.return_number[:30],
                             quantity_in=line.quantity,
                             quantity_balance=stock_item.quantity_on_hand,
                             unit_price=line.unit_price,

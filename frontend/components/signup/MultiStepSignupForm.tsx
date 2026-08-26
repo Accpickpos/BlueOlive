@@ -16,9 +16,19 @@ import {
   Globe,
   Sparkles
 } from 'lucide-react';
-import { signup, validateSubdomain, getActiveSubscriptionPlans } from '@/lib/api';
+import { signup, login, checkTenantSetupStatus, validateSubdomain, getActiveSubscriptionPlans } from '@/lib/api';
 import { useAuthContext } from '@/lib/AuthContext';
 import { setTenant, setShops, setCurrentShop } from '@/lib/shopContext';
+
+// Signup provisions the tenant's database + admin user in the background
+// (can take a while under load), so we poll rather than assume it's done
+// when signup() returns. These bound how long we wait before giving up.
+const SETUP_POLL_INTERVAL_MS = 2500;
+const SETUP_POLL_TIMEOUT_MS = 3 * 60 * 1000;
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // Types
 interface SignupFormData {
@@ -52,6 +62,34 @@ const STEPS = [
   { id: 3, title: 'Plan', description: 'Choose your plan' },
 ];
 
+// Maps the backend's snake_case field names (returned in signup error
+// responses as `field` or `missing_fields`) to this form's field names and
+// the step each one lives on, so a field-specific server error can both
+// highlight the right input and jump the user to the right step.
+const BACKEND_FIELD_TO_FORM_FIELD: Record<string, keyof SignupFormData> = {
+  email: 'email',
+  username: 'username',
+  password: 'password',
+  confirm_password: 'confirmPassword',
+  first_name: 'firstName',
+  last_name: 'lastName',
+  company_name: 'companyName',
+  subdomain: 'subdomain',
+  subscription_plan_id: 'subscriptionPlanId',
+};
+
+const FORM_FIELD_TO_STEP: Record<keyof SignupFormData, number> = {
+  email: 1,
+  username: 1,
+  password: 1,
+  confirmPassword: 1,
+  firstName: 1,
+  lastName: 1,
+  companyName: 2,
+  subdomain: 2,
+  subscriptionPlanId: 3,
+};
+
 export default function MultiStepSignupForm() {
   const router = useRouter();
   const { refetch } = useAuthContext();
@@ -83,6 +121,10 @@ export default function MultiStepSignupForm() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [setupMessage, setSetupMessage] = useState('Creating your account...');
+  const [readyToLogin, setReadyToLogin] = useState(false);
+  const [tenantSlug, setTenantSlugValue] = useState<string | null>(null);
+  const [loggingIn, setLoggingIn] = useState(false);
 
   // Fetch subscription plans on mount
   useEffect(() => {
@@ -180,6 +222,46 @@ export default function MultiStepSignupForm() {
     }
   };
 
+  // Apply a signup/login error response from the backend: highlights the
+  // specific field it named (data.field, or every field in
+  // data.missing_fields), jumps to whichever step that field lives on so
+  // it's actually visible, and shows the human-readable detail message as
+  // a banner too. Falls back to just the banner if the backend didn't name
+  // a field (e.g. an unexpected 500).
+  const applyServerError = (data: any, fallbackMsg: string) => {
+    const detail = data?.detail || fallbackMsg;
+
+    if (Array.isArray(data?.missing_fields) && data.missing_fields.length > 0) {
+      const newFieldErrors: FormErrors = {};
+      let earliestStep = STEPS.length;
+
+      for (const backendField of data.missing_fields as string[]) {
+        const formField = BACKEND_FIELD_TO_FORM_FIELD[backendField];
+        if (formField) {
+          newFieldErrors[formField] = 'This field is required';
+          earliestStep = Math.min(earliestStep, FORM_FIELD_TO_STEP[formField]);
+        }
+      }
+
+      setErrors(prev => ({ ...prev, ...newFieldErrors }));
+      if (earliestStep < STEPS.length + 1) setCurrentStep(earliestStep);
+      setSubmitError(detail);
+      return;
+    }
+
+    if (data?.field) {
+      const formField = BACKEND_FIELD_TO_FORM_FIELD[data.field];
+      if (formField) {
+        setErrors(prev => ({ ...prev, [formField]: detail }));
+        setCurrentStep(FORM_FIELD_TO_STEP[formField]);
+      }
+      setSubmitError(detail);
+      return;
+    }
+
+    setSubmitError(detail);
+  };
+
   // Validate current step
   const validateStep = (step: number): boolean => {
     const newErrors: FormErrors = {};
@@ -275,41 +357,105 @@ export default function MultiStepSignupForm() {
         subscription_plan_id: parseInt(formData.subscriptionPlanId),
       });
 
-      if (response.status === 201 || response.status === 200) {
-        setSubmitSuccess(true);
-        
-        // Store tenant in localStorage
-        setTenant(formData.subdomain);
-        
-        // Fetch shops for the tenant
-        try {
-          const shops = await getActiveSubscriptionPlans(); // This might need to be changed to getTenantShops
-          // Note: The original code used getTenantShops but we need to verify this function exists
-        } catch (e) {
-          console.warn('Failed to fetch shops after signup:', e);
-        }
-        
-        // Refetch user profile
-        try {
-          await refetch();
-        } catch (e) {
-          console.warn('Refetch failed, proceeding with redirect anyway');
-        }
-
-        // Redirect to dashboard after a short delay
-        setTimeout(() => {
-          router.push('/dashboard');
-        }, 1500);
+      // Signup only creates the tenant row - provisioning the database and
+      // admin user happens in the background and can take a while, so we
+      // show the waiting screen and poll rather than assuming it's done.
+      const tenantId = response.data?.tenant_id;
+      const tenantSlugFromResponse = response.data?.tenant_slug;
+      if (!tenantId || !tenantSlugFromResponse) {
+        throw new Error('Signup succeeded but no tenant id/slug was returned');
       }
+      setTenantSlugValue(tenantSlugFromResponse);
+
+      setSubmitSuccess(true);
+      setSetupMessage('Setting up your workspace...');
+
+      const deadline = Date.now() + SETUP_POLL_TIMEOUT_MS;
+      let ready = false;
+      let failed = false;
+
+      while (Date.now() < deadline) {
+        const status = await checkTenantSetupStatus(tenantId);
+        setSetupMessage(status.message);
+
+        if (status.is_ready) {
+          ready = true;
+          break;
+        }
+        if (status.setup_status === 'failed') {
+          failed = true;
+          break;
+        }
+        await sleep(SETUP_POLL_INTERVAL_MS);
+      }
+
+      if (failed) {
+        setSubmitSuccess(false);
+        setSubmitError(
+          'We could not finish setting up your account. Please contact support with the email address you signed up with, or try again with a different company name.'
+        );
+        return;
+      }
+
+      if (!ready) {
+        setSubmitSuccess(false);
+        setSubmitError(
+          'Setup is taking longer than expected. Your account may still finish in the background - try logging in from the login page in a few minutes, or contact support if it still does not work.'
+        );
+        return;
+      }
+
+      // Provisioning finished - stop here and let the user explicitly click
+      // "Log In" (see handleLoginNow) rather than silently logging them in
+      // and redirecting, so it's unmistakable that their account is ready.
+      setReadyToLogin(true);
     } catch (error: any) {
-      const errorMsg = 
-        error?.response?.data?.detail || 
-        error?.response?.data?.message ||
-        error?.message ||
-        'Signup failed. Please try again.';
-      setSubmitError(errorMsg);
+      setSubmitSuccess(false);
+      applyServerError(
+        error?.response?.data,
+        error?.response?.data?.message || error?.message || 'Signup failed. Please check your details and try again.'
+      );
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Called when the user clicks "Log In" on the "your account is ready"
+  // screen. Uses tenant_slug captured from the signup response, not
+  // formData.subdomain - login resolves the tenant by slug (derived from
+  // company name), which can differ from the subdomain the user picked.
+  const handleLoginNow = async () => {
+    if (!tenantSlug) return;
+
+    setLoggingIn(true);
+    setSubmitError('');
+
+    try {
+      await login(tenantSlug, formData.username, formData.password);
+
+      // Store tenant in localStorage
+      setTenant(formData.subdomain);
+
+      // Refetch user profile
+      try {
+        await refetch();
+      } catch (e) {
+        console.warn('Refetch failed, proceeding with redirect anyway');
+      }
+
+      router.push('/dashboard');
+    } catch (error: any) {
+      // Stay on the "ready" screen and let them retry the button - the
+      // account is already provisioned, this was just a login-call hiccup
+      // (network blip, etc.), not a reason to send them back to the form.
+      const errorMsg =
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        'Login failed. Please try again.';
+      setSubmitError(errorMsg);
+    } finally {
+      setLoggingIn(false);
     }
   };
 
@@ -552,7 +698,44 @@ export default function MultiStepSignupForm() {
     </div>
   );
 
-  // Render success state
+  // Render "account ready, please log in" state
+  if (submitSuccess && readyToLogin) {
+    return (
+      <div className="text-center py-12">
+        <div className="mx-auto w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mb-4">
+          <Check className="h-8 w-8 text-green-500" />
+        </div>
+        <h3 className="text-2xl font-bold text-white mb-2">Your account is ready!</h3>
+        <p className="text-gray-400 mb-6">Your workspace has been set up. Log in to get started.</p>
+        {submitError && (
+          <div className="max-w-sm mx-auto mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg flex items-start gap-3 text-left" role="alert">
+            <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-red-400">{submitError}</p>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={handleLoginNow}
+          disabled={loggingIn}
+          className="inline-flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {loggingIn ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Logging in...
+            </>
+          ) : (
+            <>
+              Log In
+              <ArrowRight className="h-4 w-4" />
+            </>
+          )}
+        </button>
+      </div>
+    );
+  }
+
+  // Render "still setting up" state
   if (submitSuccess) {
     return (
       <div className="text-center py-12">
@@ -560,10 +743,10 @@ export default function MultiStepSignupForm() {
           <Check className="h-8 w-8 text-green-500" />
         </div>
         <h3 className="text-2xl font-bold text-white mb-2">Account Created!</h3>
-        <p className="text-gray-400 mb-6">Redirecting you to your dashboard...</p>
+        <p className="text-gray-400 mb-6">This can take a few moments, please don't close this page.</p>
         <div className="flex items-center justify-center gap-2">
           <Loader2 className="h-5 w-5 text-indigo-500 animate-spin" />
-          <span className="text-gray-400">Setting up your workspace</span>
+          <span className="text-gray-400">{setupMessage}</span>
         </div>
       </div>
     );

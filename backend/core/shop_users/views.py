@@ -424,7 +424,20 @@ class SubdomainValidationView(APIView):
 
 class SignupView(APIView):
     """
-    Tenant signup - creates new tenant, database, and admin user.
+    Tenant signup - creates the tenant row and queues async provisioning
+    (physical database creation + migrations + default shop + admin user).
+
+    Does NOT create the tenant database or log the user in inline: CREATE
+    DATABASE plus running the full migration set takes several seconds to
+    tens of seconds, which is too long to hold open one HTTP request/worker
+    for - especially under concurrent signups. Provisioning runs in the
+    background via Celery (tenancy.tasks.setup_tenant_database_async ->
+    complete_tenant_signup_async, chained through Tenant.setup_status).
+
+    Clients must poll GET /api/v1/tenants/{tenant_id}/check_setup_status/
+    until is_ready is true, then call the normal login endpoint
+    (/api/v1/users/auth/login/) with the username/password just submitted
+    here to obtain a real session.
     """
     permission_classes = [AllowAny]
     throttle_classes = [LoginThrottle]
@@ -442,17 +455,12 @@ class SignupView(APIView):
             first_name = request.data.get('first_name', '')
             last_name = request.data.get('last_name', '')
 
-            # ADD THIS DEBUG LOGGING
             if settings.DEBUG:
                 logger.debug(f"Signup request data: {request.data}")
-                logger.debug(f"company_name: {company_name}")
-                logger.debug(f"subdomain: {subdomain}")
-                logger.debug(f"username: {username}")
-                logger.debug(f"email: {email}")
-                logger.debug(f"password: {'***' if password else None}")
-                logger.debug(f"confirm_password: {'***' if password_confirm else None}")
 
-            # Validation - IMPROVED ERROR MESSAGE
+            # Validation - each error names the offending field and says
+            # what to do about it, so the frontend can point the user at
+            # the exact input instead of a generic "signup failed" banner.
             required_fields = {
                 'company_name': company_name,
                 'subdomain': subdomain,
@@ -461,189 +469,118 @@ class SignupView(APIView):
                 'password': password,
                 'confirm_password': password_confirm,
             }
-            
-            missing_fields = [field for field, value in required_fields.items() if not value]
-            
-            if missing_fields:
-                error_msg = f'Missing required fields: {", ".join(missing_fields)}'
-                logger.warning(f"Signup validation failed: {error_msg}")
-                return Response({'detail': error_msg}, status=400)
 
-            # Rest of your validation...
+            missing_fields = [field for field, value in required_fields.items() if not value]
+
+            if missing_fields:
+                logger.warning(f"Signup validation failed, missing fields: {missing_fields}")
+                return Response({
+                    'detail': 'Please fill in all required fields and try again.',
+                    'missing_fields': missing_fields,
+                }, status=400)
+
             if password != password_confirm:
-                return Response({'detail': 'Passwords do not match'}, status=400)
+                return Response({
+                    'field': 'confirm_password',
+                    'detail': 'Passwords do not match. Please re-enter your password.',
+                }, status=400)
 
             if len(password) < 8:
-                return Response({'detail': 'Password must be at least 8 characters'}, status=400)
-            
+                return Response({
+                    'field': 'password',
+                    'detail': 'Password must be at least 8 characters. Please choose a longer password.',
+                }, status=400)
+
             # Check if subdomain is available (main database check)
             if Tenant.objects.filter(subdomain=subdomain).exists():
-                return Response({'detail': 'Subdomain already taken'}, status=400)
+                return Response({
+                    'field': 'subdomain',
+                    'detail': 'This subdomain is already taken. Please choose a different one.',
+                }, status=400)
 
-            # Create tenant
             from django.utils.text import slugify
-            from tenancy.utils import create_tenant_database_postgres, register_tenant_connection
-            
+            from django.contrib.auth.hashers import make_password
+            from django.db import transaction, IntegrityError
+
             tenant_slug = slugify(company_name)
             tenant_db_name = f"tenant_{subdomain}".replace('-', '_')
-            
+
             # Get DB credentials from settings
             db_settings = settings.DATABASES.get('default', {})
             db_host = db_settings.get('HOST', 'localhost')
             db_port = db_settings.get('PORT', 5432)
             db_user = db_settings.get('USER', 'postgres')
             db_password = db_settings.get('PASSWORD', '')
-            
-            # Create tenant in main database
-            tenant = Tenant.objects.create(
-                name=company_name,
-                slug=tenant_slug,
-                subdomain=subdomain,
-                db_name=tenant_db_name,
-                db_user=db_user,
-                db_password=db_password,
-                db_host=db_host,
-                db_port=int(db_port) if isinstance(db_port, str) else db_port,
-                is_active=True,
-                tenant_control=True,
-            )
-            logger.info(f"Created tenant: {tenant.name} (id={tenant.id})")
 
-            # Create tenant database
+            # Create tenant row only. Tenant's post_save signal queues async
+            # physical database creation + migrations
+            # (tenancy.tasks.setup_tenant_database_async). A race between two
+            # different code paths both provisioning the same tenant is why
+            # this view no longer does CREATE DATABASE/migrate/create-user
+            # itself inline.
             try:
-                superuser_conn_info = {
-                    'host': tenant.db_host,
-                    'port': tenant.db_port,
-                    'user': tenant.db_user,
-                    'password': tenant.db_password,
-                    'dbname': 'postgres'
-                }
-                create_tenant_database_postgres(tenant, superuser_conn_info)
-                logger.info(f"Created tenant database: {tenant_db_name}")
-            except Exception as e:
-                logger.error(f"Failed to create tenant database: {str(e)}")
-                tenant.delete()
-                return Response({'detail': f'Failed to create tenant database: {str(e)}'}, status=500)
+                with transaction.atomic():
+                    tenant = Tenant.objects.create(
+                        name=company_name,
+                        slug=tenant_slug,
+                        subdomain=subdomain,
+                        email=email,
+                        db_name=tenant_db_name,
+                        db_user=db_user,
+                        db_password=db_password,
+                        db_host=db_host,
+                        db_port=int(db_port) if isinstance(db_port, str) else db_port,
+                        is_active=True,
+                        tenant_control=True,
+                    )
+            except IntegrityError:
+                # The subdomain check above already ran, but two signups can
+                # race between that check and this insert (see the earlier
+                # concurrency discussion) - re-check here to report exactly
+                # which field actually collided instead of a vague message.
+                if Tenant.objects.filter(subdomain=subdomain).exists():
+                    return Response({
+                        'field': 'subdomain',
+                        'detail': 'This subdomain is already taken. Please choose a different one.',
+                    }, status=409)
+                if Tenant.objects.filter(slug=tenant_slug).exists() or Tenant.objects.filter(name=company_name).exists():
+                    return Response({
+                        'field': 'company_name',
+                        'detail': 'An account with this company name already exists. Please use a different name, or contact support if this is your business.',
+                    }, status=409)
+                return Response({
+                    'detail': 'That subdomain or company name was just taken. Please change one of them and try again.',
+                }, status=409)
 
-            # Register tenant connection
-            register_tenant_connection(tenant)
-            set_current_tenant(tenant)
+            logger.info(f"Created tenant: {tenant.name} (id={tenant.id}), provisioning queued")
 
-            # Run migrations on tenant database
-            try:
-                from tenancy.shop_manager import migrate_tenant_database
-                logger.info(f"Running migrations on tenant database: {tenant_db_name}")
-                migrate_tenant_database(tenant)
-                logger.info(f"✓ Migrations completed for tenant: {tenant.name}")
-            except Exception as e:
-                logger.error(f"Failed to run migrations on tenant database: {str(e)}")
-                tenant.delete()
-                return Response({'detail': f'Failed to run migrations: {str(e)}'}, status=500)
-
-            # Ensure search_path is set for user creation
-            try:
-                from django.db import connections
-                conn = connections[tenant.db_alias]
-                conn.close()
-                conn.connect()
-                with conn.cursor() as cur:
-                    cur.execute('SET search_path TO public')
-            except Exception as e:
-                logger.error(f"Failed to set search_path: {str(e)}")
-
-            # Create user in tenant database
-            try:
-                user = ShopUser(
-                    username=username,
-                    email=email,
-                    first_name=first_name,
-                    last_name=last_name,
-                    tenant_id=tenant.id,
-                    role='ADMIN',
-                    is_staff=True,
-                    is_superuser=True,
+            # Hash the password now - it must never be sent as plaintext
+            # through the Celery broker - and queue the default shop + admin
+            # user creation to run once database provisioning finishes (see
+            # complete_tenant_signup_async, which retries until
+            # setup_status reflects the DB being ready).
+            admin_password_hash = make_password(password)
+            from tenancy.tasks import complete_tenant_signup_async
+            transaction.on_commit(
+                lambda: complete_tenant_signup_async.delay(
+                    tenant.pk, admin_password_hash,
+                    admin_username=username, first_name=first_name, last_name=last_name,
                 )
-                user.set_password(password)
-                user.save(using=tenant.db_alias)
-                logger.info(f"Created user: {username} in tenant {tenant.name}")
-            except Exception as e:
-                logger.error(f"Failed to create user: {str(e)}")
-                tenant.delete()
-                error_msg = str(e)
-                if 'unique constraint' in error_msg.lower():
-                    return Response({'detail': 'Username or email already exists in this tenant'}, status=400)
-                return Response({'detail': f'Failed to create user: {error_msg}'}, status=500)
+            )
 
-            # Create tokens
-            if get_current_tenant() != tenant:
-                logger.warning(f"Tenant context mismatch, resetting...")
-                set_current_tenant(tenant)
-            
-            logger.info(f"Creating refresh token for user {user.id}")
-            try:
-                refresh = RefreshToken.for_user(user)
-                logger.info(f"✓ Refresh token created successfully")
-            except Exception as e:
-                logger.error(f"Failed to create refresh token: {str(e)}")
-                logger.warning(f"Attempting fallback table creation...")
-                
-                try:
-                    from tenancy.shop_manager import verify_and_create_missing_tables
-                    verify_and_create_missing_tables(tenant, tenant.db_alias)
-                    logger.info(f"✓ Token tables created, retrying...")
-                    refresh = RefreshToken.for_user(user)
-                    logger.info(f"✓ Token created after fallback")
-                except Exception as fallback_error:
-                    logger.error(f"✗ Fallback failed: {str(fallback_error)}", exc_info=True)
-                    tenant.delete()
-                    return Response({'detail': f'Failed to create token: {str(fallback_error)}'}, status=500)
-            
-            refresh['tenant_id'] = tenant.id
-            refresh['tenant_slug'] = tenant.slug
-
-            access_token = refresh.access_token
-
-            response = Response({
-                'message': 'Account created successfully',
+            return Response({
+                'message': 'Account created! Setting up your workspace - this page will let you know when you can log in.',
+                'tenant_id': tenant.id,
                 'tenant_slug': tenant.slug,
-                'user': {
-                    'id': user.id,
-                    'username': user.username,
-                    'email': user.email,
-                    'first_name': user.first_name,
-                    'last_name': user.last_name,
-                    'company_name': company_name,
-                }
-            }, status=201)
-
-            # Set JWT tokens in httpOnly cookies
-            is_secure = not settings.DEBUG
-            
-            response.set_cookie(
-                'access_token',
-                str(access_token),
-                max_age=int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()),
-                httponly=True,
-                secure=is_secure,
-                samesite='Lax',
-                path='/',
-            )
-
-            response.set_cookie(
-                'refresh_token',
-                str(refresh),
-                max_age=int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()),
-                httponly=True,
-                secure=is_secure,
-                samesite='Lax',
-                path='/',
-            )
-
-            return response
+                'setup_status': tenant.setup_status,
+            }, status=202)
 
         except Exception as e:
             logger.error(f"Signup error: {str(e)}", exc_info=True)
-            return Response({'detail': f'Signup failed: {str(e)}'}, status=500)
+            return Response({
+                'detail': 'Something went wrong on our end and your account could not be created. '
+                           'Please try again in a moment - if it keeps happening, contact support.',
+            }, status=500)
 
 
 # ViewSet for user management

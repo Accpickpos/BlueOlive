@@ -80,22 +80,34 @@ export interface ReceiptCreateData {
   notes?: string;
 }
 
-// Matches LaybyeDetailSerializer's writable fields (backend/core/apps/pos).
-// `lines`/`payments` are read_only on that serializer — there is currently
-// no API endpoint to attach stock line items to a laybye, so creation is
-// header-only (total_amount/deposit_amount entered directly).
+// Matches LaybyeCreateSerializer (backend/core/apps/pos) — this is the
+// create-only serializer that actually reaches LaybyeService.create_laybye,
+// which reserves the goods into "laybye stock" (LAYBYE_IN movement).
+// LaybyeDetailSerializer (used for GET/list) marks `lines` read_only, so
+// this shape is specific to POST.
+export interface LaybyeCreateLineData {
+  stock_code: string;
+  description?: string;
+  quantity: number;
+  unit_price: number;
+  discount_percentage?: number;
+  tax_code?: number; // 1 = Standard (14%), 0 = Zero-rated
+  cost_price?: number;
+  station_number?: number;
+}
+
 export interface LaybeyCreateData {
-  laybye_number: string;
+  laybye_number?: string; // auto-generated server-side if omitted
   customer_name: string;
   telephone?: string;
-  laybye_date: string; // YYYY-MM-DD
+  laybye_date?: string; // YYYY-MM-DD, defaults to today
   expiry_date: string; // YYYY-MM-DD
-  total_amount: number;
   deposit_amount: number;
   comment1?: string;
   comment2?: string;
   debtor_account_number?: number;
   sales_area?: number;
+  lines: LaybyeCreateLineData[];
 }
 
 // Matches QuotationCreateSerializer's writable fields. `lines` requires a
