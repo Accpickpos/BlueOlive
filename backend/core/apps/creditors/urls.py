@@ -1,24 +1,29 @@
 # backend/core/apps/creditors/urls.py
-from django.urls import path, include
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_nested import routers as nested_routers
 
 from .views import (
-    CreditorViewSet,
-    GoodsReceivedNoteViewSet, GRNLineItemViewSet,
-    CreditorInvoiceViewSet, CreditorInvoiceLineItemViewSet,
-    CreditorCreditNoteViewSet, CreditorCreditNoteLineItemViewSet,
-    CreditorPaymentViewSet,
+    CreditorCreditNoteLineItemViewSet,
+    CreditorCreditNoteViewSet,
+    CreditorInvoiceLineItemViewSet,
+    CreditorInvoiceViewSet,
     CreditorJournalViewSet,
-    SupplierLedgerEntryViewSet,
-    CreditorOpenItemViewSet, OpenItemAllocationViewSet,
-    OpenItemAuditViewSet,
-    RFCViewSet, RFCLineItemViewSet,
+    CreditorOpenItemViewSet,
+    CreditorPaymentViewSet,
+    CreditorTransactionLineViewSet,
+    CreditorViewSet,
     ExpenseCategoryMonthlyBalanceViewSet,
     ExpenseCategoryTransactionViewSet,
-    SupplierPaymentOrderViewSet,
-    CreditorTransactionLineViewSet,
+    GoodsReceivedNoteViewSet,
+    GRNLineItemViewSet,
+    OpenItemAllocationViewSet,
+    OpenItemAuditViewSet,
     OutstandingBalanceViewSet,
+    RFCLineItemViewSet,
+    RFCViewSet,
+    SupplierLedgerEntryViewSet,
+    SupplierPaymentOrderViewSet,
 )
 
 # ============================================================================
@@ -28,22 +33,36 @@ from .views import (
 
 router = DefaultRouter()
 
-router.register(r'creditors',             CreditorViewSet,                      basename='creditor')
-router.register(r'grns',                  GoodsReceivedNoteViewSet,             basename='grn')
-router.register(r'invoices',              CreditorInvoiceViewSet,               basename='invoice')
-router.register(r'credit_notes',          CreditorCreditNoteViewSet,            basename='credit-note')
-router.register(r'payments',              CreditorPaymentViewSet,               basename='payment')
-router.register(r'journals',              CreditorJournalViewSet,               basename='journal')
-router.register(r'ledger',               SupplierLedgerEntryViewSet,           basename='ledger')
-router.register(r'open_items',            CreditorOpenItemViewSet,              basename='open-item')
-router.register(r'open_item_allocations', OpenItemAllocationViewSet,            basename='open-item-allocation')
-router.register(r'open_item_audits',      OpenItemAuditViewSet,                 basename='open-item-audit')
-router.register(r'rfcs',                  RFCViewSet,                           basename='rfc')
-router.register(r'expense_monthly',       ExpenseCategoryMonthlyBalanceViewSet, basename='expense-monthly')
-router.register(r'expense_transactions',  ExpenseCategoryTransactionViewSet,    basename='expense-transaction')
-router.register(r'payment_orders',        SupplierPaymentOrderViewSet,          basename='payment-order')
-router.register(r'transaction_lines',     CreditorTransactionLineViewSet,       basename='transaction-line')
-router.register(r'outstanding-balances', OutstandingBalanceViewSet,             basename='outstanding-balance')
+router.register(r"creditors", CreditorViewSet, basename="creditor")
+router.register(r"grns", GoodsReceivedNoteViewSet, basename="grn")
+router.register(r"invoices", CreditorInvoiceViewSet, basename="invoice")
+router.register(r"credit_notes", CreditorCreditNoteViewSet, basename="credit-note")
+router.register(r"payments", CreditorPaymentViewSet, basename="payment")
+router.register(r"journals", CreditorJournalViewSet, basename="journal")
+router.register(r"ledger", SupplierLedgerEntryViewSet, basename="ledger")
+router.register(r"open_items", CreditorOpenItemViewSet, basename="open-item")
+router.register(
+    r"open_item_allocations", OpenItemAllocationViewSet, basename="open-item-allocation"
+)
+router.register(r"open_item_audits", OpenItemAuditViewSet, basename="open-item-audit")
+router.register(r"rfcs", RFCViewSet, basename="rfc")
+router.register(
+    r"expense_monthly", ExpenseCategoryMonthlyBalanceViewSet, basename="expense-monthly"
+)
+router.register(
+    r"expense_transactions",
+    ExpenseCategoryTransactionViewSet,
+    basename="expense-transaction",
+)
+router.register(
+    r"payment_orders", SupplierPaymentOrderViewSet, basename="payment-order"
+)
+router.register(
+    r"transaction_lines", CreditorTransactionLineViewSet, basename="transaction-line"
+)
+router.register(
+    r"outstanding-balances", OutstandingBalanceViewSet, basename="outstanding-balance"
+)
 
 # ============================================================================
 # NESTED ROUTERS
@@ -54,28 +73,34 @@ router.register(r'outstanding-balances', OutstandingBalanceViewSet,             
 #   /rfcs/{rfc_pk}/lines/
 # ============================================================================
 
-grn_router = nested_routers.NestedDefaultRouter(router, r'grns', lookup='grn')
-grn_router.register(r'lines', GRNLineItemViewSet, basename='grn-line')
+grn_router = nested_routers.NestedDefaultRouter(router, r"grns", lookup="grn")
+grn_router.register(r"lines", GRNLineItemViewSet, basename="grn-line")
 
-invoice_router = nested_routers.NestedDefaultRouter(router, r'invoices', lookup='invoice')
-invoice_router.register(r'lines', CreditorInvoiceLineItemViewSet, basename='invoice-line')
+invoice_router = nested_routers.NestedDefaultRouter(
+    router, r"invoices", lookup="invoice"
+)
+invoice_router.register(
+    r"lines", CreditorInvoiceLineItemViewSet, basename="invoice-line"
+)
 
-cn_router = nested_routers.NestedDefaultRouter(router, r'credit_notes', lookup='cn')
-cn_router.register(r'lines', CreditorCreditNoteLineItemViewSet, basename='credit-note-line')
+cn_router = nested_routers.NestedDefaultRouter(router, r"credit_notes", lookup="cn")
+cn_router.register(
+    r"lines", CreditorCreditNoteLineItemViewSet, basename="credit-note-line"
+)
 
-rfc_router = nested_routers.NestedDefaultRouter(router, r'rfcs', lookup='rfc')
-rfc_router.register(r'lines', RFCLineItemViewSet, basename='rfc-line')
+rfc_router = nested_routers.NestedDefaultRouter(router, r"rfcs", lookup="rfc")
+rfc_router.register(r"lines", RFCLineItemViewSet, basename="rfc-line")
 
 # ============================================================================
 # URL PATTERNS
 # ============================================================================
 
 urlpatterns = [
-    path('', include(router.urls)),
-    path('', include(grn_router.urls)),
-    path('', include(invoice_router.urls)),
-    path('', include(cn_router.urls)),
-    path('', include(rfc_router.urls)),
+    path("", include(router.urls)),
+    path("", include(grn_router.urls)),
+    path("", include(invoice_router.urls)),
+    path("", include(cn_router.urls)),
+    path("", include(rfc_router.urls)),
 ]
 
 

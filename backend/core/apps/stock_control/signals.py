@@ -1,16 +1,22 @@
+import datetime
+from decimal import Decimal
+
+from django.core.exceptions import ValidationError
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
-from django.core.exceptions import ValidationError
-from decimal import Decimal
-import datetime
+
 from .models import (
-    StockItem, StockTransaction, PackBundleIngredient,
-    SpecialDeal, FuturePricing
+    FuturePricing,
+    PackBundleIngredient,
+    SpecialDeal,
+    StockItem,
+    StockTransaction,
 )
 
-
-MARKUP_FIELD_LIMIT = Decimal('9999.99')  # markup_1/2/3 are DecimalField(max_digits=6, decimal_places=2)
+MARKUP_FIELD_LIMIT = Decimal(
+    "9999.99"
+)  # markup_1/2/3 are DecimalField(max_digits=6, decimal_places=2)
 
 
 @receiver(pre_save, sender=StockItem)
@@ -24,11 +30,13 @@ def calculate_stock_item_markups(sender, instance, **kwargs):
     """
     if instance.cost_price > 0:
         for level in [1, 2, 3]:
-            selling_price = getattr(instance, f'selling_price_{level}')
+            selling_price = getattr(instance, f"selling_price_{level}")
             if selling_price > 0:
-                markup = ((selling_price - instance.cost_price) / instance.cost_price) * 100
+                markup = (
+                    (selling_price - instance.cost_price) / instance.cost_price
+                ) * 100
                 markup = max(-MARKUP_FIELD_LIMIT, min(MARKUP_FIELD_LIMIT, markup))
-                setattr(instance, f'markup_{level}', markup)
+                setattr(instance, f"markup_{level}", markup)
 
 
 @receiver(pre_save, sender=StockItem)
@@ -60,7 +68,7 @@ def _as_date(value):
     if isinstance(value, datetime.datetime):
         return value.date()
     if isinstance(value, datetime.date):
-        return value          # already a date — do NOT call .date() again
+        return value  # already a date — do NOT call .date() again
     if isinstance(value, str):
         return datetime.date.fromisoformat(value)
     return value
@@ -78,27 +86,27 @@ def update_stock_item_after_transaction(sender, instance, created, **kwargs):
     transaction_date = _as_date(instance.transaction_date)
 
     # ── Incoming / Manufacture ────────────────────────────────────────────────
-    if instance.transaction_type in ['INCOMING', 'MANUFACTURE']:
+    if instance.transaction_type in ["INCOMING", "MANUFACTURE"]:
         current = _as_date(stock_item.date_last_purchased)
         if transaction_date and (current is None or transaction_date > current):
             stock_item.date_last_purchased = transaction_date
-            update_fields.append('date_last_purchased')
+            update_fields.append("date_last_purchased")
 
         if instance.supplier:
             stock_item.last_supplier = instance.supplier
-            update_fields.append('last_supplier')
+            update_fields.append("last_supplier")
 
     # ── Sales ─────────────────────────────────────────────────────────────────
-    if instance.transaction_type in ['SALE', 'SALE_RETURN']:
+    if instance.transaction_type in ["SALE", "SALE_RETURN"]:
         current = _as_date(stock_item.date_last_sold)
         if transaction_date and (current is None or transaction_date > current):
             stock_item.date_last_sold = transaction_date
-            update_fields.append('date_last_sold')
+            update_fields.append("date_last_sold")
 
     # ── Average cost ──────────────────────────────────────────────────────────
-    if instance.transaction_type == 'INCOMING' and instance.quantity_in > 0:
+    if instance.transaction_type == "INCOMING" and instance.quantity_in > 0:
         stock_item.update_average_cost(instance.quantity_in, instance.unit_cost)
-        update_fields.append('average_cost')
+        update_fields.append("average_cost")
 
     if update_fields:
         stock_item.save(update_fields=update_fields)

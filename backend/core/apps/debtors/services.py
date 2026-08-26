@@ -2,94 +2,114 @@
 Debtors services.
 Business logic for debtor transactions and operations.
 """
-from django.db import transaction
-from django.db.models import Sum, F, Q
+
+from datetime import date
 from decimal import Decimal
-from datetime import date, timedelta
-from .models import Debtor, DebtorTransaction, Debtopen, Dpdc, DebtorAudit, Darea
+
+from django.db import transaction
+from django.db.models import F, Q, Sum
+
+from .models import Darea, Debtopen, Debtor, DebtorAudit, DebtorTransaction, Dpdc
 
 
 class DebtorService:
     """Service class for debtor operations."""
-    
+
     @staticmethod
     def calculate_age_analysis(debtor):
         """Calculate age analysis for a debtor."""
         return {
-            'dno': debtor.dno,
-            'dname': debtor.dname,
-            'dcontact': debtor.dcontact,
-            'dtel': debtor.dtel,
-            'dclimit': debtor.dclimit,
-            'current': debtor.dcrnt,
-            'days_30': debtor.d30,
-            'days_60': debtor.d60,
-            'days_90': debtor.d90,
-            'days_120': debtor.d120,
-            'days_150': debtor.d150,
-            'days_180': debtor.d180,
-            'total_balance': debtor.total_balance,
-            'overdue_balance': debtor.overdue_balance,
-            'ddatlpd': debtor.ddatlpd,
-            'damtlpd': debtor.damtlpd,
+            "dno": debtor.dno,
+            "dname": debtor.dname,
+            "dcontact": debtor.dcontact,
+            "dtel": debtor.dtel,
+            "dclimit": debtor.dclimit,
+            "current": debtor.dcrnt,
+            "days_30": debtor.d30,
+            "days_60": debtor.d60,
+            "days_90": debtor.d90,
+            "days_120": debtor.d120,
+            "days_150": debtor.d150,
+            "days_180": debtor.d180,
+            "total_balance": debtor.total_balance,
+            "overdue_balance": debtor.overdue_balance,
+            "ddatlpd": debtor.ddatlpd,
+            "damtlpd": debtor.damtlpd,
         }
-    
+
     @staticmethod
     def get_debtors_summary():
         """Get summary statistics for all debtors."""
         debtors = Debtor.objects.all()
-        
+
         total_debtors = debtors.count()
-        blocked_debtors = debtors.filter(blockflag='Y').count()
+        blocked_debtors = debtors.filter(blockflag="Y").count()
         active_debtors = total_debtors - blocked_debtors
-        
+
         aggregates = debtors.aggregate(
-            total_balance=Sum(F('dcrnt') + F('d30') + 
-                            F('d60') + F('d90') +
-                            F('d120') + F('d150') +
-                            F('d180')),
-            current_balance=Sum('dcrnt'),
-            overdue_30=Sum('d30'),
-            overdue_60=Sum('d60'),
-            overdue_90=Sum('d90'),
-            overdue_120=Sum(F('d120') + F('d150') + 
-                          F('d180')),
-            total_credit_limit=Sum('dclimit'),
+            total_balance=Sum(
+                F("dcrnt")
+                + F("d30")
+                + F("d60")
+                + F("d90")
+                + F("d120")
+                + F("d150")
+                + F("d180")
+            ),
+            current_balance=Sum("dcrnt"),
+            overdue_30=Sum("d30"),
+            overdue_60=Sum("d60"),
+            overdue_90=Sum("d90"),
+            overdue_120=Sum(F("d120") + F("d150") + F("d180")),
+            total_credit_limit=Sum("dclimit"),
         )
-        
-        total_balance = aggregates['total_balance'] or Decimal('0.00')
-        total_credit_limit = aggregates['total_credit_limit'] or Decimal('0.00')
-        
+
+        total_balance = aggregates["total_balance"] or Decimal("0.00")
+        total_credit_limit = aggregates["total_credit_limit"] or Decimal("0.00")
+
         # Calculate utilization percentage
-        utilization_percentage = float(total_credit_limit) / 100 if total_credit_limit > 0 else 0
-        
+        utilization_percentage = (
+            float(total_credit_limit) / 100 if total_credit_limit > 0 else 0
+        )
+
         return {
-            'total_debtors': total_debtors,
-            'active_debtors': active_debtors,
-            'blocked_debtors': blocked_debtors,
-            'total_balance': total_balance,
-            'current_balance': aggregates['current_balance'] or Decimal('0.00'),
-            'overdue_30': aggregates['overdue_30'] or Decimal('0.00'),
-            'overdue_60': aggregates['overdue_60'] or Decimal('0.00'),
-            'overdue_90': aggregates['overdue_90'] or Decimal('0.00'),
-            'overdue_120_plus': aggregates['overdue_120'] or Decimal('0.00'),
-            'total_credit_limit': total_credit_limit,
-            'utilization_percentage': utilization_percentage,
-            'total_receivable': total_balance,
-            'aging_summary': {
-                'current': aggregates['current_balance'] or Decimal('0.00'),
-                'days_30': aggregates['overdue_30'] or Decimal('0.00'),
-                'days_60': aggregates['overdue_60'] or Decimal('0.00'),
-                'days_90': aggregates['overdue_90'] or Decimal('0.00'),
-                'days_120_plus': aggregates['overdue_120'] or Decimal('0.00'),
+            "total_debtors": total_debtors,
+            "active_debtors": active_debtors,
+            "blocked_debtors": blocked_debtors,
+            "total_balance": total_balance,
+            "current_balance": aggregates["current_balance"] or Decimal("0.00"),
+            "overdue_30": aggregates["overdue_30"] or Decimal("0.00"),
+            "overdue_60": aggregates["overdue_60"] or Decimal("0.00"),
+            "overdue_90": aggregates["overdue_90"] or Decimal("0.00"),
+            "overdue_120_plus": aggregates["overdue_120"] or Decimal("0.00"),
+            "total_credit_limit": total_credit_limit,
+            "utilization_percentage": utilization_percentage,
+            "total_receivable": total_balance,
+            "aging_summary": {
+                "current": aggregates["current_balance"] or Decimal("0.00"),
+                "days_30": aggregates["overdue_30"] or Decimal("0.00"),
+                "days_60": aggregates["overdue_60"] or Decimal("0.00"),
+                "days_90": aggregates["overdue_90"] or Decimal("0.00"),
+                "days_120_plus": aggregates["overdue_120"] or Decimal("0.00"),
             },
-            'critical_aging': aggregates['overdue_120'] or Decimal('0.00'),
+            "critical_aging": aggregates["overdue_120"] or Decimal("0.00"),
         }
-    
+
     @staticmethod
     @transaction.atomic
-    def post_debtran(debtor, dtype, dttot, dtsub=None, dtgst=None, ordno='',
-                     custref='', del1='', del2='', del3='', del4=''):
+    def post_debtran(
+        debtor,
+        dtype,
+        dttot,
+        dtsub=None,
+        dtgst=None,
+        ordno="",
+        custref="",
+        del1="",
+        del2="",
+        del3="",
+        del4="",
+    ):
         """
         Post a transaction to the debtor's account (DEBTRAN).
         Updates debtor balance and creates transaction record.
@@ -111,14 +131,22 @@ class DebtorService:
         if dtsub is None:
             dtsub = dttot
         if dtgst is None:
-            dtgst = Decimal('0.00')
+            dtgst = Decimal("0.00")
 
         # Lock the debtor row to prevent concurrent transaction number generation
         debtor = Debtor.objects.select_for_update().get(pk=debtor.pk)
 
         # Create sequential transaction number (within lock to prevent duplicates)
-        last_tran = DebtorTransaction.objects.filter(debtor=debtor).order_by('-transaction_number').first()
-        new_dtrano = str(int(last_tran.transaction_number) + 1).zfill(6) if last_tran else '000001'
+        last_tran = (
+            DebtorTransaction.objects.filter(debtor=debtor)
+            .order_by("-transaction_number")
+            .first()
+        )
+        new_dtrano = (
+            str(int(last_tran.transaction_number) + 1).zfill(6)
+            if last_tran
+            else "000001"
+        )
 
         # Create debtor transaction (DEBTRAN)
         trans = DebtorTransaction.objects.create(
@@ -129,8 +157,8 @@ class DebtorService:
             subtotal=dtsub,
             vat_amount=dtgst,
             total_amount=dttot,
-            vat_status='S',  # Default to Taxable
-            source_type='MANUAL',
+            vat_status="S",  # Default to Taxable
+            source_type="MANUAL",
             order_number=ordno,
             customer_reference=custref,
             description_line1=del1,
@@ -140,19 +168,19 @@ class DebtorService:
         )
 
         # Determine if transaction increases or decreases balance
-        if dtype in ['IN', 'DM']:  # Invoice, Debit Memo
+        if dtype in ["IN", "DM"]:  # Invoice, Debit Memo
             balance_change = dttot
-        elif dtype in ['CN', 'CM']:  # Credit Note, Credit Memo
+        elif dtype in ["CN", "CM"]:  # Credit Note, Credit Memo
             balance_change = -dttot
-        elif dtype in ['RCP', 'JC']:  # Receipt, Journal Credit
+        elif dtype in ["RCP", "JC"]:  # Receipt, Journal Credit
             balance_change = -dttot
         else:
             balance_change = dttot
 
         # Update debtor balance (goes to current)
         debtor.dcrnt += balance_change
-        debtor.dsalesm += dttot if dtype == 'IN' else Decimal('0.00')
-        debtor.dsalesy += dttot if dtype == 'IN' else Decimal('0.00')
+        debtor.dsalesm += dttot if dtype == "IN" else Decimal("0.00")
+        debtor.dsalesy += dttot if dtype == "IN" else Decimal("0.00")
         debtor.save()
 
         # Create open item record (DEBTOPEN) for Open Item accounts only.
@@ -166,16 +194,16 @@ class DebtorService:
         # the ones this mechanism exists for — never got any open-item
         # records at all, breaking enquiry screens and receipt allocation
         # for that account type entirely.
-        if debtor.acctype == 'O':
+        if debtor.acctype == "O":
             Debtopen.objects.create(
                 dno=debtor,
                 dtrano=new_dtrano,
                 type=dtype,
                 date=date.today(),
                 total=abs(dttot),
-                balancedue=abs(dttot) if balance_change > 0 else Decimal('0.00'),
-                ageflag='0',  # Current
-                posted='Y',
+                balancedue=abs(dttot) if balance_change > 0 else Decimal("0.00"),
+                ageflag="0",  # Current
+                posted="Y",
             )
 
         # Create audit record (DEBTORAUD)
@@ -190,10 +218,12 @@ class DebtorService:
         )
 
         return trans
-    
+
     @staticmethod
     @transaction.atomic
-    def post_receipt(debtor, amount, amount_due=None, allocations=None, ordno='', custref=''):
+    def post_receipt(
+        debtor, amount, amount_due=None, allocations=None, ordno="", custref=""
+    ):
         """
         Post a receipt (payment) to the debtor's account.
 
@@ -229,7 +259,7 @@ class DebtorService:
         if amount <= 0:
             raise ValueError("Receipt amount must be positive")
 
-        settlement_discount = Decimal('0.00')
+        settlement_discount = Decimal("0.00")
         post_total = amount
 
         if amount_due is not None:
@@ -245,34 +275,34 @@ class DebtorService:
         # money from the debtor's perspective rather than a partial payment.
         trans = DebtorService.post_debtran(
             debtor=debtor,
-            dtype='RCP',
+            dtype="RCP",
             dttot=post_total,
             dtsub=post_total,
-            dtgst=Decimal('0.00'),
+            dtgst=Decimal("0.00"),
             ordno=ordno,
             custref=custref,
         )
         if settlement_discount:
             trans.settlement_discount = settlement_discount
-            trans.save(update_fields=['settlement_discount'])
+            trans.save(update_fields=["settlement_discount"])
 
         # Update payment tracking
         debtor.ddatlpd = date.today()
         debtor.damtlpd = amount
         debtor.save()
 
-        if debtor.acctype == 'O' and allocations:
+        if debtor.acctype == "O" and allocations:
             for alloc in allocations:
                 open_item = Debtopen.objects.select_for_update().get(
-                    pk=alloc['open_item_id'], dno=debtor
+                    pk=alloc["open_item_id"], dno=debtor
                 )
                 # 'amount' matches DebteopenViewSet.allocate_receipt's
                 # pre-existing allocations-list contract — kept the same key
                 # name here since both routes feed apply_receipt_allocation.
                 DebtorService.apply_receipt_allocation(
                     open_item=open_item,
-                    amount_paid=alloc['amount'],
-                    settlement_discount=alloc.get('settlement_discount', 0),
+                    amount_paid=alloc["amount"],
+                    settlement_discount=alloc.get("settlement_discount", 0),
                     receipt_transaction=trans,
                 )
 
@@ -280,7 +310,9 @@ class DebtorService:
 
     @staticmethod
     @transaction.atomic
-    def apply_receipt_allocation(open_item, amount_paid, settlement_discount, receipt_transaction):
+    def apply_receipt_allocation(
+        open_item, amount_paid, settlement_discount, receipt_transaction
+    ):
         """
         Allocate part of a receipt against one open item (DEBTOPEN row).
 
@@ -327,23 +359,23 @@ class DebtorService:
         )
 
         open_item.balancedue -= total_applied
-        open_item.save(update_fields=['balancedue'])
+        open_item.save(update_fields=["balancedue"])
 
         DebtorAudit.objects.create(
             dno=open_item.dno,
             dtrano=open_item.dtrano,
             type=open_item.type,
-            thistype='AL',
+            thistype="AL",
             thistran=receipt_transaction.transaction_number,
             date=date.today(),
             amount=amount_paid,
         )
 
         return allocation
-    
+
     @staticmethod
     @transaction.atomic
-    def post_journal(debtor, journal_type, amount, custref=''):
+    def post_journal(debtor, journal_type, amount, custref=""):
         """
         Post a debit or credit journal adjustment to the debtor's account.
 
@@ -354,7 +386,7 @@ class DebtorService:
             amount: Journal amount (positive)
             custref: Customer reference / reason for the journal
         """
-        if journal_type not in ('JD', 'JC'):
+        if journal_type not in ("JD", "JC"):
             raise ValueError("journal_type must be 'JD' or 'JC'")
 
         if debtor.is_blocked:
@@ -375,12 +407,14 @@ class DebtorService:
             dtype=journal_type,
             dttot=amount,
             dtsub=amount,
-            dtgst=Decimal('0.00'),
+            dtgst=Decimal("0.00"),
             custref=custref,
         )
 
     @staticmethod
-    def calculate_interest(debtor, rate=0.01, start_period=2, charge_credit_balances=False):
+    def calculate_interest(
+        debtor, rate=0.01, start_period=2, charge_credit_balances=False
+    ):
         """
         Calculate interest on overdue balances.
 
@@ -398,8 +432,8 @@ class DebtorService:
         Returns:
             Decimal: Interest amount
         """
-        if debtor.dintflag != 'Y':
-            return Decimal('0.00')
+        if debtor.dintflag != "Y":
+            return Decimal("0.00")
 
         buckets = []
         if start_period <= 2:
@@ -416,13 +450,13 @@ class DebtorService:
             buckets.append(debtor.d180)
 
         if charge_credit_balances:
-            interest_base = sum(buckets, Decimal('0.00'))
+            interest_base = sum(buckets, Decimal("0.00"))
         else:
-            interest_base = sum((b for b in buckets if b > 0), Decimal('0.00'))
+            interest_base = sum((b for b in buckets if b > 0), Decimal("0.00"))
 
         interest = interest_base * Decimal(str(rate))
-        return interest.quantize(Decimal('0.01'))
-    
+        return interest.quantize(Decimal("0.01"))
+
     @staticmethod
     @transaction.atomic
     def charge_interest_batch(rate=0.01, start_period=2, charge_credit_balances=False):
@@ -432,45 +466,45 @@ class DebtorService:
         Returns:
             dict: Summary of interest charged
         """
-        debtors = Debtor.objects.filter(dintflag='Y')
+        debtors = Debtor.objects.filter(dintflag="Y")
 
-        total_interest = Decimal('0.00')
+        total_interest = Decimal("0.00")
         debtors_charged = 0
 
         for debtor in debtors:
             interest = DebtorService.calculate_interest(
                 debtor, rate, start_period, charge_credit_balances
             )
-            
+
             if interest > 0:
                 # Create interest transaction (INT type)
-                trans = DebtorService.post_debtran(
+                DebtorService.post_debtran(
                     debtor=debtor,
-                    dtype='INT',
+                    dtype="INT",
                     dttot=interest,
                     dtsub=interest,
-                    dtgst=Decimal('0.00'),
-                    custref='Monthly Interest Charge',
+                    dtgst=Decimal("0.00"),
+                    custref="Monthly Interest Charge",
                 )
-                
+
                 total_interest += interest
                 debtors_charged += 1
-        
+
         return {
-            'debtors_charged': debtors_charged,
-            'total_interest': total_interest,
+            "debtors_charged": debtors_charged,
+            "total_interest": total_interest,
         }
-    
+
     @staticmethod
     def get_debtor_statement(debtor, start_date=None, end_date=None):
         """
         Generate debtor statement for a period.
-        
+
         Args:
             debtor: Debtor instance
             start_date: Start date (default: first day of current month)
             end_date: End date (default: today)
-        
+
         Returns:
             dict: Statement data
         """
@@ -478,42 +512,37 @@ class DebtorService:
             start_date = date.today().replace(day=1)
         if not end_date:
             end_date = date.today()
-        
+
         # Get transactions for period
         transactions = DebtorTransaction.objects.filter(
-            dno=debtor,
-            dtdate__gte=start_date,
-            dtdate__lte=end_date
-        ).order_by('dtdate')
-        
+            dno=debtor, dtdate__gte=start_date, dtdate__lte=end_date
+        ).order_by("dtdate")
+
         # Calculate opening balance (transactions before start_date)
         opening_transactions = DebtorTransaction.objects.filter(
-            dno=debtor,
-            dtdate__lt=start_date
-        ).aggregate(
-            total=Sum('dttot')
-        )
-        opening_balance = opening_transactions['total'] or Decimal('0.00')
-        
+            dno=debtor, dtdate__lt=start_date
+        ).aggregate(total=Sum("dttot"))
+        opening_balance = opening_transactions["total"] or Decimal("0.00")
+
         # Calculate closing balance
-        closing_balance = opening_balance + transactions.aggregate(
-            total=Sum('dttot')
-        )['total'] or Decimal('0.00')
-        
+        closing_balance = opening_balance + transactions.aggregate(total=Sum("dttot"))[
+            "total"
+        ] or Decimal("0.00")
+
         return {
-            'debtor': debtor,
-            'opening_balance': opening_balance,
-            'transactions': transactions,
-            'closing_balance': closing_balance,
-            'current_balance': debtor.dcrnt,
-            'balance_30_days': debtor.d30,
-            'balance_60_days': debtor.d60,
-            'balance_90_days': debtor.d90,
-            'balance_120_days': debtor.d120,
-            'balance_150_days': debtor.d150,
-            'balance_180_days': debtor.d180,
+            "debtor": debtor,
+            "opening_balance": opening_balance,
+            "transactions": transactions,
+            "closing_balance": closing_balance,
+            "current_balance": debtor.dcrnt,
+            "balance_30_days": debtor.d30,
+            "balance_60_days": debtor.d60,
+            "balance_90_days": debtor.d90,
+            "balance_120_days": debtor.d120,
+            "balance_150_days": debtor.d150,
+            "balance_180_days": debtor.d180,
         }
-    
+
     @staticmethod
     @transaction.atomic
     def age_balances():
@@ -523,7 +552,7 @@ class DebtorService:
         Shifts all aging buckets forward and resets current to zero.
         """
         debtors = Debtor.objects.all()
-        
+
         for debtor in debtors:
             # Shift balances forward (age by one period)
             debtor.d180 = debtor.d150
@@ -532,75 +561,60 @@ class DebtorService:
             debtor.d90 = debtor.d60
             debtor.d60 = debtor.d30
             debtor.d30 = debtor.dcrnt
-            debtor.dcrnt = Decimal('0.00')
-            
+            debtor.dcrnt = Decimal("0.00")
+
             # Reset MTD stats but keep YTD
-            debtor.dsalesm = Decimal('0.00')
-            debtor.dprofitm = Decimal('0.00')
-            
+            debtor.dsalesm = Decimal("0.00")
+            debtor.dprofitm = Decimal("0.00")
+
             debtor.save()
-        
+
         return debtors.count()
-    
+
     @staticmethod
     def check_credit_limit(debtor):
         """
         Check if debtor is over credit limit.
-        
+
         Returns:
             dict: Credit limit status
         """
         total_balance = debtor.total_balance
         credit_limit = debtor.dclimit
-        
+
         over_limit = total_balance > credit_limit
         available_credit = credit_limit - total_balance
-        
+
         return {
-            'dno': debtor.dno,
-            'dname': debtor.dname,
-            'dclimit': credit_limit,
-            'total_balance': total_balance,
-            'available_credit': available_credit,
-            'over_limit': over_limit,
-            'percentage_used': (total_balance / credit_limit * 100) if credit_limit > 0 else 0,
+            "dno": debtor.dno,
+            "dname": debtor.dname,
+            "dclimit": credit_limit,
+            "total_balance": total_balance,
+            "available_credit": available_credit,
+            "over_limit": over_limit,
+            "percentage_used": (
+                (total_balance / credit_limit * 100) if credit_limit > 0 else 0
+            ),
         }
-        
-        invoice.subtotal = subtotal
-        invoice.vat_amount = vat_amount
-        invoice.total_amount = subtotal + vat_amount
-        invoice.total_cost = total_cost
-        invoice.gross_profit = subtotal - total_cost
-        invoice.save()
-        
-        return invoice
-    
+
     @staticmethod
-    def get_top_customers(limit=10, period='month'):
+    def get_top_customers(limit=10, period="month"):
         """
         Get top customers by sales value.
-        
+
         Args:
             limit: Number of customers to return
             period: 'month', 'year', or 'all'
-        
+
         Returns:
             QuerySet: Top debtors
         """
-        today = date.today()
-        
-        if period == 'month':
-            # This month
-            start_date = today.replace(day=1)
-            field = 'sales_mtd'
-        elif period == 'year':
-            # This year
-            start_date = today.replace(month=1, day=1)
-            field = 'sales_ytd'
+        if period == "month":
+            field = "dsalesm"
+        elif period == "year":
+            field = "dsalesy"
         else:
             # All time - use YTD as proxy
-            field = 'sales_ytd'
-        
-        return Debtor.objects.filter(
-            is_active=True
-        ).order_by(f'-{field}')[:limit]
+            field = "dsalesy"
+
+        return Debtor.objects.filter(is_active=True).order_by(f"-{field}")[:limit]

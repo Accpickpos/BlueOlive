@@ -1,41 +1,50 @@
 # tenancy/utils.py
-from django.conf import settings
-from django.db import connections
-from django.core.management import call_command
-import psycopg2
-from psycopg2 import extensions
 import time
+
+import psycopg2
+from django.conf import settings
+from django.core.management import call_command
+from django.db import connections
+from psycopg2 import extensions
+
 
 def register_tenant_connection(tenant, shop=None):
     """
     Register tenant database connection using credentials from Django settings.
     This ensures all tenants use the same PostgreSQL credentials as the main database.
-    
+
     CRITICAL: We set search_path to the shop's schema at the connection level so that
     ALL queries (including migrations) default to the shop's schema, not public.
-    
+
     Args:
         tenant: The Tenant object to connect to
         shop: Optional Shop object. If provided, uses this shop's schema.
               If not provided, falls back to tenant.shops.first() for backward compatibility.
     """
     import logging
+
     logger = logging.getLogger(__name__)
-    
+
     # Use the tenant's base alias as fallback
     base_alias = tenant.db_alias
-    
+
     # Get the shop's schema name - use provided shop or fall back to first shop
     # This ensures proper multi-shop data isolation within a tenant
     if shop is None:
-        logger.debug(f"[register_tenant_connection] No shop provided, getting first shop for tenant {tenant.name}")
+        logger.debug(
+            f"[register_tenant_connection] No shop provided, getting first shop for tenant {tenant.name}"
+        )
         shop = tenant.shops.first()
-    
+
     if shop is None:
-        logger.warning(f"[register_tenant_connection] No shop found for tenant {tenant.name}!")
-    
-    shop_schema = shop.schema_name if shop else "public"  # Fallback to public if no shop
-    
+        logger.warning(
+            f"[register_tenant_connection] No shop found for tenant {tenant.name}!"
+        )
+
+    shop_schema = (
+        shop.schema_name if shop else "public"
+    )  # Fallback to public if no shop
+
     # CRITICAL FIX: Generate unique alias for each shop to force fresh connection
     # This prevents any connection caching between shop switches
     # Use shop-specific alias: tenant_2_greyling, tenant_2_main, etc.
@@ -43,20 +52,24 @@ def register_tenant_connection(tenant, shop=None):
         shop_alias = f"{base_alias}_{shop.name.lower().replace(' ', '_')}"
     else:
         shop_alias = base_alias
-    
-    logger.debug(f"[register_tenant_connection] Tenant: {tenant.name}, Shop: {shop.name if shop else None}, Schema: {shop_schema}, DB: {tenant.db_name}, Alias: {shop_alias}")
-    
+
+    logger.debug(
+        f"[register_tenant_connection] Tenant: {tenant.name}, Shop: {shop.name if shop else None}, Schema: {shop_schema}, DB: {tenant.db_name}, Alias: {shop_alias}"
+    )
+
     # Use credentials from settings, not from tenant object
-    
+
     # Use credentials from settings, not from tenant object
     # This allows old tenants with incorrect db_password to still work
-    default_db = settings.DATABASES['default']
-    
+    default_db = settings.DATABASES["default"]
+
     db_config = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": tenant.db_name,
-        "USER": default_db['USER'],  # Use settings USER, not tenant.db_user
-        "PASSWORD": default_db['PASSWORD'],  # Use settings PASSWORD, not tenant.db_password
+        "USER": default_db["USER"],  # Use settings USER, not tenant.db_user
+        "PASSWORD": default_db[
+            "PASSWORD"
+        ],  # Use settings PASSWORD, not tenant.db_password
         "HOST": tenant.db_host,
         "PORT": tenant.db_port,
         # FIX: Disable connection pooling to force fresh connection each time
@@ -66,7 +79,7 @@ def register_tenant_connection(tenant, shop=None):
         # resolve without qualification. public second for shared tables (shop_users,
         # auth_*, django_*). Both are always found — order determines priority only.
         "OPTIONS": {
-            'options': f'-c search_path="{shop_schema}",public -c statement_timeout=0'
+            "options": f'-c search_path="{shop_schema}",public -c statement_timeout=0'
         },
         "TIME_ZONE": settings.TIME_ZONE,
         "AUTOCOMMIT": True,
@@ -78,7 +91,7 @@ def register_tenant_connection(tenant, shop=None):
     # FIX: Use the shop-specific alias to prevent connection caching
     settings.DATABASES[shop_alias] = db_config
     connections.databases[shop_alias] = db_config
-    
+
     # BACKWARD COMPATIBILITY: Also create the old-style alias (without shop name)
     # This ensures existing code that uses tenant.db_alias still works
     settings.DATABASES[base_alias] = db_config
@@ -114,14 +127,17 @@ def register_tenant_connection(tenant, shop=None):
         if hasattr(connections._connections, alias):
             try:
                 connections[alias].close()
-            except Exception:
+            except Exception:  # nosec - best-effort connection cleanup
                 pass
             try:
                 del connections[alias]
-            except Exception:
+            except Exception:  # nosec - best-effort connection cleanup
                 pass
 
-    logger.debug(f"[register_tenant_connection] Connection registered: alias={shop_alias}, db={tenant.db_name}, search_path=public,{shop_schema}")
+    logger.debug(
+        f"[register_tenant_connection] Connection registered: alias={shop_alias}, db={tenant.db_name}, search_path=public,{shop_schema}"
+    )
+
 
 def create_tenant_database_postgres(tenant, superuser_conn_info):
     """
@@ -141,7 +157,7 @@ def create_tenant_database_postgres(tenant, superuser_conn_info):
         conn.set_isolation_level(extensions.ISOLATION_LEVEL_AUTOCOMMIT)
         cur = conn.cursor()
         # Create DB
-        cur.execute(f"SELECT 1 FROM pg_database WHERE datname = %s", (tenant.db_name,))
+        cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (tenant.db_name,))
         if cur.fetchone() is None:
             cur.execute(f'CREATE DATABASE "{tenant.db_name}"')
         # Optionally create user and grant privileges
@@ -152,6 +168,7 @@ def create_tenant_database_postgres(tenant, superuser_conn_info):
     # small sleep or verify connectable
     time.sleep(0.5)
 
+
 def provision_tenant(tenant, superuser_conn_info):
     """
     1) Create database in Postgres
@@ -159,18 +176,18 @@ def provision_tenant(tenant, superuser_conn_info):
     3) Migrate shop_users to public schema
     """
     from django.conf import settings
-    from django.core.management import call_command
-    from .tenant_context import set_current_tenant, clear_current_tenant
+
+    from .tenant_context import clear_current_tenant, set_current_tenant
 
     create_tenant_database_postgres(tenant, superuser_conn_info)
     register_tenant_connection(tenant)
 
     # Migrate shop_users to public schema
     alias = tenant.db_alias
-    original_options = settings.DATABASES[alias].get('OPTIONS', {})
-    settings.DATABASES[alias]['OPTIONS'] = {
+    original_options = settings.DATABASES[alias].get("OPTIONS", {})
+    settings.DATABASES[alias]["OPTIONS"] = {
         **original_options,
-        'options': '-c search_path=public'
+        "options": "-c search_path=public",
     }
     connections.databases[alias] = settings.DATABASES[alias]
 
@@ -181,5 +198,5 @@ def provision_tenant(tenant, superuser_conn_info):
         finally:
             clear_current_tenant()
     finally:
-        settings.DATABASES[alias]['OPTIONS'] = original_options
+        settings.DATABASES[alias]["OPTIONS"] = original_options
         connections.databases[alias] = settings.DATABASES[alias]

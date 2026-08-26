@@ -3,14 +3,14 @@ Regression tests for the legacy CSV import pipeline (import_views.py).
 
 Run with: python manage.py test apps.saas_admin
 """
-import psycopg2
-from unittest.mock import MagicMock, patch
-from types import SimpleNamespace
 
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+import psycopg2
+from apps.saas_admin.import_views import _import_department_record, _uoc
 from django.conf import settings
 from django.test import SimpleTestCase
-
-from apps.saas_admin.import_views import _import_department_record, _uoc
 
 
 class ImportDepartmentRecordTestCase(SimpleTestCase):
@@ -25,29 +25,37 @@ class ImportDepartmentRecordTestCase(SimpleTestCase):
     by UocNotNullForeignKeyTestCase below.)
     """
 
-    @patch('apps.saas_admin.import_views._uoc')
-    @patch('apps.saas_admin.import_views.SalesDepartment')
+    @patch("apps.saas_admin.import_views._uoc")
+    @patch("apps.saas_admin.import_views.SalesDepartment")
     def test_department_number_zero_is_not_skipped(self, mock_dept_model, mock_uoc):
         mock_dept_model.objects.using.return_value = MagicMock()
-        mock_uoc.return_value = 'created'
+        mock_uoc.return_value = "created"
 
         result = _import_department_record(
-            'default', {'number': 0}, 'create_or_update', schema_name='irrelevant',
+            "default",
+            {"number": 0},
+            "create_or_update",
+            schema_name="irrelevant",
         )
 
         mock_uoc.assert_called_once()
         called_lookup = mock_uoc.call_args[0][1]
-        self.assertEqual(called_lookup, {'number': 0})
-        self.assertEqual(result, 'created')
+        self.assertEqual(called_lookup, {"number": 0})
+        self.assertEqual(result, "created")
 
-    @patch('apps.saas_admin.import_views._uoc')
-    @patch('apps.saas_admin.import_views.SalesDepartment')
-    def test_missing_department_number_is_still_skipped(self, mock_dept_model, mock_uoc):
+    @patch("apps.saas_admin.import_views._uoc")
+    @patch("apps.saas_admin.import_views.SalesDepartment")
+    def test_missing_department_number_is_still_skipped(
+        self, mock_dept_model, mock_uoc
+    ):
         result = _import_department_record(
-            'default', {'number': None}, 'create_or_update', schema_name='irrelevant',
+            "default",
+            {"number": None},
+            "create_or_update",
+            schema_name="irrelevant",
         )
         mock_uoc.assert_not_called()
-        self.assertEqual(result, 'skipped')
+        self.assertEqual(result, "skipped")
 
 
 class UocNotNullForeignKeyTestCase(SimpleTestCase):
@@ -66,14 +74,17 @@ class UocNotNullForeignKeyTestCase(SimpleTestCase):
     own connection see the same committed state.
     """
 
-    SCHEMA = 'test_uoc_fk_schema'
+    SCHEMA = "test_uoc_fk_schema"
 
     @classmethod
     def _connect(cls):
-        db = settings.DATABASES['default']
+        db = settings.DATABASES["default"]
         conn = psycopg2.connect(
-            dbname=db['NAME'], user=db['USER'], password=db['PASSWORD'],
-            host=db['HOST'], port=int(db['PORT']),
+            dbname=db["NAME"],
+            user=db["USER"],
+            password=db["PASSWORD"],
+            host=db["HOST"],
+            port=int(db["PORT"]),
         )
         conn.autocommit = True
         return conn
@@ -84,15 +95,15 @@ class UocNotNullForeignKeyTestCase(SimpleTestCase):
         conn = cls._connect()
         try:
             with conn.cursor() as cur:
-                cur.execute(f'DROP SCHEMA IF EXISTS {cls.SCHEMA} CASCADE')
-                cur.execute(f'CREATE SCHEMA {cls.SCHEMA}')
-                cur.execute(f'''
+                cur.execute(f"DROP SCHEMA IF EXISTS {cls.SCHEMA} CASCADE")
+                cur.execute(f"CREATE SCHEMA {cls.SCHEMA}")
+                cur.execute(f"""
                     CREATE TABLE {cls.SCHEMA}.parent_dept (
                         id SERIAL PRIMARY KEY,
                         name VARCHAR(50) NOT NULL
                     )
-                ''')
-                cur.execute(f'''
+                """)
+                cur.execute(f"""
                     CREATE TABLE {cls.SCHEMA}.child_item (
                         id SERIAL PRIMARY KEY,
                         stock_code VARCHAR(20) NOT NULL,
@@ -101,7 +112,7 @@ class UocNotNullForeignKeyTestCase(SimpleTestCase):
                         created_at TIMESTAMP,
                         updated_at TIMESTAMP
                     )
-                ''')
+                """)
         finally:
             conn.close()
 
@@ -110,7 +121,7 @@ class UocNotNullForeignKeyTestCase(SimpleTestCase):
         conn = cls._connect()
         try:
             with conn.cursor() as cur:
-                cur.execute(f'DROP SCHEMA IF EXISTS {cls.SCHEMA} CASCADE')
+                cur.execute(f"DROP SCHEMA IF EXISTS {cls.SCHEMA} CASCADE")
         finally:
             conn.close()
         super().tearDownClass()
@@ -120,14 +131,14 @@ class UocNotNullForeignKeyTestCase(SimpleTestCase):
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    f'TRUNCATE {self.SCHEMA}.child_item, {self.SCHEMA}.parent_dept RESTART IDENTITY CASCADE'
+                    f"TRUNCATE {self.SCHEMA}.child_item, {self.SCHEMA}.parent_dept RESTART IDENTITY CASCADE"
                 )
         finally:
             conn.close()
 
     def _manager(self, table_name):
         return SimpleNamespace(
-            db='default',
+            db="default",
             model=SimpleNamespace(_meta=SimpleNamespace(db_table=table_name)),
         )
 
@@ -136,44 +147,46 @@ class UocNotNullForeignKeyTestCase(SimpleTestCase):
         # surfaces as psycopg2's own exception type, not Django's IntegrityError.
         with self.assertRaises(psycopg2.errors.NotNullViolation) as ctx:
             _uoc(
-                self._manager('child_item'),
-                {'stock_code': 'SC001'},
+                self._manager("child_item"),
+                {"stock_code": "SC001"},
                 {},  # department_id deliberately omitted - unresolved FK
-                'create_or_update',
+                "create_or_update",
                 schema_name=self.SCHEMA,
             )
 
         # Must fail as a NOT NULL violation naming department_id - NOT a
         # ForeignKeyViolation from a fabricated department_id=0.
         message = str(ctx.exception).lower()
-        self.assertIn('department_id', message)
-        self.assertIn('null', message)
+        self.assertIn("department_id", message)
+        self.assertIn("null", message)
 
     def test_resolved_fk_still_inserts_correctly(self):
         conn = self._connect()
         try:
             with conn.cursor() as cur:
+                # self.SCHEMA is the hardcoded test-class constant above.
                 cur.execute(
-                    f"INSERT INTO {self.SCHEMA}.parent_dept (name) VALUES ('Zero Dept') RETURNING id"
+                    f"INSERT INTO {self.SCHEMA}.parent_dept (name) VALUES ('Zero Dept') RETURNING id"  # nosec B608
                 )
                 dept_id = cur.fetchone()[0]
         finally:
             conn.close()
 
         result = _uoc(
-            self._manager('child_item'),
-            {'stock_code': 'SC002'},
-            {'department_id': dept_id},
-            'create_or_update',
+            self._manager("child_item"),
+            {"stock_code": "SC002"},
+            {"department_id": dept_id},
+            "create_or_update",
             schema_name=self.SCHEMA,
         )
-        self.assertEqual(result, 'created')
+        self.assertEqual(result, "created")
 
         conn = self._connect()
         try:
             with conn.cursor() as cur:
+                # self.SCHEMA is the hardcoded test-class constant above.
                 cur.execute(
-                    f"SELECT department_id FROM {self.SCHEMA}.child_item WHERE stock_code = 'SC002'"
+                    f"SELECT department_id FROM {self.SCHEMA}.child_item WHERE stock_code = 'SC002'"  # nosec B608
                 )
                 row = cur.fetchone()
         finally:

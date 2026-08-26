@@ -11,4 +11,5 @@ Usage:
     from apps.common.serializers import AuditFieldsMixin
     from apps.common.services import BaseService
 """
-default_app_config = 'apps.common.apps.CommonConfig'
+
+default_app_config = "apps.common.apps.CommonConfig"

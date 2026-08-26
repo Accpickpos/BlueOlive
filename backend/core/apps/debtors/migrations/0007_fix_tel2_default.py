@@ -1,8 +1,15 @@
 """
-Add DEFAULT to tel2 column for all shop schemas.
+Add the tel2 column for all shop schemas.
 This ensures new shops work correctly and fixes existing schemas.
+
+NOTE: This used to run ALTER COLUMN statements against tel2 before that
+column existed (it was only added in the migration that used to be
+0008_debtor_tel2) - always failing on a fresh apply with "column tel2
+does not exist". The AddField was moved here (ahead of the ALTER COLUMN
+statements, which now live in 0008) so the column exists before it's
+altered.
 """
-from django.db import migrations
+from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
@@ -12,17 +19,9 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Drop NOT NULL, set DEFAULT, then re-add NOT NULL
-        migrations.RunSQL(
-            sql="ALTER TABLE dmast ALTER COLUMN tel2 DROP NOT NULL;",
-            reverse_sql="ALTER TABLE dmast ALTER COLUMN tel2 SET NOT NULL;"
-        ),
-        migrations.RunSQL(
-            sql="ALTER TABLE dmast ALTER COLUMN tel2 SET DEFAULT '';",
-            reverse_sql="ALTER TABLE dmast ALTER COLUMN tel2 DROP DEFAULT;"
-        ),
-        migrations.RunSQL(
-            sql="ALTER TABLE dmast ALTER COLUMN tel2 SET NOT NULL;",
-            reverse_sql="ALTER TABLE dmast ALTER COLUMN tel2 DROP NOT NULL;"
+        migrations.AddField(
+            model_name='debtor',
+            name='tel2',
+            field=models.CharField(blank=True, db_column='tel2', default='', help_text='Legacy duplicate of dtel2 (TEL2)', max_length=20),
         ),
     ]

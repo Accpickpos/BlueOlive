@@ -2,6 +2,6 @@ from django.apps import AppConfig
 
 
 class DebtorsConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'apps.debtors'
-    label = 'debtors'
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "apps.debtors"
+    label = "debtors"

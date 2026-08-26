@@ -6,18 +6,22 @@ Covers the 4 failure-mode gaps flagged by /plan-eng-review's Test Review
 the happy paths for all 4 reconciliation states and the GL-posting-failure
 full-rollback behavior from /plan-eng-review's Test Review Issue 1.
 """
+
 from decimal import Decimal
 
-from django.test import TransactionTestCase
-from django.contrib.auth.models import Group
-
-from shop_users.models import ShopUser
 from apps.debtors.models import Debtor
+from apps.general_ledger.models import GLMast, GLParam, GLTran
 from apps.settings.models import SalesDepartment
 from apps.stock_control.models import StockItem
-from apps.general_ledger.models import GLMast, GLParam, GLTran
+from django.contrib.auth.models import Group
+from django.test import TransactionTestCase
+from shop_users.models import ShopUser
 
-from .exceptions import RentalLedgerException, RentalStateException, RentalStockException
+from .exceptions import (
+    RentalLedgerException,
+    RentalStateException,
+    RentalStockException,
+)
 from .models import RentalSettings, RentalTransaction
 from .services import RentalService
 
@@ -30,36 +34,66 @@ class RentalServiceTestCase(TransactionTestCase):
     """
 
     def setUp(self):
-        self.user = ShopUser.objects.create_user(username='cashier1', password='testpass123')
-        Group.objects.get_or_create(name='Cashier')[0].user_set.add(self.user)
+        self.user = ShopUser.objects.create_user(
+            username="cashier1",
+            password="testpass123",  # nosec B105 B106 - test fixture password
+        )
+        Group.objects.get_or_create(name="Cashier")[0].user_set.add(self.user)
 
-        self.accountant = ShopUser.objects.create_user(username='accountant1', password='testpass123')
-        Group.objects.get_or_create(name='Accountant')[0].user_set.add(self.accountant)
+        self.accountant = ShopUser.objects.create_user(
+            username="accountant1",
+            password="testpass123",  # nosec B105 B106 - test fixture password
+        )
+        Group.objects.get_or_create(name="Accountant")[0].user_set.add(self.accountant)
 
-        self.debtor = Debtor.objects.create(dno=1, dname='Test Customer')
+        self.debtor = Debtor.objects.create(dno=1, dname="Test Customer")
 
-        department = SalesDepartment.objects.create(number=1, name='LPG Gas')
+        department = SalesDepartment.objects.create(number=1, name="LPG Gas")
         self.stock_item = StockItem.objects.create(
-            stock_code='CYL9KG', description='9kg LPG Cylinder', department=department,
-            quantity_on_hand=Decimal('20'),
+            stock_code="CYL9KG",
+            description="9kg LPG Cylinder",
+            department=department,
+            quantity_on_hand=Decimal("20"),
         )
 
-        GLParam.objects.get_or_create(pk=1, defaults=dict(curperiod=1, currentyr=2026, batchno=0))
+        GLParam.objects.get_or_create(
+            pk=1, defaults=dict(curperiod=1, currentyr=2026, batchno=0)
+        )
 
         self.deposits_held = GLMast.objects.create(
-            accno=21500000, name='Deposits Held', type='B', drorcr='C', repline=1,
+            accno=21500000,
+            name="Deposits Held",
+            type="B",
+            drorcr="C",
+            repline=1,
         )
         self.cash = GLMast.objects.create(
-            accno=10000000, name='Cash', type='B', drorcr='D', repline=1,
+            accno=10000000,
+            name="Cash",
+            type="B",
+            drorcr="D",
+            repline=1,
         )
         self.writeoff_income = GLMast.objects.create(
-            accno=41000000, name='Deposit Write-offs', type='I', drorcr='C', repline=1,
+            accno=41000000,
+            name="Deposit Write-offs",
+            type="I",
+            drorcr="C",
+            repline=1,
         )
         self.sales_revenue = GLMast.objects.create(
-            accno=40000000, name='Sales Revenue', type='I', drorcr='C', repline=1,
+            accno=40000000,
+            name="Sales Revenue",
+            type="I",
+            drorcr="C",
+            repline=1,
         )
         self.vat_output = GLMast.objects.create(
-            accno=22000000, name='VAT Output', type='B', drorcr='C', repline=1,
+            accno=22000000,
+            name="VAT Output",
+            type="B",
+            drorcr="C",
+            repline=1,
         )
 
         settings_row = RentalSettings.get_solo()
@@ -71,10 +105,13 @@ class RentalServiceTestCase(TransactionTestCase):
         settings_row.overdue_threshold_days = 90
         settings_row.save()
 
-    def _checkout(self, quantity=Decimal('2'), deposit=Decimal('500.00')):
+    def _checkout(self, quantity=Decimal("2"), deposit=Decimal("500.00")):
         return RentalService.checkout_cylinder(
-            debtor=self.debtor, stock_item=self.stock_item, quantity=quantity,
-            deposit_amount=deposit, user=self.user,
+            debtor=self.debtor,
+            stock_item=self.stock_item,
+            quantity=quantity,
+            deposit_amount=deposit,
+            user=self.user,
         )
 
     # --- Checkout happy path -------------------------------------------------
@@ -83,17 +120,22 @@ class RentalServiceTestCase(TransactionTestCase):
         rental = self._checkout()
 
         self.stock_item.refresh_from_db()
-        self.assertEqual(self.stock_item.quantity_on_hand, Decimal('18'))
+        self.assertEqual(self.stock_item.quantity_on_hand, Decimal("18"))
         self.assertEqual(rental.status, RentalTransaction.STATUS_OPEN)
         self.assertIsNotNone(rental.gl_batchno_checkout)
 
         self.deposits_held.refresh_from_db()
         self.cash.refresh_from_db()
-        self.assertEqual(self.deposits_held.period1, Decimal('500.00'))  # credit, credit-normal -> increases
-        self.assertEqual(self.cash.period1, Decimal('500.00'))  # debit, debit-normal -> increases
+        self.assertEqual(
+            self.deposits_held.period1, Decimal("500.00")
+        )  # credit, credit-normal -> increases
+        self.assertEqual(
+            self.cash.period1, Decimal("500.00")
+        )  # debit, debit-normal -> increases
 
         self.assertEqual(
-            GLTran.objects.filter(batchno=rental.gl_batchno_checkout).count(), 2,
+            GLTran.objects.filter(batchno=rental.gl_batchno_checkout).count(),
+            2,
         )
 
     def test_checkout_sets_due_date_from_tenant_threshold(self):
@@ -104,28 +146,28 @@ class RentalServiceTestCase(TransactionTestCase):
 
     def test_checkout_insufficient_stock_raises(self):
         with self.assertRaises(RentalStockException):
-            self._checkout(quantity=Decimal('999'))
+            self._checkout(quantity=Decimal("999"))
 
         self.stock_item.refresh_from_db()
-        self.assertEqual(self.stock_item.quantity_on_hand, Decimal('20'))  # unchanged
+        self.assertEqual(self.stock_item.quantity_on_hand, Decimal("20"))  # unchanged
         self.assertEqual(RentalTransaction.objects.count(), 0)
 
     # --- Gap 2: double-submit -------------------------------------------------
 
     def test_checkout_double_submit_raises(self):
-        self._checkout(quantity=Decimal('1'), deposit=Decimal('250.00'))
+        self._checkout(quantity=Decimal("1"), deposit=Decimal("250.00"))
         with self.assertRaises(RentalStateException):
-            self._checkout(quantity=Decimal('1'), deposit=Decimal('250.00'))
+            self._checkout(quantity=Decimal("1"), deposit=Decimal("250.00"))
 
         # Only the first checkout's stock decrement and GL post happened.
         self.stock_item.refresh_from_db()
-        self.assertEqual(self.stock_item.quantity_on_hand, Decimal('19'))
+        self.assertEqual(self.stock_item.quantity_on_hand, Decimal("19"))
         self.assertEqual(RentalTransaction.objects.count(), 1)
 
     def test_checkout_different_deposit_not_treated_as_double_submit(self):
-        self._checkout(quantity=Decimal('1'), deposit=Decimal('250.00'))
+        self._checkout(quantity=Decimal("1"), deposit=Decimal("250.00"))
         # A second, genuinely different checkout for the same customer is allowed.
-        self._checkout(quantity=Decimal('1'), deposit=Decimal('300.00'))
+        self._checkout(quantity=Decimal("1"), deposit=Decimal("300.00"))
         self.assertEqual(RentalTransaction.objects.count(), 2)
 
     # --- Gap 3: no matching rental ---------------------------------------------
@@ -133,7 +175,8 @@ class RentalServiceTestCase(TransactionTestCase):
     def test_return_no_matching_rental_raises(self):
         with self.assertRaises(RentalStateException):
             RentalService.return_cylinder(
-                rental_id=999999, reconciliation_state=RentalTransaction.RECON_REFUNDED,
+                rental_id=999999,
+                reconciliation_state=RentalTransaction.RECON_REFUNDED,
                 user=self.user,
             )
 
@@ -142,80 +185,100 @@ class RentalServiceTestCase(TransactionTestCase):
     def test_return_already_returned_raises(self):
         rental = self._checkout()
         RentalService.return_cylinder(
-            rental_id=rental.pk, reconciliation_state=RentalTransaction.RECON_REFUNDED,
+            rental_id=rental.pk,
+            reconciliation_state=RentalTransaction.RECON_REFUNDED,
             user=self.user,
         )
         with self.assertRaises(RentalStateException):
             RentalService.return_cylinder(
-                rental_id=rental.pk, reconciliation_state=RentalTransaction.RECON_REFUNDED,
+                rental_id=rental.pk,
+                reconciliation_state=RentalTransaction.RECON_REFUNDED,
                 user=self.user,
             )
 
     # --- Reconciliation state happy paths ---------------------------------------
 
     def test_return_refunded(self):
-        rental = self._checkout(quantity=Decimal('2'), deposit=Decimal('500.00'))
+        rental = self._checkout(quantity=Decimal("2"), deposit=Decimal("500.00"))
         returned = RentalService.return_cylinder(
-            rental_id=rental.pk, reconciliation_state=RentalTransaction.RECON_REFUNDED,
+            rental_id=rental.pk,
+            reconciliation_state=RentalTransaction.RECON_REFUNDED,
             user=self.user,
         )
 
         self.assertEqual(returned.status, RentalTransaction.STATUS_RETURNED)
         self.assertTrue(returned.is_reconciled)
         self.stock_item.refresh_from_db()
-        self.assertEqual(self.stock_item.quantity_on_hand, Decimal('20'))  # back to original
+        self.assertEqual(
+            self.stock_item.quantity_on_hand, Decimal("20")
+        )  # back to original
 
         self.cash.refresh_from_db()
-        self.assertEqual(self.cash.period1, Decimal('0.00'))  # +500 checkout, -500 refund
+        self.assertEqual(
+            self.cash.period1, Decimal("0.00")
+        )  # +500 checkout, -500 refund
 
     def test_return_written_off_does_not_restore_stock(self):
-        rental = self._checkout(quantity=Decimal('2'), deposit=Decimal('500.00'))
+        rental = self._checkout(quantity=Decimal("2"), deposit=Decimal("500.00"))
         returned = RentalService.return_cylinder(
-            rental_id=rental.pk, reconciliation_state=RentalTransaction.RECON_WRITTEN_OFF,
+            rental_id=rental.pk,
+            reconciliation_state=RentalTransaction.RECON_WRITTEN_OFF,
             user=self.accountant,
         )
 
         self.assertTrue(returned.is_reconciled)
         self.stock_item.refresh_from_db()
-        self.assertEqual(self.stock_item.quantity_on_hand, Decimal('18'))  # cylinder never came back
+        self.assertEqual(
+            self.stock_item.quantity_on_hand, Decimal("18")
+        )  # cylinder never came back
 
         self.writeoff_income.refresh_from_db()
-        self.assertEqual(self.writeoff_income.period1, Decimal('500.00'))
+        self.assertEqual(self.writeoff_income.period1, Decimal("500.00"))
 
     def test_return_disputed_posts_no_gl_and_stays_unreconciled(self):
         rental = self._checkout()
         returned = RentalService.return_cylinder(
-            rental_id=rental.pk, reconciliation_state=RentalTransaction.RECON_DISPUTED,
+            rental_id=rental.pk,
+            reconciliation_state=RentalTransaction.RECON_DISPUTED,
             user=self.accountant,
         )
 
         self.assertFalse(returned.is_reconciled)
         self.assertIsNone(returned.gl_batchno_return)
         self.deposits_held.refresh_from_db()
-        self.assertEqual(self.deposits_held.period1, Decimal('500.00'))  # unchanged from checkout
+        self.assertEqual(
+            self.deposits_held.period1, Decimal("500.00")
+        )  # unchanged from checkout
 
-    def test_return_billed_for_replacement_charges_vat_and_does_not_double_decrement_stock(self):
-        rental = self._checkout(quantity=Decimal('1'), deposit=Decimal('228.00'))
+    def test_return_billed_for_replacement_charges_vat_and_does_not_double_decrement_stock(
+        self,
+    ):
+        rental = self._checkout(quantity=Decimal("1"), deposit=Decimal("228.00"))
         self.stock_item.refresh_from_db()
-        after_checkout_qty = self.stock_item.quantity_on_hand  # already decremented once
+        after_checkout_qty = (
+            self.stock_item.quantity_on_hand
+        )  # already decremented once
 
         returned = RentalService.return_cylinder(
-            rental_id=rental.pk, reconciliation_state=RentalTransaction.RECON_BILLED_FOR_REPLACEMENT,
-            user=self.user, replacement_unit_price=Decimal('200.00'),  # -> 228.00 incl. 14% VAT
+            rental_id=rental.pk,
+            reconciliation_state=RentalTransaction.RECON_BILLED_FOR_REPLACEMENT,
+            user=self.user,
+            replacement_unit_price=Decimal("200.00"),  # -> 228.00 incl. 14% VAT
         )
 
         self.assertTrue(returned.is_reconciled)
         self.stock_item.refresh_from_db()
         self.assertEqual(
-            self.stock_item.quantity_on_hand, after_checkout_qty,
+            self.stock_item.quantity_on_hand,
+            after_checkout_qty,
             "billed_for_replacement must not decrement stock again — the cylinder "
             "already left inventory at original checkout",
         )
 
         self.sales_revenue.refresh_from_db()
         self.vat_output.refresh_from_db()
-        self.assertEqual(self.sales_revenue.period1, Decimal('200.00'))
-        self.assertEqual(self.vat_output.period1, Decimal('28.00'))
+        self.assertEqual(self.sales_revenue.period1, Decimal("200.00"))
+        self.assertEqual(self.vat_output.period1, Decimal("28.00"))
 
     def test_return_requires_replacement_price_for_billed_for_replacement(self):
         rental = self._checkout()
@@ -238,11 +301,13 @@ class RentalServiceTestCase(TransactionTestCase):
 
         self.stock_item.refresh_from_db()
         self.assertEqual(
-            self.stock_item.quantity_on_hand, Decimal('20'),
+            self.stock_item.quantity_on_hand,
+            Decimal("20"),
             "stock decrement must roll back when the GL post fails",
         )
         self.assertEqual(
-            RentalTransaction.objects.count(), 0,
+            RentalTransaction.objects.count(),
+            0,
             "the RentalTransaction row must roll back when the GL post fails",
         )
 
@@ -257,7 +322,8 @@ class RentalServiceTestCase(TransactionTestCase):
         rental.due_date = rental.checkout_date  # force overdue if still open
         rental.save()
         returned = RentalService.return_cylinder(
-            rental_id=rental.pk, reconciliation_state=RentalTransaction.RECON_REFUNDED,
+            rental_id=rental.pk,
+            reconciliation_state=RentalTransaction.RECON_REFUNDED,
             user=self.user,
         )
         self.assertFalse(returned.is_overdue)

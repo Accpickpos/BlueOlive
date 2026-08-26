@@ -2,6 +2,7 @@
 
 from django.db import migrations
 
+
 def create_auditlog_table(apps, schema_editor):
     """Create the AuditLog table manually"""
     with schema_editor.connection.cursor() as cursor:

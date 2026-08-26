@@ -5,19 +5,19 @@ from tenancy.shop_manager import migrate_tenant_database
 
 
 class Command(BaseCommand):
-    help = 'Migrate a specific tenant database by slug'
+    help = "Migrate a specific tenant database by slug"
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--slug',
+            "--slug",
             type=str,
             required=True,
-            help='Tenant slug to migrate',
+            help="Tenant slug to migrate",
         )
 
     def handle(self, *args, **options):
-        slug = options['slug']
-        
+        slug = options["slug"]
+
         try:
             tenant = Tenant.objects.get(slug=slug)
         except Tenant.DoesNotExist:
@@ -25,9 +25,11 @@ class Command(BaseCommand):
             return
 
         self.stdout.write(f"Migrating tenant: {tenant.name} ({tenant.slug})")
-        
+
         try:
             migrate_tenant_database(tenant)
-            self.stdout.write(self.style.SUCCESS(f"✓ {tenant.slug} migrated successfully"))
+            self.stdout.write(
+                self.style.SUCCESS(f"✓ {tenant.slug} migrated successfully")
+            )
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"✗ {tenant.slug} failed: {str(e)}"))

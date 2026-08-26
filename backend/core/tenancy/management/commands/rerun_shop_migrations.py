@@ -12,11 +12,12 @@ Usage:
     python manage.py rerun_shop_migrations --tenant-slug=acme --shop-code=MS001
     python manage.py rerun_shop_migrations --dry-run
 """
-from django.core.management.base import BaseCommand
-from django.conf import settings
-from tenancy.models import Tenant, Shop
-from tenancy.shop_manager import migrate_shop_apps
 import logging
+
+from django.conf import settings
+from django.core.management.base import BaseCommand
+from tenancy.models import Shop, Tenant
+from tenancy.shop_manager import migrate_shop_apps
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ class Command(BaseCommand):
 
         # Get shop apps to migrate
         shop_app_labels = getattr(settings, 'SHOP_APP_LABELS', [])
-        
+
         if apps_arg:
             # Filter to only specified apps
             requested_apps = [app.strip() for app in apps_arg.split(',')]
@@ -89,7 +90,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.NOTICE(
             f"Found {total_shops} shop(s) to process across {tenants.count()} tenant(s)"
         ))
-        
+
         if dry_run:
             self.stdout.write(self.style.WARNING("⚠️  DRY RUN - No migrations will be applied"))
 
@@ -123,12 +124,12 @@ class Command(BaseCommand):
                 try:
                     # Run migrations for this shop
                     logger.info(f"Running migrations for shop {shop.schema_name} in tenant {tenant.slug}")
-                    
+
                     # The migrate_shop_apps function will apply any pending migrations
                     migrate_shop_apps(tenant, shop.schema_name, app_labels=shop_app_labels)
-                    
+
                     self.stdout.write(self.style.SUCCESS(f"    ✓ Migrations completed for {shop.name}"))
-                    
+
                 except Exception as e:
                     failed_shops += 1
                     self.stderr.write(self.style.ERROR(f"    ✗ Failed: {str(e)}"))
@@ -139,7 +140,7 @@ class Command(BaseCommand):
         self.stdout.write("SUMMARY")
         self.stdout.write(f"{'='*60}")
         self.stdout.write(f"Total shops processed: {processed_shops}")
-        
+
         if failed_shops > 0:
             self.stdout.write(self.style.ERROR(f"Failed: {failed_shops}"))
         else:

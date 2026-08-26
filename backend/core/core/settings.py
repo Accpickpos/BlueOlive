@@ -10,51 +10,53 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import logging
 import os
-from pathlib import Path
-from dotenv import load_dotenv
+import sys
 from datetime import timedelta
+from pathlib import Path
+
+from celery.schedules import crontab
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-load_dotenv(BASE_DIR / '.env')
+load_dotenv(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-change-me-in-production')
+SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-change-me-in-production")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
+DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
 LOGGING_CONFIG = None
 
-import logging
 logging.basicConfig(level=logging.DEBUG)
 
 
 # SUBDOMAIN SUPPORT
 # Development: allows *.localhost (e.g., acme.localhost, shop1.acme.localhost)
 # Production: allows *.yourdomain.com
-ALLOWED_HOSTS = os.environ.get(
-    'ALLOWED_HOSTS', 
-    'localhost,127.0.0.1,.localhost'
-).split(',')
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1,.localhost").split(
+    ","
+)
 
 # Domain configuration for tenant identification
-MAIN_DOMAIN = 'localhost'  # For development
+MAIN_DOMAIN = "localhost"  # For development
 # MAIN_DOMAIN = 'yourdomain.com'  # For production
 
-DEFAULT_TENANT_SLUG = 'dev'
+DEFAULT_TENANT_SLUG = "dev"
 USE_DEFAULT_TENANT = True
 
 # Default shop to use when no shop is specified in request
 # This is used when users log in and need to access shop-specific data
 # Disabled for now - session should always take priority
-USE_DEFAULT_SHOP = False 
+USE_DEFAULT_SHOP = False
 
 # Application definition
 
@@ -62,42 +64,39 @@ USE_DEFAULT_SHOP = False
 # These are system/platform tables shared across all tenants
 SHARED_APPS = [
     # Core Django apps (in default DB only, except auth/contenttypes which are everywhere)
-    'django.contrib.auth',        # Auth tables in ALL databases
-    'django.contrib.contenttypes', # Contenttypes in ALL databases
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-
+    "django.contrib.auth",  # Auth tables in ALL databases
+    "django.contrib.contenttypes",  # Contenttypes in ALL databases
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
     # 3rd-party (in default DB)
-    'rest_framework',
-    'rest_framework_simplejwt',
-    
-    'corsheaders',
-    'drf_spectacular',
-
+    "rest_framework",
+    "rest_framework_simplejwt",
+    "corsheaders",
+    "drf_spectacular",
     # Platform management (blue_olive database only)
-    'tenancy',  # Tenant and Shop models
-    'apps.saas_admin',  # SaaS administration (import, seeding, etc.)
-    'apps.common',  # Common utilities (permissions, serializers, services)
+    "tenancy",  # Tenant and Shop models
+    "apps.saas_admin",  # SaaS administration (import, seeding, etc.)
+    "apps.common",  # Common utilities (permissions, serializers, services)
 ]
 
 # TENANT_APPS: These live in each tenant's database
 # Each tenant has their own separate copy of these tables
 TENANT_APPS = [
-    'django.contrib.admin',                      # Admin in tenant databases (since ShopUser is there)
-    'rest_framework_simplejwt.token_blacklist',  # Token blacklist needs to be with users
-    'shop_users',                                # Users belong to specific tenants
-    'apps.cash_book',                            # Shop-specific business apps
-    'apps.creditors',
-    'apps.debtors',
-    'apps.general_ledger',
-    'apps.stock_control',
-    'apps.purchase_orders',
-    'apps.settings',
-    'apps.pos',
-    'apps.messaging',
-    'apps.stockfinder',                          # Stockfinder integration
-    'apps.gas',                                  # LPG cylinder rental/deposit tracking (addon)
+    "django.contrib.admin",  # Admin in tenant databases (since ShopUser is there)
+    "rest_framework_simplejwt.token_blacklist",  # Token blacklist needs to be with users
+    "shop_users",  # Users belong to specific tenants
+    "apps.cash_book",  # Shop-specific business apps
+    "apps.creditors",
+    "apps.debtors",
+    "apps.general_ledger",
+    "apps.stock_control",
+    "apps.purchase_orders",
+    "apps.settings",
+    "apps.pos",
+    "apps.messaging",
+    "apps.stockfinder",  # Stockfinder integration
+    "apps.gas",  # LPG cylinder rental/deposit tracking (addon)
 ]
 
 # Django requires INSTALLED_APPS to know which apps are available
@@ -108,41 +107,40 @@ INSTALLED_APPS = SHARED_APPS + TENANT_APPS
 # These are a subset of TENANT_APP_LABELS
 # NOTE: 'settings' MUST be first - other apps (creditors, debtors, etc.) depend on settings migrations
 SHOP_APP_LABELS = [
-    'settings',  # Must be first - other apps depend on settings.0003_apikey
-    'cash_book',
-    'creditors',
-    'debtors',
-    'general_ledger',
-    'stock_control',
-    'purchase_orders',
-    'pos',
-    'stockfinder',  # Stockfinder integration
-    'gas',  # Must come after debtors + stock_control + general_ledger (FK dependencies)
+    "settings",  # Must be first - other apps depend on settings.0003_apikey
+    "cash_book",
+    "creditors",
+    "debtors",
+    "general_ledger",
+    "stock_control",
+    "purchase_orders",
+    "pos",
+    "stockfinder",  # Stockfinder integration
+    "gas",  # Must come after debtors + stock_control + general_ledger (FK dependencies)
 ]
 
 # For the database router: specify which app labels are tenant-specific
 # This is used by TenantDatabaseRouter.allow_migrate()
 TENANT_APP_LABELS = [
-    'admin',           # Django admin
-    'token_blacklist', # JWT token blacklist (has FK to user)
-    'shop_users',      # Custom user model
-    'messaging',
-
-] 
+    "admin",  # Django admin
+    "token_blacklist",  # JWT token blacklist (has FK to user)
+    "shop_users",  # Custom user model
+    "messaging",
+]
 
 # Custom user model
-AUTH_USER_MODEL = 'shop_users.ShopUser'
+AUTH_USER_MODEL = "shop_users.ShopUser"
 
 # Authentication backends
 AUTHENTICATION_BACKENDS = [
-    'tenancy.auth_backends.TenantAwareAuthBackend',  # Custom tenant-aware backend
-    'django.contrib.auth.backends.ModelBackend',      # Default backend
+    "tenancy.auth_backends.TenantAwareAuthBackend",  # Custom tenant-aware backend
+    "django.contrib.auth.backends.ModelBackend",  # Default backend
 ]
 
-LOGIN_URL = '/login/'
+LOGIN_URL = "/login/"
 
 
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_BROWSER_XSS_FILTER = True
@@ -151,149 +149,135 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 
 # JWT Configuration
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
-    'UPDATE_LAST_LOGIN': True,
-    
-    'ALGORITHM': 'HS256',
-    'SIGNING_KEY': SECRET_KEY,
-    'VERIFYING_KEY': None,
-    'AUDIENCE': None,
-    'ISSUER': None,
-    'JWK_URL': None,
-    'LEEWAY': 0,
-    
-    'AUTH_HEADER_TYPES': ('Bearer',),
-    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
-    'USER_ID_FIELD': 'id',
-    'USER_ID_CLAIM': 'user_id',
-    'USER_AUTHENTICATION_RULE': 'rest_framework_simplejwt.authentication.default_user_authentication_rule',
-    
-    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
-    'TOKEN_TYPE_CLAIM': 'token_type',
-    'TOKEN_USER_CLASS': 'rest_framework_simplejwt.models.TokenUser',
-    
-    'JTI_CLAIM': 'jti',
-    
-    'SLIDING_TOKEN_REFRESH_EXP_CLAIM': 'refresh_exp',
-    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5),
-    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": SECRET_KEY,
+    "VERIFYING_KEY": None,
+    "AUDIENCE": None,
+    "ISSUER": None,
+    "JWK_URL": None,
+    "LEEWAY": 0,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "AUTH_HEADER_NAME": "HTTP_AUTHORIZATION",
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+    "USER_AUTHENTICATION_RULE": "rest_framework_simplejwt.authentication.default_user_authentication_rule",
+    "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
+    "TOKEN_TYPE_CLAIM": "token_type",  # nosec B105 - JWT claim key name, not a credential
+    "TOKEN_USER_CLASS": "rest_framework_simplejwt.models.TokenUser",  # nosec B105 - class path, not a credential
+    "JTI_CLAIM": "jti",
+    "SLIDING_TOKEN_REFRESH_EXP_CLAIM": "refresh_exp",  # nosec B105 - JWT claim key name, not a credential
+    "SLIDING_TOKEN_LIFETIME": timedelta(minutes=5),
+    "SLIDING_TOKEN_REFRESH_LIFETIME": timedelta(days=1),
 }
 
 
 # REST Framework Settings
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'tenancy.jwt_authentication.TenantJWTAuthentication',  # Custom tenant-aware JWT
-        'rest_framework.authentication.SessionAuthentication',   # For browsable API
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "tenancy.jwt_authentication.TenantJWTAuthentication",  # Custom tenant-aware JWT
+        "rest_framework.authentication.SessionAuthentication",  # For browsable API
     ),
-    'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.IsAuthenticated',
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "DEFAULT_RENDERER_CLASSES": (
+        "rest_framework.renderers.JSONRenderer",
+        "rest_framework.renderers.BrowsableAPIRenderer",
     ),
-    'DEFAULT_RENDERER_CLASSES': (
-        'rest_framework.renderers.JSONRenderer',
-        'rest_framework.renderers.BrowsableAPIRenderer',
+    "DEFAULT_PARSER_CLASSES": (
+        "rest_framework.parsers.JSONParser",
+        "rest_framework.parsers.FormParser",
+        "rest_framework.parsers.MultiPartParser",
     ),
-    'DEFAULT_PARSER_CLASSES': (
-        'rest_framework.parsers.JSONParser',
-        'rest_framework.parsers.FormParser',
-        'rest_framework.parsers.MultiPartParser',
+    "DEFAULT_PAGINATION_CLASS": "core.pagination.CustomPageNumberPagination",
+    "PAGE_SIZE": 10,
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
     ),
-    'DEFAULT_PAGINATION_CLASS': 'core.pagination.CustomPageNumberPagination',
-    'PAGE_SIZE': 10,
-    'DEFAULT_THROTTLE_CLASSES': (
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle',
-    ),
-    'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/hour',
-        'user': '1000/hour',
-        'login': '5/minute',
-        'public_read': '120/minute',
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "100/hour",
+        "user": "1000/hour",
+        "login": "5/minute",
+        "public_read": "120/minute",
     },
-    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     # Custom exception handler for consistent error responses
-    'EXCEPTION_HANDLER': 'core.exception_handler.custom_exception_handler',
+    "EXCEPTION_HANDLER": "core.exception_handler.custom_exception_handler",
 }
 
 
 # Middleware
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    
+    "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
     # CRITICAL: Tenant middleware BEFORE authentication
     # This ensures tenant context is set when authenticate() is called
-    'tenancy.middleware.TenantMiddleware',
-    
+    "tenancy.middleware.TenantMiddleware",
     # Authentication middleware AFTER tenant is set
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
     # Schema middleware after both tenant and auth
     # Shop validation middleware runs BEFORE to re-register connection with correct shop
-    'tenancy.middleware.UserShopValidationMiddleware',
-    'tenancy.schema_middleware.SchemaMiddleware',
-    
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    
-    'core.logging_config.RequestLoggingMiddleware',
-    'core.versioning.APIVersioningMiddleware',
+    "tenancy.middleware.UserShopValidationMiddleware",
+    "tenancy.schema_middleware.SchemaMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "core.logging_config.RequestLoggingMiddleware",
+    "core.versioning.APIVersioningMiddleware",
 ]
 
 
 # CORS settings
 CORS_ALLOWED_ORIGINS = os.environ.get(
-    'CORS_ALLOWED_ORIGINS',
-    'http://localhost:3000,http://127.0.0.1:3000'
-).split(',')
+    "CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
+).split(",")
 
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
-    'x-tenant',
-    'x-shop',
-    'x-shop-id',
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+    "x-tenant",
+    "x-shop",
+    "x-shop-id",
 ]
 
 # CSRF trusted origins for cross-origin requests
 CSRF_TRUSTED_ORIGINS = os.environ.get(
-    'CSRF_TRUSTED_ORIGINS',
-    'http://localhost:3000,http://127.0.0.1:3000'
-).split(',')
+    "CSRF_TRUSTED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
+).split(",")
 
-ROOT_URLCONF = 'core.urls'
+ROOT_URLCONF = "core.urls"
 
 TEMPLATES = [
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [str(BASE_DIR / 'templates')],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [str(BASE_DIR / "templates")],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
 ]
 
-WSGI_APPLICATION = 'core.wsgi.application'
+WSGI_APPLICATION = "core.wsgi.application"
 
 
 # Database
@@ -302,15 +286,15 @@ WSGI_APPLICATION = 'core.wsgi.application'
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.environ.get('DB_NAME', 'blue_olive'),
-        "USER": os.environ.get('DB_USER', 'postgres'),
-        "PASSWORD": os.environ.get('DB_PASSWORD'),
-        "HOST": os.environ.get('DB_HOST'),
-        "PORT": os.environ.get('DB_PORT'),
+        "NAME": os.environ.get("DB_NAME", "blue_olive"),
+        "USER": os.environ.get("DB_USER", "postgres"),
+        "PASSWORD": os.environ.get("DB_PASSWORD"),
+        "HOST": os.environ.get("DB_HOST"),
+        "PORT": os.environ.get("DB_PORT"),
         # Short-lived connections by default; allow long for pooling if used
         # CONN_MAX_AGE: 0 = no pooling (close after each request)
         # CONN_MAX_AGE: 60 = keep connection alive for 60 seconds (recommended for production)
-        "CONN_MAX_AGE": int(os.environ.get('CONN_MAX_AGE', '60')),
+        "CONN_MAX_AGE": int(os.environ.get("CONN_MAX_AGE", "60")),
     },
     # Other tenant DBs are added to DATABASES at runtime by tenancy.utils
 }
@@ -318,23 +302,32 @@ DATABASES = {
 
 DATABASE_ROUTERS = ["tenancy.db_router.TenantDatabaseRouter"]
 
+# Test runs (CI, local pytest) use a single flat database instead of the
+# real per-tenant/per-shop schema layout, so TenantDatabaseRouter's
+# allow_migrate() would otherwise block tenant/shop app migrations from
+# ever reaching it (it only allows those onto per-tenant DBs). Unit tests
+# for those apps don't need real schema isolation, so let migrations
+# proceed onto "default" when this is set.
+if os.environ.get("DISABLE_TENANT_ROUTER") == "1":
+    DATABASE_ROUTERS = []
+
 # Caching Configuration (for tenant/shop lookups)
 # Use Redis for production, in-memory cache for development
-if os.environ.get('CACHE_BACKEND') == 'redis':
+if os.environ.get("CACHE_BACKEND") == "redis":
     CACHES = {
-        'default': {
-            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-            'LOCATION': os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379/1'),
-            'KEY_PREFIX': 'blueolive',
-            'TIMEOUT': int(os.environ.get('CACHE_TIMEOUT', '300')),
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/1"),
+            "KEY_PREFIX": "blueolive",
+            "TIMEOUT": int(os.environ.get("CACHE_TIMEOUT", "300")),
         }
     }
 else:
     # Development: In-memory cache
     CACHES = {
-        'default': {
-            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-            'LOCATION': 'blueolive-cache',
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "blueolive-cache",
         }
     }
 
@@ -343,16 +336,16 @@ else:
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
 
@@ -360,9 +353,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = os.environ.get('TIME_ZONE', 'Africa/Johannesburg')
+TIME_ZONE = os.environ.get("TIME_ZONE", "Africa/Johannesburg")
 
 USE_I18N = True
 
@@ -372,127 +365,131 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = "static/"
 
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'static'),
+    os.path.join(BASE_DIR, "static"),
 ]
 
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Media files (user uploads)
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_URL = "/media/"
+MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
 # Email Configuration
 # Default email backend - use 'console' for development, 'smtp' for production
-EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
-EMAIL_HOST = os.environ.get('EMAIL_HOST', 'localhost')
-EMAIL_PORT = os.environ.get('EMAIL_PORT', '587')
-EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'true').lower() == 'true'
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@accpick.co.za')
+EMAIL_BACKEND = os.environ.get(
+    "EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"
+)
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "localhost")
+EMAIL_PORT = os.environ.get("EMAIL_PORT", "587")
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "true").lower() == "true"
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@accpick.co.za")
 
 # Logging - Environment-configurable
 # Supports both text and JSON output based on LOG_FORMAT setting
 # Use 'json' for production (integrates with ELK, Splunk, CloudWatch)
 # Use 'text' for development/debugging
-DEFAULT_LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO' if not DEBUG else 'DEBUG')
-TENANCY_LOG_LEVEL = os.environ.get('TENANCY_LOG_LEVEL', 'DEBUG' if not DEBUG else 'DEBUG')
-LOG_FORMAT = os.environ.get('LOG_FORMAT', 'json' if not DEBUG else 'text')
+DEFAULT_LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO" if not DEBUG else "DEBUG")
+TENANCY_LOG_LEVEL = os.environ.get(
+    "TENANCY_LOG_LEVEL", "DEBUG" if not DEBUG else "DEBUG"
+)
+LOG_FORMAT = os.environ.get("LOG_FORMAT", "json" if not DEBUG else "text")
 
-if LOG_FORMAT == 'json':
+if LOG_FORMAT == "json":
     # Structured JSON logging for production
     LOGGING = {
-        'version': 1,
-        'disable_existing_loggers': False,
-        'formatters': {
-            'json': {
-                '()': 'core.logging_config.CustomJsonFormatter',
-                'format': '%(timestamp)s %(level)s %(name)s %(message)s'
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "json": {
+                "()": "core.logging_config.CustomJsonFormatter",
+                "format": "%(timestamp)s %(level)s %(name)s %(message)s",
             },
         },
-        'handlers': {
-            'console': {
-                'class': 'logging.StreamHandler',
-                'formatter': 'json',
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "formatter": "json",
             },
-            'file': {
-                'class': 'logging.handlers.RotatingFileHandler',
-                'filename': os.path.join(BASE_DIR, 'logs', 'blueolive.log'),
-                'formatter': 'json',
-                'maxBytes': 10485760,  # 10MB
-                'backupCount': 10,
+            "file": {
+                "class": "logging.handlers.RotatingFileHandler",
+                "filename": os.path.join(BASE_DIR, "logs", "blueolive.log"),
+                "formatter": "json",
+                "maxBytes": 10485760,  # 10MB
+                "backupCount": 10,
             },
         },
-        'root': {
-            'handlers': ['console', 'file'],
-            'level': DEFAULT_LOG_LEVEL,
+        "root": {
+            "handlers": ["console", "file"],
+            "level": DEFAULT_LOG_LEVEL,
         },
-        'loggers': {
-            'django': {
-                'handlers': ['console', 'file'],
-                'level': DEFAULT_LOG_LEVEL,
-                'propagate': False,
+        "loggers": {
+            "django": {
+                "handlers": ["console", "file"],
+                "level": DEFAULT_LOG_LEVEL,
+                "propagate": False,
             },
-            'django.request': {
-                'handlers': ['console', 'file'],
-                'level': DEFAULT_LOG_LEVEL,
-                'propagate': False,
+            "django.request": {
+                "handlers": ["console", "file"],
+                "level": DEFAULT_LOG_LEVEL,
+                "propagate": False,
             },
-            'tenancy': {
-                'handlers': ['console', 'file'],
-                'level': TENANCY_LOG_LEVEL,
-                'propagate': False,
+            "tenancy": {
+                "handlers": ["console", "file"],
+                "level": TENANCY_LOG_LEVEL,
+                "propagate": False,
             },
-            'apps': {
-                'handlers': ['console', 'file'],
-                'level': DEFAULT_LOG_LEVEL,
-                'propagate': False,
+            "apps": {
+                "handlers": ["console", "file"],
+                "level": DEFAULT_LOG_LEVEL,
+                "propagate": False,
             },
         },
     }
 else:
     # Text logging for development
     LOGGING = {
-        'version': 1,
-        'disable_existing_loggers': False,
-        'formatters': {
-            'verbose': {
-                'format': '{levelname} {asctime} {module} {funcName}:{lineno} {message}',
-                'style': '{',
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "verbose": {
+                "format": "{levelname} {asctime} {module} {funcName}:{lineno} {message}",
+                "style": "{",
             },
-            'simple': {
-                'format': '{levelname} {message}',
-                'style': '{',
-            },
-        },
-        'handlers': {
-            'console': {
-                'class': 'logging.StreamHandler',
-                'formatter': 'verbose',
+            "simple": {
+                "format": "{levelname} {message}",
+                "style": "{",
             },
         },
-        'root': {
-            'handlers': ['console'],
-            'level': DEFAULT_LOG_LEVEL,
-        },
-        'loggers': {
-            'django': {
-                'handlers': ['console'],
-                'level': DEFAULT_LOG_LEVEL,
-                'propagate': False,
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "formatter": "verbose",
             },
-            'tenancy': {
-                'handlers': ['console'],
-                'level': TENANCY_LOG_LEVEL,
-                'propagate': False,
+        },
+        "root": {
+            "handlers": ["console"],
+            "level": DEFAULT_LOG_LEVEL,
+        },
+        "loggers": {
+            "django": {
+                "handlers": ["console"],
+                "level": DEFAULT_LOG_LEVEL,
+                "propagate": False,
+            },
+            "tenancy": {
+                "handlers": ["console"],
+                "level": TENANCY_LOG_LEVEL,
+                "propagate": False,
             },
         },
     }
@@ -500,53 +497,76 @@ else:
 
 # drf-spectacular configuration for API documentation
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'BlueOlive API',
-    'DESCRIPTION': 'Enterprise Multi-Tenant POS Management System API',
-    'VERSION': '1.0.0',
+    "TITLE": "BlueOlive API",
+    "DESCRIPTION": "Enterprise Multi-Tenant POS Management System API",
+    "VERSION": "1.0.0",
     # Allow public access to API documentation (change to IsAuthenticated for production if needed)
-    'SERVE_PERMISSIONS': ['rest_framework.permissions.AllowAny'],
-    'SCHEMA_PATH_PREFIX': '/api/',
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    "SCHEMA_PATH_PREFIX": "/api/",
     # Organize endpoints by business domain
-    'TAGS': [
-        {'name': 'Authentication', 'description': 'User login, logout, token refresh, and registration'},
-        {'name': 'Tenants', 'description': 'Multi-tenant management - create and manage tenant organizations'},
-        {'name': 'Shops', 'description': 'Shop/branch management within tenants'},
-        {'name': 'Users', 'description': 'User management and shop access'},
-        {'name': 'POS', 'description': 'Point of Sale - cash sales, laybies, quotations, job cards'},
-        {'name': 'Stock Control', 'description': 'Inventory management - stock items, movements, special deals'},
-        {'name': 'Debtors', 'description': 'Customer accounts receivable - invoices, payments, aging'},
-        {'name': 'Creditors', 'description': 'Supplier accounts payable - invoices, payments, RFC'},
-        {'name': 'Cash Book', 'description': 'Cash transactions and reconciliation'},
-        {'name': 'General Ledger', 'description': 'Financial accounting and reporting'},
-        {'name': 'Purchase Orders', 'description': 'Purchase order management'},
-        {'name': 'Settings', 'description': 'System configuration - departments, tax codes, payment methods'},
-        {'name': 'Messaging', 'description': 'Notifications and messaging'},
-        {'name': 'SaaS Admin', 'description': 'Platform administration (superuser only)'},
+    "TAGS": [
+        {
+            "name": "Authentication",
+            "description": "User login, logout, token refresh, and registration",
+        },
+        {
+            "name": "Tenants",
+            "description": "Multi-tenant management - create and manage tenant organizations",
+        },
+        {"name": "Shops", "description": "Shop/branch management within tenants"},
+        {"name": "Users", "description": "User management and shop access"},
+        {
+            "name": "POS",
+            "description": "Point of Sale - cash sales, laybies, quotations, job cards",
+        },
+        {
+            "name": "Stock Control",
+            "description": "Inventory management - stock items, movements, special deals",
+        },
+        {
+            "name": "Debtors",
+            "description": "Customer accounts receivable - invoices, payments, aging",
+        },
+        {
+            "name": "Creditors",
+            "description": "Supplier accounts payable - invoices, payments, RFC",
+        },
+        {"name": "Cash Book", "description": "Cash transactions and reconciliation"},
+        {"name": "General Ledger", "description": "Financial accounting and reporting"},
+        {"name": "Purchase Orders", "description": "Purchase order management"},
+        {
+            "name": "Settings",
+            "description": "System configuration - departments, tax codes, payment methods",
+        },
+        {"name": "Messaging", "description": "Notifications and messaging"},
+        {
+            "name": "SaaS Admin",
+            "description": "Platform administration (superuser only)",
+        },
     ],
     # Split request/response schemas for better documentation
-    'COMPONENT_SPLIT_REQUEST': True,
+    "COMPONENT_SPLIT_REQUEST": True,
     # Enable enum value descriptions
-    'ENUM_NAME_OVERRIDES': {
+    "ENUM_NAME_OVERRIDES": {
         # Add custom enum overrides if needed
     },
     # Customize error responses in schema
-    'DEFAULT_RESPONSE_DEPTH': 2,
+    "DEFAULT_RESPONSE_DEPTH": 2,
 }
 
 
 # Celery Configuration (Priority: HIGH - async tasks)
 # Handles: stock transactions, report generation, email notifications, bulk operations
 CELERY_BROKER_URL = os.environ.get(
-    'CELERY_BROKER_URL',
-    'redis://127.0.0.1:6379/0' if not DEBUG else 'memory://'
+    "CELERY_BROKER_URL", "redis://127.0.0.1:6379/0" if not DEBUG else "memory://"
 )
 CELERY_RESULT_BACKEND = os.environ.get(
-    'CELERY_RESULT_BACKEND',
-    'redis://127.0.0.1:6379/0' if not DEBUG else 'cache+memory://'
+    "CELERY_RESULT_BACKEND",
+    "redis://127.0.0.1:6379/0" if not DEBUG else "cache+memory://",
 )
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_ENABLE_UTC = True
 CELERY_TASK_TRACK_STARTED = True
@@ -555,7 +575,7 @@ CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 minutes soft time limit
 CELERY_RESULT_EXPIRES = 3600  # 1 hour
 CELERY_WORKER_PREFETCH_MULTIPLIER = 4
 CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
-CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
 # Resilience for acks_late tasks (see tenancy.tasks: setup_tenant_database_async,
 # complete_tenant_signup_async, setup_shop_schema_async). acks_late means a task
@@ -569,23 +589,23 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     # delivered, unacked, before assuming it's lost and redelivering it.
     # Matched to CELERY_TASK_TIME_LIMIT so a hung task isn't redelivered
     # (and now running twice) before its hard time limit would have killed it.
-    'visibility_timeout': 30 * 60,
+    "visibility_timeout": 30
+    * 60,
 }
 
 # Windows compatibility: Use threads pool instead of prefork (Windows doesn't support forking)
 # For production on Windows, consider using eventlet or gevent
-import sys
-if sys.platform == 'win32':
-    CELERY_WORKER_POOL = 'threads'
+if sys.platform == "win32":
+    CELERY_WORKER_POOL = "threads"
     CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
     # Disable soft timeout on Windows (not supported by billiard)
     CELERY_WORKER_DISABLE_RATE_LIMITS = True
 
 # Celery task routing (optional, for scaling specific task types)
 CELERY_TASK_ROUTING = {
-    'core.tasks.process_stock_transaction': {'queue': 'stock'},
-    'core.tasks.generate_report': {'queue': 'reports'},
-    'core.tasks.send_notification_email': {'queue': 'email'},
+    "core.tasks.process_stock_transaction": {"queue": "stock"},
+    "core.tasks.generate_report": {"queue": "reports"},
+    "core.tasks.send_notification_email": {"queue": "email"},
 }
 
 # Celery beat schedule (periodic tasks)
@@ -593,38 +613,38 @@ CELERY_TASK_ROUTING = {
 # The schedules below run but check the database config before executing.
 # Enable via SystemConfiguration.enable_auto_day_end, enable_auto_month_end, enable_auto_year_end
 
-from celery.schedules import crontab
-
 CELERY_BEAT_SCHEDULE = {
-    'cleanup-old-tasks': {
-        'task': 'core.tasks.cleanup_old_tasks',
-        'schedule': 86400.0,  # Every 24 hours
+    "cleanup-old-tasks": {
+        "task": "core.tasks.cleanup_old_tasks",
+        "schedule": 86400.0,  # Every 24 hours
     },
     # Safety net for tenant/shop provisioning tasks whose message got lost
     # outright (see tenancy.tasks.sweep_stuck_tenant_provisioning docstring)
-    'sweep-stuck-tenant-provisioning': {
-        'task': 'tenancy.tasks.sweep_stuck_tenant_provisioning',
-        'schedule': 300.0,  # Every 5 minutes
+    "sweep-stuck-tenant-provisioning": {
+        "task": "tenancy.tasks.sweep_stuck_tenant_provisioning",
+        "schedule": 300.0,  # Every 5 minutes
     },
     # Day-End Task - runs daily at 23:59 (11:59 PM)
-    'day-end-process': {
-        'task': 'core.tasks.run_day_end_task',
-        'schedule': crontab(hour=23, minute=59),  # Daily at 11:59 PM
+    "day-end-process": {
+        "task": "core.tasks.run_day_end_task",
+        "schedule": crontab(hour=23, minute=59),  # Daily at 11:59 PM
     },
     # Month-End Task - runs on 1st of each month at 23:00
-    'month-end-process': {
-        'task': 'core.tasks.run_month_end_task',
-        'schedule': crontab(hour=23, minute=0, day_of_month=1),  # 1st of month at 11 PM
+    "month-end-process": {
+        "task": "core.tasks.run_month_end_task",
+        "schedule": crontab(hour=23, minute=0, day_of_month=1),  # 1st of month at 11 PM
     },
     # Year-End Task - runs on December 31st at 22:00
-    'year-end-process': {
-        'task': 'core.tasks.run_year_end_task',
-        'schedule': crontab(hour=22, minute=0, month_of_year=12, day_of_month=31),  # Dec 31 at 10 PM
+    "year-end-process": {
+        "task": "core.tasks.run_year_end_task",
+        "schedule": crontab(
+            hour=22, minute=0, month_of_year=12, day_of_month=31
+        ),  # Dec 31 at 10 PM
     },
 }
 
 
 # API Versioning Configuration (Priority: HIGH)
 # Enables structured versioning at /api/v1/, /api/v2/, etc.
-API_VERSION = os.environ.get('API_VERSION', 'v1')
-API_VERSION_PATTERN = 'v[0-9]+'  # Regex for version matching
+API_VERSION = os.environ.get("API_VERSION", "v1")
+API_VERSION_PATTERN = "v[0-9]+"  # Regex for version matching
