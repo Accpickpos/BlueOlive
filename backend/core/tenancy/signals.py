@@ -2,11 +2,13 @@
 """
 Signal handlers for automatic tenant database and shop schema setup.
 """
+
 import logging
+
+from django.db import transaction
 from django.db.models.signals import post_save, pre_delete
 from django.dispatch import receiver
-from django.db import transaction
-from tenancy.models import Tenant, Shop
+from tenancy.models import Shop, Tenant
 from tenancy.shop_manager import delete_shop_schema
 
 logger = logging.getLogger(__name__)
@@ -29,6 +31,7 @@ def setup_tenant_database(sender, instance, created, **kwargs):
     logger.info(f"🚀 Queuing database setup for new tenant: {tenant.name}")
 
     from tenancy.tasks import setup_tenant_database_async
+
     transaction.on_commit(lambda: setup_tenant_database_async.delay(tenant.pk))
 
 
@@ -48,31 +51,31 @@ def setup_shop_schema(sender, instance, created, **kwargs):
     logger.info(f"🚀 Queuing schema setup for shop: {shop.name} ({shop.schema_name})")
 
     from tenancy.tasks import setup_shop_schema_async
-    transaction.on_commit(lambda: setup_shop_schema_async.delay(shop.pk))
 
+    transaction.on_commit(lambda: setup_shop_schema_async.delay(shop.pk))
 
 
 @receiver(pre_delete, sender=Shop)
 def cleanup_shop_schema(sender, instance, **kwargs):
     """
     Optionally delete the schema when a shop is deleted.
-    
+
     SECURITY NOTE: This is commented out by default to prevent accidental data loss.
     Uncomment only if you want automatic schema deletion.
     """
     shop = instance
-    tenant = shop.tenant
-    
+    shop.tenant
+
     logger.warning(f"⚠️  Shop being deleted: {shop.name} ({shop.schema_name})")
-    
+
     # UNCOMMENT BELOW TO ENABLE AUTOMATIC SCHEMA DELETION
     # WARNING: This will permanently delete ALL shop data!
-    
+
     # try:
     #     delete_shop_schema(tenant, shop.schema_name, cascade=True)
     #     logger.info(f"✓ Schema deleted for shop: {shop.name}")
     # except Exception as e:
     #     logger.error(f"Failed to delete schema for shop {shop.name}: {str(e)}")
     #     # Don't raise - allow shop deletion to proceed
-    
+
     logger.info(f"Schema '{shop.schema_name}' preserved (automatic deletion disabled)")

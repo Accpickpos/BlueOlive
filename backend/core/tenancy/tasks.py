@@ -3,14 +3,16 @@ Celery tasks for tenancy operations.
 Handles async tenant database provisioning, signup completion, and
 shop schema creation/migration.
 """
+
 import logging
 from datetime import timedelta
+
 from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 from tenancy.models import Shop, Tenant
-from tenancy.utils import register_tenant_connection
 from tenancy.shop_manager import create_shop_schema
+from tenancy.utils import register_tenant_connection
 
 logger = logging.getLogger(__name__)
 
@@ -45,35 +47,44 @@ def setup_tenant_database_async(self, tenant_id):
 
     try:
         superuser_conn_info = {
-            'host': tenant.db_host,
-            'port': tenant.db_port,
-            'user': tenant.db_user,
-            'password': tenant.db_password,
-            'dbname': 'postgres'
+            "host": tenant.db_host,
+            "port": tenant.db_port,
+            "user": tenant.db_user,
+            "password": tenant.db_password,
+            "dbname": "postgres",
         }
         create_tenant_database_postgres(tenant, superuser_conn_info)
         register_tenant_connection(tenant)
         migrate_tenant_database(tenant)
 
-        tenant.setup_status = 'db_ready'
-        tenant.save(update_fields=['setup_status'])
+        tenant.setup_status = "db_ready"
+        tenant.save(update_fields=["setup_status"])
         logger.info(f"[CELERY] ✅ Database ready for tenant: {tenant.name}")
         return tenant_id
 
     except Exception as e:
-        logger.error(f"[CELERY] Failed to setup database for tenant {tenant.name}: {str(e)}", exc_info=True)
+        logger.error(
+            f"[CELERY] Failed to setup database for tenant {tenant.name}: {str(e)}",
+            exc_info=True,
+        )
         try:
-            self.retry(exc=e, countdown=5 * (2 ** self.request.retries))
+            self.retry(exc=e, countdown=5 * (2**self.request.retries))
         except self.MaxRetriesExceededError:
-            tenant.setup_status = 'failed'
-            tenant.save(update_fields=['setup_status'])
+            tenant.setup_status = "failed"
+            tenant.save(update_fields=["setup_status"])
             logger.error(f"[CELERY] Max retries exceeded setting up tenant {tenant_id}")
             return f"Failed to setup tenant {tenant_id} after max retries"
 
 
 @shared_task(bind=True, max_retries=5, acks_late=True)
-def complete_tenant_signup_async(self, tenant_id, admin_password_hash,
-                                  admin_username=None, first_name=None, last_name=None):
+def complete_tenant_signup_async(
+    self,
+    tenant_id,
+    admin_password_hash,
+    admin_username=None,
+    first_name=None,
+    last_name=None,
+):
     """
     Async task completing self-serve tenant signup: creates the default
     "Main Office" shop and the tenant's first admin user, once the tenant's
@@ -109,19 +120,25 @@ def complete_tenant_signup_async(self, tenant_id, admin_password_hash,
         logger.error(f"[CELERY] Tenant with id {tenant_id} not found")
         return f"Tenant {tenant_id} not found"
 
-    if tenant.setup_status == 'pending':
+    if tenant.setup_status == "pending":
         # The database provisioning task hasn't finished yet - wait for it.
-        logger.info(f"[CELERY] Tenant {tenant.name} DB not ready yet, retrying signup completion")
+        logger.info(
+            f"[CELERY] Tenant {tenant.name} DB not ready yet, retrying signup completion"
+        )
         try:
-            self.retry(countdown=5 * (2 ** self.request.retries))
+            self.retry(countdown=5 * (2**self.request.retries))
         except self.MaxRetriesExceededError:
-            tenant.setup_status = 'failed'
-            tenant.save(update_fields=['setup_status'])
-            logger.error(f"[CELERY] Tenant {tenant_id} database never became ready, giving up on signup completion")
+            tenant.setup_status = "failed"
+            tenant.save(update_fields=["setup_status"])
+            logger.error(
+                f"[CELERY] Tenant {tenant_id} database never became ready, giving up on signup completion"
+            )
             return f"Tenant {tenant_id} database never became ready"
 
-    if tenant.setup_status == 'failed':
-        logger.error(f"[CELERY] Tenant {tenant.name} database setup failed, aborting signup completion")
+    if tenant.setup_status == "failed":
+        logger.error(
+            f"[CELERY] Tenant {tenant.name} database setup failed, aborting signup completion"
+        )
         return f"Tenant {tenant_id} database setup failed"
 
     logger.info(f"[CELERY] Completing signup for tenant: {tenant.name}")
@@ -138,47 +155,65 @@ def complete_tenant_signup_async(self, tenant_id, admin_password_hash,
             tenant=tenant,
             is_head_office=True,
             defaults={
-                'name': 'Main Office',
-                'schema_name': f"{tenant.slug}_main",
-                'subdomain': 'main',
-            }
+                "name": "Main Office",
+                "schema_name": f"{tenant.slug}_main",
+                "subdomain": "main",
+            },
         )
         if shop_created:
-            logger.info(f"[CELERY] ✓ Default shop created for tenant {tenant.name}: {shop.name}")
+            logger.info(
+                f"[CELERY] ✓ Default shop created for tenant {tenant.name}: {shop.name}"
+            )
         else:
-            logger.info(f"[CELERY] Default shop already existed for tenant {tenant.name} (redelivered task), reusing")
+            logger.info(
+                f"[CELERY] Default shop already existed for tenant {tenant.name} (redelivered task), reusing"
+            )
 
-        admin_user = ShopUser.objects.using(tenant.db_alias).filter(tenant_id=tenant.id, role='ADMIN').first()
+        admin_user = (
+            ShopUser.objects.using(tenant.db_alias)
+            .filter(tenant_id=tenant.id, role="ADMIN")
+            .first()
+        )
         if admin_user:
-            logger.info(f"[CELERY] Admin user already existed for tenant {tenant.name} (redelivered task), skipping creation")
+            logger.info(
+                f"[CELERY] Admin user already existed for tenant {tenant.name} (redelivered task), skipping creation"
+            )
         else:
             admin_user = ShopUser.objects.using(tenant.db_alias).create(
                 username=admin_username or tenant.email,
                 email=tenant.email,
-                first_name=first_name or (tenant.name.split()[0] if tenant.name else ''),
-                last_name=last_name or '',
+                first_name=first_name
+                or (tenant.name.split()[0] if tenant.name else ""),
+                last_name=last_name or "",
                 password=admin_password_hash,
                 is_staff=True,
                 is_superuser=False,
-                role='ADMIN',
+                role="ADMIN",
                 tenant_id=tenant.id,
                 is_active=True,
             )
-            logger.info(f"[CELERY] ✓ Admin user created for tenant {tenant.name}: {admin_user.username}")
+            logger.info(
+                f"[CELERY] ✓ Admin user created for tenant {tenant.name}: {admin_user.username}"
+            )
 
-        tenant.setup_status = 'ready'
-        tenant.save(update_fields=['setup_status'])
+        tenant.setup_status = "ready"
+        tenant.save(update_fields=["setup_status"])
         logger.info(f"[CELERY] ✅ Signup complete for tenant: {tenant.name}")
         return tenant_id
 
     except Exception as e:
-        logger.error(f"[CELERY] Failed to complete signup for tenant {tenant.name}: {str(e)}", exc_info=True)
+        logger.error(
+            f"[CELERY] Failed to complete signup for tenant {tenant.name}: {str(e)}",
+            exc_info=True,
+        )
         try:
-            self.retry(exc=e, countdown=5 * (2 ** self.request.retries))
+            self.retry(exc=e, countdown=5 * (2**self.request.retries))
         except self.MaxRetriesExceededError:
-            tenant.setup_status = 'failed'
-            tenant.save(update_fields=['setup_status'])
-            logger.error(f"[CELERY] Max retries exceeded completing signup for tenant {tenant_id}")
+            tenant.setup_status = "failed"
+            tenant.save(update_fields=["setup_status"])
+            logger.error(
+                f"[CELERY] Max retries exceeded completing signup for tenant {tenant_id}"
+            )
             return f"Failed to complete signup for tenant {tenant_id} after max retries"
 
 
@@ -198,55 +233,60 @@ def setup_shop_schema_async(self, shop_id):
     """
     try:
         logger.info(f"[CELERY] Starting async shop schema setup for shop_id={shop_id}")
-        
+
         # Get the shop
         try:
             shop = Shop.objects.get(id=shop_id)
         except Shop.DoesNotExist:
             logger.error(f"[CELERY] Shop with id {shop_id} not found")
             return f"Shop {shop_id} not found"
-        
+
         tenant = shop.tenant
-        
-        logger.info(f"[CELERY] Setting up schema for shop: {shop.name} ({shop.schema_name})")
-        
+
+        logger.info(
+            f"[CELERY] Setting up schema for shop: {shop.name} ({shop.schema_name})"
+        )
+
         try:
             # Ensure tenant connection is registered
             register_tenant_connection(tenant)
             logger.info(f"[CELERY] Tenant connection registered for {tenant.name}")
-            
+
             # Create schema and migrate shop apps
             create_shop_schema(tenant, shop.schema_name)
             logger.info(f"[CELERY] Schema creation completed for {shop.schema_name}")
-            
+
             # Update shop status to ready
-            shop.setup_status = 'ready'
-            shop.save(update_fields=['setup_status'])
+            shop.setup_status = "ready"
+            shop.save(update_fields=["setup_status"])
             logger.info(f"[CELERY] ✅ Shop is now ready: {shop.name}")
-            
+
             return f"Shop {shop_id} setup completed successfully"
-            
+
         except Exception as e:
             logger.error(f"[CELERY] Error setting up schema: {str(e)}", exc_info=True)
-            
+
             # Update shop status to failed
-            shop.setup_status = 'failed'
-            shop.save(update_fields=['setup_status'])
-            
+            shop.setup_status = "failed"
+            shop.save(update_fields=["setup_status"])
+
             # Retry the task with exponential backoff
-            raise self.retry(exc=e, countdown=5 * (2 ** self.request.retries))
-    
+            raise self.retry(exc=e, countdown=5 * (2**self.request.retries))
+
     except self.MaxRetriesExceededError:
         logger.error(f"[CELERY] Max retries exceeded for shop {shop_id}")
         try:
             shop = Shop.objects.get(id=shop_id)
-            shop.setup_status = 'failed'
-            shop.save(update_fields=['setup_status'])
-        except:
-            pass
+            shop.setup_status = "failed"
+            shop.save(update_fields=["setup_status"])
+        except Exception:
+            logger.error(f"[CELERY] Could not persist failed status for shop {shop_id}")
         return f"Failed to setup shop {shop_id} after max retries"
     except Exception as e:
-        logger.error(f"[CELERY] Unexpected error in setup_shop_schema_async: {str(e)}", exc_info=True)
+        logger.error(
+            f"[CELERY] Unexpected error in setup_shop_schema_async: {str(e)}",
+            exc_info=True,
+        )
         return f"Unexpected error: {str(e)}"
 
 
@@ -268,7 +308,9 @@ def sweep_stuck_tenant_provisioning(stuck_after_minutes=10):
     """
     threshold = timezone.now() - timedelta(minutes=stuck_after_minutes)
 
-    stuck_tenants = list(Tenant.objects.filter(setup_status='pending', created_at__lt=threshold))
+    stuck_tenants = list(
+        Tenant.objects.filter(setup_status="pending", created_at__lt=threshold)
+    )
     if stuck_tenants:
         logger.warning(
             f"[CELERY] Found {len(stuck_tenants)} tenant(s) stuck in 'pending' "
@@ -277,7 +319,9 @@ def sweep_stuck_tenant_provisioning(stuck_after_minutes=10):
     for tenant in stuck_tenants:
         setup_tenant_database_async.delay(tenant.pk)
 
-    stuck_shops = list(Shop.objects.filter(setup_status='pending', created_at__lt=threshold))
+    stuck_shops = list(
+        Shop.objects.filter(setup_status="pending", created_at__lt=threshold)
+    )
     if stuck_shops:
         logger.warning(
             f"[CELERY] Found {len(stuck_shops)} shop(s) stuck in 'pending' "
@@ -286,4 +330,4 @@ def sweep_stuck_tenant_provisioning(stuck_after_minutes=10):
     for shop in stuck_shops:
         setup_shop_schema_async.delay(shop.pk)
 
-    return {'tenants_requeued': len(stuck_tenants), 'shops_requeued': len(stuck_shops)}
+    return {"tenants_requeued": len(stuck_tenants), "shops_requeued": len(stuck_shops)}

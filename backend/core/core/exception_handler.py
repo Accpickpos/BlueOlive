@@ -21,25 +21,8 @@ Usage:
 """
 
 import logging
-import sys
 import traceback
 from typing import Any, Dict, Optional
-
-from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import DatabaseError
-from django.http import Http404
-from rest_framework import status
-from rest_framework.exceptions import (
-    APIException,
-    AuthenticationFailed,
-    NotAuthenticated,
-    NotFound,
-    PermissionDenied as DRFPermissionDenied,
-    Throttled,
-    ValidationError as DRFValidationError,
-)
-from rest_framework.response import Response
-from rest_framework.views import exception_handler
 
 from core.exceptions import (
     BlueOliveException,
@@ -50,51 +33,69 @@ from core.exceptions import (
     NotFoundError,
     PermissionError,
     TokenError,
-    ValidationError,
 )
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import DatabaseError
+from django.http import Http404
+from rest_framework import status
+from rest_framework.exceptions import (
+    APIException,
+    AuthenticationFailed,
+    NotAuthenticated,
+    NotFound,
+)
+from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
+from rest_framework.exceptions import (
+    Throttled,
+)
+from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.response import Response
+from rest_framework.views import exception_handler
 
 logger = logging.getLogger(__name__)
 
 
-def custom_exception_handler(exc: Exception, context: Dict[str, Any]) -> Optional[Response]:
+def custom_exception_handler(
+    exc: Exception, context: Dict[str, Any]
+) -> Optional[Response]:
     """
     Custom exception handler for DRF that provides consistent error responses.
-    
+
     This handler:
     1. Handles custom BlueOliveException subclasses with standardized format
     2. Converts standard DRF exceptions to the standard format
     3. Catches any unhandled exceptions and returns a generic 500 error
-    
+
     Args:
         exc: The exception that was raised
         context: Context dictionary containing view info
-        
+
     Returns:
         Response object with standardized error format, or None
     """
     # First, try the custom BlueOlive exceptions
     if isinstance(exc, BlueOliveException):
         return _handle_blueolive_exception(exc)
-    
+
     # Handle Django exceptions
     if isinstance(exc, Http404):
         return _handle_not_found(exc)
-    
+
     if isinstance(exc, PermissionDenied):
         return _handle_permission_denied(exc)
-    
+
     if isinstance(exc, ValidationError):
         return _handle_django_validation_error(exc)
-    
+
     if isinstance(exc, DatabaseError):
         return _handle_database_error(exc)
-    
+
     # Handle DRF exceptions
     response = exception_handler(exc, context)
-    
+
     if response is not None:
         return _handle_drf_exception(exc, response)
-    
+
     # Handle uncaught exceptions
     return _handle_uncaught_exception(exc, context)
 
@@ -102,10 +103,10 @@ def custom_exception_handler(exc: Exception, context: Dict[str, Any]) -> Optiona
 def _handle_blueolive_exception(exc: BlueOliveException) -> Response:
     """
     Handle custom BlueOlive exceptions.
-    
+
     Args:
         exc: BlueOliveException instance
-        
+
     Returns:
         Response with standardized error format
     """
@@ -115,13 +116,11 @@ def _handle_blueolive_exception(exc: BlueOliveException) -> Response:
             "error_code": exc.code,
             "error_details": exc.details,
             "field_errors": exc.field_errors,
-        }
+        },
     )
-    
-    response_data = {
-        "error": exc.to_dict()
-    }
-    
+
+    response_data = {"error": exc.to_dict()}
+
     return Response(response_data, status=exc.status_code)
 
 
@@ -150,16 +149,16 @@ def _handle_permission_denied(exc: PermissionDenied) -> Response:
 def _handle_django_validation_error(exc: ValidationError) -> Response:
     """Handle Django ValidationError."""
     field_errors = {}
-    
-    if hasattr(exc, 'message_dict'):
+
+    if hasattr(exc, "message_dict"):
         # Form/Model validation error with field-specific messages
         field_errors = exc.message_dict
         message = "Validation failed"
-    elif hasattr(exc, 'message'):
+    elif hasattr(exc, "message"):
         message = str(exc.message)
     else:
         message = "Validation failed"
-    
+
     response_data = {
         "error": {
             "code": "VALIDATION_ERROR",
@@ -167,14 +166,14 @@ def _handle_django_validation_error(exc: ValidationError) -> Response:
             "field_errors": field_errors if field_errors else None,
         }
     }
-    
+
     return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
 
 
 def _handle_database_error(exc: DatabaseError) -> Response:
     """Handle database errors."""
     logger.error(f"Database error: {str(exc)}", exc_info=True)
-    
+
     response_data = {
         "error": {
             "code": "DATABASE_ERROR",
@@ -187,11 +186,11 @@ def _handle_database_error(exc: DatabaseError) -> Response:
 def _handle_drf_exception(exc: APIException, response: Response) -> Response:
     """
     Handle standard DRF exceptions with consistent format.
-    
+
     Args:
         exc: DRF APIException instance
         response: Original response from DRF
-        
+
     Returns:
         Response with standardized error format
     """
@@ -216,9 +215,9 @@ def _handle_drf_exception(exc: APIException, response: Response) -> Response:
         code = "RATE_LIMITED"
         message = str(exc.detail) if exc.detail else "Rate limit exceeded"
     else:
-        code = exc.__class__.__name__.upper().replace('_', '')
+        code = exc.__class__.__name__.upper().replace("_", "")
         message = str(exc.detail) if exc.detail else "An error occurred"
-    
+
     # Build standardized response
     error_response = {
         "error": {
@@ -226,34 +225,34 @@ def _handle_drf_exception(exc: APIException, response: Response) -> Response:
             "message": message,
         }
     }
-    
+
     # Add field errors for validation errors
     if isinstance(exc, DRFValidationError):
         field_errors = _get_field_errors(exc.detail)
         if field_errors:
             error_response["error"]["field_errors"] = field_errors
-    
+
     return Response(error_response, status=response.status_code)
 
 
 def _handle_uncaught_exception(exc: Exception, context: Dict[str, Any]) -> Response:
     """
     Handle any uncaught exceptions.
-    
+
     This is the fallback handler for exceptions not caught by any other handler.
     It logs the full traceback and returns a generic 500 error.
-    
+
     Args:
         exc: Uncaught exception
         context: Exception context
-        
+
     Returns:
         Response with generic 500 error
     """
     # Get view information for logging
-    view = context.get('view', None)
-    view_name = view.__class__.__name__ if view else 'Unknown'
-    
+    view = context.get("view", None)
+    view_name = view.__class__.__name__ if view else "Unknown"
+
     # Log the full traceback
     logger.error(
         f"Unhandled exception in {view_name}: {type(exc).__name__}: {str(exc)}",
@@ -261,26 +260,26 @@ def _handle_uncaught_exception(exc: Exception, context: Dict[str, Any]) -> Respo
         extra={
             "view": view_name,
             "exception_type": type(exc).__name__,
-        }
+        },
     )
-    
+
     # Return generic error in production, detailed error in debug
     from django.conf import settings
-    
+
     response_data = {
         "error": {
             "code": "INTERNAL_ERROR",
             "message": "An internal error occurred. Please try again later.",
         }
     }
-    
+
     if settings.DEBUG:
         response_data["error"]["details"] = {
             "exception_type": type(exc).__name__,
             "exception_message": str(exc),
             "traceback": traceback.format_exc(),
         }
-    
+
     return Response(response_data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -319,12 +318,13 @@ def _get_field_errors(detail: Any) -> Optional[Dict[str, Any]]:
 # Exception Handler for OpenAPI Schema Documentation
 # =============================================================================
 
+
 def get_error_schema() -> Dict[str, Any]:
     """
     Get OpenAPI schema for error responses.
-    
+
     This can be used with drf-spectacular to document error responses.
-    
+
     Returns:
         OpenAPI schema for error responses
     """

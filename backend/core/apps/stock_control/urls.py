@@ -1,49 +1,82 @@
-from django.urls import path, include
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
+
 from . import views
 
 router = DefaultRouter()
 
 # ── Core Stock ──────────────────────────────────────────────────────────────
-router.register(r'stock-items',             views.StockItemViewSet,             basename='stockitem')
-router.register(r'special-deals',           views.SpecialDealViewSet,           basename='specialdeal')
-router.register(r'future-pricing',          views.FuturePricingViewSet,         basename='futurepricing')
-router.register(r'shrink-wraps',            views.ShrinkWrapViewSet,            basename='shrinkwrap')
+router.register(r"stock-items", views.StockItemViewSet, basename="stockitem")
+router.register(r"special-deals", views.SpecialDealViewSet, basename="specialdeal")
+router.register(r"future-pricing", views.FuturePricingViewSet, basename="futurepricing")
+router.register(r"shrink-wraps", views.ShrinkWrapViewSet, basename="shrinkwrap")
 
 # ── Pack & Bundle ────────────────────────────────────────────────────────────
-router.register(r'pack-bundles',            views.PackBundleViewSet,            basename='packbundle')
-router.register(r'pack-bundle-ingredients', views.PackBundleIngredientViewSet,  basename='packbundleingredient')
+router.register(r"pack-bundles", views.PackBundleViewSet, basename="packbundle")
+router.register(
+    r"pack-bundle-ingredients",
+    views.PackBundleIngredientViewSet,
+    basename="packbundleingredient",
+)
 
 # ── Transactions & Ledger ────────────────────────────────────────────────────
-router.register(r'stock-transactions',      views.StockTransactionViewSet,      basename='stocktransaction')
-router.register(r'stock-movement-ledger',   views.StockMovementLedgerViewSet,   basename='stockmovementledger')
+router.register(
+    r"stock-transactions", views.StockTransactionViewSet, basename="stocktransaction"
+)
+router.register(
+    r"stock-movement-ledger",
+    views.StockMovementLedgerViewSet,
+    basename="stockmovementledger",
+)
 
 # ── Stock Take ───────────────────────────────────────────────────────────────
-router.register(r'stock-takes',             views.StockTakeViewSet,             basename='stocktake')
-router.register(r'stock-take-items',        views.StockTakeItemViewSet,         basename='stocktakeitem')
+router.register(r"stock-takes", views.StockTakeViewSet, basename="stocktake")
+router.register(
+    r"stock-take-items", views.StockTakeItemViewSet, basename="stocktakeitem"
+)
 
 # ── Pricing & Keys ───────────────────────────────────────────────────────────
-router.register(r'contract-pricing',        views.ContractPricingViewSet,       basename='contractpricing')
-router.register(r'lookup-keys',             views.OneTouchLookupKeyViewSet,     basename='onetouchlookupkey')
-router.register(r'monthly-statistics',      views.StockMonthlyStatisticViewSet, basename='stockmonthlystatistic')
+router.register(
+    r"contract-pricing", views.ContractPricingViewSet, basename="contractpricing"
+)
+router.register(
+    r"lookup-keys", views.OneTouchLookupKeyViewSet, basename="onetouchlookupkey"
+)
+router.register(
+    r"monthly-statistics",
+    views.StockMonthlyStatisticViewSet,
+    basename="stockmonthlystatistic",
+)
 
 # ── Branches ─────────────────────────────────────────────────────────────────
-router.register(r'branches',                views.BranchViewSet,                basename='branch')
-router.register(r'branch-stock',            views.BranchStockViewSet,           basename='branchstock')
+router.register(r"branches", views.BranchViewSet, basename="branch")
+router.register(r"branch-stock", views.BranchStockViewSet, basename="branchstock")
 
 # ── Group Orders ─────────────────────────────────────────────────────────────
-router.register(r'group-orders',            views.GroupOrderViewSet,            basename='grouporder')
-router.register(r'group-order-items',       views.GroupOrderItemViewSet,        basename='grouporderitem')
+router.register(r"group-orders", views.GroupOrderViewSet, basename="grouporder")
+router.register(
+    r"group-order-items", views.GroupOrderItemViewSet, basename="grouporderitem"
+)
 
 # ── Inter-Branch Transfers (IBT) ─────────────────────────────────────────────
-router.register(r'branch-transfers',        views.BranchTransferViewSet,        basename='branchtransfer')
-router.register(r'branch-transfer-items',   views.BranchTransferItemViewSet,    basename='branchtransferitem')
+router.register(
+    r"branch-transfers", views.BranchTransferViewSet, basename="branchtransfer"
+)
+router.register(
+    r"branch-transfer-items",
+    views.BranchTransferItemViewSet,
+    basename="branchtransferitem",
+)
 
 # ── Inter-Branch Invoices (IBI) ──────────────────────────────────────────────
-router.register(r'branch-transfer-invoices', views.BranchTransferInvoiceViewSet, basename='branchtransferinvoice')
+router.register(
+    r"branch-transfer-invoices",
+    views.BranchTransferInvoiceViewSet,
+    basename="branchtransferinvoice",
+)
 
 urlpatterns = [
-    path('', include(router.urls)),
+    path("", include(router.urls)),
 ]
 
 

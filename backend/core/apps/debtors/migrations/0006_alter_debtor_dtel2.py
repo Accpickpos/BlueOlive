@@ -12,13 +12,13 @@ class Migration(migrations.Migration):
     operations = [
         # First, set all NULL values to empty string to satisfy NOT NULL constraint
         migrations.RunSQL(
-            sql="UPDATE dmast SET tel2 = '' WHERE tel2 IS NULL;",
+            sql="UPDATE dmast SET dtel2 = '' WHERE dtel2 IS NULL;",
             reverse_sql=""
         ),
         # Set the DEFAULT on the column so empty strings don't become NULL
         migrations.RunSQL(
-            sql="ALTER COLUMN tel2 SET DEFAULT '';",
-            reverse_sql="ALTER COLUMN tel2 DROP DEFAULT;"
+            sql="ALTER TABLE dmast ALTER COLUMN dtel2 SET DEFAULT '';",
+            reverse_sql="ALTER TABLE dmast ALTER COLUMN dtel2 DROP DEFAULT;"
         ),
         migrations.AlterField(
             model_name='debtor',

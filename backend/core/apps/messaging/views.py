@@ -1,13 +1,21 @@
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.parsers import MultiPartParser, FormParser
+import logging
 
 from apps.shop_filter_mixin import ShopFilterMixin
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from .models import Conversation, Message, MessageAttachment, Notification
-from .serializers import ConversationSerializer, MessageSerializer, MessageAttachmentSerializer, NotificationSerializer
+from .serializers import (
+    ConversationSerializer,
+    MessageAttachmentSerializer,
+    MessageSerializer,
+    NotificationSerializer,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class ConversationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
@@ -16,119 +24,118 @@ class ConversationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         # Users only see conversations they participate in
-        return Conversation.objects.filter(
-            participants=self.request.user
-        ).distinct()
+        return Conversation.objects.filter(participants=self.request.user).distinct()
 
     def create(self, request, *args, **kwargs):
         """Create a new conversation with participants."""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         conversation = serializer.save()
-        
+
         # Add the current user as a participant
         conversation.participants.add(request.user)
-        
+
         # Add additional participants from the request
-        participant_ids = request.data.get('participants', [])
+        participant_ids = request.data.get("participants", [])
         if isinstance(participant_ids, str):
             # Handle comma-separated string
-            participant_ids = [int(p.strip()) for p in participant_ids.split(',') if p.strip()]
-        
+            participant_ids = [
+                int(p.strip()) for p in participant_ids.split(",") if p.strip()
+            ]
+
         from shop_users.models import ShopUser
+
         for participant_id in participant_ids:
             try:
                 participant = ShopUser.objects.get(id=participant_id)
                 conversation.participants.add(participant)
             except ShopUser.DoesNotExist:
                 pass
-        
+
         # Create conversation invite notifications for other participants
         for participant in conversation.participants.exclude(id=request.user.id):
             Notification.objects.create(
                 user=participant,
-                notification_type='conversation_invite',
+                notification_type="conversation_invite",
                 title=f'New conversation: {conversation.title or "Untitled"}',
-                message=f'{request.user.full_name} added you to a conversation',
-                link=f'/dashboard/messaging?conversation={conversation.id}'
+                message=f"{request.user.full_name} added you to a conversation",
+                link=f"/dashboard/messaging?conversation={conversation.id}",
             )
-        
+
         headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        return Response(
+            serializer.data, status=status.HTTP_201_CREATED, headers=headers
+        )
 
     def perform_create(self, serializer):
         conversation = serializer.save()
         conversation.participants.add(self.request.user)
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=["get"])
     def messages(self, request, pk=None):
         conversation = self.get_object()
         messages = conversation.messages.all()
         serializer = MessageSerializer(messages, many=True)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    @action(detail=True, methods=["post"], parser_classes=[MultiPartParser, FormParser])
     def send(self, request, pk=None):
         conversation = self.get_object()
-        
+
         # Handle content from either form data or JSON
-        content = request.data.get('content', '')
-        
+        content = request.data.get("content", "")
+
         # Create the message
         message = Message.objects.create(
-            conversation=conversation,
-            sender=request.user,
-            content=content
+            conversation=conversation, sender=request.user, content=content
         )
-        
+
         # Handle file attachments
-        files = request.FILES.getlist('files')
+        files = request.FILES.getlist("files")
         for file in files:
             MessageAttachment.objects.create(
                 message=message,
                 file=file,
                 filename=file.name,
                 content_type=file.content_type,
-                file_size=file.size
+                file_size=file.size,
             )
-        
+
         # Update conversation timestamp
         conversation.save()  # triggers auto_now on updated_at
-        
+
         # Create notifications for other participants
         for participant in conversation.participants.exclude(id=request.user.id):
             Notification.objects.create(
                 user=participant,
-                notification_type='new_message',
-                title=f'New message from {request.user.full_name}',
-                message=content[:100] + ('...' if len(content) > 100 else ''),
-                link=f'/dashboard/messaging?conversation={conversation.id}'
+                notification_type="new_message",
+                title=f"New message from {request.user.full_name}",
+                message=content[:100] + ("..." if len(content) > 100 else ""),
+                link=f"/dashboard/messaging?conversation={conversation.id}",
             )
-        
+
         serializer = MessageSerializer(message)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    @action(detail=True, methods=["post"], parser_classes=[MultiPartParser, FormParser])
     def upload_attachment(self, request, pk=None):
         """Upload attachment to an existing message."""
         conversation = self.get_object()
-        message_id = request.data.get('message_id')
-        
+        message_id = request.data.get("message_id")
+
         if not message_id:
             return Response(
-                {'error': 'message_id is required'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "message_id is required"}, status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         try:
             message = conversation.messages.get(id=message_id)
         except Message.DoesNotExist:
             return Response(
-                {'error': 'Message not found'},
-                status=status.HTTP_404_NOT_FOUND
+                {"error": "Message not found"}, status=status.HTTP_404_NOT_FOUND
             )
-        
-        files = request.FILES.getlist('files')
+
+        files = request.FILES.getlist("files")
         attachments = []
         for file in files:
             attachment = MessageAttachment.objects.create(
@@ -136,24 +143,25 @@ class ConversationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 file=file,
                 filename=file.name,
                 content_type=file.content_type,
-                file_size=file.size
+                file_size=file.size,
             )
             attachments.append(attachment)
-        
+
         serializer = MessageAttachmentSerializer(attachments, many=True)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def mark_read(self, request, pk=None):
         conversation = self.get_object()
-        conversation.messages.filter(is_read=False).exclude(
-            sender=request.user
-        ).update(is_read=True)
-        return Response({'status': 'messages marked as read'})
+        conversation.messages.filter(is_read=False).exclude(sender=request.user).update(
+            is_read=True
+        )
+        return Response({"status": "messages marked as read"})
 
 
 class NotificationViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """ViewSet for viewing notifications."""
+
     serializer_class = NotificationSerializer
     permission_classes = [IsAuthenticated]
 
@@ -164,38 +172,36 @@ class NotificationViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
             # Table doesn't exist yet, return empty queryset
             return Notification.objects.none()
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=["get"])
     def unread_count(self, request):
         """Get count of unread notifications."""
         try:
             count = Notification.objects.filter(
-                user=request.user,
-                is_read=False
+                user=request.user, is_read=False
             ).count()
         except Exception:
             # Table doesn't exist yet
             count = 0
-        return Response({'unread_count': count})
+        return Response({"unread_count": count})
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def mark_read(self, request, pk=None):
         """Mark a single notification as read."""
         try:
             notification = self.get_object()
             notification.is_read = True
             notification.save()
-            return Response({'status': 'notification marked as read'})
+            return Response({"status": "notification marked as read"})
         except Exception:
-            return Response({'status': 'notification not found'}, status=404)
+            return Response({"status": "notification not found"}, status=404)
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=["post"])
     def mark_all_read(self, request):
         """Mark all notifications as read."""
         try:
-            Notification.objects.filter(
-                user=request.user,
-                is_read=False
-            ).update(is_read=True)
+            Notification.objects.filter(user=request.user, is_read=False).update(
+                is_read=True
+            )
         except Exception:
-            pass
-        return Response({'status': 'all notifications marked as read'})
+            logger.exception("Failed to mark all notifications as read")
+        return Response({"status": "all notifications marked as read"})

@@ -14,23 +14,25 @@ first trusted — see /plan-ceo-review's cutover-mechanism decision.
 Usage:
     python manage.py report_outstanding_deposits
 """
+
+from apps.gas.models import RentalTransaction
 from django.core.management.base import BaseCommand
 from django.db.models import Sum
 
-from apps.gas.models import RentalTransaction
-
 
 class Command(BaseCommand):
-    help = 'Report total outstanding cylinder deposit liability and overdue rentals'
+    help = "Report total outstanding cylinder deposit liability and overdue rentals"
 
     def handle(self, *args, **options):
-        open_rentals = RentalTransaction.objects.filter(status=RentalTransaction.STATUS_OPEN)
+        open_rentals = RentalTransaction.objects.filter(
+            status=RentalTransaction.STATUS_OPEN
+        )
 
         if not open_rentals.exists():
             self.stdout.write("No outstanding deposits.")
             return
 
-        total_liability = open_rentals.aggregate(total=Sum('deposit_amount'))['total']
+        total_liability = open_rentals.aggregate(total=Sum("deposit_amount"))["total"]
         self.stdout.write(f"Total deposit liability outstanding: {total_liability}")
         self.stdout.write(f"Open rentals: {open_rentals.count()}")
         self.stdout.write("")

@@ -10,6 +10,7 @@ the same for read-only, no-side-effect public endpoints that have nothing
 to do with account security, so normal page-load traffic on /auth doesn't
 exhaust the same quota a brute-force guard is meant to protect.
 """
+
 from rest_framework.throttling import AnonRateThrottle
 
 
@@ -18,5 +19,6 @@ class PublicReadThrottle(AnonRateThrottle):
     listing, CSRF token fetch). Generous rate — these carry no abuse risk
     beyond normal DB read load, so they shouldn't share a quota with
     security-sensitive actions."""
-    scope = 'public_read'
-    rate = '120/min'
+
+    scope = "public_read"
+    rate = "120/min"

@@ -10,11 +10,11 @@ after bugs, manual DB edits, or partial failures. This command recomputes
 it from scratch as the sum of quantity_outstanding across all non-cancelled
 PO lines for each stock item, matching the legacy utility's purpose.
 """
-from django.db.models import Sum
 
 from apps.purchase_orders.models import PurchaseOrderLine
 from apps.settings.legacy_import_command import TenantAwareLegacyImportCommand
 from apps.stock_control.models import StockItem
+from django.db.models import Sum
 
 
 class Command(TenantAwareLegacyImportCommand):
@@ -22,13 +22,12 @@ class Command(TenantAwareLegacyImportCommand):
 
     def run(self, **options):
         outstanding_by_item = dict(
-            PurchaseOrderLine.objects
-            .using(self.db_alias)
-            .exclude(purchase_order__status='C')
+            PurchaseOrderLine.objects.using(self.db_alias)
+            .exclude(purchase_order__status="C")
             .exclude(stock_item__isnull=True)
-            .values('stock_item')
-            .annotate(total_outstanding=Sum('quantity_outstanding'))
-            .values_list('stock_item', 'total_outstanding')
+            .values("stock_item")
+            .annotate(total_outstanding=Sum("quantity_outstanding"))
+            .values_list("stock_item", "total_outstanding")
         )
 
         stock_items = StockItem.objects.using(self.db_alias).all()
@@ -39,5 +38,5 @@ class Command(TenantAwareLegacyImportCommand):
                     f"  {stock_item.stock_code}: {stock_item.quantity_on_order} -> {correct_qty}"
                 )
                 stock_item.quantity_on_order = correct_qty
-                stock_item.save(update_fields=['quantity_on_order'])
+                stock_item.save(update_fields=["quantity_on_order"])
                 self.updated += 1

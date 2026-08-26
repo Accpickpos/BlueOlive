@@ -7,50 +7,59 @@ URL patterns for all settings endpoints
 LOCATION: accpick_project/settings/urls.py
 """
 
-from django.urls import path, include
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
-from .views import (
-    SalesDepartmentViewSet,
-    SalesAreaViewSet,
-    IncomeCategoryViewSet,
-    ExpenseCategoryViewSet,
-    TaxCodeViewSet,
-    CostingCategoryViewSet,
-    PaymentMethodViewSet,
-    CreditTermsViewSet,
-    SystemConfigurationViewSet,
-    DepartmentMonthlyStatsViewSet,
-    SalesAreaMonthlyStatsViewSet,
-    DayEndReportViewSet,
-    APIKeyViewSet,
-    EmailDocumentView,
-)
+
 from .api.import_api import ImportViewSet
+from .views import (
+    APIKeyViewSet,
+    CostingCategoryViewSet,
+    CreditTermsViewSet,
+    DayEndReportViewSet,
+    DepartmentMonthlyStatsViewSet,
+    EmailDocumentView,
+    ExpenseCategoryViewSet,
+    IncomeCategoryViewSet,
+    PaymentMethodViewSet,
+    SalesAreaMonthlyStatsViewSet,
+    SalesAreaViewSet,
+    SalesDepartmentViewSet,
+    SystemConfigurationViewSet,
+    TaxCodeViewSet,
+)
 
 # Create router
 router = DefaultRouter()
 
 # Register viewsets
-router.register(r'departments', SalesDepartmentViewSet, basename='department')
-router.register(r'sales-areas', SalesAreaViewSet, basename='sales-area')
-router.register(r'income-categories', IncomeCategoryViewSet, basename='income-category')
-router.register(r'expense-categories', ExpenseCategoryViewSet, basename='expense-category')
-router.register(r'tax-codes', TaxCodeViewSet, basename='tax-code')
-router.register(r'costing-categories', CostingCategoryViewSet, basename='costing-category')
-router.register(r'payment-methods', PaymentMethodViewSet, basename='payment-method')
-router.register(r'credit-terms', CreditTermsViewSet, basename='credit-terms')
-router.register(r'system-config', SystemConfigurationViewSet, basename='system-config')
-router.register(r'department-stats', DepartmentMonthlyStatsViewSet, basename='department-stats')
-router.register(r'sales-area-stats', SalesAreaMonthlyStatsViewSet, basename='sales-area-stats')
-router.register(r'day-end-reports', DayEndReportViewSet, basename='day-end-report')
-router.register(r'import', ImportViewSet, basename='import')
-router.register(r'api-keys', APIKeyViewSet, basename='api-key')
+router.register(r"departments", SalesDepartmentViewSet, basename="department")
+router.register(r"sales-areas", SalesAreaViewSet, basename="sales-area")
+router.register(r"income-categories", IncomeCategoryViewSet, basename="income-category")
+router.register(
+    r"expense-categories", ExpenseCategoryViewSet, basename="expense-category"
+)
+router.register(r"tax-codes", TaxCodeViewSet, basename="tax-code")
+router.register(
+    r"costing-categories", CostingCategoryViewSet, basename="costing-category"
+)
+router.register(r"payment-methods", PaymentMethodViewSet, basename="payment-method")
+router.register(r"credit-terms", CreditTermsViewSet, basename="credit-terms")
+router.register(r"system-config", SystemConfigurationViewSet, basename="system-config")
+router.register(
+    r"department-stats", DepartmentMonthlyStatsViewSet, basename="department-stats"
+)
+router.register(
+    r"sales-area-stats", SalesAreaMonthlyStatsViewSet, basename="sales-area-stats"
+)
+router.register(r"day-end-reports", DayEndReportViewSet, basename="day-end-report")
+router.register(r"import", ImportViewSet, basename="import")
+router.register(r"api-keys", APIKeyViewSet, basename="api-key")
 
-app_name = 'settings'
+app_name = "settings"
 
 urlpatterns = [
-    path('', include(router.urls)),
-    path('email-document/', EmailDocumentView.as_view(), name='email-document'),
+    path("", include(router.urls)),
+    path("email-document/", EmailDocumentView.as_view(), name="email-document"),
 ]
 
 

@@ -45,16 +45,16 @@ normally to pick up the index rename migration:
     python manage.py rename_rentals_app_to_gas --tenant acme --all-shops
     python manage.py migrate  # finishes the index rename via 0002
 """
+
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connections, transaction
-
 from tenancy.models import Tenant
 from tenancy.tenant_context import clear_current, set_current_shop, set_current_tenant
 from tenancy.utils import register_tenant_connection
 
-OLD_APP = 'rentals'
-NEW_APP = 'gas'
-OLD_TABLES = ['rentals_rentalsettings', 'rentals_rentaltransaction']
+OLD_APP = "rentals"
+NEW_APP = "gas"
+OLD_TABLES = ["rentals_rentalsettings", "rentals_rentaltransaction"]
 
 
 class Command(BaseCommand):
@@ -67,30 +67,44 @@ class Command(BaseCommand):
     )
 
     def add_arguments(self, parser):
-        parser.add_argument('--tenant', type=str, required=True, help='Tenant name, slug, or ID')
-        parser.add_argument('--shop', type=str, help='Shop name or code (omit if using --all-shops)')
-        parser.add_argument('--all-shops', action='store_true', help='Run for every shop belonging to the tenant')
-        parser.add_argument('--dry-run', action='store_true', help='Show what would change without changing it')
+        parser.add_argument(
+            "--tenant", type=str, required=True, help="Tenant name, slug, or ID"
+        )
+        parser.add_argument(
+            "--shop", type=str, help="Shop name or code (omit if using --all-shops)"
+        )
+        parser.add_argument(
+            "--all-shops",
+            action="store_true",
+            help="Run for every shop belonging to the tenant",
+        )
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Show what would change without changing it",
+        )
 
     def handle(self, *args, **options):
-        tenant = self._get_tenant(options['tenant'])
+        tenant = self._get_tenant(options["tenant"])
         if not tenant:
             raise CommandError(f"Tenant '{options['tenant']}' not found")
 
-        if options['all_shops']:
+        if options["all_shops"]:
             shops = list(tenant.shops.all())
             if not shops:
                 raise CommandError(f"Tenant '{tenant.name}' has no shops")
-        elif options['shop']:
-            shop = self._get_shop(tenant, options['shop'])
+        elif options["shop"]:
+            shop = self._get_shop(tenant, options["shop"])
             if not shop:
-                raise CommandError(f"Shop '{options['shop']}' not found in tenant '{tenant.name}'")
+                raise CommandError(
+                    f"Shop '{options['shop']}' not found in tenant '{tenant.name}'"
+                )
             shops = [shop]
         else:
             raise CommandError("Pass --shop <name> or --all-shops")
 
         for shop in shops:
-            self._migrate_shop(tenant, shop, dry_run=options['dry_run'])
+            self._migrate_shop(tenant, shop, dry_run=options["dry_run"])
 
     def _get_tenant(self, identifier):
         try:
@@ -150,7 +164,9 @@ class Command(BaseCommand):
 
                     self._rewrite_migration_history(cursor)
 
-            self.stdout.write(self.style.SUCCESS(f"[{shop.name}] Renamed '{OLD_APP}' -> '{NEW_APP}'."))
+            self.stdout.write(
+                self.style.SUCCESS(f"[{shop.name}] Renamed '{OLD_APP}' -> '{NEW_APP}'.")
+            )
         finally:
             clear_current()
 
@@ -170,7 +186,9 @@ class Command(BaseCommand):
             [old_pkey],
         )
         if cursor.fetchone():
-            cursor.execute(f'ALTER TABLE "{old_table}" RENAME CONSTRAINT "{old_pkey}" TO "{new_pkey}"')
+            cursor.execute(
+                f'ALTER TABLE "{old_table}" RENAME CONSTRAINT "{old_pkey}" TO "{new_pkey}"'
+            )
 
         # Foreign key / other named constraints referencing this table
         cursor.execute(
@@ -180,9 +198,13 @@ class Command(BaseCommand):
             [old_table],
         )
         for (conname,) in cursor.fetchall():
-            new_conname = conname.replace(OLD_APP, NEW_APP, 1) if OLD_APP in conname else conname
+            new_conname = (
+                conname.replace(OLD_APP, NEW_APP, 1) if OLD_APP in conname else conname
+            )
             if new_conname != conname:
-                cursor.execute(f'ALTER TABLE "{old_table}" RENAME CONSTRAINT "{conname}" TO "{new_conname}"')
+                cursor.execute(
+                    f'ALTER TABLE "{old_table}" RENAME CONSTRAINT "{conname}" TO "{new_conname}"'
+                )
 
         # Owned sequences (id BigAutoField columns)
         cursor.execute(
@@ -191,13 +213,17 @@ class Command(BaseCommand):
             [old_table],
         )
         for (column_name,) in cursor.fetchall():
-            cursor.execute("SELECT pg_get_serial_sequence(%s, %s)", [old_table, column_name])
+            cursor.execute(
+                "SELECT pg_get_serial_sequence(%s, %s)", [old_table, column_name]
+            )
             seq = cursor.fetchone()[0]
             if seq:
-                seq_name = seq.split('.')[-1].strip('"')
+                seq_name = seq.split(".")[-1].strip('"')
                 if OLD_APP in seq_name:
                     new_seq_name = seq_name.replace(OLD_APP, NEW_APP, 1)
-                    cursor.execute(f'ALTER SEQUENCE "{seq_name}" RENAME TO "{new_seq_name}"')
+                    cursor.execute(
+                        f'ALTER SEQUENCE "{seq_name}" RENAME TO "{new_seq_name}"'
+                    )
 
         # The table itself, last (indexes/constraints/sequences above still resolve
         # to it by OID, not name, so order doesn't matter functionally — renaming
@@ -215,7 +241,7 @@ class Command(BaseCommand):
         # starting state `0002_rename_...` expects to run against.
         cursor.execute(
             "SELECT id FROM django_migrations WHERE app = %s AND name = %s",
-            [OLD_APP, '0001_initial'],
+            [OLD_APP, "0001_initial"],
         )
         if not cursor.fetchone():
             self.stdout.write(
@@ -229,7 +255,7 @@ class Command(BaseCommand):
 
         cursor.execute(
             "UPDATE django_migrations SET app = %s WHERE app = %s AND name = %s",
-            [NEW_APP, OLD_APP, '0001_initial'],
+            [NEW_APP, OLD_APP, "0001_initial"],
         )
         self.stdout.write(
             f"  django_migrations: re-tagged '{OLD_APP}.0001_initial' -> "

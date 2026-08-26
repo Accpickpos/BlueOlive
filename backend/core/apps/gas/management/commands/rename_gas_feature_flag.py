@@ -22,8 +22,8 @@ Usage:
     python manage.py rename_gas_feature_flag           # preview
     python manage.py rename_gas_feature_flag --apply    # actually rewrite
 """
-from django.core.management.base import BaseCommand
 
+from django.core.management.base import BaseCommand
 from tenancy.models import SubscriptionPlan
 
 
@@ -31,31 +31,45 @@ class Command(BaseCommand):
     help = "Rename the 'rentals' key to 'gas' in SubscriptionPlan.features, wherever it's set."
 
     def add_arguments(self, parser):
-        parser.add_argument('--apply', action='store_true', help='Actually write the change (default: preview only)')
+        parser.add_argument(
+            "--apply",
+            action="store_true",
+            help="Actually write the change (default: preview only)",
+        )
 
     def handle(self, *args, **options):
-        affected = SubscriptionPlan.objects.filter(features__has_key='rentals')
+        affected = SubscriptionPlan.objects.filter(features__has_key="rentals")
 
         if not affected.exists():
-            self.stdout.write(self.style.SUCCESS(
-                "No SubscriptionPlan has a 'rentals' key in features — nothing to do."
-            ))
+            self.stdout.write(
+                self.style.SUCCESS(
+                    "No SubscriptionPlan has a 'rentals' key in features — nothing to do."
+                )
+            )
             return
 
         for plan in affected:
-            old_value = plan.features.get('rentals')
+            old_value = plan.features.get("rentals")
             self.stdout.write(
                 f"Plan '{plan.name}' ({plan.slug}): features['rentals']={old_value!r}"
-                + (" -> features['gas']" if options['apply'] else " (would rename to features['gas'], preview only)")
+                + (
+                    " -> features['gas']"
+                    if options["apply"]
+                    else " (would rename to features['gas'], preview only)"
+                )
             )
-            if options['apply']:
-                plan.features['gas'] = old_value
-                del plan.features['rentals']
-                plan.save(update_fields=['features'])
+            if options["apply"]:
+                plan.features["gas"] = old_value
+                del plan.features["rentals"]
+                plan.save(update_fields=["features"])
 
-        if not options['apply']:
-            self.stdout.write(self.style.WARNING(
-                f"\n{affected.count()} plan(s) affected. Re-run with --apply to make the change."
-            ))
+        if not options["apply"]:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"\n{affected.count()} plan(s) affected. Re-run with --apply to make the change."
+                )
+            )
         else:
-            self.stdout.write(self.style.SUCCESS(f"\nUpdated {affected.count()} plan(s)."))
+            self.stdout.write(
+                self.style.SUCCESS(f"\nUpdated {affected.count()} plan(s).")
+            )
