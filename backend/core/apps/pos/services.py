@@ -170,12 +170,15 @@ class CashSaleService:
                     stock_item.last_sale_date = cash_sale.sale_date
                     stock_item.save()
                     
-                    # Create stock movement
+                    # Create stock movement. transaction_number is an
+                    # IntegerField (legacy TRANO) — sale_number is a string
+                    # like "CS-A1B2C3D4" and doesn't fit it; use comments
+                    # instead so this doesn't raise on every posted sale.
                     StockTransaction.objects.create(
                         stock_item=stock_item,
                         transaction_type='SALE',
                         transaction_date=cash_sale.sale_date,
-                        transaction_number=cash_sale.sale_number,
+                        comments=cash_sale.sale_number[:30],
                         quantity_out=line.quantity,
                         quantity_balance=stock_item.quantity_on_hand,
                         unit_cost=line.cost_price,
@@ -236,13 +239,15 @@ class CashSaleService:
                         stock_item.quantity_on_hand += line.quantity
                         stock_item.save()
                         
-                        # Create reversing movement
+                        # Create reversing movement. transaction_number is an
+                        # IntegerField and there's no separate `reference`
+                        # field on this model — both the sale number and
+                        # cancellation reason need to go in `comments`.
                         StockTransaction.objects.create(
                             stock_item=stock_item,
                             transaction_type='RETURN',
                             transaction_date=date.today(),
-                            transaction_number=f"CANC-{cash_sale.sale_number}",
-                            reference=reason,
+                            comments=f"CANC-{cash_sale.sale_number}"[:30],
                             quantity_in=line.quantity,
                             quantity_balance=stock_item.quantity_on_hand,
                             unit_cost=line.cost_price,
@@ -362,13 +367,19 @@ class LaybyeService:
         Raises:
             POSValidationException: If validation fails
         """
-        laybye = Laybye.objects.create(**laybye_data)
-        
+        # total_amount/balance_due have no default and aren't nullable —
+        # seed placeholders now, the real values get computed from lines and
+        # saved a few lines down. Without this the initial create() raises
+        # an IntegrityError before a single line is even processed.
+        laybye = Laybye.objects.create(
+            **laybye_data, total_amount=Decimal('0.00'), balance_due=Decimal('0.00'),
+        )
+
         total_amount = Decimal('0.00')
-        
+
         for idx, line_data in enumerate(lines_data, start=1):
             line_data['line_number'] = idx
-            
+
             # Calculate line totals using service
             try:
                 line_calcs = CalculationService.calculate_line_totals(
@@ -377,28 +388,81 @@ class LaybyeService:
                     discount_percentage=line_data.get('discount_percentage', Decimal('0.00')),
                     tax_code=line_data.get('tax_code', 1)
                 )
-                
+
                 # line_total is excl-VAT here (LaybyeLine has its own separate
                 # vat_amount field, same convention as InvoiceLine) — use
                 # line_total_before_vat, not the VAT-inclusive line_total key.
                 line_data['line_total'] = line_calcs['line_total_before_vat']
                 line_data['vat_amount'] = line_calcs['vat_amount']
 
-                LaybyeLine.objects.create(laybye=laybye, **line_data)
+                line = LaybyeLine.objects.create(laybye=laybye, **line_data)
                 total_amount += line_calcs['line_total']  # VAT-inclusive, correct for the laybye total
-                
+
             except Exception as e:
                 logger.error(f"Error creating laybye line {idx}: {str(e)}")
                 raise POSValidationException(f"Error creating laybye line {idx}: {str(e)}")
-        
+
+            # Move sale-type lines into "laybye stock" — same LAYBYE_IN/OUT
+            # transaction pair the model already defines but nothing posted
+            # to. Goods leave general inventory now, not at final payment
+            # (mirrors how rentals/PO receiving avoid double-counting stock).
+            if line.transaction_type == 'SP' and line.stock_code:
+                LaybyeService._move_stock_for_line(line, direction='out')
+
         # Update laybye totals
         laybye.total_amount = total_amount
         laybye.balance_due = total_amount - laybye.deposit_amount
         laybye.amount_paid = laybye.deposit_amount
         laybye.save()
-        
+
         logger.info(f"Created laybye {laybye.laybye_number} with {len(lines_data)} lines")
         return laybye
+
+    @staticmethod
+    def _move_stock_for_line(line, direction):
+        """
+        Move one laybye sale-line's quantity between general inventory and
+        "laybye stock". direction='out' takes it out of inventory (laybye
+        created); direction='in' returns it (laybye cancelled).
+        """
+        try:
+            stock_item = StockItem.objects.select_for_update().get(stock_code=line.stock_code)
+        except StockItem.DoesNotExist:
+            logger.warning(
+                f"Stock item {line.stock_code} not found for laybye line — "
+                f"skipping stock movement (non-stock item)"
+            )
+            return
+
+        if direction == 'out':
+            if not stock_item.allow_negative_quantities and stock_item.quantity_on_hand < line.quantity:
+                raise InsufficientStock(
+                    stock_code=line.stock_code,
+                    required=float(line.quantity),
+                    available=float(stock_item.quantity_on_hand),
+                )
+            stock_item.quantity_on_hand -= line.quantity
+            transaction_type = 'LAYBYE_IN'  # into laybye stock == out of inventory
+        else:
+            stock_item.quantity_on_hand += line.quantity
+            transaction_type = 'LAYBYE_OUT'  # out of laybye stock == back to inventory
+
+        stock_item.save()
+
+        # transaction_number is an IntegerField (legacy TRANO) — laybye_number
+        # is a string like "LAY-1234567890" and doesn't fit it; use comments.
+        StockTransaction.objects.create(
+            stock_item=stock_item,
+            transaction_type=transaction_type,
+            transaction_date=line.transaction_date,
+            comments=line.laybye.laybye_number[:30],
+            quantity_out=line.quantity if direction == 'out' else Decimal('0'),
+            quantity_in=line.quantity if direction == 'in' else Decimal('0'),
+            quantity_balance=stock_item.quantity_on_hand,
+            unit_cost=line.cost_price,
+            unit_price=line.unit_price,
+            station_number=line.station_number,
+        )
     
     @staticmethod
     @transaction.atomic
@@ -447,15 +511,47 @@ class LaybyeService:
         # Update laybye
         laybye.amount_paid += amount
         laybye.balance_due -= amount
-        
+
+        invoice = None
         # Check if fully paid
         if laybye.balance_due <= 0:
             laybye.status = 'COMPLETED'
-        
-        laybye.save()
-        
+            laybye.save()
+
+            # Manual §"Laybye Stock": goods already left inventory at
+            # creation, so completion auto-generates the invoice rather than
+            # requiring a separate manual conversion step. If there's no
+            # linked debtor account (manual/cash customer entry) or the
+            # conversion fails for some other reason, leave the laybye
+            # COMPLETED and let staff convert it by hand — the payment
+            # itself must not be rolled back over this.
+            if laybye.debtor_account_number:
+                try:
+                    debtor = Debtor.objects.get(dno=laybye.debtor_account_number)
+                    invoice = QuotationService.convert_laybye_to_invoice(laybye, debtor)
+                    logger.info(
+                        f"Laybye {laybye.laybye_number} fully paid — "
+                        f"auto-converted to invoice {invoice.invoice_number}"
+                    )
+                except Debtor.DoesNotExist:
+                    logger.warning(
+                        f"Laybye {laybye.laybye_number} fully paid but debtor account "
+                        f"{laybye.debtor_account_number} not found — invoice not auto-generated"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Laybye {laybye.laybye_number} fully paid but auto-invoice failed: {e}"
+                    )
+            else:
+                logger.info(
+                    f"Laybye {laybye.laybye_number} fully paid but has no linked debtor "
+                    f"account — invoice not auto-generated"
+                )
+        else:
+            laybye.save()
+
         logger.info(f"Payment of {amount} recorded on laybye {laybye.laybye_number}")
-        return payment
+        return payment, invoice
     
     @staticmethod
     @transaction.atomic
@@ -478,24 +574,34 @@ class LaybyeService:
             raise InvalidDocumentState(
                 'Laybye', laybye.laybye_number, 'CANCELLED', 'cancel'
             )
-        
+
+        if laybye.status == 'CONVERTED_TO_INVOICE':
+            raise InvalidDocumentState(
+                'Laybye', laybye.laybye_number, 'CONVERTED_TO_INVOICE', 'cancel'
+            )
+
         try:
             retention_percentage = Decimal(str(retention_percentage))
         except Exception:
             raise POSValidationException(f"Invalid retention percentage: {retention_percentage}")
-        
+
         if not (0 <= retention_percentage <= 100):
             raise POSValidationException("Retention percentage must be between 0 and 100")
-        
+
         # Calculate refund using service
         retention_amount = laybye.amount_paid * (retention_percentage / 100)
         refund_amount = laybye.amount_paid - retention_amount
-        
+
         laybye.status = 'CANCELLED'
         laybye.retention_percentage = retention_percentage
         laybye.refund_amount = refund_amount
         laybye.save()
-        
+
+        # Return the goods from laybye stock back to general inventory.
+        for line in laybye.lines.filter(transaction_type='SP'):
+            if line.stock_code:
+                LaybyeService._move_stock_for_line(line, direction='in')
+
         logger.info(f"Cancelled laybye {laybye.laybye_number}. Refund: {refund_amount}")
         return laybye
     

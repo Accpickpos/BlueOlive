@@ -372,11 +372,55 @@ class LaybyeDetailSerializer(serializers.ModelSerializer):
     payments = LaybyePaymentSerializer(many=True, read_only=True)
     sales_area_detail = SalesAreaSimpleSerializer(source='sales_area', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
-    
+
     class Meta:
         model = Laybye
         fields = '__all__'
         read_only_fields = ['amount_paid', 'balance_due', 'refund_amount', 'created_at', 'updated_at']
+
+
+class LaybyeCreateLineSerializer(serializers.Serializer):
+    """One stock line on a new laybye — feeds LaybyeService.create_laybye."""
+    stock_code = serializers.CharField(max_length=13, required=False, allow_blank=True, default='')
+    description = serializers.CharField(max_length=200, required=False, allow_blank=True, default='')
+    quantity = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal('0.01'))
+    unit_price = serializers.DecimalField(max_digits=12, decimal_places=4, min_value=Decimal('0'))
+    discount_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0'))
+    tax_code = serializers.IntegerField(default=1)
+    cost_price = serializers.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0'))
+    transaction_type = serializers.ChoiceField(choices=LaybyeLine.TRANSACTION_TYPE_CHOICES, default='SP')
+    transaction_date = serializers.DateField(required=False)
+    transaction_time = serializers.TimeField(required=False)
+    station_number = serializers.IntegerField(required=False, allow_null=True)
+    salesman_number = serializers.IntegerField(required=False, allow_null=True)
+
+
+class LaybyeCreateSerializer(serializers.Serializer):
+    """
+    Creates a laybye header plus its stock lines in one request. Separate
+    from LaybyeDetailSerializer because `lines` is read_only there — this is
+    the only path that reaches LaybyeService.create_laybye, which is what
+    actually reserves the goods into "laybye stock" (LAYBYE_IN movement).
+    """
+    laybye_number = serializers.CharField(max_length=20, required=False, allow_blank=True, default='')
+    customer_name = serializers.CharField(max_length=40)
+    address_line1 = serializers.CharField(max_length=25, required=False, allow_blank=True, default='')
+    address_line2 = serializers.CharField(max_length=25, required=False, allow_blank=True, default='')
+    address_line3 = serializers.CharField(max_length=25, required=False, allow_blank=True, default='')
+    telephone = serializers.CharField(max_length=15, required=False, allow_blank=True, default='')
+    debtor_account_number = serializers.IntegerField(required=False, allow_null=True)
+    sales_area = serializers.PrimaryKeyRelatedField(queryset=SalesArea.objects.all(), required=False, allow_null=True)
+    laybye_date = serializers.DateField(required=False)
+    expiry_date = serializers.DateField()
+    deposit_amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal('0'))
+    comment1 = serializers.CharField(max_length=30, required=False, allow_blank=True, default='')
+    comment2 = serializers.CharField(max_length=30, required=False, allow_blank=True, default='')
+    lines = LaybyeCreateLineSerializer(many=True)
+
+    def validate_lines(self, value):
+        if not value:
+            raise serializers.ValidationError("At least one line item is required.")
+        return value
 
 
 class QuotationLineSerializer(serializers.ModelSerializer):

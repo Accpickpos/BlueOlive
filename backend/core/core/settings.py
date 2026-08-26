@@ -557,6 +557,21 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 4
 CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
+# Resilience for acks_late tasks (see tenancy.tasks: setup_tenant_database_async,
+# complete_tenant_signup_async, setup_shop_schema_async). acks_late means a task
+# is only acknowledged after it finishes, so if the worker process dies mid-task
+# the broker redelivers it instead of losing it. These two settings control how
+# fast/reliably that redelivery actually happens:
+CELERY_TASK_REJECT_ON_WORKER_LOST = True  # detect a killed worker's task via the broker connection and redeliver immediately, rather than only via the visibility timeout below
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    # Redis-only setting (ignored by other broker transports). Redis has no
+    # way to know a worker died - it just waits this long since a task was
+    # delivered, unacked, before assuming it's lost and redelivering it.
+    # Matched to CELERY_TASK_TIME_LIMIT so a hung task isn't redelivered
+    # (and now running twice) before its hard time limit would have killed it.
+    'visibility_timeout': 30 * 60,
+}
+
 # Windows compatibility: Use threads pool instead of prefork (Windows doesn't support forking)
 # For production on Windows, consider using eventlet or gevent
 import sys
@@ -584,6 +599,12 @@ CELERY_BEAT_SCHEDULE = {
     'cleanup-old-tasks': {
         'task': 'core.tasks.cleanup_old_tasks',
         'schedule': 86400.0,  # Every 24 hours
+    },
+    # Safety net for tenant/shop provisioning tasks whose message got lost
+    # outright (see tenancy.tasks.sweep_stuck_tenant_provisioning docstring)
+    'sweep-stuck-tenant-provisioning': {
+        'task': 'tenancy.tasks.sweep_stuck_tenant_provisioning',
+        'schedule': 300.0,  # Every 5 minutes
     },
     # Day-End Task - runs daily at 23:59 (11:59 PM)
     'day-end-process': {
