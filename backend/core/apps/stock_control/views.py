@@ -73,6 +73,36 @@ class StockItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         serializer.save(updated_by=self.request.user.username)
 
+    def perform_destroy(self, instance):
+        """
+        Manual (§3.1 [311.htm]): "Accpick only allows a stock item to be
+        deleted when there is no stock on hand, nor any stock movement for
+        the current period." Previously unenforced — deletion was only
+        incidentally blocked by PROTECT on FKs referencing StockItem
+        (unrelated to QOH or "current period").
+        """
+        from rest_framework.exceptions import ValidationError
+
+        if instance.quantity_on_hand != 0:
+            raise ValidationError(
+                f"Cannot delete stock item {instance.stock_code}: quantity on hand is "
+                f"{instance.quantity_on_hand}, not zero."
+            )
+
+        today = timezone.now().date()
+        has_movement_this_period = StockTransaction.objects.filter(
+            stock_item=instance,
+            transaction_date__year=today.year,
+            transaction_date__month=today.month,
+        ).exists()
+        if has_movement_this_period:
+            raise ValidationError(
+                f"Cannot delete stock item {instance.stock_code}: it has stock movement "
+                f"in the current period."
+            )
+
+        super().perform_destroy(instance)
+
     @action(detail=True, methods=['get'])
     def pricing(self, request, pk=None):
         """Return all pricing information for a stock item."""
@@ -231,19 +261,8 @@ class FuturePricingViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         fp = self.get_object()
         if fp.is_applied:
             return Response({'error': 'Already applied.'}, status=status.HTTP_400_BAD_REQUEST)
-        item = fp.stock_item
-        item.selling_price_1 = fp.future_selling_price_1
-        item.selling_price_2 = fp.future_selling_price_2
-        item.selling_price_3 = fp.future_selling_price_3
-        item.markup_1 = fp.future_markup_1
-        item.markup_2 = fp.future_markup_2
-        item.markup_3 = fp.future_markup_3
-        if fp.future_cost_price:
-            item.cost_price = fp.future_cost_price
-        item.save()
-        fp.is_applied = True
-        fp.save(update_fields=['is_applied'])
-        return Response({'message': 'Future pricing applied.', 'stock_code': item.stock_code})
+        fp.apply()
+        return Response({'message': 'Future pricing applied.', 'stock_code': fp.stock_item.stock_code})
 
 
 # ─────────────────────────────────────────────

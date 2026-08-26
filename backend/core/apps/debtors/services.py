@@ -155,8 +155,18 @@ class DebtorService:
         debtor.dsalesy += dttot if dtype == 'IN' else Decimal('0.00')
         debtor.save()
 
-        # Create open item record (DEBTOPEN) for Balance Forward accounts
-        if debtor.acctype != 'O':  # Only for Balance Forward accounts
+        # Create open item record (DEBTOPEN) for Open Item accounts only.
+        # BBF accounts track balance purely via the aging buckets updated
+        # above (dcrnt/d30/.../d180) — they don't need per-transaction
+        # tracking. Open Item accounts need EVERY transaction individually
+        # trackable until matched/settled (manual: "all outstanding and
+        # unmatched transaction types are listed"; receipts "must be
+        # allocated to specific transactions"). This condition was
+        # previously inverted (`!= 'O'`), which meant Open Item debtors —
+        # the ones this mechanism exists for — never got any open-item
+        # records at all, breaking enquiry screens and receipt allocation
+        # for that account type entirely.
+        if debtor.acctype == 'O':
             Debtopen.objects.create(
                 dno=debtor,
                 dtrano=new_dtrano,
@@ -239,6 +249,13 @@ class DebtorService:
         if amount <= 0:
             raise ValueError("Journal amount must be positive")
 
+        # Manual §2.2: "enter a short explanation motivating the journal.
+        # This information appears on the Debtor's Statement, the Journal
+        # Transactions Report and on the General Ledger Integration" —
+        # implies it's expected, not optional, for an audit trail entry.
+        if not custref or not custref.strip():
+            raise ValueError("A reference/motivation is required for journal entries")
+
         return DebtorService.post_debtran(
             debtor=debtor,
             dtype=journal_type,
@@ -249,57 +266,66 @@ class DebtorService:
         )
 
     @staticmethod
-    def calculate_interest(debtor, rate=0.01, start_period=2):
+    def calculate_interest(debtor, rate=0.01, start_period=2, charge_credit_balances=False):
         """
         Calculate interest on overdue balances.
-        
+
         Args:
             debtor: Debtor instance
             rate: Monthly interest rate (default 1%)
             start_period: Period from which to charge interest
                          (2=30days, 3=60days, etc.)
-        
+            charge_credit_balances: manual §2.2 "Pay Interest on Credit
+                Balances" Y/N option. When False (default, matching common
+                practice), a bucket in credit (negative) contributes 0
+                rather than reducing interest owed on other buckets. When
+                True, buckets are summed as-is including negative ones.
+
         Returns:
             Decimal: Interest amount
         """
         if debtor.dintflag != 'Y':
             return Decimal('0.00')
-        
-        interest_base = Decimal('0.00')
-        
+
+        buckets = []
         if start_period <= 2:
-            interest_base += debtor.d30
+            buckets.append(debtor.d30)
         if start_period <= 3:
-            interest_base += debtor.d60
+            buckets.append(debtor.d60)
         if start_period <= 4:
-            interest_base += debtor.d90
+            buckets.append(debtor.d90)
         if start_period <= 5:
-            interest_base += debtor.d120
+            buckets.append(debtor.d120)
         if start_period <= 6:
-            interest_base += debtor.d150
+            buckets.append(debtor.d150)
         if start_period <= 7:
-            interest_base += debtor.d180
-        
+            buckets.append(debtor.d180)
+
+        if charge_credit_balances:
+            interest_base = sum(buckets, Decimal('0.00'))
+        else:
+            interest_base = sum((b for b in buckets if b > 0), Decimal('0.00'))
+
         interest = interest_base * Decimal(str(rate))
         return interest.quantize(Decimal('0.01'))
     
     @staticmethod
     @transaction.atomic
-    def charge_interest_batch(rate=0.01, start_period=2):
+    def charge_interest_batch(rate=0.01, start_period=2, charge_credit_balances=False):
         """
         Charge interest on all debtors who have dintflag=Y.
-        
+
         Returns:
             dict: Summary of interest charged
         """
         debtors = Debtor.objects.filter(dintflag='Y')
-        
+
         total_interest = Decimal('0.00')
         debtors_charged = 0
-        
+
         for debtor in debtors:
             interest = DebtorService.calculate_interest(
-                debtor, rate, start_period
+                debtor, rate, start_period, charge_credit_balances
             )
             
             if interest > 0:

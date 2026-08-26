@@ -428,10 +428,21 @@ class OpenItemAllocationSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         open_item = data['open_item']
-        amount    = data['amount_paid'] + data.get('settlement_discount', 0)
+        settlement_discount = data.get('settlement_discount', 0)
+        amount = data['amount_paid'] + settlement_discount
         if amount > open_item.balance_due:
             raise serializers.ValidationError(
                 f"Allocation of {amount} exceeds open item balance of {open_item.balance_due}."
+            )
+        # Manual §4.2 [425.htm]: "No Settlement Discount on part payments" —
+        # a discount is only permitted when the allocation fully settles
+        # the open item (amount_paid + settlement_discount == balance_due).
+        # Previously unenforced — any discount value was accepted regardless
+        # of whether the item was fully or partially paid.
+        if settlement_discount and amount < open_item.balance_due:
+            raise serializers.ValidationError(
+                "Settlement discount is not permitted on a partial payment — "
+                "it may only be applied when the allocation fully settles the open item."
             )
         return data
 

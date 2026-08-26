@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/useAuth';
-import { rentalsApi, RentalTransaction } from '@/lib/rentalsApi';
+import { gasApi, RentalTransaction } from '@/lib/gasApi';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/table';
 import { PlusCircle, AlertCircle, AlertTriangle } from 'lucide-react';
 
-export default function RentalsPage() {
+export default function GasPage() {
   const { user, isLoading: authLoading } = useAuth();
   const [rentals, setRentals] = useState<RentalTransaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,7 +33,7 @@ export default function RentalsPage() {
     setLoading(true);
     try {
       const params = statusFilter === 'all' ? undefined : { status: statusFilter };
-      const response = await rentalsApi.list(params);
+      const response = await gasApi.list(params);
       setRentals(response.results || []);
     } catch (error) {
       console.error('Error fetching rentals:', error);
@@ -58,7 +58,7 @@ export default function RentalsPage() {
             <p className="text-sm text-gray-500">Cylinder deposits held, returns, and reconciliation</p>
           </div>
           <Link
-            href="/dashboard/pos/rentals/checkout"
+            href="/dashboard/gas/checkout"
             className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
           >
             <PlusCircle className="w-4 h-4" />
@@ -121,7 +121,7 @@ export default function RentalsPage() {
                 <p className="text-gray-600 mb-4">
                   {statusFilter === 'OPEN' ? 'No outstanding deposits.' : 'No rentals found'}
                 </p>
-                <Link href="/dashboard/pos/rentals/checkout">
+                <Link href="/dashboard/gas/checkout">
                   <Button className="bg-blue-600 hover:bg-blue-700">
                     <PlusCircle className="w-4 h-4 mr-2" />
                     New Checkout
@@ -150,7 +150,7 @@ export default function RentalsPage() {
                     <TableRow key={rental.id}>
                       <TableCell className="font-medium">
                         <Link
-                          href={`/dashboard/pos/rentals/${rental.id}`}
+                          href={`/dashboard/gas/${rental.id}`}
                           className="text-blue-600 hover:text-blue-700"
                         >
                           {rental.debtor_name}

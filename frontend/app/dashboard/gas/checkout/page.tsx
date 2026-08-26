@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/useAuth';
-import { rentalsApi } from '@/lib/rentalsApi';
+import { gasApi } from '@/lib/gasApi';
 import { getApiErrorMessage } from '@/lib/api';
 import { DebtorPicker } from '@/components/pos/DebtorPicker';
 import { StockItemPicker } from '@/components/pos/StockItemPicker';
@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AlertCircle, Loader2 } from 'lucide-react';
 
-export default function RentalCheckoutPage() {
+export default function GasCheckoutPage() {
   const { user } = useAuth();
   const router = useRouter();
 
@@ -51,14 +51,14 @@ export default function RentalCheckoutPage() {
     setLoading(true);
     try {
       const debtorId = parseInt(debtor.account_number, 10);
-      const rental = await rentalsApi.checkout({
+      const rental = await gasApi.checkout({
         debtor: debtorId,
         stock_item: stockItem.stock_code,
         quantity: qty,
         deposit_amount: deposit,
         reference: reference || undefined,
       });
-      router.push(`/dashboard/pos/rentals/${rental.id}`);
+      router.push(`/dashboard/gas/${rental.id}`);
     } catch (err: any) {
       setError(getApiErrorMessage(err, 'Checkout failed — please check stock availability and try again.'));
     } finally {

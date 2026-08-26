@@ -1,5 +1,5 @@
 """
-Rentals Application Tests.
+Gas Application Tests (cylinder rental/deposit tracking).
 
 Covers the 4 failure-mode gaps flagged by /plan-eng-review's Test Review
 (insufficient stock, double-submit, no-matching-rental, double-return) plus

@@ -17,23 +17,32 @@ class CalculationService:
     TAXABLE_TAX_CODES = [1]
     
     @staticmethod
-    def calculate_line_totals(quantity: Decimal, unit_price: Decimal, 
-                              discount_percentage: Decimal = None, 
-                              tax_code: int = 1, 
-                              cost_price: Decimal = None) -> Dict[str, Decimal]:
+    def calculate_line_totals(quantity: Decimal, unit_price: Decimal,
+                              discount_percentage: Decimal = None,
+                              tax_code: int = 1,
+                              cost_price: Decimal = None,
+                              vat_rate: Decimal = None,
+                              quantize_places: Decimal = Decimal('0.01')) -> Dict[str, Decimal]:
         """
         Calculate complete line item totals.
-        
+
         Args:
             quantity: Item quantity
             unit_price: Price per unit
             discount_percentage: Discount as percentage (default 0)
             tax_code: Tax category (1=taxable, others=exempt)
             cost_price: Cost to business (for profit calculation)
-        
+            vat_rate: VAT rate as a percentage (e.g. 14 for 14%). Defaults to
+                CalculationService.VAT_RATE if not supplied — callers with a
+                per-line configurable rate (e.g. InvoiceLine.vat_rate) should
+                pass it explicitly.
+            quantize_places: Decimal exponent to round results to (default
+                cents). Callers whose model fields carry more precision
+                (e.g. InvoiceLine's 4dp fields) should pass Decimal('0.0001').
+
         Returns:
             Dictionary with all calculated values
-        
+
         Raises:
             ValidationError: If values are invalid
         """
@@ -43,9 +52,10 @@ class CalculationService:
             unit_price = Decimal(str(unit_price or 0))
             discount_percentage = Decimal(str(discount_percentage or 0))
             cost_price = Decimal(str(cost_price or 0))
+            rate = (Decimal(str(vat_rate)) / Decimal(100)) if vat_rate is not None else CalculationService.VAT_RATE
         except Exception as e:
             raise ValidationError(f"Invalid numeric values: {str(e)}")
-        
+
         # Validation
         if quantity <= 0:
             raise ValidationError("Quantity must be greater than zero")
@@ -55,28 +65,28 @@ class CalculationService:
             raise ValidationError("Discount percentage must be between 0 and 100")
         if cost_price < 0:
             raise ValidationError("Cost price cannot be negative")
-        
+
         # Calculations
         subtotal = quantity * unit_price
         discount_amount = subtotal * (discount_percentage / Decimal(100))
         line_total_before_vat = subtotal - discount_amount
-        
+
         # VAT calculation
         is_taxable = tax_code in CalculationService.TAXABLE_TAX_CODES
-        vat_amount = line_total_before_vat * CalculationService.VAT_RATE if is_taxable else Decimal(0)
-        
+        vat_amount = line_total_before_vat * rate if is_taxable else Decimal(0)
+
         line_total = line_total_before_vat + vat_amount
         line_cost = quantity * cost_price
         line_profit = line_total_before_vat - line_cost
-        
+
         return {
-            'subtotal': subtotal.quantize(Decimal('0.01')),
-            'discount_amount': discount_amount.quantize(Decimal('0.01')),
-            'line_total_before_vat': line_total_before_vat.quantize(Decimal('0.01')),
-            'vat_amount': vat_amount.quantize(Decimal('0.01')),
-            'line_total': line_total.quantize(Decimal('0.01')),
-            'line_cost': line_cost.quantize(Decimal('0.01')),
-            'line_profit': line_profit.quantize(Decimal('0.01')),
+            'subtotal': subtotal.quantize(quantize_places),
+            'discount_amount': discount_amount.quantize(quantize_places),
+            'line_total_before_vat': line_total_before_vat.quantize(quantize_places),
+            'vat_amount': vat_amount.quantize(quantize_places),
+            'line_total': line_total.quantize(quantize_places),
+            'line_cost': line_cost.quantize(quantize_places),
+            'line_profit': line_profit.quantize(quantize_places),
             'is_taxable': is_taxable,
         }
     

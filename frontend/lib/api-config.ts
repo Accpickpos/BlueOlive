@@ -270,12 +270,12 @@ export const ENDPOINTS = {
     INVOICES: `${API_V1_BASE}/pos/invoices/`,
   },
 
-  // ===== RENTALS (LPG cylinder deposit tracking) =====
-  RENTALS: {
-    BASE: `${API_V1_BASE}/rentals/rentals/`,
-    CHECKOUT: `${API_V1_BASE}/rentals/rentals/checkout/`,
-    RETURN: (id: string | number) => `${API_V1_BASE}/rentals/rentals/${id}/returned/`,
-    DETAIL: (id: string | number) => `${API_V1_BASE}/rentals/rentals/${id}/`,
+  // ===== GAS (LPG cylinder deposit tracking) =====
+  GAS: {
+    BASE: `${API_V1_BASE}/gas/`,
+    CHECKOUT: `${API_V1_BASE}/gas/checkout/`,
+    RETURN: (id: string | number) => `${API_V1_BASE}/gas/${id}/returned/`,
+    DETAIL: (id: string | number) => `${API_V1_BASE}/gas/${id}/`,
   },
 
   // ===== SETTINGS =====

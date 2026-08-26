@@ -15,6 +15,7 @@ from datetime import date
 
 from apps.shop_filter_mixin import ShopFilterMixin
 
+from .calculation_service import CalculationService
 from .models import (
     ReceiptOnAccount, CreditNote, CashReturn,
     CashACheque, TransactionQuery,
@@ -712,24 +713,25 @@ class JobCardViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         
         created_lines = []
         for idx, item_data in enumerate(line_items_data, start=1):
-            # Calculate line totals
             quantity = Decimal(str(item_data.get('quantity', 1)))
             unit_price = Decimal(str(item_data.get('unit_price', 0)))
             discount_percentage = Decimal(str(item_data.get('discount_percentage', 0)))
-            
-            # Calculate discount amount
-            discount_amount = (quantity * unit_price * discount_percentage) / 100
-            line_subtotal = (quantity * unit_price) - discount_amount
-            
-            # VAT calculation (14% standard rate)
-            tax_code = item_data.get('tax_code', 1)
-            if tax_code == 1 or tax_code == 'STANDARD':  # STANDARD
-                vat_amount = line_subtotal * Decimal('0.14')
-            else:
-                vat_amount = Decimal('0')
-            
-            line_total = line_subtotal + vat_amount
-            
+            cost_price = Decimal(str(item_data.get('cost_price', 0)))
+
+            # 'STANDARD' was accepted as a tax_code alias for 1 by the old
+            # hand-rolled calculation below — normalize before handing off to
+            # CalculationService, which only recognizes the int form.
+            raw_tax_code = item_data.get('tax_code', 1)
+            tax_code = 1 if raw_tax_code == 'STANDARD' else raw_tax_code
+
+            calc = CalculationService.calculate_line_totals(
+                quantity=quantity,
+                unit_price=unit_price,
+                discount_percentage=discount_percentage,
+                tax_code=tax_code,
+                cost_price=cost_price,
+            )
+
             line_item = JobCardLine.objects.create(
                 job_card=job_card,
                 line_number=item_data.get('line_number', idx),
@@ -739,9 +741,14 @@ class JobCardViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 unit_price=unit_price,
                 discount_percentage=discount_percentage,
                 tax_code=tax_code,
-                line_total=line_total,
-                vat_amount=vat_amount,
-                cost_price=Decimal(str(item_data.get('cost_price', 0))),
+                # NOTE: unlike InvoiceLine, JobCardLine.line_total is
+                # VAT-INCLUSIVE — the header rollup below does
+                # `line_total - vat_amount` to derive subtotal, so this must
+                # stay mapped from the service's VAT-inclusive `line_total`.
+                line_total=calc['line_total'],
+                vat_amount=calc['vat_amount'],
+                cost_price=cost_price,
+                line_profit=calc['line_profit'],
             )
             created_lines.append(line_item)
         

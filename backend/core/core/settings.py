@@ -97,7 +97,7 @@ TENANT_APPS = [
     'apps.pos',
     'apps.messaging',
     'apps.stockfinder',                          # Stockfinder integration
-    'apps.rentals',                              # LPG cylinder rental/deposit tracking
+    'apps.gas',                                  # LPG cylinder rental/deposit tracking (addon)
 ]
 
 # Django requires INSTALLED_APPS to know which apps are available
@@ -117,7 +117,7 @@ SHOP_APP_LABELS = [
     'purchase_orders',
     'pos',
     'stockfinder',  # Stockfinder integration
-    'rentals',  # Must come after debtors + stock_control + general_ledger (FK dependencies)
+    'gas',  # Must come after debtors + stock_control + general_ledger (FK dependencies)
 ]
 
 # For the database router: specify which app labels are tenant-specific

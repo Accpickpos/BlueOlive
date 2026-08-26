@@ -6,14 +6,15 @@ from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import ValidationError
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Sum, Q, Min, Max, Count, Avg, F
 from decimal import Decimal
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from apps.shop_filter_mixin import ShopFilterMixin
 
-from .models import GLMast, GLTran, GLStJnl, GLSpread
+from .models import GLMast, GLTran, GLStJnl, GLSpread, GLBatch
 from .serializers import (
     GLMastSerializer, GLMastListSerializer, GLMastDetailSerializer,
     GLTranSerializer, GLTranListSerializer, GLTranDetailSerializer,
@@ -47,7 +48,39 @@ class GLMastViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         elif self.action == 'retrieve':
             return GLMastDetailSerializer
         return GLMastSerializer
-    
+
+    def perform_destroy(self, instance):
+        """
+        Manual (§7.1 [711.htm], Deleting an Existing Account Category): "A
+        General Ledger Account cannot be deleted: if there have been any
+        transactions recorded in the account in the current month or
+        current year[,] or where there is a batch entry relating to the
+        account which has not been updated." Previously unenforced — DRF's
+        default destroy() ran with no check at all.
+        """
+        today = date.today()
+        has_transactions_this_year = GLTran.objects.filter(
+            accno=instance.accno,
+            date__year=today.year,
+        ).exists()
+        if has_transactions_this_year:
+            raise ValidationError(
+                f"Cannot delete account {instance.accno}: transactions were recorded "
+                f"against this account in the current month or year."
+            )
+
+        has_unposted_batch_entries = GLBatch.objects.filter(
+            accno=instance.accno,
+            postdate__isnull=True,
+        ).exists()
+        if has_unposted_batch_entries:
+            raise ValidationError(
+                f"Cannot delete account {instance.accno}: there is an unposted batch "
+                f"entry relating to this account."
+            )
+
+        super().perform_destroy(instance)
+
     @action(detail=False, methods=['get'])
     def summary(self, request):
         """Get summary statistics for all accounts."""
@@ -182,16 +215,14 @@ class GLTranViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     - by_date_range: Get transactions within a date range
     - batch_summary: Get summary for a batch of transactions
     - daily_summary: Get transaction summary for a specific date
-    - unposted: Get unposted transactions
-    - period_summary: Get summary by period
     """
     queryset = GLTran.objects.all()
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['accno', 'batchno', 'date', 'capturedat', 'drorcr', 'source', 'period']
+    filterset_fields = ['accno', 'batchno', 'date', 'type', 'source']
     search_fields = ['reference', 'details', 'station']
-    ordering_fields = ['date', 'capturedat', 'accno', 'amount', 'batchno', 'period']
-    ordering = ['-capturedat', 'batchno', 'accno']
+    ordering_fields = ['date', 'accno', 'amount', 'batchno']
+    ordering = ['-date', '-time', 'accno']
     
     def get_serializer_class(self):
         """Return appropriate serializer based on action."""
@@ -303,19 +334,19 @@ class GLTranViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 'message': f'No transactions found for batch {batchno}'
             })
         
-        total_debits = transactions.filter(drorcr='D').aggregate(
+        total_debits = transactions.filter(type='D').aggregate(
             total=Sum('amount')
         )['total'] or Decimal('0.00')
-        
-        total_credits = transactions.filter(drorcr='C').aggregate(
+
+        total_credits = transactions.filter(type='C').aggregate(
             total=Sum('amount')
         )['total'] or Decimal('0.00')
-        
+
         return Response({
             'batchno': batchno,
             'transaction_count': transactions.count(),
-            'debit_count': transactions.filter(drorcr='D').count(),
-            'credit_count': transactions.filter(drorcr='C').count(),
+            'debit_count': transactions.filter(type='D').count(),
+            'credit_count': transactions.filter(type='C').count(),
             'total_debits': float(total_debits),
             'total_credits': float(total_credits),
             'net_balance': float(total_debits - total_credits),
@@ -344,19 +375,19 @@ class GLTranViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 'message': f'No transactions found for date {date_str}'
             })
         
-        total_debits = transactions.filter(drorcr='D').aggregate(
+        total_debits = transactions.filter(type='D').aggregate(
             total=Sum('amount')
         )['total'] or Decimal('0.00')
-        
-        total_credits = transactions.filter(drorcr='C').aggregate(
+
+        total_credits = transactions.filter(type='C').aggregate(
             total=Sum('amount')
         )['total'] or Decimal('0.00')
-        
+
         return Response({
             'date': date_str,
             'transaction_count': transactions.count(),
-            'debit_count': transactions.filter(drorcr='D').count(),
-            'credit_count': transactions.filter(drorcr='C').count(),
+            'debit_count': transactions.filter(type='D').count(),
+            'credit_count': transactions.filter(type='C').count(),
             'total_debits': float(total_debits),
             'total_credits': float(total_credits),
             'net_balance': float(total_debits - total_credits),
@@ -364,73 +395,6 @@ class GLTranViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             'sources': dict(transactions.values('source').annotate(count=Count('id')).values_list('source', 'count')),
         })
     
-    @action(detail=False, methods=['get'])
-    def unposted(self, request):
-        """Get all unposted transactions."""
-        transactions = self.get_queryset().filter(postdate__isnull=True)
-        
-        if not transactions.exists():
-            return Response({
-                'status': 'no_data',
-                'message': 'No unposted transactions found',
-                'data': []
-            })
-        
-        page = self.paginate_queryset(transactions)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-        
-        serializer = self.get_serializer(transactions, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'])
-    def period_summary(self, request):
-        """Get summary by period."""
-        period = request.query_params.get('period')
-        if not period:
-            return Response(
-                {'error': 'period parameter is required (1-13)'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            period = int(period)
-            if period < 1 or period > 13:
-                raise ValueError
-        except ValueError:
-            return Response(
-                {'error': 'period must be an integer between 1 and 13'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        transactions = self.get_queryset().filter(period=period)
-        
-        if not transactions.exists():
-            return Response({
-                'status': 'no_data',
-                'message': f'No transactions found for period {period}'
-            })
-        
-        total_debits = transactions.filter(drorcr='D').aggregate(
-            total=Sum('amount')
-        )['total'] or Decimal('0.00')
-        
-        total_credits = transactions.filter(drorcr='C').aggregate(
-            total=Sum('amount')
-        )['total'] or Decimal('0.00')
-        
-        return Response({
-            'period': period,
-            'transaction_count': transactions.count(),
-            'debit_count': transactions.filter(drorcr='D').count(),
-            'credit_count': transactions.filter(drorcr='C').count(),
-            'total_debits': float(total_debits),
-            'total_credits': float(total_credits),
-            'net_balance': float(total_debits - total_credits),
-            'is_balanced': total_debits == total_credits,
-        })
-
 
 class GLStJnlViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """

@@ -145,15 +145,20 @@ class CashSaleService:
             if line.stock_code:
                 try:
                     stock_item = StockItem.objects.get(stock_code=line.stock_code)
-                    
-                    # Check stock availability
-                    if stock_item.quantity_on_hand < line.quantity:
+
+                    # Check stock availability — manual §3.1 [311.htm]:
+                    # "If No is selected [Allow Negative Quantities],
+                    # Accpick will not allow a stock item with zero
+                    # quantity on hand to be processed at Point of Sale."
+                    # Previously this block ran unconditionally regardless
+                    # of the per-item flag.
+                    if not stock_item.allow_negative_quantities and stock_item.quantity_on_hand < line.quantity:
                         raise InsufficientStock(
                             stock_code=line.stock_code,
                             required=float(line.quantity),
                             available=float(stock_item.quantity_on_hand)
                         )
-                    
+
                     # Update quantity on hand
                     stock_item.quantity_on_hand -= line.quantity
                     
@@ -373,11 +378,14 @@ class LaybyeService:
                     tax_code=line_data.get('tax_code', 1)
                 )
                 
-                line_data['line_total'] = line_calcs['line_total']
+                # line_total is excl-VAT here (LaybyeLine has its own separate
+                # vat_amount field, same convention as InvoiceLine) — use
+                # line_total_before_vat, not the VAT-inclusive line_total key.
+                line_data['line_total'] = line_calcs['line_total_before_vat']
                 line_data['vat_amount'] = line_calcs['vat_amount']
-                
+
                 LaybyeLine.objects.create(laybye=laybye, **line_data)
-                total_amount += line_calcs['line_total']
+                total_amount += line_calcs['line_total']  # VAT-inclusive, correct for the laybye total
                 
             except Exception as e:
                 logger.error(f"Error creating laybye line {idx}: {str(e)}")
@@ -506,22 +514,12 @@ class LaybyeService:
 
 class QuotationService:
     """Service class for quotation operations."""
-    
-    @staticmethod
-    @transaction.atomic
-    def convert_to_invoice(quotation, debtor):
-        """Convert quotation to invoice."""
-        if quotation.status == 'INVOICED':
-            raise ValueError("Quotation already converted to invoice")
-        
-        # This would create an invoice in the debtors app
-        # Implementation depends on invoice creation logic
-        
-        quotation.status = 'INVOICED'
-        quotation.save()
-        
-        return quotation
-    
+
+    # NOTE: the real quotation->invoice conversion is convert_quotation_to_invoice
+    # below (used by the API). A dead stub convert_to_invoice() previously lived
+    # here too — same method name, different signature, never called anywhere
+    # — removed to eliminate the two-competing-implementations trap.
+
     @staticmethod
     @transaction.atomic
     def convert_to_job_card(quotation):

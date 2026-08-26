@@ -16,11 +16,11 @@ Cross-model tension 2 and /plan-ceo-review Section 9 cutover smoke test).
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.general_ledger.models import GLMast
-from apps.rentals.models import RentalSettings
+from apps.gas.models import RentalSettings
 
 
 class Command(BaseCommand):
-    help = 'Create/wire the GL accounts the rentals app posts to'
+    help = 'Create/wire the GL accounts the gas app posts to'
 
     def add_arguments(self, parser):
         parser.add_argument('--deposits-held-accno', type=int, required=True,

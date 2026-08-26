@@ -22,6 +22,7 @@ from .models import (
     DepartmentMonthlyStats,
     SalesAreaMonthlyStats,
     APIKey,
+    DayEndReport,
 )
 
 User = get_user_model()
@@ -829,6 +830,24 @@ class SalesAreaMonthlyStatsSerializer(serializers.ModelSerializer):
             'profit_value',
             'profit_percent',
             'commission_earned',
+            'created_at',
+        ]
+        read_only_fields = fields
+
+
+class DayEndReportSerializer(serializers.ModelSerializer):
+    """Persisted Day End Report serializer (manual §8.6 reprint facility)"""
+
+    class Meta:
+        model = DayEndReport
+        fields = [
+            'id',
+            'process_date',
+            'shop_id',
+            'success',
+            'message',
+            'details',
+            'errors',
             'created_at',
         ]
         read_only_fields = fields

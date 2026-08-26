@@ -1,5 +1,5 @@
 """
-Rentals business logic: LedgerPostingService (GL integration) and RentalService
+Gas app business logic: LedgerPostingService (GL integration) and RentalService
 (checkout/return lifecycle).
 
 Architecture decisions this implements (see /plan-eng-review and
@@ -105,7 +105,7 @@ class LedgerPostingService:
         LedgerPostingService._apply_period_balance(credit_account, curperiod, 'C', amount)
 
         logger.info(
-            "rentals.gl_posted batch=%s debit=%s credit=%s amount=%s reference=%s",
+            "gas.gl_posted batch=%s debit=%s credit=%s amount=%s reference=%s",
             batchno, debit_accno, credit_accno, amount, reference,
         )
         return batchno
@@ -128,13 +128,13 @@ class RentalService:
     def checkout_cylinder(*, debtor, stock_item: StockItem, quantity: Decimal,
                            deposit_amount: Decimal, user, reference: str = '') -> RentalTransaction:
         logger.info(
-            "rentals.checkout_attempt debtor=%s stock_item=%s qty=%s deposit=%s user=%s",
+            "gas.checkout_attempt debtor=%s stock_item=%s qty=%s deposit=%s user=%s",
             debtor.pk, stock_item.pk, quantity, deposit_amount, getattr(user, 'pk', None),
         )
 
         if stock_item.available_quantity < quantity:
             logger.warning(
-                "rentals.checkout_failed reason=insufficient_stock stock_item=%s available=%s requested=%s",
+                "gas.checkout_failed reason=insufficient_stock stock_item=%s available=%s requested=%s",
                 stock_item.pk, stock_item.available_quantity, quantity,
             )
             raise RentalStockException(
@@ -149,7 +149,7 @@ class RentalService:
         ).exists()
         if duplicate:
             logger.warning(
-                "rentals.checkout_failed reason=double_submit debtor=%s stock_item=%s",
+                "gas.checkout_failed reason=double_submit debtor=%s stock_item=%s",
                 debtor.pk, stock_item.pk,
             )
             raise RentalStateException(
@@ -181,7 +181,7 @@ class RentalService:
             )
         except RentalLedgerException:
             logger.error(
-                "rentals.checkout_gl_post_failed rental=%s — rolling back full transaction",
+                "gas.checkout_gl_post_failed rental=%s — rolling back full transaction",
                 rental.pk,
             )
             raise
@@ -189,7 +189,7 @@ class RentalService:
         rental.gl_batchno_checkout = batchno
         rental.save(update_fields=['gl_batchno_checkout'])
 
-        logger.info("rentals.checkout_succeeded rental=%s gl_batch=%s", rental.pk, batchno)
+        logger.info("gas.checkout_succeeded rental=%s gl_batch=%s", rental.pk, batchno)
         return rental
 
     @staticmethod
@@ -198,19 +198,19 @@ class RentalService:
                          replacement_unit_price: Decimal = None,
                          reference: str = '') -> RentalTransaction:
         logger.info(
-            "rentals.return_attempt rental=%s state=%s user=%s",
+            "gas.return_attempt rental=%s state=%s user=%s",
             rental_id, reconciliation_state, getattr(user, 'pk', None),
         )
 
         try:
             rental = RentalTransaction.objects.select_for_update().get(pk=rental_id)
         except RentalTransaction.DoesNotExist:
-            logger.warning("rentals.return_failed reason=no_matching_rental rental=%s", rental_id)
+            logger.warning("gas.return_failed reason=no_matching_rental rental=%s", rental_id)
             raise RentalStateException("No matching open rental found")
 
         if rental.status != RentalTransaction.STATUS_OPEN:
             logger.warning(
-                "rentals.return_failed reason=already_returned rental=%s current_state=%s",
+                "gas.return_failed reason=already_returned rental=%s current_state=%s",
                 rental_id, rental.reconciliation_state,
             )
             raise RentalStateException("This rental was already returned")
@@ -264,7 +264,7 @@ class RentalService:
             # not silently absorbed here.
             if totals['line_total'] != rental.deposit_amount:
                 logger.warning(
-                    "rentals.replacement_amount_mismatch rental=%s deposit=%s charge=%s "
+                    "gas.replacement_amount_mismatch rental=%s deposit=%s charge=%s "
                     "— reconcile the difference manually",
                     rental.pk, rental.deposit_amount, totals['line_total'],
                 )
@@ -304,7 +304,7 @@ class RentalService:
         ])
 
         logger.info(
-            "rentals.return_succeeded rental=%s state=%s gl_batch=%s",
+            "gas.return_succeeded rental=%s state=%s gl_batch=%s",
             rental.pk, reconciliation_state, batchno,
         )
         return rental

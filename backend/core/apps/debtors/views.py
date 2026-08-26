@@ -71,6 +71,35 @@ class DebtorViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             return DebtorCreateUpdateSerializer
         return DebtorDetailSerializer
 
+    def perform_destroy(self, instance):
+        """
+        Manual (§2.1, Account Details Maintenance): "Deletion is not
+        permitted when: an account has a balance, or where transactions
+        were posted to this account for the current month." Previously
+        unenforced — DRF's default destroy() ran with no check at all.
+        """
+        from rest_framework.exceptions import ValidationError
+
+        if instance.total_balance != 0:
+            raise ValidationError(
+                f"Cannot delete debtor {instance.dno}: account has an outstanding balance "
+                f"of {instance.total_balance}."
+            )
+
+        today = date.today()
+        has_transactions_this_month = DebtorTransaction.objects.filter(
+            debtor=instance,
+            transaction_date__year=today.year,
+            transaction_date__month=today.month,
+        ).exists()
+        if has_transactions_this_month:
+            raise ValidationError(
+                f"Cannot delete debtor {instance.dno}: transactions were posted to this "
+                f"account in the current month."
+            )
+
+        super().perform_destroy(instance)
+
     @action(detail=True, methods=['get'])
     def transactions(self, request, pk=None):
         """Get all transactions for a debtor (DEBTRAN)."""

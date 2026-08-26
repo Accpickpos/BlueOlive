@@ -97,8 +97,8 @@ class PurchaseOrder(models.Model):
         """Calculate order totals from line items"""
         lines = self.line_items.all()
         
-        self.quantity_ordered = sum(line.quantity_ordered for line in lines)
-        self.total_quantity_received = sum(line.quantity_received for line in lines)
+        self.quantity_ordered = sum(line.quantity for line in lines)
+        self.total_quantity_received = sum(line.quantity_delivered for line in lines)
         self.total_quantity_outstanding = sum(line.quantity_outstanding for line in lines)
         
         self.total_value_exclusive = sum(line.total_exclusive for line in lines)

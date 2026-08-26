@@ -842,7 +842,7 @@ class TransactionQuerySerializer(serializers.ModelSerializer):
 
 class InvoiceLineSerializer(serializers.ModelSerializer):
     """Serializer for invoice line items."""
-    
+
     def to_representation(self, instance):
         """Add detailed error handling for serialization."""
         try:
@@ -850,7 +850,48 @@ class InvoiceLineSerializer(serializers.ModelSerializer):
         except Exception as e:
             logger.error(f"Error serializing InvoiceLine {instance.id}: {type(e).__name__}: {str(e)}", exc_info=True)
             raise
-    
+
+    def validate(self, data):
+        """
+        Enforce maximum discount % and surface below-cost/price warnings,
+        mirroring CashSaleLineSerializer.validate() — same manual-documented
+        rule ("Where a maximum discount has been set... this may not be
+        exceeded"), previously only enforced on CashSaleLine.
+        """
+        stock_code = data.get('stock_code')
+        unit_price = data.get('unit_price')
+        quantity = data.get('quantity', 1)
+        discount_percent = data.get('discount_percentage', 0)
+
+        if stock_code and unit_price:
+            try:
+                result = PriceValidationService.validate_line_item_price(
+                    stock_code=stock_code,
+                    quantity=quantity,
+                    unit_price=unit_price,
+                    discount_percent=discount_percent,
+                    price_level=1,
+                    transaction_date=date.today()
+                )
+
+                if not result['price_valid']:
+                    self.context['price_warnings'] = result.get('warnings', [])
+
+                if not result['discount_valid']:
+                    raise serializers.ValidationError(
+                        f"Discount {discount_percent}% exceeds maximum allowed for this item. "
+                        f"Maximum: {result.get('max_discount_allowed')}%"
+                    )
+
+            except Exception as e:
+                # Don't fail if stock item doesn't exist - it might be a manual entry
+                if "not found" in str(e):
+                    pass
+                else:
+                    raise
+
+        return data
+
     class Meta:
         model = InvoiceLine
         fields = [
@@ -1033,7 +1074,7 @@ class InvoiceCreateUpdateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Create invoice with line items."""
         lines_data = validated_data.pop('lines', [])
-        
+
         # Set default sales_area if not provided
         if 'sales_area' not in validated_data or not validated_data.get('sales_area'):
             from apps.settings.models import SalesArea
@@ -1043,13 +1084,24 @@ class InvoiceCreateUpdateSerializer(serializers.ModelSerializer):
             else:
                 # Fallback: use a default sales area code
                 validated_data['sales_area'] = '01'
-        
+
         with db_transaction.atomic():
             invoice = Invoice.objects.create(**validated_data)
-            
+
+            # Trade Discount (manual §2.1: "Enter % discount (if any) by which
+            # each line item at POS will automatically be reduced") — applied
+            # as the default when a line doesn't specify its own discount,
+            # matching the DOS Discount % prompt being pre-filled but
+            # editable. Cash Sales aren't debtor-account transactions, so
+            # this only applies to Invoice.
+            debtor = validated_data.get('debtor')
+            trade_discount = debtor.ddiscper if debtor and debtor.ddiscper else None
+
             for line_data in lines_data:
+                if trade_discount and 'discount_percentage' not in line_data:
+                    line_data['discount_percentage'] = trade_discount
                 InvoiceLine.objects.create(invoice=invoice, **line_data)
-        
+
         return invoice
     
     def update(self, instance, validated_data):

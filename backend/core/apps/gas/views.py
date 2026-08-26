@@ -8,7 +8,7 @@ from apps.stock_control.models import StockItem
 
 from .exceptions import RentalException
 from .models import RentalTransaction
-from .permissions import ACCOUNTANT_GATED_STATES, IsRentalAccountant, IsRentalCashier, RentalsFeatureEnabled
+from .permissions import ACCOUNTANT_GATED_STATES, GasFeatureEnabled, IsGasAccountant, IsGasCashier
 from .serializers import RentalCheckoutSerializer, RentalReturnSerializer, RentalTransactionSerializer
 from .services import RentalService
 
@@ -21,9 +21,9 @@ class RentalTransactionViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = RentalTransaction.objects.select_related('debtor', 'stock_item').all()
     serializer_class = RentalTransactionSerializer
-    permission_classes = [IsAuthenticated, RentalsFeatureEnabled]
+    permission_classes = [IsAuthenticated, GasFeatureEnabled]
 
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, RentalsFeatureEnabled, IsRentalCashier])
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, GasFeatureEnabled, IsGasCashier])
     def checkout(self, request):
         serializer = RentalCheckoutSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -51,14 +51,14 @@ class RentalTransactionViewSet(viewsets.ReadOnlyModelViewSet):
 
         return Response(RentalTransactionSerializer(rental).data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, RentalsFeatureEnabled, IsRentalCashier])
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, GasFeatureEnabled, IsGasCashier])
     def returned(self, request, pk=None):
         serializer = RentalReturnSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
         if data['reconciliation_state'] in ACCOUNTANT_GATED_STATES:
-            if not IsRentalAccountant().has_permission(request, self):
+            if not IsGasAccountant().has_permission(request, self):
                 return Response(
                     {'error': "You don't have permission to write off or dispute a deposit — "
                               "this requires an Accountant or Admin role."},
