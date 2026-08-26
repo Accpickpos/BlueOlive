@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, AlertCircle, CheckCircle2 } from 'lucide-react';
 import cashBookApi from '@/lib/cashBookApi';
+import { getApiErrorMessage } from '@/lib/api';
 import { IncomeCategory, OtherIncomeEntry } from '@/lib/types/cashBook';
 import { BalanceCard } from '@/components/cash-book';
 
@@ -139,7 +140,7 @@ export default function OtherIncomeEntryPage() {
 
       await fetchData();
     } catch (err: any) {
-      setError(err?.response?.data?.error || (err instanceof Error ? err.message : 'Failed to create entry'));
+      setError(getApiErrorMessage(err, 'Failed to create entry'));
     } finally {
       setLoading(false);
     }

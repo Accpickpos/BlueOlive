@@ -98,12 +98,139 @@ export interface LaybeyCreateData {
   sales_area?: number;
 }
 
+// Matches QuotationCreateSerializer's writable fields. `lines` requires a
+// sequential line_number per item (the backend recomputes it anyway, but
+// still validates it as required on input, matching the CreditNote/CashReturn
+// nested-create convention).
+export interface QuotationLineData {
+  line_number: number;
+  stock_code?: string;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  discount_percentage?: number;
+  cost_price?: number;
+  tax_code?: number;
+}
+
 export interface QuotationCreateData {
-  debtor_account_number: string;
-  quote_date: string; // YYYY-MM-DD
+  quotation_number: string;
+  quotation_date: string; // YYYY-MM-DD
   expiry_date: string; // YYYY-MM-DD
-  line_items: LineItem[];
+  customer_name: string;
+  address_line1?: string;
+  address_line2?: string;
+  address_line3?: string;
+  telephone?: string;
+  debtor_account?: number; // Debtor FK id
+  sales_area?: number;
+  station_number?: number;
+  comment1?: string;
+  comment2?: string;
+  price_level?: 1 | 2 | 3 | 'COST' | 'MARKUP' | 'GP';
+  lines: QuotationLineData[];
+}
+
+// Matches CreditNoteCreateSerializer's writable fields.
+// line_number is required by the backend's CreditNoteLineSerializer (it's
+// recomputed sequentially server-side, but is still validated as required
+// input - same nested-create convention as CashReturn).
+export interface CreditNoteLineData {
+  line_number: number;
+  stock_code?: string;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  tax_code?: number;
+}
+
+export interface CreditNoteCreateData {
+  credit_number: string;
+  credit_date: string; // YYYY-MM-DD
+  customer_name?: string;
+  debtor_account?: string;
+  original_sale_number?: string;
+  reason?: string;
+  sales_area?: number;
+  refund_type?: 'CASH' | 'ACCOUNT' | 'REPLACEMENT';
+  cashier?: number;
+  station_number?: number;
+  lines: CreditNoteLineData[];
+}
+
+// Matches the Payout model (fields = '__all__'). `cashier` is optional -
+// PayoutViewSet.perform_create falls back to request.user if omitted.
+export interface PayoutCreateData {
+  payout_date: string; // YYYY-MM-DD
+  amount: number;
+  payee: string;
+  description: string;
+  reference?: string;
+  cashier?: number;
+  station_number?: number;
+}
+
+// Matches the Repair model (fields = '__all__'). No server-side auto-numbering
+// exists for repair_number - the caller must supply a unique value.
+// supplier/repair-cost/selling-price fields are set later via the
+// issue_to_supplier / receive_from_supplier actions, not at create time.
+export interface RepairCreateData {
+  repair_number: string;
+  customer_name: string;
+  address_line1?: string;
+  address_line2?: string;
+  telephone?: string;
+  contact_person?: string;
+  customer_reference?: string;
+  order_number?: string;
+  date_required: string; // YYYY-MM-DD
+  quoted_value?: number;
+  repair_details?: string;
+  comment1?: string;
+  comment2?: string;
+  comment3?: string;
+  comment4?: string;
+  status?: 'C' | 'I' | 'R' | 'V' | 'X';
+}
+
+// Matches the CashACheque model (fields = '__all__' minus is_processed/
+// created_at/updated_at). `cashier` is NOT auto-assigned server-side, unlike
+// most other POS transactions - it must be submitted explicitly.
+// `cash_paid` is always recomputed server-side (cheque_amount - commission)
+// regardless of what's submitted, so there's no point sending it.
+export interface CashAChequeCreateData {
+  transaction_number: string;
+  transaction_date: string; // YYYY-MM-DD
+  drawer_name: string;
+  id_number: string;
+  telephone?: string;
+  address?: string;
+  cheque_number: string;
+  bank_name: string;
+  branch_code?: string;
+  account_number?: string;
+  cheque_amount: number;
+  commission?: number;
+  cashier: number;
+  station_number?: number;
   notes?: string;
+}
+
+// Matches the TransactionQuery model (fields = '__all__' minus created_at/
+// updated_at). query_number is NOT auto-generated - the caller must supply it.
+export type TransactionQueryType =
+  | 'CASH_SALE' | 'INVOICE' | 'RECEIPT' | 'CREDIT_NOTE' | 'LAYBYE'
+  | 'QUOTATION' | 'JOB_CARD' | 'REPAIR' | 'PAYOUT';
+
+export interface TransactionQueryCreateData {
+  query_number: string;
+  query_date: string; // YYYY-MM-DD
+  transaction_type: TransactionQueryType;
+  transaction_number: string;
+  customer_name?: string;
+  contact_number?: string;
+  query_description: string;
+  query_status?: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
 }
 
 // Type for API responses
@@ -581,6 +708,180 @@ class POSTransactionAPI {
   }
 
   // ============================================================
+  // CREDIT NOTES
+  // ============================================================
+
+  /**
+   * Create a credit note (header + lines in one request).
+   * Matches CreditNoteCreateSerializer on the backend.
+   */
+  async createCreditNote(data: CreditNoteCreateData): Promise<TransactionResponse> {
+    return this.request('POST', ENDPOINTS.POS.CREDIT_NOTES, data);
+  }
+
+  /**
+   * List all credit notes with optional filters.
+   */
+  async listCreditNotes(filters?: {
+    debtor_account?: string;
+    is_posted?: boolean;
+    from_date?: string;
+    to_date?: string;
+    page?: number;
+  }): Promise<{ results: TransactionResponse[]; count: number; next?: string; previous?: string }> {
+    let endpoint = ENDPOINTS.POS.CREDIT_NOTES;
+    if (filters) {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') params.append(key, String(value));
+      });
+      if (params.toString()) {
+        endpoint += `?${params.toString()}`;
+      }
+    }
+    return this.request('GET', endpoint);
+  }
+
+  /**
+   * Post a credit note - updates stock and the daily cash control totals.
+   */
+  async postCreditNote(creditNoteId: string | number): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.CREDIT_NOTES}${creditNoteId}/post_credit/`);
+  }
+
+  // ============================================================
+  // PAYOUTS
+  // ============================================================
+
+  /**
+   * Create a till payout.
+   */
+  async createPayout(data: PayoutCreateData): Promise<TransactionResponse> {
+    return this.request('POST', ENDPOINTS.POS.PAYOUTS, data);
+  }
+
+  /**
+   * List all payouts with optional filters.
+   */
+  async listPayouts(filters?: {
+    cashier?: string | number;
+    station_number?: string | number;
+    from_date?: string;
+    to_date?: string;
+    page?: number;
+  }): Promise<{ results: TransactionResponse[]; count: number; next?: string; previous?: string }> {
+    let endpoint = ENDPOINTS.POS.PAYOUTS;
+    if (filters) {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') params.append(key, String(value));
+      });
+      if (params.toString()) {
+        endpoint += `?${params.toString()}`;
+      }
+    }
+    return this.request('GET', endpoint);
+  }
+
+  // ============================================================
+  // REPAIR CONTROLS
+  // ============================================================
+
+  /**
+   * Create a repair voucher.
+   */
+  async createRepairControl(data: RepairCreateData): Promise<TransactionResponse> {
+    return this.request('POST', ENDPOINTS.POS.REPAIRS, data);
+  }
+
+  /**
+   * List all repair vouchers with optional filters.
+   */
+  async listRepairControls(filters?: {
+    status?: 'C' | 'I' | 'R' | 'V' | 'X';
+    page?: number;
+  }): Promise<{ results: TransactionResponse[]; count: number; next?: string; previous?: string }> {
+    let endpoint = ENDPOINTS.POS.REPAIRS;
+    if (filters) {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) params.append(key, String(value));
+      });
+      if (params.toString()) {
+        endpoint += `?${params.toString()}`;
+      }
+    }
+    return this.request('GET', endpoint);
+  }
+
+  /**
+   * Issue a repair voucher to a supplier.
+   */
+  async issueRepairToSupplier(repairId: string | number, supplierAccount: string, transportMode?: string): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.REPAIRS}${repairId}/issue_to_supplier/`, {
+      supplier_account: supplierAccount,
+      transport_mode: transportMode,
+    });
+  }
+
+  /**
+   * Receive a repaired item back from the supplier.
+   */
+  async receiveRepairFromSupplier(repairId: string | number, repairCost: number, supplierInvoice?: string): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.REPAIRS}${repairId}/receive_from_supplier/`, {
+      repair_cost: repairCost,
+      supplier_invoice: supplierInvoice,
+    });
+  }
+
+  /**
+   * Invoice the customer for a completed repair.
+   */
+  async invoiceRepairCustomer(repairId: string | number): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.REPAIRS}${repairId}/invoice_customer/`);
+  }
+
+  // ============================================================
+  // CASH-A-CHEQUE
+  // ============================================================
+
+  /**
+   * Record a cash-a-cheque transaction.
+   */
+  async createCashACheque(data: CashAChequeCreateData): Promise<TransactionResponse> {
+    return this.request('POST', ENDPOINTS.POS.CASH_A_CHEQUE, data);
+  }
+
+  /**
+   * List all cash-a-cheque transactions with optional filters.
+   */
+  async listCashACheque(filters?: {
+    is_processed?: boolean;
+    from_date?: string;
+    to_date?: string;
+    page?: number;
+  }): Promise<{ results: TransactionResponse[]; count: number; next?: string; previous?: string }> {
+    let endpoint = ENDPOINTS.POS.CASH_A_CHEQUE;
+    if (filters) {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') params.append(key, String(value));
+      });
+      if (params.toString()) {
+        endpoint += `?${params.toString()}`;
+      }
+    }
+    return this.request('GET', endpoint);
+  }
+
+  /**
+   * Mark a cashed cheque as processed (updates the daily cash control totals).
+   */
+  async processCashACheque(chequeId: string | number): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.CASH_A_CHEQUE}${chequeId}/process/`);
+  }
+
+  // ============================================================
   // SEARCH & UTILITY ENDPOINTS (if available)
   // ============================================================
 
@@ -604,6 +905,68 @@ class POSTransactionAPI {
     return this.request('GET', endpoint);
   }
 
+  /**
+   * List transaction queries with optional filters.
+   */
+  async listTransactionQueries(filters?: {
+    query_date?: string;
+    transaction_type?: TransactionQueryType;
+    query_status?: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+    assigned_to?: string | number;
+    page?: number;
+  }): Promise<{ results: TransactionResponse[]; count: number; next?: string; previous?: string }> {
+    let endpoint = ENDPOINTS.POS.TRANSACTION_QUERIES;
+    if (filters) {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') params.append(key, String(value));
+      });
+      if (params.toString()) {
+        endpoint += `?${params.toString()}`;
+      }
+    }
+    return this.request('GET', endpoint);
+  }
+
+  /**
+   * Log a new transaction query.
+   */
+  async createTransactionQuery(data: TransactionQueryCreateData): Promise<TransactionResponse> {
+    return this.request('POST', ENDPOINTS.POS.TRANSACTION_QUERIES, data);
+  }
+
+  /**
+   * Search across transaction types (matches TransactionQueryViewSet.search;
+   * only CASH_SALE, LAYBYE and QUOTATION are implemented server-side today).
+   */
+  async searchTransactionQueries(params: {
+    query_type: 'CASH_SALE' | 'LAYBYE' | 'QUOTATION';
+    transaction_number?: string;
+    customer_name?: string;
+    date_from?: string;
+    date_to?: string;
+  }): Promise<{ query_type: string; results_count: number; results: any[] }> {
+    return this.request('POST', `${ENDPOINTS.POS.TRANSACTION_QUERIES}search/`, params);
+  }
+
+  /**
+   * Mark a transaction query as resolved.
+   */
+  async resolveTransactionQuery(queryId: string | number, resolutionNotes: string): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.TRANSACTION_QUERIES}${queryId}/resolve/`, {
+      resolution_notes: resolutionNotes,
+    });
+  }
+
+  /**
+   * Assign a transaction query to a user.
+   */
+  async assignTransactionQuery(queryId: string | number, assignedTo: number): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.TRANSACTION_QUERIES}${queryId}/assign/`, {
+      assigned_to: assignedTo,
+    });
+  }
+
   // ============================================================
   // CASH RETURNS
   // ============================================================
@@ -619,7 +982,7 @@ class POSTransactionAPI {
     customer_name?: string;
     reason: string;
     station_number?: number;
-    lines: Array<{ stock_code: string; description: string; quantity: number; unit_price: number; tax_code: number }>;
+    lines: Array<{ line_number: number; stock_code: string; description: string; quantity: number; unit_price: number; tax_code: number }>;
   }): Promise<TransactionResponse> {
     return this.request('POST', ENDPOINTS.POS.CASH_RETURNS, data);
   }
@@ -629,6 +992,28 @@ class POSTransactionAPI {
    */
   async postCashReturn(returnId: string | number): Promise<TransactionResponse> {
     return this.request('POST', `${ENDPOINTS.POS.CASH_RETURNS}${returnId}/post_return/`);
+  }
+
+  /**
+   * List all cash returns with optional filters.
+   */
+  async listCashReturns(filters?: {
+    is_posted?: boolean;
+    from_date?: string;
+    to_date?: string;
+    page?: number;
+  }): Promise<{ results: TransactionResponse[]; count: number; next?: string; previous?: string }> {
+    let endpoint = ENDPOINTS.POS.CASH_RETURNS;
+    if (filters) {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') params.append(key, String(value));
+      });
+      if (params.toString()) {
+        endpoint += `?${params.toString()}`;
+      }
+    }
+    return this.request('GET', endpoint);
   }
 
   // ============================================================
@@ -645,6 +1030,29 @@ class POSTransactionAPI {
     station_number?: string | number;
   }): Promise<any> {
     let endpoint = `${ENDPOINTS.POS.CASH_CONTROL}daily_summary/`;
+    if (filters) {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') params.append(key, String(value));
+      });
+      if (params.toString()) {
+        endpoint += `?${params.toString()}`;
+      }
+    }
+    return this.request('GET', endpoint);
+  }
+
+  /**
+   * Get the hourly sales breakdown (transaction count + value per hour) for a
+   * given date, per the legacy spec's "Hourly Analysis" cash control facility.
+   * Matches CashControlViewSet.hourly_analysis on the backend.
+   */
+  async getCashControlHourlyAnalysis(filters?: {
+    date?: string;
+    cashier?: string | number;
+    station_number?: string | number;
+  }): Promise<{ date: string; hours: Array<{ hour: number; transaction_count: number; total_value: number }> }> {
+    let endpoint = `${ENDPOINTS.POS.CASH_CONTROL}hourly_analysis/`;
     if (filters) {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => {

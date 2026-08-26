@@ -62,8 +62,14 @@ class TenantMiddleware:
                     # DEBUG: Log when no shop is found
                     if settings.DEBUG:
                         logger.debug(f"[TenantMiddleware] No shop identified for tenant {tenant.name}")
-                    # Don't register tenant connection when there's no shop - this prevents
-                    # database errors when tenant has no shops configured
+                    # Still register the tenant's base DB connection (public schema /
+                    # first shop fallback, see register_tenant_connection) even without
+                    # a shop. set_current_tenant() below is unconditional, and
+                    # TenantDatabaseRouter routes ANY TENANT_APP_LABELS model (e.g.
+                    # token_blacklist, checked on every /token/refresh/) to
+                    # tenant.db_alias regardless of shop — leaving the alias
+                    # unregistered here raised ConnectionDoesNotExist for those queries.
+                    register_tenant_connection(tenant)
                     request.shop = None
                 
                 # Set tenant context

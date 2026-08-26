@@ -71,37 +71,49 @@ def create_shop_schema(tenant, schema_name):
         clear_current_tenant()
 
 
-def migrate_shop_apps(tenant, schema_name):
+def migrate_shop_apps(tenant, schema_name, app_labels=None):
     """
     Migrate SHOP_APP_LABELS apps to a specific schema.
-    
+
     These apps are:
     - cash_book
-    - creditors  
+    - creditors
     - stock_control
     - purchase_orders
     - settings
     - pos
-    
+
     Each shop gets its own isolated copy of these tables in its schema.
-    
+
+    app_labels: optional list to migrate a subset of SHOP_APP_LABELS instead
+    of all of them (e.g. rerun_shop_migrations --apps=<...>).
+
     NOTE: Settings app no longer has dependencies on tenancy models (Tenant, Shop),
     so migrations work cleanly without cross-schema foreign key issues.
     """
     alias = tenant.db_alias
-    
+
+    # Ensure the tenant's DB alias is registered before touching
+    # connections[alias] below. This function is called both mid-web-request
+    # (where TenantMiddleware/auth already registered it) and standalone from
+    # management commands (rerun_shop_migrations, fix_creditor_migrations),
+    # which never register a connection at all - `connections[alias]` then
+    # raises ConnectionDoesNotExist. Idempotent - matches the pattern used
+    # throughout tenancy/utils.py callers.
+    register_tenant_connection(tenant)
+
     try:
         logger.info(f"Migrating shop apps to schema: {schema_name}")
-        
-        # Get shop app labels from settings
-        shop_app_labels = getattr(settings, 'SHOP_APP_LABELS', [])
-        
+
+        # Get shop app labels from settings, unless the caller scoped this run
+        shop_app_labels = app_labels if app_labels is not None else getattr(settings, 'SHOP_APP_LABELS', [])
+
         if not shop_app_labels:
             logger.warning("No shop apps configured in SHOP_APP_LABELS")
             return
-        
+
         logger.info(f"Shop apps to migrate: {shop_app_labels}")
-        
+
         try:
             # Get connection and ensure fresh state
             conn = connections[alias]

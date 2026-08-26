@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { gasApi, RentalTransaction, ReconciliationState } from '@/lib/gasApi';
+import { getApiErrorMessage } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,9 +70,7 @@ export default function GasDetailPage() {
           "You don't have permission to write off or dispute a deposit — this requires an Accountant or Admin role."
         );
       } else {
-        const message =
-          err?.response?.data?.error || err?.response?.data?.detail || 'Return failed — please try again.';
-        setError(message);
+        setError(getApiErrorMessage(err, 'Return failed — please try again.'));
       }
     } finally {
       setReconciling(false);

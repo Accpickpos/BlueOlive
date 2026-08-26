@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/useAuth';
 import { usePOSAPI } from '@/lib/posApi';
 import Link from 'next/link';
@@ -18,48 +18,81 @@ import {
 import {
   PlusCircle,
   Search,
-  Eye,
-  Printer,
-  Download,
   AlertCircle,
 } from 'lucide-react';
 
 export default function ChequeCashingPage() {
   const { user, isLoading: authLoading } = useAuth();
   const posAPI = usePOSAPI(user?.tenant?.slug);
+  const posAPIRef = useRef(posAPI);
   const [cheques, setCheques] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const [processingId, setProcessingId] = useState<number | null>(null);
 
   useEffect(() => {
-    fetchCheques();
-  }, [statusFilter, currentPage]);
+    if (authLoading || !user) return;
+    let cancelled = false;
 
-  const fetchCheques = async () => {
-    setLoading(true);
+    const fetchCheques = async () => {
+      setLoading(true);
+      try {
+        const response = await posAPIRef.current.listCashACheque({
+          is_processed: statusFilter === 'all' ? undefined : statusFilter === 'processed',
+          page: currentPage,
+        });
+        if (cancelled) return;
+
+        const raw: any[] = Array.isArray(response) ? response : (response as any).results ?? [];
+        setCheques(
+          raw.map((c: any) => ({
+            id: c.id,
+            cheque_number: c.cheque_number ?? '',
+            drawer_name: c.drawer_name ?? '',
+            bank_name: c.bank_name ?? '',
+            date: c.transaction_date ?? '',
+            cheque_amount: Number(c.cheque_amount ?? 0),
+            cash_paid: Number(c.cash_paid ?? 0),
+            is_processed: !!c.is_processed,
+          }))
+        );
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Error fetching cheques:', error);
+          setCheques([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchCheques();
+    return () => { cancelled = true; };
+  }, [user, authLoading, statusFilter, currentPage]);
+
+  const filteredCheques = cheques.filter((c) =>
+    !searchTerm ||
+    c.cheque_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    c.drawer_name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleProcess = async (id: number) => {
+    setProcessingId(id);
     try {
-      // API call would go here
-      // const response = await posAPI.cheques.list(params);
-      // For now, show demo data
-      setTimeout(() => {
-        setCheques([
-          { id: 1, cheque_number: 'CHQ-001', customer_name: 'ABC Trading', bank_name: 'First National Bank', date: new Date(Date.now() - 86400000).toISOString(), amount: 5000, status: 'cashed' },
-          { id: 2, cheque_number: 'CHQ-002', customer_name: 'XYZ Corp', bank_name: 'Standard Bank', date: new Date(Date.now() - 172800000).toISOString(), amount: 3200, status: 'pending' },
-        ]);
-      }, 300);
+      await posAPIRef.current.processCashACheque(id);
+      setCheques((prev) => prev.map((c) => (c.id === id ? { ...c, is_processed: true } : c)));
     } catch (error) {
-      console.error('Error fetching cheques:', error);
+      console.error('Error processing cheque:', error);
     } finally {
-      setTimeout(() => setLoading(false), 400);
+      setProcessingId(null);
     }
   };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setCurrentPage(1);
-    fetchCheques();
   };
 
   return (
@@ -106,9 +139,8 @@ export default function ChequeCashingPage() {
             className="px-4 py-2 border rounded-lg bg-white font-medium"
           >
             <option value="all">All Status</option>
-            <option value="cashed">Cashed</option>
+            <option value="processed">Processed</option>
             <option value="pending">Pending</option>
-            <option value="dishonoured">Dishonoured</option>
           </select>
           <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
             Search
@@ -122,7 +154,7 @@ export default function ChequeCashingPage() {
           <div className="text-center py-8">
             <p className="text-gray-600">Loading cheques...</p>
           </div>
-        ) : cheques.length === 0 ? (
+        ) : filteredCheques.length === 0 ? (
           <Card>
             <CardContent className="py-8">
               <div className="text-center">
@@ -144,40 +176,45 @@ export default function ChequeCashingPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Cheque Number</TableHead>
-                    <TableHead>Customer</TableHead>
+                    <TableHead>Drawer</TableHead>
                     <TableHead>Bank</TableHead>
                     <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="text-right">Cheque Amount</TableHead>
+                    <TableHead className="text-right">Cash Paid</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {cheques.map((cheque) => (
+                  {filteredCheques.map((cheque) => (
                     <TableRow key={cheque.id}>
                       <TableCell className="font-medium">{cheque.cheque_number}</TableCell>
-                      <TableCell>{cheque.customer_name}</TableCell>
+                      <TableCell>{cheque.drawer_name}</TableCell>
                       <TableCell>{cheque.bank_name}</TableCell>
-                      <TableCell>{new Date(cheque.date).toLocaleDateString()}</TableCell>
+                      <TableCell>{cheque.date ? new Date(cheque.date).toLocaleDateString() : '—'}</TableCell>
                       <TableCell className="text-right font-medium">
-                        R{cheque.amount?.toFixed(2) || '0.00'}
+                        R{cheque.cheque_amount.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        R{cheque.cash_paid.toFixed(2)}
                       </TableCell>
                       <TableCell>
                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-sm font-medium ${
-                          cheque.status === 'cashed' ? 'bg-green-100 text-green-800' :
-                          cheque.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
+                          cheque.is_processed ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
                         }`}>
-                          {cheque.status?.charAt(0).toUpperCase() + cheque.status?.slice(1)}
+                          {cheque.is_processed ? 'Processed' : 'Pending'}
                         </span>
                       </TableCell>
-                      <TableCell className="text-right space-x-2">
-                        <button className="text-blue-600 hover:text-blue-700">
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button className="text-green-600 hover:text-green-700">
-                          <Printer className="w-4 h-4" />
-                        </button>
+                      <TableCell className="text-right">
+                        {!cheque.is_processed && (
+                          <button
+                            onClick={() => handleProcess(cheque.id)}
+                            disabled={processingId === cheque.id}
+                            className="text-blue-600 hover:text-blue-700 text-sm font-medium disabled:opacity-50"
+                          >
+                            {processingId === cheque.id ? 'Processing...' : 'Process'}
+                          </button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -189,7 +226,7 @@ export default function ChequeCashingPage() {
       </div>
 
       {/* Pagination */}
-      {cheques.length > 0 && (
+      {filteredCheques.length > 0 && (
         <div className="flex justify-between items-center px-6 py-4 bg-white border-t">
           <p className="text-sm text-gray-600">Page {currentPage}</p>
           <div className="flex gap-2">

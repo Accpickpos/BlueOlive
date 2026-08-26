@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/useAuth';
 import { usePOSAPI } from '@/lib/posApi';
 import Link from 'next/link';
@@ -18,48 +18,64 @@ import {
 import {
   PlusCircle,
   Search,
-  Eye,
-  Printer,
-  Download,
   AlertCircle,
 } from 'lucide-react';
 
 export default function PayoutPage() {
   const { user, isLoading: authLoading } = useAuth();
   const posAPI = usePOSAPI(user?.tenant?.slug);
+  const posAPIRef = useRef(posAPI);
   const [payouts, setPayouts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    fetchPayouts();
-  }, [statusFilter, currentPage]);
+    if (authLoading || !user) return;
+    let cancelled = false;
 
-  const fetchPayouts = async () => {
-    setLoading(true);
-    try {
-      // API call would go here
-      // const response = await posAPI.payouts.list(params);
-      // For now, show demo data
-      setTimeout(() => {
-        setPayouts([
-          { id: 1, reference: 'PO-001', description: 'Cleaning supplies', date: new Date(Date.now() - 86400000).toISOString(), amount: 250, authorized_by: 'Manager A', status: 'approved' },
-          { id: 2, reference: 'PO-002', description: 'Office lunch', date: new Date(Date.now() - 172800000).toISOString(), amount: 150, authorized_by: 'Manager B', status: 'pending' },
-        ]);
-      }, 300);
-    } catch (error) {
-      console.error('Error fetching payouts:', error);
-    } finally {
-      setTimeout(() => setLoading(false), 400);
-    }
-  };
+    const fetchPayouts = async () => {
+      setLoading(true);
+      try {
+        const response = await posAPIRef.current.listPayouts({ page: currentPage });
+        if (cancelled) return;
+
+        const raw: any[] = Array.isArray(response) ? response : (response as any).results ?? [];
+        setPayouts(
+          raw.map((p: any) => ({
+            id: p.id,
+            reference: p.reference || '—',
+            description: p.description ?? '',
+            date: p.payout_date ?? '',
+            amount: Number(p.amount ?? 0),
+            payee: p.payee ?? '',
+            cashier_name: p.cashier_name ?? '',
+          }))
+        );
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Error fetching payouts:', error);
+          setPayouts([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchPayouts();
+    return () => { cancelled = true; };
+  }, [user, authLoading, currentPage]);
+
+  const filteredPayouts = payouts.filter((p) =>
+    !searchTerm ||
+    p.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.payee.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setCurrentPage(1);
-    fetchPayouts();
   };
 
   return (
@@ -97,19 +113,6 @@ export default function PayoutPage() {
               />
             </div>
           </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="px-4 py-2 border rounded-lg bg-white font-medium"
-          >
-            <option value="all">All Status</option>
-            <option value="approved">Approved</option>
-            <option value="pending">Pending</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
           <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
             Search
           </Button>
@@ -122,7 +125,7 @@ export default function PayoutPage() {
           <div className="text-center py-8">
             <p className="text-gray-600">Loading payouts...</p>
           </div>
-        ) : payouts.length === 0 ? (
+        ) : filteredPayouts.length === 0 ? (
           <Card>
             <CardContent className="py-8">
               <div className="text-center">
@@ -144,41 +147,24 @@ export default function PayoutPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Reference</TableHead>
+                    <TableHead>Paid To</TableHead>
                     <TableHead>Description</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
-                    <TableHead>Authorized By</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>Cashier</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {payouts.map((payout) => (
+                  {filteredPayouts.map((payout) => (
                     <TableRow key={payout.id}>
                       <TableCell className="font-medium">{payout.reference}</TableCell>
+                      <TableCell>{payout.payee}</TableCell>
                       <TableCell>{payout.description}</TableCell>
-                      <TableCell>{new Date(payout.date).toLocaleDateString()}</TableCell>
+                      <TableCell>{payout.date ? new Date(payout.date).toLocaleDateString() : '—'}</TableCell>
                       <TableCell className="text-right font-medium text-red-600">
                         -R{payout.amount?.toFixed(2) || '0.00'}
                       </TableCell>
-                      <TableCell>{payout.authorized_by || '-'}</TableCell>
-                      <TableCell>
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-sm font-medium ${
-                          payout.status === 'approved' ? 'bg-green-100 text-green-800' :
-                          payout.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {payout.status?.charAt(0).toUpperCase() + payout.status?.slice(1)}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right space-x-2">
-                        <button className="text-blue-600 hover:text-blue-700">
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button className="text-green-600 hover:text-green-700">
-                          <Printer className="w-4 h-4" />
-                        </button>
-                      </TableCell>
+                      <TableCell>{payout.cashier_name || '-'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -189,7 +175,7 @@ export default function PayoutPage() {
       </div>
 
       {/* Pagination */}
-      {payouts.length > 0 && (
+      {filteredPayouts.length > 0 && (
         <div className="flex justify-between items-center px-6 py-4 bg-white border-t">
           <p className="text-sm text-gray-600">Page {currentPage}</p>
           <div className="flex gap-2">

@@ -30,7 +30,11 @@ class GasFeatureEnabled(permissions.BasePermission):
             return False
         subscription = getattr(tenant, 'subscription', None)
         if not subscription or not subscription.plan:
-            return False
+            # No billing system is wired into signup yet (no code path ever
+            # creates a Subscription row), so every tenant is in this state.
+            # Treat it like every other SubscriptionPlan.features flag in the
+            # codebase, which is defined but never actually enforced anywhere.
+            return True
         return bool(subscription.plan.features.get('gas', False))
 
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import { api } from '@/lib/api';
+import { api, getApiErrorMessage } from '@/lib/api';
 import { ENDPOINTS } from '@/lib/api-config';
 
 // ============================================================
@@ -135,7 +135,7 @@ export default function DebtorImportPage() {
         setError('No active tenants found. Create a tenant and shop first.');
       }
     } catch (err: any) {
-      setError(err?.response?.data?.error || err.message || 'Failed to load tenants');
+      setError(getApiErrorMessage(err, 'Failed to load tenants'));
     } finally {
       setLoading(false);
     }
@@ -174,7 +174,7 @@ export default function DebtorImportPage() {
       setMappings(res.data.suggested_mappings);
       setStep('map');
     } catch (err: any) {
-      setError(err?.response?.data?.error || 'Failed to analyze file');
+      setError(getApiErrorMessage(err, 'Failed to analyze file'));
     } finally {
       setLoading(false);
     }
@@ -216,7 +216,7 @@ export default function DebtorImportPage() {
       setImportResult(res.data);
       setStep('done');
     } catch (err: any) {
-      setError(err?.response?.data?.error || 'Import failed');
+      setError(getApiErrorMessage(err, 'Import failed'));
       setStep('map');
     } finally {
       setLoading(false);

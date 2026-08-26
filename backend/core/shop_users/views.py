@@ -6,7 +6,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework import viewsets, status
-from rest_framework.throttling import AnonRateThrottle
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
+from core.throttling import PublicReadThrottle
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie, csrf_exempt
 from django.conf import settings
@@ -36,6 +37,10 @@ class GetCSRFTokenView(APIView):
     This is required for POST requests with CSRF protection enabled.
     """
     permission_classes = [AllowAny]
+    # Cheap, non-sensitive utility fetch — separate scope from the generic
+    # anon bucket so it doesn't get exhausted by (or starve) other public
+    # traffic like subscription plan listing during normal auth-page usage.
+    throttle_classes = [PublicReadThrottle, UserRateThrottle]
 
     def get(self, request):
         try:

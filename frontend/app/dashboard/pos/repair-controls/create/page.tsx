@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/useAuth';
 import { usePOSAPI } from '@/lib/posApi';
+import { getApiErrorMessage } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,15 +19,15 @@ export default function CreateRepairPage() {
   const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
-    reference: '',
     customer_name: '',
-    item_description: '',
-    cost_estimate: '',
-    actual_cost: '',
-    supplier_name: '',
-    received_date: '',
-    status: 'received',
-    notes: '',
+    telephone: '',
+    address_line1: '',
+    order_number: '',
+    customer_reference: '',
+    date_required: '',
+    quoted_value: '',
+    repair_details: '',
+    comment1: '',
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -43,32 +44,35 @@ export default function CreateRepairPage() {
     setLoading(true);
 
     try {
-      if (!formData.reference.trim()) {
-        throw new Error('Reference is required');
-      }
       if (!formData.customer_name.trim()) {
         throw new Error('Customer name is required');
       }
-      if (!formData.item_description.trim()) {
-        throw new Error('Item description is required');
+      if (!formData.date_required) {
+        throw new Error('Date required is required');
+      }
+      if (!formData.repair_details.trim()) {
+        throw new Error('Repair details are required');
       }
 
-      const repairData = {
-        ...formData,
-        cost_estimate: formData.cost_estimate ? parseFloat(formData.cost_estimate) : 0,
-        actual_cost: formData.actual_cost ? parseFloat(formData.actual_cost) : 0,
-      };
+      const repairNumber = `REP-${Date.now()}`;
 
-      // API call would go here
-      // const response = await posAPI.repairs.create(repairData);
-      // setSuccess('Repair job created successfully');
-      // setTimeout(() => router.push('/dashboard/pos/repair-controls'), 2000);
+      await posAPI.createRepairControl({
+        repair_number: repairNumber,
+        customer_name: formData.customer_name,
+        telephone: formData.telephone || undefined,
+        address_line1: formData.address_line1 || undefined,
+        order_number: formData.order_number || undefined,
+        customer_reference: formData.customer_reference || undefined,
+        date_required: formData.date_required,
+        quoted_value: formData.quoted_value ? parseFloat(formData.quoted_value) : undefined,
+        repair_details: formData.repair_details,
+        comment1: formData.comment1 || undefined,
+      });
 
-      // Placeholder success
-      setSuccess('Repair job created successfully');
+      setSuccess('Repair voucher created successfully');
       setTimeout(() => router.push('/dashboard/pos/repair-controls'), 2000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create repair');
+    } catch (err: any) {
+      setError(getApiErrorMessage(err, 'Failed to create repair voucher'));
     } finally {
       setLoading(false);
     }
@@ -119,19 +123,6 @@ export default function CreateRepairPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Reference *
-                  </label>
-                  <Input
-                    type="text"
-                    name="reference"
-                    placeholder="RJ-001"
-                    value={formData.reference}
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Customer Name *
                   </label>
                   <Input
@@ -143,16 +134,68 @@ export default function CreateRepairPage() {
                     required
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Telephone
+                  </label>
+                  <Input
+                    type="text"
+                    name="telephone"
+                    placeholder="Optional"
+                    value={formData.telephone}
+                    onChange={handleChange}
+                  />
+                </div>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Item Description *
+                  Address
+                </label>
+                <Input
+                  type="text"
+                  name="address_line1"
+                  placeholder="Optional"
+                  value={formData.address_line1}
+                  onChange={handleChange}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Order Number
+                  </label>
+                  <Input
+                    type="text"
+                    name="order_number"
+                    placeholder="Optional"
+                    value={formData.order_number}
+                    onChange={handleChange}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Customer Reference
+                  </label>
+                  <Input
+                    type="text"
+                    name="customer_reference"
+                    placeholder="Optional"
+                    value={formData.customer_reference}
+                    onChange={handleChange}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Repair Details *
                 </label>
                 <textarea
-                  name="item_description"
-                  placeholder="What is being repaired?"
-                  value={formData.item_description}
+                  name="repair_details"
+                  placeholder="Description of goods, serial number, fault description"
+                  value={formData.repair_details}
                   onChange={handleChange}
                   rows={3}
                   className="w-full px-3 py-2 border rounded-lg"
@@ -163,53 +206,26 @@ export default function CreateRepairPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Cost Estimate
-                  </label>
-                  <Input
-                    type="number"
-                    name="cost_estimate"
-                    placeholder="0.00"
-                    step="0.01"
-                    value={formData.cost_estimate || ''}
-                    onChange={handleChange}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Actual Cost
-                  </label>
-                  <Input
-                    type="number"
-                    name="actual_cost"
-                    placeholder="0.00"
-                    step="0.01"
-                    value={formData.actual_cost || ''}
-                    onChange={handleChange}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Supplier
-                  </label>
-                  <Input
-                    type="text"
-                    name="supplier_name"
-                    placeholder="Supplier name (optional)"
-                    value={formData.supplier_name}
-                    onChange={handleChange}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Received Date
+                    Date Required *
                   </label>
                   <Input
                     type="date"
-                    name="received_date"
-                    value={formData.received_date}
+                    name="date_required"
+                    value={formData.date_required}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Quoted Value (excl. VAT)
+                  </label>
+                  <Input
+                    type="number"
+                    name="quoted_value"
+                    placeholder="0.00"
+                    step="0.01"
+                    value={formData.quoted_value || ''}
                     onChange={handleChange}
                   />
                 </div>
@@ -217,28 +233,12 @@ export default function CreateRepairPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Status
-                </label>
-                <select
-                  name="status"
-                  value={formData.status}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border rounded-lg bg-white"
-                >
-                  <option value="received">Received</option>
-                  <option value="in_repair">In Repair</option>
-                  <option value="completed">Completed</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Notes
+                  Comments
                 </label>
                 <textarea
-                  name="notes"
-                  placeholder="Additional notes"
-                  value={formData.notes}
+                  name="comment1"
+                  placeholder="Additional comments"
+                  value={formData.comment1}
                   onChange={handleChange}
                   rows={2}
                   className="w-full px-3 py-2 border rounded-lg"

@@ -1,9 +1,8 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import { ENDPOINTS } from './api-config';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE
   || (process.env.NODE_ENV === 'production' ? 'http://blueolive-backend:8000' : 'http://localhost:8000');
-const POS_API_BASE = process.env.NEXT_PUBLIC_POS_API_BASE || 'http://localhost:8001';
 
 /**
  * Security Note: Cookie-based JWT Authentication
@@ -297,6 +296,39 @@ api.interceptors.response.use(
   }
 );
 
+/**
+ * Normalizes an API error into a display string.
+ *
+ * Backend errors come in two shapes: manually-built views return
+ * { error: "some string" }, while anything that flows through DRF's
+ * exception dispatch (validation errors, permission denials, 404s, 500s)
+ * is wrapped by core.exception_handler into { error: { code, message, ... } }.
+ * Rendering the object directly crashes React ("Objects are not valid as a
+ * React child"), so always unwrap through this instead of reading
+ * err.response.data.error straight into JSX.
+ */
+export function getApiErrorMessage(err: any, fallback: string): string {
+  const errorField = err?.response?.data?.error ?? err?.data?.error ?? err?.error;
+
+  if (typeof errorField === 'string') {
+    return errorField;
+  }
+  if (errorField && typeof errorField === 'object' && typeof errorField.message === 'string') {
+    return errorField.message;
+  }
+
+  const detail = err?.response?.data?.detail;
+  if (typeof detail === 'string') {
+    return detail;
+  }
+
+  if (err instanceof Error && err.message) {
+    return err.message;
+  }
+
+  return fallback;
+}
+
 export async function apiRequest(endpoint: string, options: any = {}): Promise<AxiosResponse> {
   const { method = 'GET', headers = {}, body, skipRateLimitRetry, ...rest } = options;
   
@@ -544,291 +576,4 @@ export async function deleteSupplier(id: number): Promise<void> {
   await apiRequest(`/api/v1/creditors/creditors/${id}/`, {
     method: 'DELETE',
   });
-}
-
-// ========================================
-// POS API Integration (FastAPI)
-// ========================================
-
-const posApi: AxiosInstance = axios.create({
-  baseURL: POS_API_BASE,
-  withCredentials: true,
-});
-
-// Add X-Shop-ID and X-Tenant headers to all POS API requests (mirrors main api instance)
-posApi.interceptors.request.use((config) => {
-  // Add tenant header if available
-  const tenant = typeof window !== 'undefined' ? localStorage.getItem('tenant') : null;
-  if (tenant) {
-    config.headers['X-Tenant'] = tenant;
-  }
-  
-  // Add shop ID header if available (this is critical for pre-authentication shop identification)
-  const shopId = typeof window !== 'undefined' ? localStorage.getItem('currentShopId') : null;
-  if (shopId) {
-    config.headers['X-Shop-ID'] = shopId;
-  }
-  
-  return config;
-});
-
-// Cookies are sent automatically with withCredentials: true
-// No need for Authorization header - httpOnly cookie handles authentication
-
-// Add token refresh handling to POS API response errors
-posApi.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
-    
-    // Handle 401 Unauthorized on POS API (same as main API)
-    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
-      originalRequest._retry = true;
-      
-      try {
-        // Refresh token via httpOnly cookies
-        await axios.post(`${API_BASE}/api/v1/users/auth/token/refresh/`, {}, {
-          withCredentials: true,
-        });
-        return posApi(originalRequest);
-      } catch (err) {
-        return Promise.reject(err);
-      }
-    }
-    
-    return Promise.reject(error);
-  }
-);
-
-// Invoice endpoints
-export async function createInvoice(invoiceData: any): Promise<any> {
-  const res = await posApi.post('/api/v1/invoices/', invoiceData);
-  return res.data;
-}
-
-export async function getInvoice(invoiceId: number): Promise<any> {
-  const res = await posApi.get(`/api/v1/invoices/${invoiceId}`);
-  return res.data;
-}
-
-export async function listInvoices(params?: any): Promise<any[]> {
-  const res = await posApi.get('/api/v1/invoices/', { params });
-  return res.data;
-}
-
-export async function updateInvoice(invoiceId: number, data: any): Promise<any> {
-  const res = await posApi.put(`/api/v1/invoices/${invoiceId}`, data);
-  return res.data;
-}
-
-export async function postInvoice(invoiceId: number): Promise<any> {
-  const res = await posApi.post(`/api/v1/invoices/${invoiceId}/post`);
-  return res.data;
-}
-
-export async function deleteInvoice(invoiceId: number): Promise<void> {
-  await posApi.delete(`/api/v1/invoices/${invoiceId}`);
-}
-
-// Cash Sales endpoints
-export async function createCashSale(saleData: any): Promise<any> {
-  const res = await posApi.post('/api/v1/cash-sales/', saleData);
-  return res.data;
-}
-
-export async function getCashSale(saleId: number): Promise<any> {
-  const res = await posApi.get(`/api/v1/cash-sales/${saleId}`);
-  return res.data;
-}
-
-export async function listCashSales(params?: any): Promise<any[]> {
-  const res = await posApi.get('/api/v1/cash-sales/', { params });
-  return res.data;
-}
-
-export async function postCashSale(saleId: number): Promise<any> {
-  const res = await posApi.post(`/api/v1/cash-sales/${saleId}/post`);
-  return res.data;
-}
-
-export async function convertCashSaleToAccount(saleId: number, debtorAccount: string): Promise<any> {
-  const res = await posApi.post(`/api/v1/cash-sales/${saleId}/convert-to-account`, null, {
-    params: { debtor_account_number: debtorAccount }
-  });
-  return res.data;
-}
-
-export async function deleteCashSale(saleId: number): Promise<void> {
-  await posApi.delete(`/api/v1/cash-sales/${saleId}`);
-}
-
-// Credit Notes endpoints
-export async function createCreditNote(data: any): Promise<any> {
-  const res = await posApi.post('/api/v1/credit-notes/', data);
-  return res.data;
-}
-
-export async function getCreditNote(noteId: number): Promise<any> {
-  const res = await posApi.get(`/api/v1/credit-notes/${noteId}`);
-  return res.data;
-}
-
-export async function listCreditNotes(params?: any): Promise<any[]> {
-  const res = await posApi.get('/api/v1/credit-notes/', { params });
-  return res.data;
-}
-
-export async function postCreditNote(noteId: number): Promise<any> {
-  const res = await posApi.post(`/api/v1/credit-notes/${noteId}/post`);
-  return res.data;
-}
-
-// Receipts endpoints
-export async function createReceipt(data: any): Promise<any> {
-  const res = await posApi.post('/api/v1/receipts/', data);
-  return res.data;
-}
-
-export async function getReceipt(receiptId: number): Promise<any> {
-  const res = await posApi.get(`/api/v1/receipts/${receiptId}`);
-  return res.data;
-}
-
-export async function listReceipts(params?: any): Promise<any[]> {
-  const res = await posApi.get('/api/v1/receipts/', { params });
-  return res.data;
-}
-
-export async function postReceipt(receiptId: number): Promise<any> {
-  const res = await posApi.post(`/api/v1/receipts/${receiptId}/post`);
-  return res.data;
-}
-
-// Laybyes endpoints
-export async function createLaybye(data: any): Promise<any> {
-  const res = await posApi.post('/api/v1/laybyes/', data);
-  return res.data;
-}
-
-export async function getLaybye(laybieId: number): Promise<any> {
-  const res = await posApi.get(`/api/v1/laybyes/${laybieId}`);
-  return res.data;
-}
-
-export async function listLaybyes(params?: any): Promise<any[]> {
-  const res = await posApi.get('/api/v1/laybyes/', { params });
-  return res.data;
-}
-
-export async function addLaybyePayment(laybieId: number, paymentData: any): Promise<any> {
-  const res = await posApi.post(`/api/v1/laybyes/${laybieId}/payments`, paymentData);
-  return res.data;
-}
-
-// Quotations endpoints
-export async function createQuotation(data: any): Promise<any> {
-  const res = await posApi.post('/api/v1/quotations/', data);
-  return res.data;
-}
-
-export async function getQuotation(quotationId: number): Promise<any> {
-  const res = await posApi.get(`/api/v1/quotations/${quotationId}`);
-  return res.data;
-}
-
-export async function listQuotations(params?: any): Promise<any[]> {
-  const res = await posApi.get('/api/v1/quotations/', { params });
-  return res.data;
-}
-
-export async function convertQuotationToInvoice(quotationId: number): Promise<any> {
-  const res = await posApi.post(`/api/v1/quotations/${quotationId}/convert`);
-  return res.data;
-}
-
-// Job Costing endpoints
-export async function createJobCosting(data: any): Promise<any> {
-  const res = await posApi.post('/api/v1/job-costing/', data);
-  return res.data;
-}
-
-export async function getJobCosting(jobId: number): Promise<any> {
-  const res = await posApi.get(`/api/v1/job-costing/${jobId}`);
-  return res.data;
-}
-
-export async function listJobCostings(params?: any): Promise<any[]> {
-  const res = await posApi.get('/api/v1/job-costing/', { params });
-  return res.data;
-}
-
-// Repair Controls endpoints
-export async function createRepairControl(data: any): Promise<any> {
-  const res = await posApi.post('/api/v1/repair-controls/', data);
-  return res.data;
-}
-
-export async function getRepairControl(repairId: number): Promise<any> {
-  const res = await posApi.get(`/api/v1/repair-controls/${repairId}`);
-  return res.data;
-}
-
-export async function listRepairControls(params?: any): Promise<any[]> {
-  const res = await posApi.get('/api/v1/repair-controls/', { params });
-  return res.data;
-}
-
-// Payouts endpoints
-export async function createPayout(data: any): Promise<any> {
-  const res = await posApi.post('/api/v1/payouts/', data);
-  return res.data;
-}
-
-export async function getPayout(payoutId: number): Promise<any> {
-  const res = await posApi.get(`/api/v1/payouts/${payoutId}`);
-  return res.data;
-}
-
-export async function listPayouts(params?: any): Promise<any[]> {
-  const res = await posApi.get('/api/v1/payouts/', { params });
-  return res.data;
-}
-
-// Cash Control endpoints
-export async function createCashControl(data: any): Promise<any> {
-  const res = await posApi.post('/api/v1/cash-control/', data);
-  return res.data;
-}
-
-export async function getCashControl(controlId: number): Promise<any> {
-  const res = await posApi.get(`/api/v1/cash-control/${controlId}`);
-  return res.data;
-}
-
-export async function listCashControls(params?: any): Promise<any[]> {
-  const res = await posApi.get('/api/v1/cash-control/', { params });
-  return res.data;
-}
-
-// Transaction Query endpoints
-export async function searchTransactions(query: string, filters?: any): Promise<any[]> {
-  const res = await posApi.get('/api/v1/transaction-query/search', {
-    params: { q: query, ...filters }
-  });
-  return res.data;
-}
-
-export async function getTransactionForReprint(transactionNumber: string): Promise<any> {
-  const res = await posApi.get(`/api/v1/transaction-query/reprint/${transactionNumber}`);
-  return res.data;
-}
-
-// POS System Health Check
-export async function checkPOSHealth(): Promise<boolean> {
-  try {
-    const res = await posApi.get('/health');
-    return res.status === 200;
-  } catch {
-    return false;
-  }
 }
