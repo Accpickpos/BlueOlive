@@ -86,7 +86,7 @@ class Command(BaseCommand):
             else:
                 total_shops += tenant.shops.filter(is_active=True).count()
 
-        self.stdout.write(self.style.INFO(
+        self.stdout.write(self.style.NOTICE(
             f"Found {total_shops} shop(s) to process across {tenants.count()} tenant(s)"
         ))
         
@@ -125,7 +125,7 @@ class Command(BaseCommand):
                     logger.info(f"Running migrations for shop {shop.schema_name} in tenant {tenant.slug}")
                     
                     # The migrate_shop_apps function will apply any pending migrations
-                    migrate_shop_apps(tenant, shop.schema_name)
+                    migrate_shop_apps(tenant, shop.schema_name, app_labels=shop_app_labels)
                     
                     self.stdout.write(self.style.SUCCESS(f"    ✓ Migrations completed for {shop.name}"))
                     

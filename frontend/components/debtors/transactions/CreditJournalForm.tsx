@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, getApiErrorMessage } from '@/lib/api';
 
 interface CreditJournalData {
   debtor_id: number;
@@ -74,7 +74,7 @@ export default function CreditJournalForm() {
         additional_reference: '',
       });
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to post credit journal');
+      setError(getApiErrorMessage(err, 'Failed to post credit journal'));
     } finally {
       setLoading(false);
     }

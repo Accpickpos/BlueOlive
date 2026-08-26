@@ -13,6 +13,7 @@ import {
 import { PurchaseOrder, PurchaseOrderLineItem, PurchaseOrderStatus, OrderLayoutOption } from '@/lib/types/purchaseOrders';
 import { purchaseOrdersApi } from '@/lib/purchaseOrdersApi';
 import { creditorsApi } from '@/lib/creditors';
+import { getApiErrorMessage } from '@/lib/api';
 
 interface PurchaseOrderWizardProps {
   onComplete: () => void;
@@ -110,7 +111,7 @@ export function PurchaseOrderWizard({ onComplete, onCancel }: PurchaseOrderWizar
       await purchaseOrdersApi.orders.create(payload as any);
       onComplete();
     } catch (err: any) {
-      setError(err?.response?.data?.error || (err instanceof Error ? err.message : 'Failed to create order'));
+      setError(getApiErrorMessage(err, 'Failed to create order'));
     } finally {
       setLoading(false);
     }

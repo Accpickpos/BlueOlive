@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/useAuth';
 import { usePOSAPI } from '@/lib/posApi';
+import { getApiErrorMessage } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -71,7 +72,7 @@ export default function CreateLaybyePage() {
       setSuccess('Laybye record created successfully');
       setTimeout(() => router.push('/dashboard/pos/laybays'), 2000);
     } catch (err: any) {
-      setError(err?.response?.data?.error || (err instanceof Error ? err.message : 'Failed to create laybye'));
+      setError(getApiErrorMessage(err, 'Failed to create laybye'));
     } finally {
       setLoading(false);
     }

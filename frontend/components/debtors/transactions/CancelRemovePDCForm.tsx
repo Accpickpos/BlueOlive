@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { debtorsApi } from '@/lib/debtorsApi';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, getApiErrorMessage } from '@/lib/api';
 
 interface DebtorOption {
   id: number;
@@ -167,7 +167,7 @@ export default function CancelRemovePDCForm() {
         loadPDCRecords(selectedDebtorId);
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to cancel PDC');
+      setError(getApiErrorMessage(err, 'Failed to cancel PDC'));
     } finally {
       setLoading(false);
     }

@@ -805,6 +805,26 @@ def _uoc(manager, lookup, defaults, mode, schema_name=None):
             """, [schema_name, bare_table, schema_name, bare_table])
             _not_null_cols = {row[0]: row[1] for row in _info.fetchall()}
 
+            # NOT NULL foreign-key columns must never be auto-filled with a
+            # fabricated int. Unlike a plain data column, "0" isn't a safe
+            # placeholder for a FK - it either violates the FK constraint
+            # (if no row 0 exists) or, worse, silently wires the row to
+            # whatever unrelated record has that PK. A row with a required
+            # relationship we couldn't resolve should fail loudly (NOT NULL
+            # error) rather than insert a fabricated reference.
+            _info.execute("""
+                SELECT kcu.column_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                  ON tc.constraint_name = kcu.constraint_name
+                 AND tc.table_schema    = kcu.table_schema
+                WHERE tc.constraint_type = 'FOREIGN KEY'
+                  AND tc.table_schema    = %s
+                  AND tc.table_name      = %s
+            """, [schema_name, bare_table])
+            for (_fk_col,) in _info.fetchall():
+                _not_null_cols.pop(_fk_col, None)
+
         # Now switch to manual transaction mode for the actual DML
         _raw.autocommit = False
 
@@ -1326,7 +1346,13 @@ def _import_stock_record(db_alias, record, mode, schema_name=None, **_):
 
 def _import_department_record(db_alias, record, mode, schema_name=None, **_):
     dept_number = record.get('number')
-    if not dept_number:
+    # `number` is in INTEGER_FIELDS, so _parse_value() always hands back an
+    # int (or None if the row had no value at all) - never a string. A
+    # falsy check here also skips a legitimately-numbered "department 0"
+    # (common in legacy DBF data as the default/uncategorized department),
+    # silently leaving it out of SalesDepartment. Anything that references
+    # it later (e.g. stock items) then can't resolve the FK.
+    if dept_number is None:
         return 'skipped'
     
     dept_name = record.get('name')

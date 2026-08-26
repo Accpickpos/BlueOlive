@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, getApiErrorMessage } from '@/lib/api';
 
 interface DebitJournalData {
   debtor_id: number;
@@ -74,7 +74,7 @@ export default function DebitJournalForm() {
         additional_reference: '',
       });
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to post debit journal');
+      setError(getApiErrorMessage(err, 'Failed to post debit journal'));
     } finally {
       setLoading(false);
     }

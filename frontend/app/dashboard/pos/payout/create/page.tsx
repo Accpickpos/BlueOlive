@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/useAuth';
 import { usePOSAPI } from '@/lib/posApi';
+import { getApiErrorMessage } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,12 +19,11 @@ export default function CreatePayoutPage() {
   const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
-    reference: '',
+    payout_date: new Date().toISOString().split('T')[0],
+    payee: '',
     description: '',
     amount: '',
-    payment_method: 'cash',
-    authorized_by: '',
-    notes: '',
+    reference: '',
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -40,28 +40,28 @@ export default function CreatePayoutPage() {
     setLoading(true);
 
     try {
-      if (!formData.reference.trim()) {
-        throw new Error('Reference is required');
+      if (!formData.payee.trim()) {
+        throw new Error('Payee is required');
       }
       if (!formData.amount || parseFloat(formData.amount) <= 0) {
         throw new Error('Amount must be greater than 0');
       }
+      if (!formData.description.trim()) {
+        throw new Error('Description is required');
+      }
 
-      const payoutData = {
-        ...formData,
+      await posAPI.createPayout({
+        payout_date: formData.payout_date,
         amount: parseFloat(formData.amount),
-      };
+        payee: formData.payee,
+        description: formData.description,
+        reference: formData.reference || undefined,
+      });
 
-      // API call would go here
-      // const response = await posAPI.payouts.create(payoutData);
-      // setSuccess('Payout recorded successfully');
-      // setTimeout(() => router.push('/dashboard/pos/payout'), 2000);
-
-      // Placeholder success
       setSuccess('Payout recorded successfully');
       setTimeout(() => router.push('/dashboard/pos/payout'), 2000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create payout');
+    } catch (err: any) {
+      setError(getApiErrorMessage(err, 'Failed to create payout'));
     } finally {
       setLoading(false);
     }
@@ -112,13 +112,12 @@ export default function CreatePayoutPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Reference *
+                    Payout Date *
                   </label>
                   <Input
-                    type="text"
-                    name="reference"
-                    placeholder="PO-001"
-                    value={formData.reference}
+                    type="date"
+                    name="payout_date"
+                    value={formData.payout_date}
                     onChange={handleChange}
                     required
                   />
@@ -142,28 +141,26 @@ export default function CreatePayoutPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Payment Method
-                  </label>
-                  <select
-                    name="payment_method"
-                    value={formData.payment_method}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border rounded-lg bg-white"
-                  >
-                    <option value="cash">Cash</option>
-                    <option value="cheque">Cheque</option>
-                    <option value="transfer">Bank Transfer</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Authorized By
+                    Paid To *
                   </label>
                   <Input
                     type="text"
-                    name="authorized_by"
-                    placeholder="Manager name"
-                    value={formData.authorized_by}
+                    name="payee"
+                    placeholder="Who received the payout"
+                    value={formData.payee}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Reference
+                  </label>
+                  <Input
+                    type="text"
+                    name="reference"
+                    placeholder="Optional"
+                    value={formData.reference}
                     onChange={handleChange}
                   />
                 </div>
@@ -175,26 +172,12 @@ export default function CreatePayoutPage() {
                 </label>
                 <textarea
                   name="description"
-                  placeholder="Payout purpose/description"
+                  placeholder="Description of goods/service paid for"
                   value={formData.description}
                   onChange={handleChange}
                   rows={3}
                   className="w-full px-3 py-2 border rounded-lg"
                   required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Notes
-                </label>
-                <textarea
-                  name="notes"
-                  placeholder="Additional notes"
-                  value={formData.notes}
-                  onChange={handleChange}
-                  rows={2}
-                  className="w-full px-3 py-2 border rounded-lg"
                 />
               </div>
             </CardContent>

@@ -1,9 +1,11 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
+import { useAuth } from "@/lib/useAuth";
+import { usePOSAPI } from "@/lib/posApi";
 
 interface Layby {
   id: number;
@@ -16,30 +18,49 @@ interface Layby {
 }
 
 export default function LaybaysPage() {
+  const { user, isLoading: authLoading } = useAuth();
+  const posAPI = usePOSAPI(user?.tenant?.slug);
+  const posAPIRef = useRef(posAPI);
+
   const [laybays, setLaybays] = useState<Layby[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
-    fetchLaybays();
-  }, []);
+    if (authLoading || !user) return;
+    let cancelled = false;
 
-  const fetchLaybays = async () => {
-    setLoading(true);
-    try {
-      setTimeout(() => {
-        setLaybays([
-          { id: 1, reference: "LAY-001", customer: "John Smith", total: 2500.00, paid: 1000.00, outstanding: 1500.00, status: "active" },
-          { id: 2, reference: "LAY-002", customer: "ABC Corp", total: 1800.00, paid: 1800.00, outstanding: 0, status: "completed" },
-          { id: 3, reference: "LAY-003", customer: "Tech Solutions", total: 5000.00, paid: 2000.00, outstanding: 3000.00, status: "active" },
-        ]);
-      }, 300);
-    } catch (error) {
-      console.error("Error fetching laybays:", error);
-    } finally {
-      setTimeout(() => setLoading(false), 400);
-    }
-  };
+    const fetchLaybays = async () => {
+      setLoading(true);
+      try {
+        const response = await posAPIRef.current.listLaybyes();
+        if (cancelled) return;
+
+        const raw: any[] = Array.isArray(response) ? response : (response as any).results ?? [];
+        setLaybays(
+          raw.map((lb: any) => ({
+            id: lb.id,
+            reference: lb.laybye_number ?? String(lb.id),
+            customer: lb.customer_name ?? "Unknown",
+            total: Number(lb.total_amount ?? 0),
+            paid: Number(lb.total_amount ?? 0) - Number(lb.balance_due ?? 0),
+            outstanding: Number(lb.balance_due ?? 0),
+            status: String(lb.status ?? "active").toLowerCase(),
+          }))
+        );
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Error fetching laybays:", error);
+          setLaybays([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchLaybays();
+    return () => { cancelled = true; };
+  }, [user, authLoading]);
 
   const filteredLaybays = laybays.filter((layby) =>
     layby.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||

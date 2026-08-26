@@ -141,7 +141,15 @@ class ShopFilterMixin:
         
         # Models that don't have shop_id field - these are tenant-level models
         # DIAGNOSTIC: Add JobCard to the list - it doesn't have shop_id field
-        non_shop_models = ['StockItem', 'SalesDepartment', 'TaxCode', 'Creditor', 'Debtor', 'JobCard']
+        # POS transaction models below also have no shop_id field. Their viewsets
+        # don't override perform_create, so without this they'd hit the "assign
+        # current shop" branch and inject an invalid shop_id kwarg into
+        # validated_data, raising TypeError on save() for any shop-scoped user.
+        non_shop_models = [
+            'StockItem', 'SalesDepartment', 'TaxCode', 'Creditor', 'Debtor', 'JobCard',
+            'Repair', 'CashACheque', 'CashReturn', 'CreditNote', 'ReceiptOnAccount',
+            'TransactionQuery', 'Quotation',
+        ]
         
         # Remove shop_id from validated_data for models that don't support it
         if model_name and model_name in non_shop_models:

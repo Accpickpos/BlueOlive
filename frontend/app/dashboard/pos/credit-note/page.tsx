@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/useAuth';
 import { usePOSAPI } from '@/lib/posApi';
 import Link from 'next/link';
@@ -18,15 +18,13 @@ import {
 import {
   PlusCircle,
   Search,
-  Eye,
-  Printer,
-  Download,
   AlertCircle,
 } from 'lucide-react';
 
 export default function CreditNotesPage() {
   const { user, isLoading: authLoading } = useAuth();
   const posAPI = usePOSAPI(user?.tenant?.slug);
+  const posAPIRef = useRef(posAPI);
   const [creditNotes, setCreditNotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,30 +32,55 @@ export default function CreditNotesPage() {
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    fetchCreditNotes();
-  }, [statusFilter, currentPage]);
+    if (authLoading || !user) return;
+    let cancelled = false;
 
-  const fetchCreditNotes = async () => {
-    setLoading(true);
-    try {
-      // Demo data
-      setTimeout(() => {
-        setCreditNotes([
-          { id: 1, reference: 'CN-001', invoice_ref: 'INV-001', customer: 'John Smith', amount: 500.00, reason: 'Damaged items', date: new Date(Date.now() - 86400000).toISOString(), status: 'approved' },
-          { id: 2, reference: 'CN-002', invoice_ref: 'INV-003', customer: 'ABC Trading', amount: 250.00, reason: 'Wrong quantity', date: new Date(Date.now() - 172800000).toISOString(), status: 'posted' },
-        ]);
-      }, 300);
-    } catch (error) {
-      console.error('Error fetching credit notes:', error);
-    } finally {
-      setTimeout(() => setLoading(false), 400);
-    }
-  };
+    const fetchCreditNotes = async () => {
+      setLoading(true);
+      try {
+        const response = await posAPIRef.current.listCreditNotes({
+          is_posted: statusFilter === 'all' ? undefined : statusFilter === 'posted',
+          page: currentPage,
+        });
+        if (cancelled) return;
+
+        const raw: any[] = Array.isArray(response) ? response : (response as any).results ?? [];
+        setCreditNotes(
+          raw.map((cn: any) => ({
+            id: cn.id,
+            reference: cn.credit_number ?? String(cn.id),
+            customer: cn.customer_name || 'Unknown',
+            debtor_account: cn.debtor_account ?? '',
+            original_sale_number: cn.original_sale_number ?? '',
+            amount: Number(cn.total_amount ?? 0),
+            refund_type: cn.refund_type_display ?? cn.refund_type ?? 'CASH',
+            date: cn.credit_date ?? '',
+            is_posted: !!cn.is_posted,
+          }))
+        );
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Error fetching credit notes:', error);
+          setCreditNotes([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchCreditNotes();
+    return () => { cancelled = true; };
+  }, [user, authLoading, statusFilter, currentPage]);
+
+  const filteredCreditNotes = creditNotes.filter((cn) =>
+    !searchTerm ||
+    cn.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    cn.customer.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setCurrentPage(1);
-    fetchCreditNotes();
   };
 
   return (
@@ -104,10 +127,8 @@ export default function CreditNotesPage() {
             className="px-4 py-2 border rounded-lg bg-white font-medium"
           >
             <option value="all">All Status</option>
-            <option value="draft">Draft</option>
-            <option value="issued">Issued</option>
-            <option value="applied">Applied</option>
-            <option value="cancelled">Cancelled</option>
+            <option value="posted">Posted</option>
+            <option value="pending">Pending</option>
           </select>
           <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
             Search
@@ -121,7 +142,7 @@ export default function CreditNotesPage() {
           <div className="text-center py-8">
             <p className="text-gray-600">Loading credit notes...</p>
           </div>
-        ) : creditNotes.length === 0 ? (
+        ) : filteredCreditNotes.length === 0 ? (
           <Card>
             <CardContent className="py-8">
               <div className="text-center">
@@ -145,42 +166,29 @@ export default function CreditNotesPage() {
                     <TableHead>Reference</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Date</TableHead>
-                    <TableHead>Original Invoice</TableHead>
+                    <TableHead>Original Sale</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Refund Type</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {creditNotes.map((cn) => (
+                  {filteredCreditNotes.map((cn) => (
                     <TableRow key={cn.id}>
                       <TableCell className="font-medium">{cn.reference}</TableCell>
-                      <TableCell>{cn.debtor_name}</TableCell>
-                      <TableCell>{new Date(cn.date).toLocaleDateString()}</TableCell>
-                      <TableCell>{cn.original_invoice || '-'}</TableCell>
+                      <TableCell>{cn.customer}</TableCell>
+                      <TableCell>{cn.date ? new Date(cn.date).toLocaleDateString() : '—'}</TableCell>
+                      <TableCell>{cn.original_sale_number || '-'}</TableCell>
                       <TableCell className="text-right font-medium">
-                        R{cn.total?.toFixed(2) || '0.00'}
+                        R{cn.amount.toFixed(2)}
                       </TableCell>
+                      <TableCell>{cn.refund_type}</TableCell>
                       <TableCell>
                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-sm font-medium ${
-                          cn.status === 'applied' ? 'bg-green-100 text-green-800' :
-                          cn.status === 'issued' ? 'bg-blue-100 text-blue-800' :
-                          cn.status === 'draft' ? 'bg-gray-100 text-gray-800' :
-                          'bg-red-100 text-red-800'
+                          cn.is_posted ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
                         }`}>
-                          {cn.status?.charAt(0).toUpperCase() + cn.status?.slice(1)}
+                          {cn.is_posted ? 'Posted' : 'Pending'}
                         </span>
-                      </TableCell>
-                      <TableCell className="text-right space-x-2">
-                        <button className="text-blue-600 hover:text-blue-700">
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button className="text-green-600 hover:text-green-700">
-                          <Printer className="w-4 h-4" />
-                        </button>
-                        <button className="text-purple-600 hover:text-purple-700">
-                          <Download className="w-4 h-4" />
-                        </button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -192,7 +200,7 @@ export default function CreditNotesPage() {
       </div>
 
       {/* Pagination */}
-      {creditNotes.length > 0 && (
+      {filteredCreditNotes.length > 0 && (
         <div className="flex justify-between items-center px-6 py-4 bg-white border-t">
           <p className="text-sm text-gray-600">Page {currentPage}</p>
           <div className="flex gap-2">

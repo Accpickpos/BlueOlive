@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/useAuth';
 import { usePOSAPI } from '@/lib/posApi';
 import Link from 'next/link';
@@ -18,15 +18,29 @@ import {
 import {
   PlusCircle,
   Search,
-  Eye,
-  Printer,
-  Download,
   AlertCircle,
 } from 'lucide-react';
+
+const STATUS_LABELS: Record<string, string> = {
+  C: 'Created',
+  I: 'Issued to Supplier',
+  R: 'Received from Supplier',
+  V: 'Invoiced',
+  X: 'Cancelled',
+};
+
+const STATUS_CLASSES: Record<string, string> = {
+  C: 'bg-gray-100 text-gray-800',
+  I: 'bg-yellow-100 text-yellow-800',
+  R: 'bg-purple-100 text-purple-800',
+  V: 'bg-green-100 text-green-800',
+  X: 'bg-red-100 text-red-800',
+};
 
 export default function RepairControlPage() {
   const { user, isLoading: authLoading } = useAuth();
   const posAPI = usePOSAPI(user?.tenant?.slug);
+  const posAPIRef = useRef(posAPI);
   const [repairs, setRepairs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,32 +48,54 @@ export default function RepairControlPage() {
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    fetchRepairs();
-  }, [statusFilter, currentPage]);
+    if (authLoading || !user) return;
+    let cancelled = false;
 
-  const fetchRepairs = async () => {
-    setLoading(true);
-    try {
-      // API call would go here
-      // const response = await posAPI.repairs.list(params);
-      // For now, show demo data
-      setTimeout(() => {
-        setRepairs([
-          { id: 1, reference: 'RJ-001', customer_name: 'John Smith', item_description: 'Laptop screen repair', cost: 450, supplier_name: 'Tech Repair Ltd', status: 'completed' },
-          { id: 2, reference: 'RJ-002', customer_name: 'Jane Doe', item_description: 'Printer cartridge replacement', cost: 120, supplier_name: 'Office Solutions', status: 'in_repair' },
-        ]);
-      }, 300);
-    } catch (error) {
-      console.error('Error fetching repairs:', error);
-    } finally {
-      setTimeout(() => setLoading(false), 400);
-    }
-  };
+    const fetchRepairs = async () => {
+      setLoading(true);
+      try {
+        const response = await posAPIRef.current.listRepairControls({
+          status: statusFilter === 'all' ? undefined : (statusFilter as 'C' | 'I' | 'R' | 'V' | 'X'),
+          page: currentPage,
+        });
+        if (cancelled) return;
+
+        const raw: any[] = Array.isArray(response) ? response : (response as any).results ?? [];
+        setRepairs(
+          raw.map((r: any) => ({
+            id: r.id,
+            reference: r.repair_number ?? String(r.id),
+            customer_name: r.customer_name ?? '',
+            repair_details: r.repair_details ?? '',
+            date_required: r.date_required ?? '',
+            quoted_value: r.quoted_value != null ? Number(r.quoted_value) : null,
+            telephone: r.telephone ?? '',
+            status: r.status ?? 'C',
+          }))
+        );
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Error fetching repairs:', error);
+          setRepairs([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchRepairs();
+    return () => { cancelled = true; };
+  }, [user, authLoading, statusFilter, currentPage]);
+
+  const filteredRepairs = repairs.filter((r) =>
+    !searchTerm ||
+    r.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    r.customer_name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setCurrentPage(1);
-    fetchRepairs();
   };
 
   return (
@@ -106,11 +142,11 @@ export default function RepairControlPage() {
             className="px-4 py-2 border rounded-lg bg-white font-medium"
           >
             <option value="all">All Status</option>
-            <option value="received">Received</option>
-            <option value="in_repair">In Repair</option>
-            <option value="completed">Completed</option>
-            <option value="invoiced">Invoiced</option>
-            <option value="collected">Collected</option>
+            <option value="C">Created</option>
+            <option value="I">Issued to Supplier</option>
+            <option value="R">Received from Supplier</option>
+            <option value="V">Invoiced</option>
+            <option value="X">Cancelled</option>
           </select>
           <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
             Search
@@ -124,7 +160,7 @@ export default function RepairControlPage() {
           <div className="text-center py-8">
             <p className="text-gray-600">Loading repairs...</p>
           </div>
-        ) : repairs.length === 0 ? (
+        ) : filteredRepairs.length === 0 ? (
           <Card>
             <CardContent className="py-8">
               <div className="text-center">
@@ -147,40 +183,26 @@ export default function RepairControlPage() {
                   <TableRow>
                     <TableHead>Reference</TableHead>
                     <TableHead>Customer</TableHead>
-                    <TableHead>Item</TableHead>
-                    <TableHead className="text-right">Cost</TableHead>
-                    <TableHead>Supplier</TableHead>
+                    <TableHead>Repair Details</TableHead>
+                    <TableHead>Date Required</TableHead>
+                    <TableHead className="text-right">Quoted Value</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {repairs.map((repair) => (
+                  {filteredRepairs.map((repair) => (
                     <TableRow key={repair.id}>
                       <TableCell className="font-medium">{repair.reference}</TableCell>
                       <TableCell>{repair.customer_name}</TableCell>
-                      <TableCell>{repair.item_description}</TableCell>
+                      <TableCell className="max-w-xs truncate">{repair.repair_details}</TableCell>
+                      <TableCell>{repair.date_required ? new Date(repair.date_required).toLocaleDateString() : '—'}</TableCell>
                       <TableCell className="text-right font-medium">
-                        R{repair.cost?.toFixed(2) || '0.00'}
+                        {repair.quoted_value != null ? `R${repair.quoted_value.toFixed(2)}` : '—'}
                       </TableCell>
-                      <TableCell>{repair.supplier_name || '-'}</TableCell>
                       <TableCell>
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-sm font-medium ${
-                          repair.status === 'completed' ? 'bg-green-100 text-green-800' :
-                          repair.status === 'invoiced' ? 'bg-blue-100 text-blue-800' :
-                          repair.status === 'in_repair' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {repair.status?.charAt(0).toUpperCase() + repair.status?.slice(1)}
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-sm font-medium ${STATUS_CLASSES[repair.status] || 'bg-gray-100 text-gray-800'}`}>
+                          {STATUS_LABELS[repair.status] || repair.status}
                         </span>
-                      </TableCell>
-                      <TableCell className="text-right space-x-2">
-                        <button className="text-blue-600 hover:text-blue-700">
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button className="text-green-600 hover:text-green-700">
-                          <Printer className="w-4 h-4" />
-                        </button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -192,7 +214,7 @@ export default function RepairControlPage() {
       </div>
 
       {/* Pagination */}
-      {repairs.length > 0 && (
+      {filteredRepairs.length > 0 && (
         <div className="flex justify-between items-center px-6 py-4 bg-white border-t">
           <p className="text-sm text-gray-600">Page {currentPage}</p>
           <div className="flex gap-2">

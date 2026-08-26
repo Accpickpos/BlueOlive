@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, getApiErrorMessage } from '@/lib/api';
 
 interface InterestData {
   debtor_id: number;
@@ -111,7 +111,7 @@ export default function InterestChargingForm() {
       });
       setSelectedDebtor(null);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to charge interest');
+      setError(getApiErrorMessage(err, 'Failed to charge interest'));
     } finally {
       setLoading(false);
     }

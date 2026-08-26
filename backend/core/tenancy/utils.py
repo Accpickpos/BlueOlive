@@ -84,16 +84,43 @@ def register_tenant_connection(tenant, shop=None):
     settings.DATABASES[base_alias] = db_config
     connections.databases[base_alias] = db_config
 
-    # Force-close any existing physical connection for this alias so the next
-    # query opens a fresh one with the new search_path OPTIONS above.
-    # Without this, a persistent connection opened before register_tenant_connection
-    # (e.g. from a previous request) would be reused and still point at the wrong schema.
-    if shop_alias in connections._connections.__dict__:
-        try:
-            connections[shop_alias].close()
-        except Exception:
-            pass
-    
+    # Force-close any existing connection for these aliases AND evict the
+    # cached DatabaseWrapper so the next query builds a fresh one bound to
+    # the db_config dict we just wrote.
+    #
+    # CRITICAL #1: close() alone is not enough. Django's BaseDatabaseWrapper
+    # pins self.settings_dict to the exact dict object it was constructed
+    # with (django/db/backends/base/base.py). Reassigning
+    # connections.databases[alias] to a new dict, as above, does NOT
+    # update an already-created wrapper for that alias in this thread - it
+    # just closes/reopens the socket using the SAME stale OPTIONS
+    # (search_path). base_alias is a single alias shared across every shop
+    # of this tenant, so without evicting it too, a worker thread that
+    # already opened a connection for one shop under base_alias would keep
+    # silently querying through that shop's schema for every other shop
+    # routed there afterwards (TenantDatabaseRouter falls back to
+    # base_alias for SHOP_APP_LABELS models under a tenant context).
+    #
+    # CRITICAL #2: `alias in connections._connections.__dict__` (the
+    # previous check here) is always False. connections._connections is an
+    # asgiref.local.Local, which routes all attribute access through
+    # __getattr__/__setattr__ into its own internal `_storage` (a real
+    # threading.local); Local's OWN __dict__ only ever holds its fixed
+    # implementation attributes (_thread_critical, _thread_lock, _storage),
+    # never per-alias connections. So this "force-close" block has never
+    # actually executed - use hasattr(), which correctly calls
+    # __getattr__ and reflects the real per-thread storage.
+    for alias in {shop_alias, base_alias}:
+        if hasattr(connections._connections, alias):
+            try:
+                connections[alias].close()
+            except Exception:
+                pass
+            try:
+                del connections[alias]
+            except Exception:
+                pass
+
     logger.debug(f"[register_tenant_connection] Connection registered: alias={shop_alias}, db={tenant.db_name}, search_path=public,{shop_schema}")
 
 def create_tenant_database_postgres(tenant, superuser_conn_info):
