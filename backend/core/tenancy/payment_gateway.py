@@ -641,15 +641,28 @@ class StripeGateway(PaymentGateway):
         """
         from tenancy.models import SubscriptionPayment
 
-        # --- Optional webhook signature verification ----------------------
-        if raw_payload and sig_header and self.webhook_secret:
-            try:
-                event = self._verify_webhook_signature(raw_payload, sig_header)
-            except PaymentGatewayError as exc:
-                logger.error("Stripe webhook signature verification failed: %s", exc)
-                return {"status": "failed", "error": "Invalid webhook signature"}
-        else:
-            event = data  # Pre-constructed event dict (e.g. in tests)
+        # --- Webhook signature verification is mandatory, not optional -----
+        # `data` is trusted as a real Stripe event ONLY when it has already
+        # passed _verify_webhook_signature via raw_payload/sig_header. A
+        # caller that omits either (or hasn't configured webhook_secret) is
+        # asking us to trust an unauthenticated payload as a real payment
+        # event — that's exactly the gap that would let a forged
+        # "payment succeeded" webhook activate a free subscription, so it's
+        # rejected outright instead of silently falling back to `data`.
+        if not (raw_payload and sig_header):
+            logger.error(
+                "Stripe verify_payment called without raw_payload/sig_header — "
+                "refusing to trust an unverified event."
+            )
+            return {
+                "status": "failed",
+                "error": "Webhook signature verification is required",
+            }
+        try:
+            event = self._verify_webhook_signature(raw_payload, sig_header)
+        except PaymentGatewayError as exc:
+            logger.error("Stripe webhook signature verification failed: %s", exc)
+            return {"status": "failed", "error": "Invalid webhook signature"}
 
         event_type = event.get("type", "")
         obj = event.get("data", {}).get("object", {})

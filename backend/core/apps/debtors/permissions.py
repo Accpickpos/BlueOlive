@@ -22,19 +22,39 @@ class HasDebtorPermission(permissions.BasePermission):
         if request.method in permissions.SAFE_METHODS:
             return True
 
-        # POST/PUT/DELETE requires additional checks
-        # This should be extended to check user roles/groups
-        # Example: return request.user.groups.filter(name='debtors_manager').exists()
-        return True
+        # POST/PUT/PATCH/DELETE requires ADMIN/MANAGER role (or an equivalent
+        # legacy group) — mirrors CanModifyDebtor's role/group check below.
+        return (
+            request.user.is_superuser
+            or (
+                hasattr(request.user, "role")
+                and request.user.role in ["ADMIN", "MANAGER"]
+            )
+            or request.user.groups.filter(
+                name__in=["debtors_admin", "admin", "debtors_manager"]
+            ).exists()
+        )
 
     def has_object_permission(self, request, view, obj):
         """Check if user has permission to access specific debtor."""
         if not request.user or not request.user.is_authenticated:
             return False
 
-        # This is where you'd add tenant isolation
-        # Example: return obj.tenant == request.user.tenant
-        return True
+        # GET requests allowed for authenticated users
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        # Modifications to a specific debtor require ADMIN/MANAGER role.
+        return (
+            request.user.is_superuser
+            or (
+                hasattr(request.user, "role")
+                and request.user.role in ["ADMIN", "MANAGER"]
+            )
+            or request.user.groups.filter(
+                name__in=["debtors_admin", "admin", "debtors_manager"]
+            ).exists()
+        )
 
 
 class CanModifyDebtor(permissions.BasePermission):

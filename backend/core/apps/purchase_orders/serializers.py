@@ -121,6 +121,14 @@ class PurchaseOrderDetailSerializer(serializers.ModelSerializer):
             "cancelled_at",
             "created_at",
             "updated_at",
+            # Set at creation only — supplier/pricing method drive every line's
+            # pricing and totals, is_back_order/parent_order record provenance
+            # from the automated back-order flow (views.py receive_stock), and
+            # none of them have a legitimate post-creation edit flow.
+            "supplier",
+            "is_back_order",
+            "parent_order",
+            "pricing_method",
         ]
 
     def get_is_overdue(self, obj):

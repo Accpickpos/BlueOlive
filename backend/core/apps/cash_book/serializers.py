@@ -142,7 +142,13 @@ class OtherIncomeSerializer(serializers.ModelSerializer):
     class Meta:
         model = OtherIncome
         fields = "__all__"
-        read_only_fields = ("transaction",)
+        # vat_amount/tax_code mirror transaction.tax_amount/audit_type,
+        # computed by CashBookTransactionService.create_transaction() at
+        # creation time — editing them directly here (the default
+        # ModelViewSet update()/partial_update() never routes through the
+        # service) would let them drift out of sync with the linked
+        # CashBookTransaction.
+        read_only_fields = ("transaction", "vat_amount", "tax_code")
 
 
 class CreateOtherIncomeSerializer(serializers.Serializer):
@@ -179,7 +185,10 @@ class OtherExpenseSerializer(serializers.ModelSerializer):
     class Meta:
         model = OtherExpense
         fields = "__all__"
-        read_only_fields = ("transaction",)
+        # See OtherIncomeSerializer — vat_amount/tax_code are derived from
+        # the linked transaction at creation time and must not be
+        # independently editable.
+        read_only_fields = ("transaction", "vat_amount", "tax_code")
 
 
 class CreateOtherExpenseSerializer(serializers.Serializer):
@@ -219,7 +228,12 @@ class BankDepositSerializer(serializers.ModelSerializer):
     class Meta:
         model = BankDeposit
         fields = "__all__"
-        read_only_fields = ("transaction",)
+        # cash_amount/cheque_amount together make up the deposit total that
+        # TransactionService.create_bank_deposit() computed and posted to
+        # the linked transaction — the default update()/partial_update()
+        # never re-syncs the transaction, so these must not be editable
+        # independently of it.
+        read_only_fields = ("transaction", "cash_amount", "cheque_amount")
 
 
 class CreateBankDepositSerializer(serializers.Serializer):
@@ -299,7 +313,13 @@ class BankTransferSerializer(serializers.ModelSerializer):
     class Meta:
         model = BankTransfer
         fields = "__all__"
-        read_only_fields = ("transaction",)
+        # to_account is where the money actually moved — rewriting it after
+        # the fact would misrepresent the transfer's history. transfer_fee
+        # is the monetary amount tied to the (already-posted) linked
+        # transaction. Neither goes through
+        # CashBookTransactionService.update_transaction() via the default
+        # update()/partial_update(), so both are locked.
+        read_only_fields = ("transaction", "to_account", "transfer_fee")
 
 
 class CreateBankTransferSerializer(serializers.Serializer):

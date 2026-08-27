@@ -14,13 +14,18 @@ from django.db import connections, transaction
 from rest_framework import status
 from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.parsers import MultiPartParser
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tenancy.models import Shop, Tenant
+from tenancy.permissions import IsAdmin
 from tenancy.tenant_context import clear_current, set_current_shop, set_current_tenant
 from tenancy.utils import register_tenant_connection
 
 from .models import Debtor
+
+# Hard cap on uploaded CSV size — these views read the whole file into
+# memory (no streaming), so an unbounded upload is a memory-exhaustion risk.
+MAX_CSV_UPLOAD_SIZE = 20 * 1024 * 1024  # 20MB
 
 # ============================================================
 # CSV column → Django model field mapping
@@ -251,10 +256,18 @@ def _set_schema_and_get_table_name(tenant, shop):
 @permission_classes([IsAuthenticated])
 def list_tenants_and_shops(request):
     """
-    Return all tenants with their shops for the import UI dropdown.
+    Return the requester's own tenant with its shops for the import UI
+    dropdown. Scoped to the caller's tenant only — this must never leak
+    other tenants' names/shops to a regular authenticated user.
     GET /api/v1/debtors/import/tenants/
     """
-    tenants = Tenant.objects.filter(is_active=True).order_by("name")
+    requester_tenant_id = getattr(request.user, "tenant_id", None)
+    if not requester_tenant_id:
+        return Response([])
+
+    tenants = Tenant.objects.filter(
+        id=requester_tenant_id, is_active=True
+    ).order_by("name")
     data = []
     for t in tenants:
         shops = Shop.objects.filter(tenant=t, is_active=True).order_by("name")
@@ -295,6 +308,13 @@ def analyze_csv(request):
     if not file_obj.name.lower().endswith(".csv"):
         return Response(
             {"error": "Only CSV files are supported"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if file_obj.size and file_obj.size > MAX_CSV_UPLOAD_SIZE:
+        return Response(
+            {
+                "error": f"File exceeds the maximum upload size of {MAX_CSV_UPLOAD_SIZE // (1024 * 1024)}MB"
+            },
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -346,11 +366,15 @@ def analyze_csv(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsAdmin])
 @parser_classes([MultiPartParser])
 def import_csv(request):
     """
     Import a CSV file into the debtors table of a specific tenant/shop schema.
+
+    Restricted to tenant admins (IsAdmin) — bulk master-data import
+    shouldn't be available to every authenticated user, even within their
+    own tenant.
 
     POST /api/v1/debtors/import/execute/
     Body (multipart/form-data):
@@ -371,6 +395,13 @@ def import_csv(request):
     if not file_obj:
         return Response(
             {"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST
+        )
+    if file_obj.size and file_obj.size > MAX_CSV_UPLOAD_SIZE:
+        return Response(
+            {
+                "error": f"File exceeds the maximum upload size of {MAX_CSV_UPLOAD_SIZE // (1024 * 1024)}MB"
+            },
+            status=status.HTTP_400_BAD_REQUEST,
         )
 
     tenant_id = request.data.get("tenant_id")
@@ -400,10 +431,25 @@ def import_csv(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    if not tenant_id or not shop_id:
+    if not shop_id:
         return Response(
-            {"error": "tenant_id and shop_id are required"},
+            {"error": "shop_id is required"},
             status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # --- SECURITY: derive tenant from the authenticated requester, never
+    # from client-supplied tenant_id. A submitted tenant_id must match the
+    # requester's own tenant or the request is rejected outright.
+    requester_tenant_id = getattr(request.user, "tenant_id", None)
+    if not requester_tenant_id:
+        return Response(
+            {"error": "Your account is not associated with a tenant"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    if tenant_id and str(tenant_id) != str(requester_tenant_id):
+        return Response(
+            {"error": "tenant_id does not match your account's tenant"},
+            status=status.HTTP_403_FORBIDDEN,
         )
 
     # Parse mappings
@@ -436,23 +482,25 @@ def import_csv(request):
         )
 
     # --- Resolve tenant & shop ---
-    # First, get the shop to find its tenant (allows importing to any shop regardless of tenant_id param)
+    # Tenant comes from the authenticated requester (validated above), never
+    # from the request body. The shop must belong to that same tenant — this
+    # must NEVER fall back to "any shop regardless of tenant_id".
     try:
-        shop = Shop.objects.select_related("tenant").get(id=shop_id, is_active=True)
-    except Shop.DoesNotExist:
+        tenant = Tenant.objects.get(id=requester_tenant_id, is_active=True)
+    except Tenant.DoesNotExist:
         return Response(
-            {"error": f"Shop {shop_id} not found"}, status=status.HTTP_404_NOT_FOUND
+            {"error": "Tenant not found or inactive"},
+            status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Use the shop's actual tenant - this ensures we import to the correct tenant
-    # regardless of what tenant_id was sent in the request
-    tenant = shop.tenant
-
-    # Verify the tenant is active
-    if not tenant.is_active:
+    try:
+        shop = Shop.objects.select_related("tenant").get(
+            id=shop_id, tenant=tenant, is_active=True
+        )
+    except Shop.DoesNotExist:
         return Response(
-            {"error": f"Tenant for shop {shop_id} is not active"},
-            status=status.HTTP_400_BAD_REQUEST,
+            {"error": f"Shop {shop_id} not found in your tenant"},
+            status=status.HTTP_403_FORBIDDEN,
         )
 
     # --- CRITICAL FIX: Override the middleware's schema selection ---

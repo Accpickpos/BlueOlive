@@ -11,6 +11,7 @@ from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 from tenancy.permissions import CanCreateTenant, IsAdmin, IsTenantMember
+from tenancy.permissions import IsAdminUser as IsPlatformAdmin
 from tenancy.tenant_context import get_current_tenant
 
 from .models import (
@@ -117,6 +118,26 @@ class TenantViewSet(viewsets.ModelViewSet):
     queryset = Tenant.objects.all()
     serializer_class = TenantSerializer
     permission_classes = [IsAdmin]
+
+    def get_queryset(self):
+        """
+        Scope to the requester's own tenant, mirroring ShopViewSet.get_queryset()
+        below. Without this, IsAdmin only checks role == 'ADMIN' - it does not
+        check *which* tenant - so any tenant admin could list/retrieve/update/
+        delete any tenant's record by ID.
+
+        check_setup_status is the one deliberate exception: it's an
+        unauthenticated poll (see get_permissions) used right after signup,
+        before any session/tenant context exists, and exposes nothing beyond
+        provisioning status - so it stays open to lookup-by-pk.
+        """
+        if self.action == "check_setup_status":
+            return Tenant.objects.all()
+
+        tenant = get_current_tenant()
+        if tenant:
+            return Tenant.objects.filter(id=tenant.id)
+        return Tenant.objects.none()
 
     def get_permissions(self):
         """
@@ -661,7 +682,11 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
     """
 
     queryset = Subscription.objects.all()
-    permission_classes = [IsAdminUser]
+    # Platform-wide billing/subscription management is for true platform
+    # admins (is_superuser) only. DRF's IsAdminUser checks is_staff, which
+    # ShopUser.save() sets True for every ADMIN/MANAGER/STAFF tenant
+    # employee - not a platform administrator - so it does not belong here.
+    permission_classes = [IsPlatformAdmin]
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -672,10 +697,20 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Subscription.objects.select_related("tenant", "plan").all()
-        # Filter by tenant
-        tenant_id = self.request.query_params.get("tenant_id")
-        if tenant_id:
-            queryset = queryset.filter(tenant_id=tenant_id)
+
+        if self.request.user.is_superuser:
+            # Superusers may filter across tenants
+            tenant_id = self.request.query_params.get("tenant_id")
+            if tenant_id:
+                queryset = queryset.filter(tenant_id=tenant_id)
+        else:
+            # Defense in depth: permission_classes already restricts this
+            # viewset to superusers, but scope to the requester's own tenant
+            # regardless, so a non-superuser can never see another tenant's
+            # subscription data via a tenant_id query param.
+            tenant = get_current_tenant()
+            queryset = queryset.filter(tenant=tenant) if tenant else queryset.none()
+
         # Filter by status
         status_filter = self.request.query_params.get("status")
         if status_filter:
@@ -843,12 +878,25 @@ class SubscriptionPaymentViewSet(viewsets.ModelViewSet):
 
     queryset = SubscriptionPayment.objects.all()
     serializer_class = SubscriptionPaymentSerializer
-    permission_classes = [IsAdminUser]
+    # See SubscriptionViewSet above: platform billing data requires a real
+    # platform admin (is_superuser), not just any tenant employee (is_staff).
+    permission_classes = [IsPlatformAdmin]
 
     def get_queryset(self):
         queryset = SubscriptionPayment.objects.select_related(
             "subscription", "subscription__tenant"
         ).all()
+
+        if not self.request.user.is_superuser:
+            # Defense in depth: scope to the requester's own tenant regardless
+            # of query params (see SubscriptionViewSet.get_queryset()).
+            tenant = get_current_tenant()
+            queryset = (
+                queryset.filter(subscription__tenant=tenant)
+                if tenant
+                else queryset.none()
+            )
+
         # Filter by subscription
         subscription_id = self.request.query_params.get("subscription_id")
         if subscription_id:

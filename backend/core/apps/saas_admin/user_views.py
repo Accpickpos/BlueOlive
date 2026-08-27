@@ -7,15 +7,16 @@ from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from tenancy.models import Shop, Tenant
+
+from .permissions import IsPlatformSuperuser
 
 User = get_user_model()
 
 
 @api_view(["POST"])
-@permission_classes([IsAdminUser])
+@permission_classes([IsPlatformSuperuser])
 def create_tenant_admin(request):
     """
     Create a new tenant admin user.
@@ -129,7 +130,7 @@ def create_tenant_admin(request):
 
 
 @api_view(["GET", "POST"])
-@permission_classes([IsAdminUser])
+@permission_classes([IsPlatformSuperuser])
 def list_tenant_users(request):
     """
     List or search users for a specific tenant.
@@ -209,7 +210,7 @@ def list_tenant_users(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAdminUser])
+@permission_classes([IsPlatformSuperuser])
 def toggle_user_status(request):
     """
     Activate or deactivate a user.
@@ -218,6 +219,11 @@ def toggle_user_status(request):
 
     Required fields:
     - user_id: ID of the user to toggle
+
+    NOTE: The user lookup below is intentionally not scoped to a tenant_id.
+    This endpoint is gated by IsPlatformSuperuser, so any caller reaching
+    here is already a real platform superuser managing users across all
+    tenants (same lookup pattern used by assign_user_shops() below).
     """
     user_id = request.data.get("user_id")
 
@@ -251,7 +257,7 @@ def toggle_user_status(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAdminUser])
+@permission_classes([IsPlatformSuperuser])
 def reset_user_password(request):
     """
     Reset a user's password.
@@ -261,6 +267,11 @@ def reset_user_password(request):
     Required fields:
     - user_id: ID of the user
     - new_password: New password
+
+    NOTE: The user lookup below is intentionally not scoped to a tenant_id.
+    This endpoint is gated by IsPlatformSuperuser, so any caller reaching
+    here is already a real platform superuser managing users across all
+    tenants (same lookup pattern used by assign_user_shops() below).
     """
     user_id = request.data.get("user_id")
     new_password = request.data.get("new_password")
@@ -287,7 +298,7 @@ def reset_user_password(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAdminUser])
+@permission_classes([IsPlatformSuperuser])
 def assign_user_shops(request):
     """
     Assign a user to shops.

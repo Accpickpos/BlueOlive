@@ -6,7 +6,7 @@ from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
 from rest_framework.response import Response
 
 from .models import (
@@ -31,6 +31,13 @@ from .models import (
     RFCLineItem,
     SupplierLedgerEntry,
     SupplierPaymentOrder,
+)
+from .permissions import (
+    CanModifyCreditor,
+    CanPostCreditorInvoice,
+    CanPostCreditorPayment,
+    CanReceiveGoods,
+    CanReconcileCreditor,
 )
 from .serializers import (
     CreditorAgedBalanceSummarySerializer,
@@ -100,6 +107,16 @@ class CreditorViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet)
     ordering_fields = ["supplier_number", "name", "total_outstanding_balance"]
     ordering = ["supplier_number"]
     lookup_serializer_class = CreditorListSerializer
+
+    def get_permissions(self):
+        """Read stays open to any authenticated user; writes (create/update/
+        destroy and the block/unblock/credit-limit style actions below)
+        require CanModifyCreditor's MANAGER/ADMIN role check."""
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, CanModifyCreditor]
+        return [permission() for permission in permission_classes]
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -239,6 +256,15 @@ class GoodsReceivedNoteViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     ordering_fields = ["transaction_date", "transaction_number", "total_amount"]
     ordering = ["-transaction_date"]
 
+    def get_permissions(self):
+        """Read stays open to any authenticated user; writes (create GRN /
+        post GRN) require CanReceiveGoods."""
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, CanReceiveGoods]
+        return [permission() for permission in permission_classes]
+
     def get_serializer_class(self):
         if self.action in ("create", "update", "partial_update"):
             return GoodsReceivedNoteWriteSerializer
@@ -333,6 +359,15 @@ class CreditorInvoiceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     ordering_fields = ["transaction_date", "total_amount"]
     ordering = ["-transaction_date"]
 
+    def get_permissions(self):
+        """Read stays open to any authenticated user; writes (create/post
+        invoice) require CanPostCreditorInvoice."""
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, CanPostCreditorInvoice]
+        return [permission() for permission in permission_classes]
+
     def get_serializer_class(self):
         if self.action in ("create", "update", "partial_update"):
             return CreditorInvoiceWriteSerializer
@@ -412,6 +447,17 @@ class CreditorCreditNoteViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     search_fields = ["transaction_number", "supplier_credit_note_number"]
     ordering_fields = ["transaction_date", "total_amount"]
     ordering = ["-transaction_date"]
+
+    def get_permissions(self):
+        """Read stays open to any authenticated user; writes (create/post
+        credit note) require CanPostCreditorInvoice — same invoicing-tier
+        role as CreditorInvoiceViewSet since credit notes are the same kind
+        of supplier AP document."""
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, CanPostCreditorInvoice]
+        return [permission() for permission in permission_classes]
 
     def get_serializer_class(self):
         if self.action in ("create", "update", "partial_update"):
@@ -495,6 +541,15 @@ class CreditorPaymentViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     ordering = ["-transaction_date"]
     serializer_class = CreditorPaymentSerializer
 
+    def get_permissions(self):
+        """Read stays open to any authenticated user; writes (create/post
+        payment/allocate) require CanPostCreditorPayment."""
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, CanPostCreditorPayment]
+        return [permission() for permission in permission_classes]
+
     def perform_create(self, serializer):
         user = (
             self.request.user.username[:20]
@@ -570,6 +625,16 @@ class CreditorJournalViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     ordering_fields = ["transaction_date", "journal_amount"]
     ordering = ["-transaction_date"]
     serializer_class = CreditorJournalSerializer
+
+    def get_permissions(self):
+        """Read stays open to any authenticated user; writes (create/post
+        journal) require CanPostCreditorInvoice — same tier as the debtors
+        app's post_debit/post_credit journal actions (CanPostInvoice)."""
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, CanPostCreditorInvoice]
+        return [permission() for permission in permission_classes]
 
     def perform_create(self, serializer):
         user = (
@@ -659,6 +724,16 @@ class CreditorOpenItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     # Open items are system-created — only allow PATCH for is_legacy flag
     http_method_names = ["get", "patch", "head", "options"]
 
+    def get_permissions(self):
+        """Read stays open to any authenticated user; the only writable
+        action (PATCH is_legacy) requires CanReconcileCreditor since it
+        affects how the item is matched/aged during reconciliation."""
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, CanReconcileCreditor]
+        return [permission() for permission in permission_classes]
+
     @action(detail=False, methods=["get"], url_path="outstanding")
     def outstanding(self, request):
         qs = self.get_queryset().filter(is_fully_allocated=False)
@@ -732,6 +807,17 @@ class RFCViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     search_fields = ["rfc_number"]
     ordering_fields = ["date_sent", "date_returned"]
     ordering = ["-date_sent"]
+
+    def get_permissions(self):
+        """Read stays open to any authenticated user; writes (create RFC /
+        update_status) require CanReceiveGoods — the closest goods-movement
+        permission (includes the 'purchasing' group) since RFCs are the
+        return-side of the GRN receiving workflow."""
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, CanReceiveGoods]
+        return [permission() for permission in permission_classes]
 
     def get_serializer_class(self):
         if self.action in ("create", "update", "partial_update"):
@@ -877,6 +963,15 @@ class SupplierPaymentOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     ordering_fields = ["payment_date", "amount"]
     ordering = ["payment_date"]
 
+    def get_permissions(self):
+        """Read stays open to any authenticated user; writes (create/process
+        a payment order) require CanPostCreditorPayment."""
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, CanPostCreditorPayment]
+        return [permission() for permission in permission_classes]
+
     @action(detail=False, methods=["get"], url_path="pending")
     def pending(self, request):
         qs = self.get_queryset().filter(is_processed=False)
@@ -950,6 +1045,17 @@ class OutstandingBalanceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     ]
     ordering_fields = ["capture_date", "as_at_date", "balance", "created_at"]
     ordering = ["-capture_date", "-as_at_date"]
+
+    def get_permissions(self):
+        """Read stays open to any authenticated user; writes (capture/edit
+        an outstanding balance) require CanModifyCreditor — this maintains
+        creditor account data much like the credit-limit changes that
+        permission already gates."""
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, CanModifyCreditor]
+        return [permission() for permission in permission_classes]
 
     def get_serializer_class(self):
         if self.action in ["create", "update", "partial_update"]:

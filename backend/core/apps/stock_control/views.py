@@ -59,6 +59,7 @@ from .serializers import (
     StockTakeSerializer,
     StockTransactionSerializer,
 )
+from .permissions import IsStockAccountant, IsStockMover
 
 # ─────────────────────────────────────────────
 # StockItem
@@ -225,7 +226,12 @@ class StockItemViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
     def needs_reorder(self, request):
         return self.low_stock(request)
 
-    @action(detail=True, methods=["post"], url_path="adjust-stock")
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="adjust-stock",
+        permission_classes=[IsAuthenticated, IsStockMover],
+    )
     def adjust_stock(self, request, pk=None):
         """
         Manual stock adjustment.
@@ -466,7 +472,12 @@ class StockTakeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             {"message": "Stock take completed.", "completed_at": take.completed_at}
         )
 
-    @action(detail=True, methods=["post"], url_path="update-stock")
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="update-stock",
+        permission_classes=[IsAuthenticated, IsStockMover],
+    )
     def update_stock(self, request, pk=None):
         """Apply counted quantities as adjustments to stock QOH."""
         take = self.get_object()
@@ -766,13 +777,21 @@ class BranchTransferViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         transfer.save(update_fields=["status", timestamp_field, user_field])
         return Response(BranchTransferSerializer(transfer).data)
 
-    @action(detail=True, methods=["post"])
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, IsStockMover],
+    )
     def approve(self, request, pk=None):
         return self._transition(
             pk, ["PENDING"], "APPROVED", "approved_date", "approved_by"
         )
 
-    @action(detail=True, methods=["post"])
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, IsStockMover],
+    )
     def dispatch(self, request, pk=None):
         """
         Dispatch the transfer: decrements BranchStock at from_branch for each
@@ -829,7 +848,11 @@ class BranchTransferViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         transfer.refresh_from_db()
         return Response(BranchTransferSerializer(transfer).data)
 
-    @action(detail=True, methods=["post"])
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, IsStockMover],
+    )
     def receive(self, request, pk=None):
         """
         Mark transfer as received: increments BranchStock at to_branch for each
@@ -875,7 +898,11 @@ class BranchTransferViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         transfer.refresh_from_db()
         return Response(BranchTransferSerializer(transfer).data)
 
-    @action(detail=True, methods=["post"])
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, IsStockMover],
+    )
     def cancel(self, request, pk=None):
         transfer = self.get_object()
         if transfer.status in ("COMPLETED", "CANCELLED"):
@@ -915,7 +942,11 @@ class BranchTransferInvoiceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     ordering_fields = ["invoice_date"]
     ordering = ["-invoice_date"]
 
-    @action(detail=True, methods=["post"])
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, IsStockAccountant],
+    )
     def issue(self, request, pk=None):
         invoice = self.get_object()
         if invoice.status != "DRAFT":
@@ -927,7 +958,11 @@ class BranchTransferInvoiceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         invoice.save(update_fields=["status"])
         return Response(BranchTransferInvoiceSerializer(invoice).data)
 
-    @action(detail=True, methods=["post"])
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, IsStockAccountant],
+    )
     def mark_paid(self, request, pk=None):
         invoice = self.get_object()
         if invoice.status != "ISSUED":

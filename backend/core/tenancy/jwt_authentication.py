@@ -2,6 +2,7 @@
 import logging
 
 from django.conf import settings
+from rest_framework.exceptions import PermissionDenied
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import AuthenticationFailed, InvalidToken
 from rest_framework_simplejwt.tokens import AccessToken
@@ -256,12 +257,19 @@ class TenantJWTAuthentication(JWTAuthentication):
             # Validate tenant context
             self._validate_tenant_context(user, validated_token)
 
+            # Validate shop membership. TenantMiddleware resolves request.shop
+            # BEFORE authentication runs (including from the client-supplied
+            # X-Shop-ID header), with no way to check membership since the real
+            # user isn't known yet at that point. Now that we have the actual
+            # authenticated user, enforce that they can access the resolved shop.
+            self._validate_shop_access(request, user)
+
             if settings.DEBUG:
                 logger.debug(f"JWT authentication successful for user: {user.username}")
 
             return user, validated_token
 
-        except (AuthenticationFailed, InvalidToken) as e:
+        except (AuthenticationFailed, InvalidToken, PermissionDenied) as e:
             logger.warning(f"Authentication failed: {type(e).__name__} - {str(e)}")
             raise
         except Exception as e:
@@ -303,6 +311,34 @@ class TenantJWTAuthentication(JWTAuthentication):
                 f"User {user.id} does not belong to tenant {token_tenant_id}"
             )
             raise AuthenticationFailed("User does not belong to this tenant")
+
+    def _validate_shop_access(self, request, user):
+        """
+        Validate that the now-known authenticated user actually has access
+        to the shop TenantMiddleware resolved for this request.
+
+        TenantMiddleware._identify_shop() sets request.shop before this
+        authenticate() call runs, using (in priority order) the JWT's
+        current_shop_id claim, the session, or the client-supplied X-Shop-ID
+        header/query param - none of which are validated against shop
+        membership at that point because request.user is still
+        AnonymousUser (this app never calls django.contrib.auth.login()).
+        This is the first point in the request lifecycle where the real
+        user is available, so membership is enforced here using the same
+        ShopUser.can_access_shop() helper IsShopMember relies on.
+        """
+        shop = getattr(request, "shop", None)
+        if shop is None:
+            # No shop was resolved for this request - nothing to validate
+            # (e.g. onboarding, or endpoints that don't need a shop).
+            return
+
+        if not user.can_access_shop(shop.id):
+            logger.warning(
+                f"User {user.id} (tenant={getattr(user, 'tenant_id', None)}) "
+                f"attempted to access shop {shop.id} without membership"
+            )
+            raise PermissionDenied("You do not have access to this shop")
 
     def get_user(self, validated_token):
         """

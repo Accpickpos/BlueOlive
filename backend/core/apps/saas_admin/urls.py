@@ -1,6 +1,6 @@
 """
 SaaS Admin URL configuration.
-All endpoints require superuser (IsAdminUser) permission.
+All endpoints require platform superuser (IsPlatformSuperuser) permission.
 """
 
 from django.urls import include, path

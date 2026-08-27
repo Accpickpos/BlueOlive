@@ -1,9 +1,10 @@
 # tenancy/auth_views.py
 import logging
 
+from core.throttling import PublicReadThrottle
 from django.contrib.auth import authenticate
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -144,7 +145,7 @@ def tenant_login(request):
     tenant = get_current_tenant()
     if not tenant and tenant_slug:
         try:
-            tenant = Tenant.objects.get(slug=tenant_slug)
+            tenant = Tenant.objects.get(slug=tenant_slug, is_active=True)
         except Tenant.DoesNotExist:
             return Response(
                 {"error": "Invalid tenant"}, status=status.HTTP_404_NOT_FOUND
@@ -424,6 +425,12 @@ def user_profile(request):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+# Intentionally AllowAny: this only confirms whether a token is currently
+# valid and doesn't leak claim contents, so it's safe to expose publicly
+# for client-side token health checks. Still throttled per-IP (reusing the
+# same AnonRateThrottle pattern as PublicReadThrottle/LoginThrottle) so it
+# can't be hammered as a cheap validity oracle.
+@throttle_classes([PublicReadThrottle])
 def verify_token(request):
     """
     Verify if a token is valid

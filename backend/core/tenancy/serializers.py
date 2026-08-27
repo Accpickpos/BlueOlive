@@ -542,6 +542,22 @@ class SubscriptionCreateSerializer(serializers.ModelSerializer):
             "gateway_subscription_id",
         ]
 
+    def validate_tenant(self, value):
+        """
+        Non-superusers may only create a subscription for their own tenant.
+        The field stays writable (superusers legitimately create/manage
+        subscriptions for any tenant) but a regular tenant user can't point
+        it at someone else's tenant via a raw `tenant` id in the payload.
+        """
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user is not None and not user.is_superuser:
+            if value.id != getattr(user, "tenant_id", None):
+                raise serializers.ValidationError(
+                    "You can only create a subscription for your own tenant."
+                )
+        return value
+
     def create(self, validated_data):
         """
         Create a new subscription with proper billing period setup.

@@ -21,6 +21,7 @@ from .models import (
     PurchaseOrderTemplate,
     PurchaseOrderTemplateLine,
 )
+from .permissions import IsPurchaseOrderStockMover
 from .serializers import (
     BackOrderSerializer,
     DeliveryVarianceReportSerializer,
@@ -214,7 +215,11 @@ class PurchaseOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             stock_item.quantity_on_order += line.quantity_outstanding
             stock_item.save()
 
-    @action(detail=True, methods=["post"])
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, IsPurchaseOrderStockMover],
+    )
     def cancel_order(self, request, pk=None):
         """Cancel a purchase order"""
         order = self.get_object()
@@ -248,7 +253,11 @@ class PurchaseOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             }
         )
 
-    @action(detail=True, methods=["post"])
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, IsPurchaseOrderStockMover],
+    )
     def receive_stock(self, request, pk=None):
         """Receive stock against purchase order"""
         order = self.get_object()

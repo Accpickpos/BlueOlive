@@ -14,6 +14,31 @@ function formatCurrency(value: number): string {
 }
 
 /**
+ * Escape a value for safe interpolation into an HTML string.
+ * Used because generated HTML here is sunk via document.write(), where
+ * unescaped `<script>` tags in user-controllable data would execute.
+ */
+function escapeHtml(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Validate that a logo URL is safe to use as an <img src> in
+ * document.write()'d HTML. Only allow http(s) URLs or data:image/ URIs;
+ * anything else (e.g. javascript:) is rejected.
+ */
+function isSafeImageUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  return /^https?:\/\//i.test(value) || /^data:image\//i.test(value);
+}
+
+/**
  * Get shop details including logo for printing
  */
 export async function getShopForPrint(): Promise<{
@@ -90,17 +115,17 @@ export function generateInvoicePrintHTML(invoice: any, shop: any, tenant: any): 
   const vatNumber = tenant?.vat_number || '';
   const regNumber = tenant?.registration_number || '';
   
-  const logoUrl = shop?.logo || null;
+  const logoUrl = isSafeImageUrl(shop?.logo) ? shop.logo : null;
 
   const itemsHtml = lineItems.map((item: any) => {
     const itemTotal = (item.quantity || 0) * (item.unit_price || item.selling_price || 0);
     const discountedTotal = itemTotal * (1 - (item.discount_percentage || 0) / 100);
     return `
         <tr>
-          <td>${item.description || item.stock_code || 'Item'}</td>
-          <td class="text-center">${item.quantity || 0}</td>
+          <td>${escapeHtml(item.description || item.stock_code || 'Item')}</td>
+          <td class="text-center">${escapeHtml(item.quantity || 0)}</td>
           <td class="text-right">${formatCurrency(item.unit_price || item.selling_price || 0)}</td>
-          <td class="text-right">${item.discount_percentage || 0}%</td>
+          <td class="text-right">${escapeHtml(item.discount_percentage || 0)}%</td>
           <td class="text-right">${formatCurrency(discountedTotal)}</td>
         </tr>
     `;
@@ -111,7 +136,7 @@ export function generateInvoicePrintHTML(invoice: any, shop: any, tenant: any): 
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Invoice ${invoice.invoice_number}</title>
+  <title>Invoice ${escapeHtml(invoice.invoice_number)}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: Arial, sans-serif; font-size: 12px; line-height: 1.4; color: #333; }
@@ -151,34 +176,34 @@ export function generateInvoicePrintHTML(invoice: any, shop: any, tenant: any): 
       <div class="company-info">
         ${logoUrl ? `
           <div class="logo-container" style="margin-bottom: 10px;">
-            <img src="${logoUrl}" alt="${companyName}" />
+            <img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(companyName)}" />
           </div>
         ` : ''}
-        <div class="company-name">${companyName}</div>
-        ${companyAddress ? `<div class="company-details">${companyAddress.replace(/\n/g, '<br>')}</div>` : ''}
-        ${companyPhone ? `<div class="company-details">Tel: ${companyPhone}</div>` : ''}
-        ${vatNumber ? `<div class="company-details">VAT Number: ${vatNumber}</div>` : ''}
-        ${regNumber ? `<div class="company-details">Registration: ${regNumber}</div>` : ''}
+        <div class="company-name">${escapeHtml(companyName)}</div>
+        ${companyAddress ? `<div class="company-details">${escapeHtml(companyAddress).replace(/\n/g, '<br>')}</div>` : ''}
+        ${companyPhone ? `<div class="company-details">Tel: ${escapeHtml(companyPhone)}</div>` : ''}
+        ${vatNumber ? `<div class="company-details">VAT Number: ${escapeHtml(vatNumber)}</div>` : ''}
+        ${regNumber ? `<div class="company-details">Registration: ${escapeHtml(regNumber)}</div>` : ''}
       </div>
       <div>
         <div class="document-title">INVOICE</div>
-        <div class="invoice-number">${invoice.invoice_number || ''}</div>
+        <div class="invoice-number">${escapeHtml(invoice.invoice_number || '')}</div>
       </div>
     </div>
 
     <div class="details-section">
       <div class="bill-to">
         <div class="label">Bill To:</div>
-        <div style="font-weight: bold;">${invoice.debtor_name || invoice.debtor?.name || 'Customer Name'}</div>
-        ${invoice.debtor?.address ? `<div>${invoice.debtor.address}</div>` : ''}
-        ${invoice.debtor?.phone ? `<div>Tel: ${invoice.debtor.phone}</div>` : ''}
-        ${invoice.debtor?.vat_number ? `<div>VAT: ${invoice.debtor.vat_number}</div>` : ''}
+        <div style="font-weight: bold;">${escapeHtml(invoice.debtor_name || invoice.debtor?.name || 'Customer Name')}</div>
+        ${invoice.debtor?.address ? `<div>${escapeHtml(invoice.debtor.address)}</div>` : ''}
+        ${invoice.debtor?.phone ? `<div>Tel: ${escapeHtml(invoice.debtor.phone)}</div>` : ''}
+        ${invoice.debtor?.vat_number ? `<div>VAT: ${escapeHtml(invoice.debtor.vat_number)}</div>` : ''}
       </div>
       <div class="invoice-details">
-        <div class="value"><span class="label">Date:</span> ${invoice.invoice_date || ''}</div>
-        ${invoice.due_date ? `<div class="value"><span class="label">Due Date:</span> ${invoice.due_date}</div>` : ''}
-        <div class="value"><span class="label">Status:</span> ${invoice.status || 'Draft'}</div>
-        ${invoice.customer_ref ? `<div class="value"><span class="label">Ref:</span> ${invoice.customer_ref}</div>` : ''}
+        <div class="value"><span class="label">Date:</span> ${escapeHtml(invoice.invoice_date || '')}</div>
+        ${invoice.due_date ? `<div class="value"><span class="label">Due Date:</span> ${escapeHtml(invoice.due_date)}</div>` : ''}
+        <div class="value"><span class="label">Status:</span> ${escapeHtml(invoice.status || 'Draft')}</div>
+        ${invoice.customer_ref ? `<div class="value"><span class="label">Ref:</span> ${escapeHtml(invoice.customer_ref)}</div>` : ''}
       </div>
     </div>
 
@@ -215,13 +240,13 @@ export function generateInvoicePrintHTML(invoice: any, shop: any, tenant: any): 
     ${invoice.notes ? `
       <div style="margin-top: 30px;">
         <div class="label">Notes:</div>
-        <div>${invoice.notes}</div>
+        <div>${escapeHtml(invoice.notes)}</div>
       </div>
     ` : ''}
 
     <div class="footer">
       <p>Thank you for your business!</p>
-      <p>${companyName}</p>
+      <p>${escapeHtml(companyName)}</p>
     </div>
   </div>
 </body>
@@ -237,14 +262,14 @@ export function generateReceiptPrintHTML(receipt: any, shop: any, tenant: any): 
   const companyAddress = shop?.address || tenant?.company_address || '';
   const companyPhone = shop?.phone || tenant?.phone || '';
   const vatNumber = tenant?.vat_number || '';
-  const logoUrl = shop?.logo || null;
+  const logoUrl = isSafeImageUrl(shop?.logo) ? shop.logo : null;
 
   return `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Receipt ${receipt.receipt_number || receipt.id}</title>
+  <title>Receipt ${escapeHtml(receipt.receipt_number || receipt.id)}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: Arial, sans-serif; font-size: 12px; line-height: 1.4; color: #333; padding: 20px; }
@@ -266,27 +291,27 @@ export function generateReceiptPrintHTML(receipt: any, shop: any, tenant: any): 
 <body>
   <div class="receipt-container">
     <div class="header">
-      ${logoUrl ? `<div class="logo-container"><img src="${logoUrl}" alt="${companyName}" /></div>` : ''}
-      <div class="company-name">${companyName}</div>
-      ${companyAddress ? `<div class="company-details">${companyAddress.replace(/\n/g, '<br>')}</div>` : ''}
-      ${companyPhone ? `<div class="company-details">Tel: ${companyPhone}</div>` : ''}
-      ${vatNumber ? `<div class="company-details">VAT: ${vatNumber}</div>` : ''}
+      ${logoUrl ? `<div class="logo-container"><img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(companyName)}" /></div>` : ''}
+      <div class="company-name">${escapeHtml(companyName)}</div>
+      ${companyAddress ? `<div class="company-details">${escapeHtml(companyAddress).replace(/\n/g, '<br>')}</div>` : ''}
+      ${companyPhone ? `<div class="company-details">Tel: ${escapeHtml(companyPhone)}</div>` : ''}
+      ${vatNumber ? `<div class="company-details">VAT: ${escapeHtml(vatNumber)}</div>` : ''}
     </div>
-    
+
     <div class="document-title">RECEIPT</div>
-    <div class="receipt-number">${receipt.receipt_number || `Receipt #${receipt.id}`}</div>
-    
+    <div class="receipt-number">${escapeHtml(receipt.receipt_number || `Receipt #${receipt.id}`)}</div>
+
     <div class="details">
-      <div class="detail-row"><span>Date:</span><span>${receipt.receipt_date || new Date().toLocaleDateString()}</span></div>
-      ${receipt.debtor_name ? `<div class="detail-row"><span>Customer:</span><span>${receipt.debtor_name}</span></div>` : ''}
+      <div class="detail-row"><span>Date:</span><span>${escapeHtml(receipt.receipt_date || new Date().toLocaleDateString())}</span></div>
+      ${receipt.debtor_name ? `<div class="detail-row"><span>Customer:</span><span>${escapeHtml(receipt.debtor_name)}</span></div>` : ''}
       <div class="detail-row"><span>Amount:</span><span>${formatCurrency(receipt.amount || 0)}</span></div>
     </div>
-    
+
     <div class="total">Total: ${formatCurrency(receipt.amount || 0)}</div>
-    
+
     <div class="footer">
       <p>Thank you!</p>
-      <p>${companyName}</p>
+      <p>${escapeHtml(companyName)}</p>
     </div>
   </div>
 </body>

@@ -662,11 +662,19 @@ class DebtorTransactionSerializer(serializers.ModelSerializer):
 
 
 class DebteopenSerializer(serializers.ModelSerializer):
-    """Serializer for open items."""
+    """
+    Serializer for open items.
+
+    balancedue/posted/ageflag/total are computed/state fields maintained by
+    DebtorService and DebteopenViewSet.allocate/allocate_receipt — they must
+    not be settable via a raw PATCH, which would bypass the allocation
+    amount-bounds checks those actions enforce.
+    """
 
     class Meta:
         model = Debtopen
         fields = "__all__"
+        read_only_fields = ["balancedue", "posted", "ageflag", "total"]
 
 
 class DpdcSerializer(serializers.ModelSerializer):
@@ -691,6 +699,11 @@ class DpdcSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+        # status/received_date/cleared_date are state-transition fields owned
+        # by DpdcViewSet.process/cancel — a raw PATCH must not be able to set
+        # status directly (e.g. jump straight to CLEARED), bypassing the
+        # transition rules those actions enforce.
+        read_only_fields = ["id", "status", "received_date", "cleared_date", "created_at", "updated_at"]
 
     def update(self, instance, validated_data):
         # updateStatus() on the frontend sends a `status_date` alongside the

@@ -31,6 +31,7 @@ from .models import (
     Repair,
     Tender,
 )
+from .price_validation_service import PriceValidationService
 
 logger = logging.getLogger(__name__)
 
@@ -708,6 +709,31 @@ class LaybyeService:
 
         for idx, line_data in enumerate(lines_data, start=1):
             line_data["line_number"] = idx
+
+            # Validate price/discount against configured pricing before
+            # committing the line — previously laybye lines had no price
+            # validation at all, unlike CashSale/Invoice/Quotation lines.
+            # A stock_code that isn't found is treated as a manual entry
+            # and skipped, matching the serializer-level checks elsewhere.
+            stock_code = line_data.get("stock_code")
+            if stock_code and line_data.get("unit_price") is not None:
+                try:
+                    PriceValidationService.validate_line_item_price(
+                        stock_code=stock_code,
+                        quantity=line_data["quantity"],
+                        unit_price=line_data["unit_price"],
+                        discount_percent=line_data.get(
+                            "discount_percentage", Decimal("0.00")
+                        ),
+                        price_level=1,
+                        transaction_date=laybye_data.get("laybye_date") or date.today(),
+                        enforce=True,
+                    )
+                except POSValidationException as e:
+                    if "not found" in str(e):
+                        pass
+                    else:
+                        raise POSValidationException(f"Line {idx}: {e}")
 
             # Calculate line totals using service
             try:

@@ -6,6 +6,7 @@ Provides endpoints for receiving orders from Stockfinder.
 from apps.debtors.models import Debtor
 from apps.pos.models import Invoice, InvoiceLine, JobCard
 from apps.purchase_orders.models import PurchaseOrder
+from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -38,11 +39,18 @@ class StockFinderWebhookView(APIView):
 
     def post(self, request):
         """Handle incoming webhook events from Stockfinder."""
-        # Get signature from headers
-        request.headers.get("X-Signature", "")
-
-        # For now, we'll accept webhooks without signature verification
-        # In production, you should configure a webhook secret
+        # Verify the HMAC signature before doing anything else — this is the
+        # only authentication this endpoint has (permission_classes is
+        # AllowAny by necessity, since Stockfinder can't hold a session/JWT).
+        signature = request.headers.get("X-Signature", "")
+        secret = getattr(settings, "STOCKFINDER_WEBHOOK_SECRET", "")
+        if not signature or not verify_webhook_signature(
+            request.body, signature, secret
+        ):
+            return Response(
+                {"error": "Invalid or missing webhook signature"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         # Parse event data
         try:
