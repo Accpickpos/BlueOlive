@@ -3,7 +3,7 @@
 import { useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { getStockItem, getStockItemPricing, getStockItemTransactions, getStockItems } from '@/lib/stockApi';
+import { getStockItem, getStockItemPricing, getStockItemTransactions, getStockItems, stockControlApi } from '@/lib/stockApi';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,6 +43,14 @@ function ItemEnquiryContent() {
   const { data: transactions, isLoading: txLoading } = useQuery({
     queryKey: ['stock-item-transactions', stockCode],
     queryFn: () => getStockItemTransactions(stockCode, { page_size: 20 }),
+    enabled: !!stockCode,
+    staleTime: 30 * 1000,
+  });
+
+  // Debtor split — who has bought this item
+  const { data: debtorBreakdown, isLoading: debtorLoading } = useQuery({
+    queryKey: ['stock-item-debtor-breakdown', stockCode],
+    queryFn: () => stockControlApi.stockItems.debtorBreakdown(stockCode),
     enabled: !!stockCode,
     staleTime: 30 * 1000,
   });
@@ -301,43 +309,82 @@ function ItemEnquiryContent() {
                     </tr>
                   </thead>
                   <tbody>
-                    {transactions.results.map((tx: any) => (
-                      <tr key={tx.id} className="border-b hover:bg-gray-50">
-                        <td className="py-3 px-2">
-                          {tx.transaction_date ? new Date(tx.transaction_date).toLocaleDateString('en-ZA') : '-'}
-                        </td>
-                        <td className="py-3 px-2">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            tx.transaction_type === 'IN' || tx.transaction_type === 'INCOMING' 
-                              ? 'bg-green-100 text-green-800' 
-                              : tx.transaction_type === 'OUT' || tx.transaction_type === 'OUTGOING'
-                              ? 'bg-red-100 text-red-800'
-                              : 'bg-gray-100 text-gray-800'
+                    {transactions.results.map((tx: any) => {
+                      const netQty = Number(tx.quantity_in || 0) - Number(tx.quantity_out || 0);
+                      return (
+                        <tr key={tx.id} className="border-b hover:bg-gray-50">
+                          <td className="py-3 px-2">
+                            {tx.transaction_date ? new Date(tx.transaction_date).toLocaleDateString('en-ZA') : '-'}
+                          </td>
+                          <td className="py-3 px-2">
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${
+                              netQty > 0
+                                ? 'bg-green-100 text-green-800'
+                                : netQty < 0
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {tx.transaction_type}
+                            </span>
+                          </td>
+                          <td className={`py-3 px-2 text-right font-medium ${
+                            netQty > 0 ? 'text-green-600' : netQty < 0 ? 'text-red-600' : ''
                           }`}>
-                            {tx.transaction_type}
-                          </span>
-                        </td>
-                        <td className={`py-3 px-2 text-right font-medium ${
-                          tx.quantity > 0 ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          {tx.quantity > 0 ? '+' : ''}{Number(tx.quantity || 0).toFixed(2)}
-                        </td>
-                        <td className="py-3 px-2 text-right">
-                          R {Number(tx.unit_cost || 0).toFixed(2) || '0.00'}
-                        </td>
-                        <td className="py-3 px-2 text-right">
-                          R {(Number(tx.quantity || 0) * Number(tx.unit_cost || 0)).toFixed(2)}
-                        </td>
-                        <td className="py-3 px-2 text-gray-600">
-                          {tx.reference || '-'}
-                        </td>
+                            {netQty > 0 ? '+' : ''}{netQty.toFixed(2)}
+                          </td>
+                          <td className="py-3 px-2 text-right">
+                            R {Number(tx.unit_cost || 0).toFixed(2) || '0.00'}
+                          </td>
+                          <td className="py-3 px-2 text-right">
+                            R {Number(tx.value || 0).toFixed(2)}
+                          </td>
+                          <td className="py-3 px-2 text-gray-600">
+                            {tx.comments || '-'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-gray-500 text-center py-8">No transactions found for this item</p>
+            )}
+          </Card>
+
+          {/* Debtor Split */}
+          <Card className="p-6">
+            <h3 className="font-semibold text-lg mb-4 flex items-center">
+              <Package className="w-5 h-5 mr-2 text-purple-600" />
+              Sales by Debtor
+            </h3>
+            {debtorLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader className="w-6 h-6 animate-spin text-blue-600" />
+              </div>
+            ) : debtorBreakdown && debtorBreakdown.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-3 px-2">Debtor</th>
+                      <th className="text-right py-3 px-2">Net Qty Sold</th>
+                      <th className="text-right py-3 px-2">Net Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {debtorBreakdown.map((row: any) => (
+                      <tr key={row.debtor_id} className="border-b hover:bg-gray-50">
+                        <td className="py-3 px-2">{row.debtor__dname}</td>
+                        <td className="py-3 px-2 text-right">{Number(row.total_quantity || 0).toFixed(2)}</td>
+                        <td className="py-3 px-2 text-right">R {Number(row.total_value || 0).toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             ) : (
-              <p className="text-gray-500 text-center py-8">No transactions found for this item</p>
+              <p className="text-gray-500 text-center py-8">No debtor sales recorded for this item</p>
             )}
           </Card>
 

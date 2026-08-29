@@ -1,3 +1,4 @@
+from apps.settings.models import SalesDepartment
 from rest_framework import serializers
 
 from .models import (
@@ -46,6 +47,19 @@ class BranchMinimalSerializer(serializers.ModelSerializer):
     class Meta:
         model = Branch
         fields = ["branch_code", "branch_name", "branch_type"]
+
+
+class SalesDepartmentMinimalSerializer(serializers.ModelSerializer):
+    """
+    Lightweight nested department representation. Several frontend
+    enquiries/reports group stock items by department name (e.g.
+    item.department_detail?.name) but neither StockItem serializer ever
+    exposed it — every grouping silently collapsed into "Unassigned".
+    """
+
+    class Meta:
+        model = SalesDepartment
+        fields = ["id", "number", "name"]
 
 
 # ─────────────────────────────────────────────
@@ -191,6 +205,7 @@ class StockItemSerializer(serializers.ModelSerializer):
     available_quantity = serializers.ReadOnlyField()
     special_deals = SpecialDealSerializer(many=True, read_only=True)
     future_prices = FuturePricingSerializer(many=True, read_only=True)
+    department_detail = SalesDepartmentMinimalSerializer(source="department", read_only=True)
 
     class Meta:
         model = StockItem
@@ -201,6 +216,7 @@ class StockItemSerializer(serializers.ModelSerializer):
             "is_active",
             # Relations
             "department",
+            "department_detail",
             "supplier",
             "supplier_code",
             "last_supplier",
@@ -267,6 +283,7 @@ class StockItemSerializer(serializers.ModelSerializer):
 
 class StockItemListSerializer(serializers.ModelSerializer):
     available_quantity = serializers.ReadOnlyField()
+    department_detail = SalesDepartmentMinimalSerializer(source="department", read_only=True)
 
     class Meta:
         model = StockItem
@@ -274,10 +291,12 @@ class StockItemListSerializer(serializers.ModelSerializer):
             "stock_code",
             "description",
             "department",
+            "department_detail",
             "supplier",
             "cost_price",
             "selling_price_1",
             "quantity_on_hand",
+            "quantity_counted",
             "available_quantity",
             "allow_negative_quantities",
             "reorder_quantity",

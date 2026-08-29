@@ -205,8 +205,16 @@ export const ENDPOINTS = {
     STOCK_ITEM_MONTHLY_STATS:   (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/monthly-stats/`,
     STOCK_ITEM_ADJUST_STOCK:    (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/adjust-stock/`,
     STOCK_ITEM_USED_IN_BUNDLES: (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/used-in-bundles/`,
+    STOCK_ITEM_DEBTOR_BREAKDOWN: (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/debtor-breakdown/`,
     STOCK_ITEMS_LOW_STOCK:      `${API_V1_BASE}/stock-control/stock-items/low-stock/`,
     STOCK_ITEMS_NEEDS_REORDER:  `${API_V1_BASE}/stock-control/stock-items/needs-reorder/`,
+
+    // ── Enquiry aggregations (StockTransactionViewSet) ─────────────────────
+    STOCK_CONTRIBUTION:         `${API_V1_BASE}/stock-control/stock-transactions/stock-contribution/`,
+    SALES_BY_DEPARTMENT:        `${API_V1_BASE}/stock-control/stock-transactions/sales-by-department/`,
+    HOURLY_ANALYSIS:            `${API_V1_BASE}/stock-control/stock-transactions/hourly-analysis/`,
+    PURCHASE_HISTORY:           `${API_V1_BASE}/stock-control/stock-transactions/purchase-history/`,
+    TOP_SELLERS:                `${API_V1_BASE}/stock-control/stock-transactions/top-sellers/`,
 
     // ── Special Deals dynamic actions ──────────────────────────────────────
     SPECIAL_DEALS_ACTIVE_TODAY:  `${API_V1_BASE}/stock-control/special-deals/active-today/`,

@@ -757,3 +757,143 @@ class UsedInBundlesTest(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data, [])
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+)
+class EnquiryAggregationTest(APITestCase):
+    """Phase 4: net-new enquiry aggregations against seeded StockTransaction fixtures."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.dept_a = SalesDepartment.objects.create(number=10, name="Dept A")
+        cls.dept_b = SalesDepartment.objects.create(number=11, name="Dept B")
+        cls.supplier = Creditor.objects.create(
+            supplier_number="S100", name="Test Supplier"
+        )
+        cls.debtor = Debtor.objects.create(dno=2001, dname="Enquiry Debtor")
+
+    def setUp(self):
+        self.mover = User.objects.create_user(
+            username="mover5",
+            email="mover5@example.com",
+            password="x",
+            is_superuser=True,
+        )
+        self.client.force_authenticate(self.mover)
+
+        self.item_a = StockItem.objects.create(
+            stock_code="ENQ001", description="Item A", department=self.dept_a
+        )
+        self.item_b = StockItem.objects.create(
+            stock_code="ENQ002", description="Item B", department=self.dept_b
+        )
+
+        today = timezone.now().date()
+
+        # Sales: item_a sells more (higher quantity), item_b higher value.
+        StockTransaction.objects.create(
+            transaction_type="SALE",
+            stock_item=self.item_a,
+            department=self.dept_a,
+            debtor=self.debtor,
+            transaction_date=today,
+            transaction_time="09:00:00",
+            quantity_out=Decimal("10"),
+            value=Decimal("100.00"),
+        )
+        StockTransaction.objects.create(
+            transaction_type="SALE",
+            stock_item=self.item_b,
+            department=self.dept_b,
+            transaction_date=today,
+            transaction_time="14:00:00",
+            quantity_out=Decimal("2"),
+            value=Decimal("400.00"),
+        )
+        # A sale return against item_a for the same debtor - nets down
+        # the debtor's total quantity below the raw sale.
+        StockTransaction.objects.create(
+            transaction_type="SALE_RETURN",
+            stock_item=self.item_a,
+            department=self.dept_a,
+            debtor=self.debtor,
+            transaction_date=today,
+            quantity_in=Decimal("3"),
+            value=Decimal("30.00"),
+        )
+        # Incoming stock from the supplier.
+        StockTransaction.objects.create(
+            transaction_type="INCOMING",
+            stock_item=self.item_a,
+            supplier=self.supplier,
+            transaction_date=today,
+            quantity_in=Decimal("50"),
+            unit_cost=Decimal("5.00"),
+        )
+
+    def test_debtor_breakdown_nets_sale_and_return(self):
+        response = self.client.get(
+            reverse("stockitem-debtor-breakdown", args=[self.item_a.pk])
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        row = response.data[0]
+        self.assertEqual(row["debtor_id"], self.debtor.pk)
+        self.assertEqual(Decimal(str(row["total_quantity"])), Decimal("7"))  # 10 - 3
+        self.assertEqual(Decimal(str(row["total_value"])), Decimal("70.00"))  # 100 - 30
+
+    def test_stock_contribution_percentages_sum_to_100(self):
+        response = self.client.get(reverse("stocktransaction-stock-contribution"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 2)
+        total_pct = sum(row["contribution_pct"] for row in response.data)
+        self.assertAlmostEqual(total_pct, 100.0, places=1)
+        # item_b has the higher value (400 vs 100) so should rank first.
+        self.assertEqual(response.data[0]["stock_item_id"], self.item_b.pk)
+
+    def test_sales_by_department(self):
+        response = self.client.get(reverse("stocktransaction-sales-by-department"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        by_dept = {row["department_id"]: row for row in response.data}
+        self.assertEqual(
+            Decimal(str(by_dept[self.dept_a.pk]["total_value"])), Decimal("100.00")
+        )
+        self.assertEqual(
+            Decimal(str(by_dept[self.dept_b.pk]["total_value"])), Decimal("400.00")
+        )
+
+    def test_hourly_analysis_buckets_by_hour(self):
+        response = self.client.get(reverse("stocktransaction-hourly-analysis"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        hours = {row["hour"]: row for row in response.data}
+        self.assertIn(9, hours)
+        self.assertIn(14, hours)
+        self.assertEqual(hours[9]["transaction_count"], 1)
+
+    def test_purchase_history_lists_incoming_only(self):
+        response = self.client.get(reverse("stocktransaction-purchase-history"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data.get("results", response.data)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["transaction_type"], "INCOMING")
+        self.assertEqual(results[0]["stock_item"], self.item_a.pk)
+
+    def test_top_sellers_ordered_by_quantity(self):
+        response = self.client.get(reverse("stocktransaction-top-sellers"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # item_a sold quantity 10 (higher than item_b's 2), so ranks first
+        # despite item_b having the higher value.
+        self.assertEqual(response.data[0]["stock_item_id"], self.item_a.pk)
+        self.assertEqual(Decimal(str(response.data[0]["total_quantity"])), Decimal("10"))
+
+    def test_stock_item_transactions_debtor_filter(self):
+        response = self.client.get(
+            reverse("stockitem-transactions", args=[self.item_a.pk]),
+            {"debtor": self.debtor.pk},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data.get("results", response.data)
+        self.assertEqual(len(results), 2)  # the SALE and the SALE_RETURN
+        self.assertTrue(all(r["debtor"] == self.debtor.pk for r in results))

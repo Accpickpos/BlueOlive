@@ -3,7 +3,8 @@ from decimal import Decimal, InvalidOperation
 from apps.common.mixins import LookupActionMixin
 from apps.shop_filter_mixin import ShopFilterMixin
 from django.db import transaction
-from django.db.models import F, Q, Sum
+from django.db.models import Case, Count, DecimalField, F, Q, Sum, When
+from django.db.models.functions import ExtractHour
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, status, viewsets
@@ -215,7 +216,11 @@ class StockItemViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
 
     @action(detail=True, methods=["get"])
     def transactions(self, request, pk=None):
-        """Return transaction history for a stock item, newest first."""
+        """
+        Return transaction history for a stock item, newest first.
+        ?debtor=<id> filters to that debtor's transactions only (Stock
+        Item History's Debtor split).
+        """
         item = self.get_object()
         qs = item.transactions.select_related(
             "department", "debtor", "supplier"
@@ -225,12 +230,15 @@ class StockItemViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
         date_from = request.query_params.get("date_from")
         date_to = request.query_params.get("date_to")
         tx_type = request.query_params.get("type")
+        debtor_id = request.query_params.get("debtor")
         if date_from:
             qs = qs.filter(transaction_date__gte=date_from)
         if date_to:
             qs = qs.filter(transaction_date__lte=date_to)
         if tx_type:
             qs = qs.filter(transaction_type=tx_type)
+        if debtor_id:
+            qs = qs.filter(debtor_id=debtor_id)
 
         page = self.paginate_queryset(qs)
         if page is not None:
@@ -244,6 +252,29 @@ class StockItemViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
         item = self.get_object()
         qs = item.monthly_stats.order_by("-year", "-month")
         return Response(StockMonthlyStatisticSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=["get"], url_path="debtor-breakdown")
+    def debtor_breakdown(self, request, pk=None):
+        """Sales of this item grouped by debtor (Stock Item History's Debtor split)."""
+        item = self.get_object()
+        rows = (
+            item.transactions.filter(
+                transaction_type__in=["SALE", "SALE_RETURN"], debtor__isnull=False
+            )
+            .values("debtor_id", "debtor__dname")
+            .annotate(
+                total_quantity=Sum("quantity_out") - Sum("quantity_in"),
+                total_value=Sum(
+                    Case(
+                        When(transaction_type="SALE_RETURN", then=-F("value")),
+                        default=F("value"),
+                        output_field=DecimalField(max_digits=14, decimal_places=4),
+                    )
+                ),
+            )
+            .order_by("-total_value")
+        )
+        return Response(list(rows))
 
     @action(detail=True, methods=["get"], url_path="used-in-bundles")
     def used_in_bundles(self, request, pk=None):
@@ -625,6 +656,87 @@ class StockTransactionViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         if date_to:
             qs = qs.filter(transaction_date__lte=date_to)
         return qs
+
+    # ── Enquiry aggregations ────────────────────────────────────────────
+    # All reuse filter_queryset(get_queryset()) so date_from/date_to (from
+    # get_queryset above) and department/debtor/supplier/stock_item (from
+    # filterset_fields) are already available on every one of these for
+    # free, on top of the type filter each applies itself.
+
+    @action(detail=False, methods=["get"], url_path="stock-contribution")
+    def stock_contribution(self, request):
+        """Each item's share of total SALE value. ?department=&date_from=&date_to="""
+        qs = self.filter_queryset(self.get_queryset()).filter(transaction_type="SALE")
+        rows = list(
+            qs.values("stock_item_id", "stock_item__description")
+            .annotate(total_quantity=Sum("quantity_out"), total_value=Sum("value"))
+            .order_by("-total_value")
+        )
+        grand_total = sum((r["total_value"] or Decimal("0")) for r in rows) or Decimal("1")
+        for r in rows:
+            r["contribution_pct"] = round(
+                float((r["total_value"] or Decimal("0")) / grand_total) * 100, 2
+            )
+        return Response(rows)
+
+    @action(detail=False, methods=["get"], url_path="sales-by-department")
+    def sales_by_department(self, request):
+        """SALE transactions grouped by department. ?date_from=&date_to="""
+        qs = self.filter_queryset(self.get_queryset()).filter(transaction_type="SALE")
+        rows = (
+            qs.values("department_id", "department__name")
+            .annotate(total_quantity=Sum("quantity_out"), total_value=Sum("value"))
+            .order_by("-total_value")
+        )
+        return Response(list(rows))
+
+    @action(detail=False, methods=["get"], url_path="hourly-analysis")
+    def hourly_analysis(self, request):
+        """SALE transactions bucketed by hour of day. ?date_from=&date_to=&department="""
+        qs = self.filter_queryset(self.get_queryset()).filter(
+            transaction_type="SALE", transaction_time__isnull=False
+        )
+        rows = (
+            qs.annotate(hour=ExtractHour("transaction_time"))
+            .values("hour")
+            .annotate(
+                total_quantity=Sum("quantity_out"),
+                total_value=Sum("value"),
+                transaction_count=Count("id"),
+            )
+            .order_by("hour")
+        )
+        return Response(list(rows))
+
+    @action(detail=False, methods=["get"], url_path="purchase-history")
+    def purchase_history(self, request):
+        """INCOMING transactions. ?supplier=&stock_item=&date_from=&date_to="""
+        qs = (
+            self.filter_queryset(self.get_queryset())
+            .filter(transaction_type="INCOMING")
+            .order_by("-transaction_date", "-id")
+        )
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(
+                StockTransactionSerializer(page, many=True).data
+            )
+        return Response(StockTransactionSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=["get"], url_path="top-sellers")
+    def top_sellers(self, request):
+        """Best-selling items by quantity. ?department=&date_from=&date_to=&limit="""
+        qs = self.filter_queryset(self.get_queryset()).filter(transaction_type="SALE")
+        try:
+            limit = int(request.query_params.get("limit", 20))
+        except (TypeError, ValueError):
+            limit = 20
+        rows = (
+            qs.values("stock_item_id", "stock_item__description")
+            .annotate(total_quantity=Sum("quantity_out"), total_value=Sum("value"))
+            .order_by("-total_quantity")[:limit]
+        )
+        return Response(list(rows))
 
 
 # ─────────────────────────────────────────────

@@ -184,6 +184,16 @@ export const stockControlApi = {
     },
 
     /**
+     * Sales of this item grouped by debtor (Stock Item History's Debtor split).
+     */
+    debtorBreakdown: async (stockCode: string) => {
+      const response = await api.get<
+        { debtor_id: number; debtor__dname: string; total_quantity: number; total_value: number }[]
+      >(ENDPOINTS.STOCK_CONTROL.STOCK_ITEM_DEBTOR_BREAKDOWN(stockCode));
+      return response.data;
+    },
+
+    /**
      * Get low stock items
      */
     getLowStock: async () => {
@@ -513,6 +523,60 @@ export const stockControlApi = {
      */
     delete: async (id: number) => {
       await api.delete(`${ENDPOINTS.STOCK_CONTROL.TRANSACTIONS}${id}/`);
+    },
+  },
+
+  // ============ ENQUIRY AGGREGATIONS ============
+  enquiries: {
+    /**
+     * Each item's share of total SALE value. ?department=&date_from=&date_to=
+     */
+    stockContribution: async (filters?: { department?: number; date_from?: string; date_to?: string }) => {
+      const response = await api.get<
+        { stock_item_id: string; stock_item__description: string; total_quantity: number; total_value: number; contribution_pct: number }[]
+      >(ENDPOINTS.STOCK_CONTROL.STOCK_CONTRIBUTION, { params: filters });
+      return response.data;
+    },
+
+    /**
+     * SALE transactions grouped by department. ?date_from=&date_to=
+     */
+    salesByDepartment: async (filters?: { date_from?: string; date_to?: string }) => {
+      const response = await api.get<
+        { department_id: number | null; department__name: string | null; total_quantity: number; total_value: number }[]
+      >(ENDPOINTS.STOCK_CONTROL.SALES_BY_DEPARTMENT, { params: filters });
+      return response.data;
+    },
+
+    /**
+     * SALE transactions bucketed by hour of day. ?date_from=&date_to=&department=
+     */
+    hourlyAnalysis: async (filters?: { date_from?: string; date_to?: string; department?: number }) => {
+      const response = await api.get<
+        { hour: number; total_quantity: number; total_value: number; transaction_count: number }[]
+      >(ENDPOINTS.STOCK_CONTROL.HOURLY_ANALYSIS, { params: filters });
+      return response.data;
+    },
+
+    /**
+     * INCOMING transactions. ?supplier=&stock_item=&date_from=&date_to=
+     */
+    purchaseHistory: async (filters?: { supplier?: number; stock_item?: string; date_from?: string; date_to?: string }) => {
+      const response = await api.get<PaginatedStockTransactions>(
+        ENDPOINTS.STOCK_CONTROL.PURCHASE_HISTORY,
+        { params: filters }
+      );
+      return response.data;
+    },
+
+    /**
+     * Best-selling items by quantity. ?department=&date_from=&date_to=&limit=
+     */
+    topSellers: async (filters?: { department?: number; date_from?: string; date_to?: string; limit?: number }) => {
+      const response = await api.get<
+        { stock_item_id: string; stock_item__description: string; total_quantity: number; total_value: number }[]
+      >(ENDPOINTS.STOCK_CONTROL.TOP_SELLERS, { params: filters });
+      return response.data;
     },
   },
 
