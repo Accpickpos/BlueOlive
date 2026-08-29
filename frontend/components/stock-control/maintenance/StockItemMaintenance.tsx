@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Search, Edit2, Trash2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { stockControlApi } from '@/lib/stockControlApi';
 import { useAuthContext } from '@/lib/AuthContext';
 import { Pagination } from '@/components/ui/pagination';
 
@@ -606,6 +607,8 @@ export default function StockItemMaintenance({ onBack }: StockItemMaintenancePro
               </button>
             </div>
           </form>
+
+          {editingCode && <UsedInBundlesPanel stockCode={editingCode} />}
         </div>
       )}
 
@@ -707,6 +710,40 @@ export default function StockItemMaintenance({ onBack }: StockItemMaintenancePro
           />
         </div>
       )}
+    </div>
+  );
+}
+
+/** "Where used" — which packs/bundles use this item as an ingredient. */
+function UsedInBundlesPanel({ stockCode }: { stockCode: string }) {
+  const { data: usages, isLoading } = useQuery({
+    queryKey: ['used-in-bundles', stockCode],
+    queryFn: () => stockControlApi.stockItems.usedInBundles(stockCode),
+  });
+
+  if (isLoading || !usages || usages.length === 0) return null;
+
+  return (
+    <div className="mt-4 bg-purple-50 border border-purple-200 rounded-lg p-4">
+      <h4 className="font-semibold text-purple-900 mb-2">Used In Bundles</h4>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-purple-800">
+            <th className="pr-4 py-1">Bundle</th>
+            <th className="pr-4 py-1">Description</th>
+            <th className="py-1 text-right">Qty Required</th>
+          </tr>
+        </thead>
+        <tbody>
+          {usages.map((u, i) => (
+            <tr key={i} className="text-purple-900">
+              <td className="pr-4 py-1 font-mono">{u.pack_bundle_stock_code}</td>
+              <td className="pr-4 py-1">{u.pack_bundle_description}</td>
+              <td className="py-1 text-right">{Number(u.quantity_required).toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

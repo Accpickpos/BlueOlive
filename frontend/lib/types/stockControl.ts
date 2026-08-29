@@ -352,10 +352,8 @@ export interface PaginatedContractPricing {
 
 export interface OneTouchLookupKey {
   id: number;
-  lookup_key: string;
+  key_character: string;
   stock_item: string;
-  stock_item_detail?: StockItem;
-  is_active: boolean;
   created_at?: string;
   updated_at?: string;
 }

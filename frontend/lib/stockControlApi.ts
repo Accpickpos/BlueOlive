@@ -174,6 +174,16 @@ export const stockControlApi = {
     },
 
     /**
+     * Reverse lookup: which packs/bundles use this item as an ingredient.
+     */
+    usedInBundles: async (stockCode: string) => {
+      const response = await api.get<
+        { pack_bundle_stock_code: string; pack_bundle_description: string; quantity_required: number; cost_at_creation: number }[]
+      >(ENDPOINTS.STOCK_CONTROL.STOCK_ITEM_USED_IN_BUNDLES(stockCode));
+      return response.data;
+    },
+
+    /**
      * Get low stock items
      */
     getLowStock: async () => {
@@ -252,6 +262,25 @@ export const stockControlApi = {
     getActiveToday: async () => {
       const response = await api.get<SpecialDeal[]>(
         ENDPOINTS.STOCK_CONTROL.SPECIAL_DEALS_ACTIVE_TODAY
+      );
+      return response.data;
+    },
+
+    /**
+     * Create one SpecialDeal per active stock item in a department,
+     * pricing each from its own current selling price.
+     */
+    bulkCreateForDepartment: async (data: {
+      department: number;
+      start_date: string;
+      end_date: string;
+      increase_decrease: '+' | '-';
+      percentage_rand: 'P' | 'R';
+      amount: number;
+    }) => {
+      const response = await api.post<{ message: string; count: number }>(
+        ENDPOINTS.STOCK_CONTROL.SPECIAL_DEALS_BULK_DEPARTMENT,
+        data
       );
       return response.data;
     },
@@ -716,7 +745,7 @@ export const stockControlApi = {
     /**
      * List lookup keys
      */
-    list: async (filters?: { stock_item?: string; is_active?: boolean }) => {
+    list: async (filters?: { stock_item?: string }) => {
       const response = await api.get<PaginatedLookupKeys>(
         ENDPOINTS.STOCK_CONTROL.LOOKUP_KEYS,
         { params: filters }

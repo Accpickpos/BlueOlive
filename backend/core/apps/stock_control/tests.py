@@ -586,3 +586,174 @@ class StockTakeUpdateStockModeTest(APITestCase):
         self.item.refresh_from_db()
         # target = counted(48) + net_movement(+10) = 58
         self.assertEqual(self.item.quantity_on_hand, Decimal("58"))
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+)
+class SpecialDealBulkDepartmentTest(APITestCase):
+    """Phase 3: bulk-department fans out one SpecialDeal per active item in a department."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.department = SalesDepartment.objects.create(number=2, name="Hardware")
+        cls.other_department = SalesDepartment.objects.create(number=3, name="Other")
+
+    def setUp(self):
+        self.mover = User.objects.create_user(
+            username="mover3",
+            email="mover3@example.com",
+            password="x",
+            is_superuser=True,
+        )
+        self.mover.groups.add(Group.objects.create(name="Cashier"))
+        self.client.force_authenticate(self.mover)
+
+        self.item1 = StockItem.objects.create(
+            stock_code="BD001",
+            description="Item 1",
+            department=self.department,
+            cost_price=Decimal("50.00"),
+            selling_price_1=Decimal("100.00"),
+            selling_price_2=Decimal("110.00"),
+            selling_price_3=Decimal("120.00"),
+        )
+        self.item2 = StockItem.objects.create(
+            stock_code="BD002",
+            description="Item 2",
+            department=self.department,
+            cost_price=Decimal("20.00"),
+            selling_price_1=Decimal("40.00"),
+            selling_price_2=Decimal("44.00"),
+            selling_price_3=Decimal("48.00"),
+        )
+        self.inactive_item = StockItem.objects.create(
+            stock_code="BD003",
+            description="Inactive",
+            department=self.department,
+            cost_price=Decimal("10.00"),
+            selling_price_1=Decimal("20.00"),
+            is_active=False,
+        )
+        self.other_dept_item = StockItem.objects.create(
+            stock_code="BD004",
+            description="Other dept",
+            department=self.other_department,
+            cost_price=Decimal("10.00"),
+            selling_price_1=Decimal("20.00"),
+        )
+
+    def test_percentage_decrease_creates_one_deal_per_active_item(self):
+        response = self.client.post(
+            reverse("specialdeal-bulk-department"),
+            {
+                "department": self.department.pk,
+                "start_date": timezone.now().date().isoformat(),
+                "end_date": (timezone.now().date() + timedelta(days=7)).isoformat(),
+                "increase_decrease": "-",
+                "percentage_rand": "P",
+                "amount": "10",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["count"], 2)
+
+        deal1 = SpecialDeal.objects.get(stock_item=self.item1)
+        self.assertEqual(deal1.special_selling_price_1, Decimal("90.00"))  # 100 - 10%
+        self.assertEqual(deal1.special_selling_price_2, Decimal("99.00"))  # 110 - 10%
+        self.assertEqual(deal1.special_selling_price_3, Decimal("108.00"))  # 120 - 10%
+
+        # Inactive item and items in other departments are excluded.
+        self.assertFalse(SpecialDeal.objects.filter(stock_item=self.inactive_item).exists())
+        self.assertFalse(SpecialDeal.objects.filter(stock_item=self.other_dept_item).exists())
+
+    def test_flat_rand_increase(self):
+        response = self.client.post(
+            reverse("specialdeal-bulk-department"),
+            {
+                "department": self.department.pk,
+                "start_date": timezone.now().date().isoformat(),
+                "end_date": (timezone.now().date() + timedelta(days=7)).isoformat(),
+                "increase_decrease": "+",
+                "percentage_rand": "R",
+                "amount": "5",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        deal2 = SpecialDeal.objects.get(stock_item=self.item2)
+        self.assertEqual(deal2.special_selling_price_1, Decimal("45.00"))  # 40 + 5
+
+    def test_missing_department_returns_400(self):
+        response = self.client.post(
+            reverse("specialdeal-bulk-department"),
+            {
+                "start_date": timezone.now().date().isoformat(),
+                "end_date": (timezone.now().date() + timedelta(days=7)).isoformat(),
+                "increase_decrease": "+",
+                "percentage_rand": "P",
+                "amount": "5",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+)
+class UsedInBundlesTest(APITestCase):
+    """Phase 3: StockItemViewSet's used-in-bundles reverse lookup."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.department = SalesDepartment.objects.create(number=4, name="Bundles Dept")
+
+    def setUp(self):
+        self.mover = User.objects.create_user(
+            username="mover4",
+            email="mover4@example.com",
+            password="x",
+            is_superuser=True,
+        )
+        self.client.force_authenticate(self.mover)
+
+        self.ingredient = StockItem.objects.create(
+            stock_code="ING100",
+            description="Shared Ingredient",
+            department=self.department,
+            cost_price=Decimal("5.00"),
+        )
+        self.bundle_item = StockItem.objects.create(
+            stock_code="BUNDLEX",
+            description="Bundle X",
+            department=self.department,
+            cost_price=Decimal("0"),
+        )
+        self.pack_bundle = PackBundle.objects.create(stock_item=self.bundle_item)
+        PackBundleIngredient.objects.create(
+            pack_bundle=self.pack_bundle,
+            ingredient_stock=self.ingredient,
+            quantity=Decimal("3.00"),
+        )
+
+    def test_used_in_bundles_lists_the_pack(self):
+        response = self.client.get(
+            reverse("stockitem-used-in-bundles", args=[self.ingredient.pk])
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["pack_bundle_stock_code"], "BUNDLEX")
+        self.assertEqual(
+            Decimal(str(response.data[0]["quantity_required"])), Decimal("3.00")
+        )
+
+    def test_used_in_bundles_empty_for_non_ingredient(self):
+        standalone = StockItem.objects.create(
+            stock_code="STANDALONE",
+            description="Not in any bundle",
+            department=self.department,
+        )
+        response = self.client.get(
+            reverse("stockitem-used-in-bundles", args=[standalone.pk])
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])

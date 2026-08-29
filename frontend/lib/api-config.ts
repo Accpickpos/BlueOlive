@@ -204,11 +204,13 @@ export const ENDPOINTS = {
     STOCK_ITEM_TRANSACTIONS:    (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/transactions/`,
     STOCK_ITEM_MONTHLY_STATS:   (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/monthly-stats/`,
     STOCK_ITEM_ADJUST_STOCK:    (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/adjust-stock/`,
+    STOCK_ITEM_USED_IN_BUNDLES: (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/used-in-bundles/`,
     STOCK_ITEMS_LOW_STOCK:      `${API_V1_BASE}/stock-control/stock-items/low-stock/`,
     STOCK_ITEMS_NEEDS_REORDER:  `${API_V1_BASE}/stock-control/stock-items/needs-reorder/`,
 
     // ── Special Deals dynamic actions ──────────────────────────────────────
-    SPECIAL_DEALS_ACTIVE_TODAY: `${API_V1_BASE}/stock-control/special-deals/active-today/`,
+    SPECIAL_DEALS_ACTIVE_TODAY:  `${API_V1_BASE}/stock-control/special-deals/active-today/`,
+    SPECIAL_DEALS_BULK_DEPARTMENT: `${API_V1_BASE}/stock-control/special-deals/bulk-department/`,
 
     // ── Future Pricing dynamic actions ─────────────────────────────────────
     FUTURE_PRICING_APPLY:       (id: number) => `${API_V1_BASE}/stock-control/future-pricing/${id}/apply/`,

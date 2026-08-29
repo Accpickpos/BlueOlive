@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from apps.common.mixins import LookupActionMixin
 from apps.shop_filter_mixin import ShopFilterMixin
@@ -245,6 +245,22 @@ class StockItemViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
         qs = item.monthly_stats.order_by("-year", "-month")
         return Response(StockMonthlyStatisticSerializer(qs, many=True).data)
 
+    @action(detail=True, methods=["get"], url_path="used-in-bundles")
+    def used_in_bundles(self, request, pk=None):
+        """Reverse lookup: which packs/bundles use this item as an ingredient, and how much."""
+        item = self.get_object()
+        rows = item.used_in_bundles.select_related("pack_bundle__stock_item")
+        data = [
+            {
+                "pack_bundle_stock_code": row.pack_bundle.stock_item.stock_code,
+                "pack_bundle_description": row.pack_bundle.stock_item.description,
+                "quantity_required": row.quantity,
+                "cost_at_creation": row.cost_at_creation,
+            }
+            for row in rows
+        ]
+        return Response(data)
+
     @action(detail=False, methods=["get"])
     def low_stock(self, request):
         """Items where available quantity <= reorder quantity."""
@@ -343,6 +359,109 @@ class SpecialDealViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             start_date__lte=today, end_date__gte=today, is_active=True
         ).select_related("stock_item")
         return Response(SpecialDealSerializer(qs, many=True).data)
+
+    # DecimalField(max_digits=5, decimal_places=2) on special_markup_1/2/3
+    MARKUP_FIELD_LIMIT = Decimal("999.99")
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="bulk-department",
+        permission_classes=[IsAuthenticated, IsStockMover],
+    )
+    def bulk_department(self, request):
+        """
+        Create a SpecialDeal for every active stock item in a department,
+        each priced by adjusting THAT item's own current selling prices —
+        mirrors the manual per-item flow, applied department-wide in one
+        call rather than one row at a time.
+
+        Body: { department, start_date, end_date,
+                increase_decrease: '+'|'-', percentage_rand: 'P'|'R',
+                amount }
+        'P' applies amount as a percentage of each item's own price;
+        'R' applies amount as a flat Rand value across all items.
+        """
+        department_id = request.data.get("department")
+        start_date = request.data.get("start_date")
+        end_date = request.data.get("end_date")
+        increase_decrease = request.data.get("increase_decrease")
+        percentage_rand = request.data.get("percentage_rand")
+
+        errors = {}
+        if not department_id:
+            errors["department"] = "This field is required."
+        if not start_date:
+            errors["start_date"] = "This field is required."
+        if not end_date:
+            errors["end_date"] = "This field is required."
+        if increase_decrease not in ("+", "-"):
+            errors["increase_decrease"] = "Must be '+' or '-'."
+        if percentage_rand not in ("P", "R"):
+            errors["percentage_rand"] = "Must be 'P' or 'R'."
+        try:
+            amount = Decimal(str(request.data.get("amount")))
+        except (TypeError, ValueError, InvalidOperation):
+            errors["amount"] = "Must be a number."
+        if errors:
+            return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+
+        items = StockItem.objects.filter(department_id=department_id, is_active=True)
+        if not items.exists():
+            return Response(
+                {"error": "No active stock items found in that department."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        sign = Decimal("1") if increase_decrease == "+" else Decimal("-1")
+        deals = []
+        for item in items:
+            prices = {}
+            for level in (1, 2, 3):
+                base = getattr(item, f"selling_price_{level}")
+                delta = (
+                    (base * amount / Decimal("100"))
+                    if percentage_rand == "P"
+                    else amount
+                )
+                prices[level] = max(Decimal("0"), base + sign * delta)
+
+            markups = {}
+            for level in (1, 2, 3):
+                if item.cost_price > 0:
+                    raw = ((prices[level] - item.cost_price) / item.cost_price) * 100
+                    markups[level] = max(
+                        -self.MARKUP_FIELD_LIMIT, min(self.MARKUP_FIELD_LIMIT, raw)
+                    )
+                else:
+                    markups[level] = Decimal("0")
+
+            deals.append(
+                SpecialDeal(
+                    stock_item=item,
+                    special_cost_price=item.cost_price,
+                    special_selling_price_1=prices[1],
+                    special_selling_price_2=prices[2],
+                    special_selling_price_3=prices[3],
+                    special_markup_1=markups[1],
+                    special_markup_2=markups[2],
+                    special_markup_3=markups[3],
+                    start_date=start_date,
+                    end_date=end_date,
+                    is_active=True,
+                )
+            )
+
+        with transaction.atomic():
+            SpecialDeal.objects.bulk_create(deals)
+
+        return Response(
+            {
+                "message": f"Created {len(deals)} special deal(s) for department {department_id}.",
+                "count": len(deals),
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 # ─────────────────────────────────────────────
