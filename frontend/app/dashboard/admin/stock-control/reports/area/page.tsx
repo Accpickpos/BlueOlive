@@ -214,7 +214,7 @@ export default function AreaSalesmanReportPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredData.sort((a, b) => b.sales - a.sales).map((person) => (
+              {[...filteredData].sort((a, b) => b.sales - a.sales).map((person) => (
                 <tr key={person.id} className="border-b hover:bg-gray-50">
                   <td className="py-3 px-3">
                     <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">
@@ -227,7 +227,7 @@ export default function AreaSalesmanReportPage() {
                   </td>
                   <td className="py-3 px-3 text-right">{person.transactions}</td>
                   <td className="py-3 px-3 text-right">
-                    R {Math.round(person.sales / person.transactions).toLocaleString('en-ZA')}
+                    R {person.transactions > 0 ? Math.round(person.sales / person.transactions).toLocaleString('en-ZA') : '0'}
                   </td>
                   <td className="py-3 px-3 text-right">
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
@@ -246,7 +246,7 @@ export default function AreaSalesmanReportPage() {
                 <td className="py-3 px-3" colSpan={2}>TOTAL</td>
                 <td className="py-3 px-3 text-right">R {totals.sales.toLocaleString('en-ZA', { maximumFractionDigits: 0 })}</td>
                 <td className="py-3 px-3 text-right">{totals.transactions}</td>
-                <td className="py-3 px-3 text-right">R {Math.round(totals.sales / totals.transactions).toLocaleString('en-ZA')}</td>
+                <td className="py-3 px-3 text-right">R {totals.transactions > 0 ? Math.round(totals.sales / totals.transactions).toLocaleString('en-ZA') : '0'}</td>
                 <td className="py-3 px-3 text-right">{avgMargin.toFixed(1)}%</td>
               </tr>
             </tfoot>

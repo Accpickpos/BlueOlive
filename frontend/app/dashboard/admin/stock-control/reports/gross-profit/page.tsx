@@ -3,12 +3,11 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { stockControlApi } from '@/lib/stockControlApi';
-import { getStockItems } from '@/lib/stockApi';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { 
+import {
   Loader, ArrowLeft, TrendingUp, Download, Search,
   DollarSign, Percent
 } from 'lucide-react';
@@ -23,94 +22,59 @@ export default function GrossProfitReportPage() {
 
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
 
-  // Fetch monthly statistics
-  const { data: monthlyStats, isLoading: statsLoading } = useQuery({
-    queryKey: ['monthly-stats-gp', year, selectedStockCode],
-    queryFn: () => stockControlApi.monthlyStats.list({
+  // Backend-aggregated sales/cost/profit by item (+ monthly trend when a
+  // specific item is selected) — was previously computed client-side from
+  // monthlyStats rows reading total_sales/total_cost/gross_profit and
+  // stock_item_detail?.description, none of which exist on
+  // StockMonthlyStatisticSerializer, so every number here rendered R0 and
+  // Description was always blank. selectedStockCode also had no UI path
+  // to ever become non-empty — the search box only filtered a list that
+  // was already empty of real data — so item-scoped trend was dead too;
+  // clicking a row below now sets it for real.
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ['stats-by-item', year, selectedStockCode],
+    queryFn: () => stockControlApi.enquiries.statsByItem({
       year,
       stock_item: selectedStockCode || undefined,
     }),
     staleTime: 30 * 1000,
   });
 
-  // Fetch all stock items for search
-  const { data: stockItems } = useQuery({
-    queryKey: ['stock-items-gp'],
-    queryFn: () => getStockItems({ page_size: 100 }),
-    staleTime: 5 * 60 * 1000,
-  });
+  const byItem = (stats?.by_item || []).map((r) => ({
+    stock_code: r.stock_item_id,
+    description: r.description || '',
+    totalSales: Number(r.total_sales || 0),
+    totalCost: Number(r.total_cost || 0),
+    totalProfit: Number(r.total_profit || 0),
+    quantitySold: Number(r.total_quantity || 0),
+    margin: r.margin_pct,
+  }));
 
-  // Process data
-  const processData = () => {
-    if (!monthlyStats?.results) return { byItem: [], totals: null, byMonth: [] };
+  const totals = byItem.length
+    ? byItem.reduce(
+        (acc, item) => ({
+          totalSales: acc.totalSales + item.totalSales,
+          totalCost: acc.totalCost + item.totalCost,
+          totalProfit: acc.totalProfit + item.totalProfit,
+          quantitySold: acc.quantitySold + item.quantitySold,
+          margin: 0,
+        }),
+        { totalSales: 0, totalCost: 0, totalProfit: 0, quantitySold: 0, margin: 0 }
+      )
+    : null;
+  if (totals) totals.margin = totals.totalSales > 0 ? (totals.totalProfit / totals.totalSales) * 100 : 0;
 
-    // Group by stock item
-    const itemMap = new Map();
-    const monthMap = new Map();
-
-    monthlyStats.results.forEach((stat: any) => {
-      // By item
-      const existing = itemMap.get(stat.stock_item) || {
-        stock_code: stat.stock_item,
-        description: stat.stock_item_detail?.description || '',
-        totalSales: 0,
-        totalCost: 0,
-        totalProfit: 0,
-        quantitySold: 0,
-      };
-      existing.totalSales += stat.total_sales || 0;
-      existing.totalCost += stat.total_cost || 0;
-      existing.totalProfit += stat.gross_profit || 0;
-      existing.quantitySold += stat.quantity_sold || 0;
-      itemMap.set(stat.stock_item, existing);
-
-      // By month
-      const monthKey = stat.month;
-      const monthExisting = monthMap.get(monthKey) || {
-        month: stat.month,
-        totalSales: 0,
-        totalCost: 0,
-        totalProfit: 0,
-        quantitySold: 0,
-      };
-      monthExisting.totalSales += stat.total_sales || 0;
-      monthExisting.totalCost += stat.total_cost || 0;
-      monthExisting.totalProfit += stat.gross_profit || 0;
-      monthExisting.quantitySold += stat.quantity_sold || 0;
-      monthMap.set(monthKey, monthExisting);
-    });
-
-    // Calculate margins and sort by profit
-    const byItem = Array.from(itemMap.values())
-      .map((item: any) => ({
-        ...item,
-        margin: item.totalSales > 0 ? (item.totalProfit / item.totalSales) * 100 : 0,
-      }))
-      .sort((a: any, b: any) => b.totalProfit - a.totalProfit);
-
-    // Calculate totals
-    const totals = byItem.reduce((acc: any, item: any) => ({
-      totalSales: acc.totalSales + item.totalSales,
-      totalCost: acc.totalCost + item.totalCost,
-      totalProfit: acc.totalProfit + item.totalProfit,
-      quantitySold: acc.quantitySold + item.quantitySold,
-    }), { totalSales: 0, totalCost: 0, totalProfit: 0, quantitySold: 0 });
-
-    if (totals.totalSales > 0) {
-      totals.margin = (totals.totalProfit / totals.totalSales) * 100;
-    }
-
-    // Sort months
-    const byMonth = Array.from(monthMap.values()).sort((a: any, b: any) => a.month - b.month);
-
-    return { byItem, totals, byMonth };
-  };
-
-  const { byItem, totals, byMonth } = processData();
+  const byMonth = (stats?.by_month || []).map((m) => ({
+    month: m.month,
+    totalSales: Number(m.total_sales || 0),
+    totalCost: Number(m.total_cost || 0),
+    totalProfit: Number(m.total_profit || 0),
+    quantitySold: Number(m.total_quantity || 0),
+  }));
 
   // Filter by search term
-  const filteredItems = searchTerm 
-    ? byItem.filter((item: any) => 
+  const filteredItems = searchTerm
+    ? byItem.filter((item) =>
         item.stock_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.description?.toLowerCase().includes(searchTerm.toLowerCase())
       )
@@ -244,8 +208,12 @@ export default function GrossProfitReportPage() {
 
       {/* Monthly Trend */}
       <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4">Monthly Trend</h3>
-        {statsLoading ? (
+        <h3 className="text-lg font-semibold mb-4">
+          Monthly Trend {selectedStockCode && `— ${selectedStockCode}`}
+        </h3>
+        {!selectedStockCode ? (
+          <p className="text-gray-500 text-center py-8">Click an item below to see its monthly trend</p>
+        ) : statsLoading ? (
           <div className="flex items-center justify-center h-32">
             <Loader className="w-6 h-6 animate-spin text-blue-600" />
           </div>
@@ -318,7 +286,12 @@ export default function GrossProfitReportPage() {
                 </thead>
                 <tbody>
                   {paginatedItems.map((item: any) => (
-                    <tr key={item.stock_code} className="border-b hover:bg-gray-50">
+                    <tr
+                      key={item.stock_code}
+                      onClick={() => handleStockSelect(item.stock_code)}
+                      className={`border-b hover:bg-gray-50 cursor-pointer ${selectedStockCode === item.stock_code ? 'bg-blue-50' : ''}`}
+                      title="Click to view this item's monthly trend"
+                    >
                       <td className="py-3 px-3 font-mono">{item.stock_code}</td>
                       <td className="py-3 px-3 max-w-xs truncate">{item.description}</td>
                       <td className="py-3 px-3 text-right">{item.quantitySold.toLocaleString('en-ZA')}</td>

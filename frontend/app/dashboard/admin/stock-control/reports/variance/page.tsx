@@ -53,12 +53,12 @@ export default function VarianceReportPage() {
   const getSummary = () => {
     if (!varianceItems || !Array.isArray(varianceItems)) return null;
     
-    const positive = varianceItems.filter((item: any) => item.variance > 0);
-    const negative = varianceItems.filter((item: any) => item.variance < 0);
-    const zero = varianceItems.filter((item: any) => item.variance === 0);
+    const positive = varianceItems.filter((item: any) => item.variance_quantity > 0);
+    const negative = varianceItems.filter((item: any) => item.variance_quantity < 0);
+    const zero = varianceItems.filter((item: any) => item.variance_quantity === 0);
     
-    const positiveValue = positive.reduce((sum: number, item: any) => sum + (item.variance * (item.unit_cost || 0)), 0);
-    const negativeValue = Math.abs(negative.reduce((sum: number, item: any) => sum + (item.variance * (item.unit_cost || 0)), 0));
+    const positiveValue = positive.reduce((sum: number, item: any) => sum + Number(item.variance_value || 0), 0);
+    const negativeValue = Math.abs(negative.reduce((sum: number, item: any) => sum + Number(item.variance_value || 0), 0));
     
     return {
       total: varianceItems.length,
@@ -77,13 +77,13 @@ export default function VarianceReportPage() {
     
     const headers = ['Stock Code', 'Description', 'System Qty', 'Counted Qty', 'Variance', 'Unit Cost', 'Variance Value'];
     const rows = varianceItems.map((item: any) => [
-      item.stock_code,
+      item.stock_item_detail?.stock_code,
       item.stock_item_detail?.description || item.description || '',
-      item.quantity_system,
+      item.quantity_on_hand,
       item.quantity_counted,
-      item.variance,
-      item.unit_cost,
-      item.variance * (item.unit_cost || 0)
+      item.variance_quantity,
+      item.cost_price_at_count,
+      item.variance_value
     ]);
 
     const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
@@ -223,29 +223,29 @@ export default function VarianceReportPage() {
               <tbody>
                 {varianceItems.map((item: any, idx: number) => (
                   <tr key={idx} className="border-b hover:bg-gray-50">
-                    <td className="py-3 px-3 font-mono">{item.stock_code}</td>
+                    <td className="py-3 px-3 font-mono">{item.stock_item_detail?.stock_code}</td>
                     <td className="py-3 px-3 max-w-xs truncate">
                       {item.stock_item_detail?.description || item.description || '-'}
                     </td>
-                    <td className="py-3 px-3 text-right">{item.quantity_system?.toFixed(2)}</td>
+                    <td className="py-3 px-3 text-right">{item.quantity_on_hand?.toFixed(2)}</td>
                     <td className="py-3 px-3 text-right">{item.quantity_counted?.toFixed(2)}</td>
                     <td className={`py-3 px-3 text-right font-medium ${
-                      item.variance > 0 ? 'text-green-600' : item.variance < 0 ? 'text-red-600' : 'text-gray-600'
+                      item.variance_quantity > 0 ? 'text-green-600' : item.variance_quantity < 0 ? 'text-red-600' : 'text-gray-600'
                     }`}>
-                      {item.variance > 0 ? '+' : ''}{item.variance?.toFixed(2)}
+                      {item.variance_quantity > 0 ? '+' : ''}{item.variance_quantity?.toFixed(2)}
                     </td>
-                    <td className="py-3 px-3 text-right">R {item.unit_cost?.toFixed(2)}</td>
+                    <td className="py-3 px-3 text-right">R {item.cost_price_at_count?.toFixed(2)}</td>
                     <td className={`py-3 px-3 text-right font-medium ${
-                      (item.variance * item.unit_cost) > 0 ? 'text-green-600' : (item.variance * item.unit_cost) < 0 ? 'text-red-600' : 'text-gray-600'
+                      Number(item.variance_value) > 0 ? 'text-green-600' : Number(item.variance_value) < 0 ? 'text-red-600' : 'text-gray-600'
                     }`}>
-                      R {(item.variance * item.unit_cost)?.toFixed(2)}
+                      R {Number(item.variance_value || 0).toFixed(2)}
                     </td>
                     <td className="py-3 px-3 text-center">
-                      {item.variance > 0 ? (
+                      {item.variance_quantity > 0 ? (
                         <span className="inline-flex items-center px-2 py-1 rounded text-xs bg-green-100 text-green-800">
                           Surplus
                         </span>
-                      ) : item.variance < 0 ? (
+                      ) : item.variance_quantity < 0 ? (
                         <span className="inline-flex items-center px-2 py-1 rounded text-xs bg-red-100 text-red-800">
                           Shortage
                         </span>

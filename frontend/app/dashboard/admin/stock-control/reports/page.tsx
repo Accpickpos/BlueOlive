@@ -151,6 +151,83 @@ export default function StockControlReportsPage() {
               </div>
             </Card>
           </Link>
+
+          <Link href="/dashboard/admin/stock-control/reports/department">
+            <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer h-full">
+              <FileText className="w-10 h-10 text-indigo-600 mb-3" />
+              <h3 className="font-bold text-lg">Department</h3>
+              <p className="text-sm text-gray-600 mt-1">Sales analysis by department</p>
+              <div className="mt-4 flex items-center text-indigo-600 text-sm font-medium">
+                View Report <ArrowRight className="w-4 h-4 ml-1" />
+              </div>
+            </Card>
+          </Link>
+
+          <Link href="/dashboard/admin/stock-control/reports/slow-movers">
+            <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer h-full">
+              <TrendingUp className="w-10 h-10 text-purple-600 mb-3 rotate-180" />
+              <h3 className="font-bold text-lg">Slow Movers</h3>
+              <p className="text-sm text-gray-600 mt-1">Items with low sales activity</p>
+              <div className="mt-4 flex items-center text-purple-600 text-sm font-medium">
+                View Report <ArrowRight className="w-4 h-4 ml-1" />
+              </div>
+            </Card>
+          </Link>
+
+          <Link href="/dashboard/admin/stock-control/reports/area">
+            <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer h-full">
+              <FileText className="w-10 h-10 text-cyan-600 mb-3" />
+              <h3 className="font-bold text-lg">Area / Salesman</h3>
+              <p className="text-sm text-gray-600 mt-1">Sales analysis by area and salesman</p>
+              <div className="mt-4 flex items-center text-cyan-600 text-sm font-medium">
+                View Report <ArrowRight className="w-4 h-4 ml-1" />
+              </div>
+            </Card>
+          </Link>
+
+          <Link href="/dashboard/admin/stock-control/reports/transactions">
+            <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer h-full">
+              <Activity className="w-10 h-10 text-teal-600 mb-3" />
+              <h3 className="font-bold text-lg">Stock Transactions</h3>
+              <p className="text-sm text-gray-600 mt-1">All stock movements, filterable by type/item/date</p>
+              <div className="mt-4 flex items-center text-teal-600 text-sm font-medium">
+                View Report <ArrowRight className="w-4 h-4 ml-1" />
+              </div>
+            </Card>
+          </Link>
+
+          <Link href="/dashboard/admin/stock-control/reports/valuation">
+            <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer h-full">
+              <DollarSign className="w-10 h-10 text-emerald-600 mb-3" />
+              <h3 className="font-bold text-lg">Stock Valuation</h3>
+              <p className="text-sm text-gray-600 mt-1">Parameterized valuation by code range and cost basis</p>
+              <div className="mt-4 flex items-center text-emerald-600 text-sm font-medium">
+                View Report <ArrowRight className="w-4 h-4 ml-1" />
+              </div>
+            </Card>
+          </Link>
+
+          <Link href="/dashboard/admin/stock-control/reports/received-returned">
+            <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer h-full">
+              <FileText className="w-10 h-10 text-rose-600 mb-3" />
+              <h3 className="font-bold text-lg">Received / Returned</h3>
+              <p className="text-sm text-gray-600 mt-1">Incoming stock and supplier returns together</p>
+              <div className="mt-4 flex items-center text-rose-600 text-sm font-medium">
+                View Report <ArrowRight className="w-4 h-4 ml-1" />
+              </div>
+            </Card>
+          </Link>
+
+          <Link href="/dashboard/admin/stock-control/transactions">
+            <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer h-full">
+              <FileText className="w-10 h-10 text-gray-600 mb-3" />
+              <h3 className="font-bold text-lg">Stock Take Forms</h3>
+              <p className="text-sm text-gray-600 mt-1">Print blank forms for physical counting (Transactions &gt; Stock Take)</p>
+              <div className="mt-4 flex items-center text-gray-600 text-sm font-medium">
+                Go to Stock Take <ArrowRight className="w-4 h-4 ml-1" />
+              </div>
+            </Card>
+          </Link>
         </div>
       </div>
 
@@ -159,9 +236,9 @@ export default function StockControlReportsPage() {
         {/* Low Stock Preview */}
         <Card className="p-6">
           <h3 className="font-semibold mb-4">Low Stock Items</h3>
-          {lowStockItems && lowStockItems.length > 0 ? (
+          {lowStockItems && lowStockItems.results.length > 0 ? (
             <div className="space-y-3">
-              {lowStockItems.slice(0, 5).map((item: any) => (
+              {lowStockItems.results.slice(0, 5).map((item: any) => (
                 <div key={item.stock_code} className="flex items-center justify-between py-2 border-b last:border-b-0">
                   <div>
                     <p className="font-mono font-medium">{item.stock_code}</p>

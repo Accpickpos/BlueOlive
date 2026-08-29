@@ -107,6 +107,9 @@ class StockItemViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
         "quantity_on_hand",
         "cost_price",
         "selling_price_1",
+        "department",
+        "supplier_code",
+        "bin_number",
     ]
     ordering = ["stock_code"]
     lookup_serializer_class = StockItemListSerializer
@@ -115,6 +118,17 @@ class StockItemViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
         if self.action == "list":
             return StockItemListSerializer
         return StockItemSerializer
+
+    def get_queryset(self):
+        """?code_from=&code_to= — stock_code range, used by report actions."""
+        qs = super().get_queryset()
+        code_from = self.request.query_params.get("code_from")
+        code_to = self.request.query_params.get("code_to")
+        if code_from:
+            qs = qs.filter(stock_code__gte=code_from)
+        if code_to:
+            qs = qs.filter(stock_code__lte=code_to)
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user.username)
@@ -261,6 +275,11 @@ class StockItemViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
             item.transactions.filter(
                 transaction_type__in=["SALE", "SALE_RETURN"], debtor__isnull=False
             )
+            # StockTransaction.Meta.ordering ("-transaction_date", "-id")
+            # would otherwise leak into the GROUP BY below and fragment
+            # each debtor into one row per transaction instead of one
+            # summed row.
+            .order_by()
             .values("debtor_id", "debtor__dname")
             .annotate(
                 total_quantity=Sum("quantity_out") - Sum("quantity_in"),
@@ -294,17 +313,70 @@ class StockItemViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
 
     @action(detail=False, methods=["get"])
     def low_stock(self, request):
-        """Items where available quantity <= reorder quantity."""
+        """
+        Items where available quantity <= reorder quantity.
+        ?search=<code/description substring>
+        ?level=critical (qoh<=0) | low (0<qoh<=reorder)
+        """
         items = [
             item
             for item in StockItem.objects.filter(is_active=True)
             if item.needs_reordering()
         ]
+        search = request.query_params.get("search")
+        level = request.query_params.get("level")
+        if search:
+            s = search.lower()
+            items = [
+                i
+                for i in items
+                if s in i.stock_code.lower() or s in i.description.lower()
+            ]
+        if level == "critical":
+            items = [i for i in items if i.quantity_on_hand <= 0]
+        elif level == "low":
+            items = [i for i in items if i.quantity_on_hand > 0]
+
+        page = self.paginate_queryset(items)
+        if page is not None:
+            return self.get_paginated_response(
+                StockItemListSerializer(page, many=True).data
+            )
         return Response(StockItemListSerializer(items, many=True).data)
 
     @action(detail=False, methods=["get"], url_path="needs-reorder")
     def needs_reorder(self, request):
         return self.low_stock(request)
+
+    @action(detail=False, methods=["get"], url_path="valuation-report")
+    def valuation_report(self, request):
+        """
+        Parameterized stock valuation. ?code_from=&code_to=&department=
+        &cost_basis=last|average (default last -> cost_price)&ordering=
+        """
+        cost_basis = request.query_params.get("cost_basis", "last")
+        cost_field = "average_cost" if cost_basis == "average" else "cost_price"
+
+        qs = self.filter_queryset(self.get_queryset()).select_related("department")
+        rows = []
+        total_value = Decimal("0")
+        for item in qs:
+            unit_cost = getattr(item, cost_field)
+            value = item.quantity_on_hand * unit_cost
+            total_value += value
+            rows.append(
+                {
+                    "stock_code": item.stock_code,
+                    "description": item.description,
+                    "department_id": item.department_id,
+                    "department_name": item.department.name if item.department_id else None,
+                    "quantity_on_hand": item.quantity_on_hand,
+                    "cost_basis": cost_basis,
+                    "unit_cost": unit_cost,
+                    "value": value,
+                }
+            )
+        return Response({"cost_basis": cost_basis, "total_value": total_value, "items": rows})
 
     @action(
         detail=True,
@@ -668,7 +740,12 @@ class StockTransactionViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         """Each item's share of total SALE value. ?department=&date_from=&date_to="""
         qs = self.filter_queryset(self.get_queryset()).filter(transaction_type="SALE")
         rows = list(
-            qs.values("stock_item_id", "stock_item__description")
+            # .order_by() clears the ordering filter_queryset() applied
+            # (view default "-transaction_date", "-id") — left in place,
+            # it leaks into GROUP BY below and fragments each item into
+            # one row per transaction instead of one summed row.
+            qs.order_by()
+            .values("stock_item_id", "stock_item__description")
             .annotate(total_quantity=Sum("quantity_out"), total_value=Sum("value"))
             .order_by("-total_value")
         )
@@ -684,7 +761,8 @@ class StockTransactionViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         """SALE transactions grouped by department. ?date_from=&date_to="""
         qs = self.filter_queryset(self.get_queryset()).filter(transaction_type="SALE")
         rows = (
-            qs.values("department_id", "department__name")
+            qs.order_by()  # see stock_contribution for why this is needed
+            .values("department_id", "department__name")
             .annotate(total_quantity=Sum("quantity_out"), total_value=Sum("value"))
             .order_by("-total_value")
         )
@@ -697,7 +775,8 @@ class StockTransactionViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             transaction_type="SALE", transaction_time__isnull=False
         )
         rows = (
-            qs.annotate(hour=ExtractHour("transaction_time"))
+            qs.order_by()  # see stock_contribution for why this is needed
+            .annotate(hour=ExtractHour("transaction_time"))
             .values("hour")
             .annotate(
                 total_quantity=Sum("quantity_out"),
@@ -732,11 +811,27 @@ class StockTransactionViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         except (TypeError, ValueError):
             limit = 20
         rows = (
-            qs.values("stock_item_id", "stock_item__description")
+            qs.order_by()  # see stock_contribution for why this is needed
+            .values("stock_item_id", "stock_item__description")
             .annotate(total_quantity=Sum("quantity_out"), total_value=Sum("value"))
             .order_by("-total_quantity")[:limit]
         )
         return Response(list(rows))
+
+    @action(detail=False, methods=["get"], url_path="received-returned-report")
+    def received_returned_report(self, request):
+        """INCOMING and RETURN transactions together. ?supplier=&stock_item=&date_from=&date_to="""
+        qs = (
+            self.filter_queryset(self.get_queryset())
+            .filter(transaction_type__in=["INCOMING", "RETURN"])
+            .order_by("-transaction_date", "-id")
+        )
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(
+                StockTransactionSerializer(page, many=True).data
+            )
+        return Response(StockTransactionSerializer(qs, many=True).data)
 
 
 # ─────────────────────────────────────────────
@@ -1023,6 +1118,142 @@ class StockMonthlyStatisticViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     filterset_fields = ["stock_item", "year", "month"]
     ordering_fields = ["year", "month"]
     ordering = ["-year", "-month"]
+
+    @staticmethod
+    def _row(total_quantity, total_sales, total_profit, **extra):
+        total_sales = total_sales or Decimal("0")
+        total_profit = total_profit or Decimal("0")
+        row = {
+            "total_quantity": total_quantity or Decimal("0"),
+            "total_sales": total_sales,
+            "total_cost": total_sales - total_profit,
+            "total_profit": total_profit,
+            "margin_pct": round(float(total_profit / total_sales) * 100, 2)
+            if total_sales
+            else 0,
+        }
+        row.update(extra)
+        return row
+
+    @action(detail=False, methods=["get"], url_path="by-department")
+    def by_department(self, request):
+        """Sales/cost/profit grouped by department. ?year="""
+        qs = self.filter_queryset(self.get_queryset())
+        # .order_by() clears the ordering filter_queryset() applied (view
+        # default "-year", "-month") — left in place, it leaks into GROUP
+        # BY below and fragments each department into one row per
+        # year/month instead of one summed row.
+        rows = qs.order_by().values(
+            "stock_item__department_id", "stock_item__department__name"
+        ).annotate(
+            total_quantity=Sum("quantity_sold"),
+            total_sales=Sum("value_sold"),
+            total_profit=Sum("profit_value"),
+            item_count=Count("stock_item", distinct=True),
+        )
+        result = [
+            self._row(
+                r["total_quantity"],
+                r["total_sales"],
+                r["total_profit"],
+                department_id=r["stock_item__department_id"],
+                department_name=r["stock_item__department__name"] or "Unassigned",
+                item_count=r["item_count"],
+            )
+            for r in rows
+        ]
+        result.sort(key=lambda r: r["total_sales"], reverse=True)
+        return Response(result)
+
+    @action(detail=False, methods=["get"], url_path="by-item")
+    def by_item(self, request):
+        """
+        Sales/cost/profit grouped by stock item. ?year=&stock_item=
+        When ?stock_item= is given, also returns that item's monthly
+        trend for the year (by_month).
+        """
+        qs = self.filter_queryset(self.get_queryset())
+        stock_item = request.query_params.get("stock_item")
+
+        item_rows = qs.order_by().values(
+            "stock_item_id", "stock_item__description"
+        ).annotate(
+            total_quantity=Sum("quantity_sold"),
+            total_sales=Sum("value_sold"),
+            total_profit=Sum("profit_value"),
+        )
+        by_item = [
+            self._row(
+                r["total_quantity"],
+                r["total_sales"],
+                r["total_profit"],
+                stock_item_id=r["stock_item_id"],
+                description=r["stock_item__description"],
+            )
+            for r in item_rows
+        ]
+        by_item.sort(key=lambda r: r["total_sales"], reverse=True)
+
+        by_month = []
+        if stock_item:
+            month_rows = qs.order_by().values("month").annotate(
+                total_quantity=Sum("quantity_sold"),
+                total_sales=Sum("value_sold"),
+                total_profit=Sum("profit_value"),
+            )
+            by_month = [
+                self._row(
+                    r["total_quantity"],
+                    r["total_sales"],
+                    r["total_profit"],
+                    month=r["month"],
+                )
+                for r in month_rows
+            ]
+            by_month.sort(key=lambda r: r["month"])
+
+        return Response({"by_item": by_item, "by_month": by_month})
+
+    @action(detail=False, methods=["get"], url_path="slow-movers")
+    def slow_movers(self, request):
+        """
+        Items whose average monthly sales quantity <= threshold.
+        ?year=&threshold= (default 5). Average divides by the number of
+        months that actually have data for that item/year, not a fixed
+        12 — a partial current year shouldn't be understated by dividing
+        its total by months that haven't happened yet.
+        """
+        try:
+            threshold = Decimal(str(request.query_params.get("threshold", "5")))
+        except InvalidOperation:
+            threshold = Decimal("5")
+
+        qs = self.filter_queryset(self.get_queryset())
+        rows = qs.order_by().values(
+            "stock_item_id", "stock_item__description"
+        ).annotate(
+            total_quantity=Sum("quantity_sold"),
+            total_sales=Sum("value_sold"),
+            months_with_data=Count("month", distinct=True),
+        )
+        result = []
+        for r in rows:
+            months = r["months_with_data"] or 1
+            total_quantity = r["total_quantity"] or Decimal("0")
+            avg_monthly = total_quantity / months
+            if avg_monthly <= threshold:
+                result.append(
+                    {
+                        "stock_item_id": r["stock_item_id"],
+                        "description": r["stock_item__description"],
+                        "total_quantity": total_quantity,
+                        "total_sales": r["total_sales"] or Decimal("0"),
+                        "months_with_data": months,
+                        "avg_monthly_sales": round(float(avg_monthly), 2),
+                    }
+                )
+        result.sort(key=lambda r: r["avg_monthly_sales"])
+        return Response(result)
 
 
 # ─────────────────────────────────────────────

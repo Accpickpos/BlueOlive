@@ -3,13 +3,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { stockControlApi } from '@/lib/stockControlApi';
-import { getStockItems } from '@/lib/stockApi';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { 
-  Loader, ArrowLeft, TrendingDown, Download, Search,
+import {
+  Loader, ArrowLeft, TrendingDown, Download,
   Package, AlertTriangle
 } from 'lucide-react';
 import Link from 'next/link';
@@ -23,74 +22,51 @@ export default function SlowMoversReportPage() {
 
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
 
-  // Fetch monthly statistics
-  const { data: monthlyStats, isLoading: statsLoading } = useQuery({
-    queryKey: ['monthly-stats-slow', year],
-    queryFn: () => stockControlApi.monthlyStats.list({ year }),
+  // Backend-computed slow movers — was previously computed client-side
+  // from monthlyStats rows reading total_sales/stock_item_detail?.description
+  // (neither exists on StockMonthlyStatisticSerializer, so Description and
+  // Sales Value always rendered blank/R0), and averaged totalQuantitySold
+  // by a hardcoded /12 regardless of how many months of the year had
+  // actually elapsed — understating the average for a partial current
+  // year. The backend divides by the number of months that actually have
+  // data instead.
+  const { data: rows, isLoading: statsLoading } = useQuery({
+    queryKey: ['stats-slow-movers', year, threshold],
+    queryFn: () => stockControlApi.enquiries.statsSlowMovers({ year, threshold: parseInt(threshold) }),
     staleTime: 30 * 1000,
   });
 
-  // Process data to find slow movers
-  const processData = () => {
-    if (!monthlyStats?.results) return { slowMovers: [], totals: null };
+  const allSlowMovers = (rows || []).map((r) => ({
+    stock_code: r.stock_item_id,
+    description: r.description || '',
+    totalQuantitySold: Number(r.total_quantity || 0),
+    totalSales: Number(r.total_sales || 0),
+    avgMonthlySales: r.avg_monthly_sales,
+    monthsWithData: r.months_with_data,
+  }));
 
-    // Group by stock item
-    const itemMap = new Map();
-    
-    monthlyStats.results.forEach((stat: any) => {
-      const existing = itemMap.get(stat.stock_item) || {
-        stock_code: stat.stock_item,
-        description: stat.stock_item_detail?.description || '',
-        totalQuantitySold: 0,
-        totalSales: 0,
-        monthsWithSales: new Set(),
-      };
-      existing.totalQuantitySold += stat.quantity_sold || 0;
-      existing.totalSales += stat.total_sales || 0;
-      if (stat.quantity_sold > 0) {
-        existing.monthsWithSales.add(stat.month);
-      }
-      itemMap.set(stat.stock_item, existing);
-    });
+  const slowMovers = searchTerm
+    ? allSlowMovers.filter((item) =>
+        item.stock_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.description?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : allSlowMovers;
 
-    const thresholdValue = parseInt(threshold);
-    
-    const slowMovers = Array.from(itemMap.values())
-      .map((item: any) => ({
-        ...item,
-        avgMonthlySales: item.totalQuantitySold / 12,
-        monthsActive: item.monthsWithSales.size,
-      }))
-      .filter((item: any) => item.avgMonthlySales <= thresholdValue)
-      .sort((a: any, b: any) => a.avgMonthlySales - b.avgMonthlySales);
-
-    // Filter by search term
-    const filtered = searchTerm
-      ? slowMovers.filter((item: any) =>
-          item.stock_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          item.description?.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-      : slowMovers;
-
-    const totals = {
-      count: slowMovers.length,
-      totalValue: slowMovers.reduce((sum: number, item: any) => sum + (item.totalSales || 0), 0),
-    };
-
-    return { slowMovers: filtered, totals };
+  const totals = {
+    count: slowMovers.length,
+    totalValue: slowMovers.reduce((sum, item) => sum + item.totalSales, 0),
   };
 
-  const { slowMovers, totals } = processData();
   const paginatedItems = slowMovers.slice((page - 1) * 25, page * 25);
 
   const exportToCSV = () => {
-    const headers = ['Stock Code', 'Description', 'Total Sold', 'Avg Monthly', 'Months Active', 'Total Sales'];
-    const rows = slowMovers.map((item: any) => [
+    const headers = ['Stock Code', 'Description', 'Total Sold', 'Avg Monthly', 'Months w/ Data', 'Total Sales'];
+    const rows = slowMovers.map((item) => [
       item.stock_code,
       item.description || '',
       item.totalQuantitySold,
       item.avgMonthlySales.toFixed(2),
-      item.monthsActive,
+      item.monthsWithData,
       item.totalSales.toFixed(2)
     ]);
 
@@ -194,7 +170,7 @@ export default function SlowMoversReportPage() {
               <div>
                 <p className="text-xs text-gray-600 uppercase">No Sales</p>
                 <p className="text-2xl font-bold text-red-600">
-                  {slowMovers.filter((i: any) => i.monthsActive === 0).length}
+                  {slowMovers.filter((i) => i.totalQuantitySold === 0).length}
                 </p>
               </div>
             </div>
@@ -220,12 +196,12 @@ export default function SlowMoversReportPage() {
                     <th className="text-left py-3 px-3 font-medium text-gray-600">Description</th>
                     <th className="text-right py-3 px-3 font-medium text-gray-600">Total Sold</th>
                     <th className="text-right py-3 px-3 font-medium text-gray-600">Avg/Month</th>
-                    <th className="text-right py-3 px-3 font-medium text-gray-600">Months Active</th>
+                    <th className="text-right py-3 px-3 font-medium text-gray-600">Months w/ Data</th>
                     <th className="text-right py-3 px-3 font-medium text-gray-600">Sales Value</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {paginatedItems.map((item: any) => (
+                  {paginatedItems.map((item) => (
                     <tr key={item.stock_code} className="border-b hover:bg-gray-50">
                       <td className="py-3 px-3 font-mono">{item.stock_code}</td>
                       <td className="py-3 px-3 max-w-xs truncate">{item.description}</td>
@@ -239,11 +215,11 @@ export default function SlowMoversReportPage() {
                       </td>
                       <td className="py-3 px-3 text-right">
                         <span className={`px-2 py-1 rounded text-xs ${
-                          item.monthsActive === 0 ? 'bg-red-100 text-red-800' :
-                          item.monthsActive <= 3 ? 'bg-amber-100 text-amber-800' :
+                          item.totalQuantitySold === 0 ? 'bg-red-100 text-red-800' :
+                          item.monthsWithData <= 3 ? 'bg-amber-100 text-amber-800' :
                           'bg-green-100 text-green-800'
                         }`}>
-                          {item.monthsActive}/12
+                          {item.monthsWithData}/12
                         </span>
                       </td>
                       <td className="py-3 px-3 text-right">R {item.totalSales.toLocaleString('en-ZA', { maximumFractionDigits: 0 })}</td>

@@ -208,6 +208,7 @@ export const ENDPOINTS = {
     STOCK_ITEM_DEBTOR_BREAKDOWN: (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/debtor-breakdown/`,
     STOCK_ITEMS_LOW_STOCK:      `${API_V1_BASE}/stock-control/stock-items/low-stock/`,
     STOCK_ITEMS_NEEDS_REORDER:  `${API_V1_BASE}/stock-control/stock-items/needs-reorder/`,
+    STOCK_ITEMS_VALUATION_REPORT: `${API_V1_BASE}/stock-control/stock-items/valuation-report/`,
 
     // ── Enquiry aggregations (StockTransactionViewSet) ─────────────────────
     STOCK_CONTRIBUTION:         `${API_V1_BASE}/stock-control/stock-transactions/stock-contribution/`,
@@ -215,6 +216,12 @@ export const ENDPOINTS = {
     HOURLY_ANALYSIS:            `${API_V1_BASE}/stock-control/stock-transactions/hourly-analysis/`,
     PURCHASE_HISTORY:           `${API_V1_BASE}/stock-control/stock-transactions/purchase-history/`,
     TOP_SELLERS:                `${API_V1_BASE}/stock-control/stock-transactions/top-sellers/`,
+    RECEIVED_RETURNED_REPORT:   `${API_V1_BASE}/stock-control/stock-transactions/received-returned-report/`,
+
+    // ── Monthly Statistic report aggregations ───────────────────────────────
+    STATS_BY_DEPARTMENT:        `${API_V1_BASE}/stock-control/monthly-statistics/by-department/`,
+    STATS_BY_ITEM:              `${API_V1_BASE}/stock-control/monthly-statistics/by-item/`,
+    STATS_SLOW_MOVERS:          `${API_V1_BASE}/stock-control/monthly-statistics/slow-movers/`,
 
     // ── Special Deals dynamic actions ──────────────────────────────────────
     SPECIAL_DEALS_ACTIVE_TODAY:  `${API_V1_BASE}/stock-control/special-deals/active-today/`,

@@ -21,6 +21,7 @@ from .models import (
     PackBundleIngredient,
     SpecialDeal,
     StockItem,
+    StockMonthlyStatistic,
     StockTake,
     StockTakeItem,
     StockTransaction,
@@ -897,3 +898,244 @@ class EnquiryAggregationTest(APITestCase):
         results = response.data.get("results", response.data)
         self.assertEqual(len(results), 2)  # the SALE and the SALE_RETURN
         self.assertTrue(all(r["debtor"] == self.debtor.pk for r in results))
+
+    def test_stock_contribution_collapses_multiple_dated_transactions(self):
+        """
+        Regression guard: StockTransaction.Meta.ordering ("-transaction_date",
+        "-id") must not leak into the GROUP BY of the aggregation below and
+        fragment one item's sales into one row per transaction date.
+        """
+        StockTransaction.objects.create(
+            transaction_type="SALE",
+            stock_item=self.item_a,
+            department=self.dept_a,
+            transaction_date=timezone.now().date() - timedelta(days=1),
+            quantity_out=Decimal("4"),
+            value=Decimal("40.00"),
+        )
+        response = self.client.get(reverse("stocktransaction-stock-contribution"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        item_a_rows = [r for r in response.data if r["stock_item_id"] == self.item_a.pk]
+        self.assertEqual(len(item_a_rows), 1)
+        # Original fixture SALE (10 @ value 100) + this one (4 @ value 40).
+        self.assertEqual(Decimal(str(item_a_rows[0]["total_quantity"])), Decimal("14"))
+        self.assertEqual(Decimal(str(item_a_rows[0]["total_value"])), Decimal("140.00"))
+
+    def test_received_returned_report(self):
+        StockTransaction.objects.create(
+            transaction_type="RETURN",
+            stock_item=self.item_a,
+            supplier=self.supplier,
+            transaction_date=timezone.now().date(),
+            quantity_out=Decimal("5"),
+        )
+        response = self.client.get(
+            reverse("stocktransaction-received-returned-report")
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data.get("results", response.data)
+        types = {r["transaction_type"] for r in results}
+        self.assertEqual(types, {"INCOMING", "RETURN"})
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+)
+class StockItemReportTest(APITestCase):
+    """Phase 5: StockItemViewSet report actions (code range, valuation, low-stock search/level)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.dept_a = SalesDepartment.objects.create(number=20, name="Dept 20")
+        cls.dept_b = SalesDepartment.objects.create(number=21, name="Dept 21")
+
+    def setUp(self):
+        self.mover = User.objects.create_user(
+            username="mover6",
+            email="mover6@example.com",
+            password="x",
+            is_superuser=True,
+        )
+        self.client.force_authenticate(self.mover)
+
+        self.item_low = StockItem.objects.create(
+            stock_code="RPT001",
+            description="Critical low item",
+            department=self.dept_a,
+            cost_price=Decimal("10.00"),
+            average_cost=Decimal("12.00"),
+            quantity_on_hand=Decimal("-2"),
+            reorder_quantity=Decimal("5"),
+        )
+        self.item_ok = StockItem.objects.create(
+            stock_code="RPT002",
+            description="Well stocked item",
+            department=self.dept_b,
+            cost_price=Decimal("20.00"),
+            average_cost=Decimal("22.00"),
+            quantity_on_hand=Decimal("100"),
+            reorder_quantity=Decimal("5"),
+        )
+        self.item_outside_range = StockItem.objects.create(
+            stock_code="ZZZ999",
+            description="Outside code range",
+            department=self.dept_a,
+            cost_price=Decimal("5.00"),
+            quantity_on_hand=Decimal("10"),
+        )
+
+    def test_code_range_filter_on_list(self):
+        response = self.client.get(
+            reverse("stockitem-list"), {"code_from": "RPT000", "code_to": "RPT999"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        codes = {r["stock_code"] for r in response.data["results"]}
+        self.assertEqual(codes, {"RPT001", "RPT002"})
+
+    def test_valuation_report_last_cost_basis(self):
+        response = self.client.get(
+            reverse("stockitem-valuation-report"),
+            {"code_from": "RPT000", "code_to": "RPT999", "cost_basis": "last"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        by_code = {row["stock_code"]: row for row in response.data["items"]}
+        # RPT001: -2 * 10.00 = -20.00; RPT002: 100 * 20.00 = 2000.00
+        self.assertEqual(Decimal(str(by_code["RPT001"]["value"])), Decimal("-20.00"))
+        self.assertEqual(Decimal(str(by_code["RPT002"]["value"])), Decimal("2000.00"))
+        self.assertEqual(
+            Decimal(str(response.data["total_value"])), Decimal("1980.00")
+        )
+
+    def test_valuation_report_average_cost_basis(self):
+        response = self.client.get(
+            reverse("stockitem-valuation-report"),
+            {"code_from": "RPT000", "code_to": "RPT999", "cost_basis": "average"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        by_code = {row["stock_code"]: row for row in response.data["items"]}
+        # RPT002: 100 * 22.00 = 2200.00
+        self.assertEqual(Decimal(str(by_code["RPT002"]["value"])), Decimal("2200.00"))
+
+    def test_low_stock_level_filter(self):
+        response = self.client.get(reverse("stockitem-low-stock"), {"level": "critical"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data.get("results", response.data)
+        codes = {r["stock_code"] for r in results}
+        self.assertEqual(codes, {"RPT001"})  # negative QOH -> critical
+
+    def test_low_stock_search_filter(self):
+        response = self.client.get(reverse("stockitem-low-stock"), {"search": "Critical"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data.get("results", response.data)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["stock_code"], "RPT001")
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+)
+class MonthlyStatisticReportTest(APITestCase):
+    """Phase 5: StockMonthlyStatisticViewSet report actions."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.dept_a = SalesDepartment.objects.create(number=22, name="Dept 22")
+        cls.dept_b = SalesDepartment.objects.create(number=23, name="Dept 23")
+
+    def setUp(self):
+        self.mover = User.objects.create_user(
+            username="mover7",
+            email="mover7@example.com",
+            password="x",
+            is_superuser=True,
+        )
+        self.client.force_authenticate(self.mover)
+
+        self.item_a = StockItem.objects.create(
+            stock_code="MS001", description="Fast Mover", department=self.dept_a
+        )
+        self.item_b = StockItem.objects.create(
+            stock_code="MS002", description="Slow Mover", department=self.dept_b
+        )
+        self.item_c = StockItem.objects.create(
+            stock_code="MS003", description="Slow Mover Two Months", department=self.dept_b
+        )
+
+        # item_a: strong sales across 2 months.
+        StockMonthlyStatistic.objects.create(
+            stock_item=self.item_a, year=2026, month=1,
+            quantity_sold=Decimal("100"), value_sold=Decimal("1000.00"),
+            profit_value=Decimal("400.00"),
+        )
+        StockMonthlyStatistic.objects.create(
+            stock_item=self.item_a, year=2026, month=2,
+            quantity_sold=Decimal("120"), value_sold=Decimal("1200.00"),
+            profit_value=Decimal("480.00"),
+        )
+        # item_c: consistently slow across 2 months — the regression case
+        # for the GROUP BY fragmentation bug (Meta.ordering leaking into
+        # the aggregation, which would incorrectly split this into 2 rows
+        # of "1 month, avg 2" instead of 1 row of "2 months, avg 2").
+        StockMonthlyStatistic.objects.create(
+            stock_item=self.item_c, year=2026, month=1,
+            quantity_sold=Decimal("2"), value_sold=Decimal("40.00"),
+            profit_value=Decimal("10.00"),
+        )
+        StockMonthlyStatistic.objects.create(
+            stock_item=self.item_c, year=2026, month=2,
+            quantity_sold=Decimal("2"), value_sold=Decimal("40.00"),
+            profit_value=Decimal("10.00"),
+        )
+        # item_b: barely sells, only 1 month of data in the year.
+        StockMonthlyStatistic.objects.create(
+            stock_item=self.item_b, year=2026, month=1,
+            quantity_sold=Decimal("2"), value_sold=Decimal("40.00"),
+            profit_value=Decimal("10.00"),
+        )
+
+    def test_by_department_nets_cost_from_profit(self):
+        response = self.client.get(
+            reverse("stockmonthlystatistic-by-department"), {"year": 2026}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        by_dept = {row["department_id"]: row for row in response.data}
+        dept_a_row = by_dept[self.dept_a.pk]
+        # total_sales = 1000+1200=2200, total_profit=400+480=880, cost=2200-880=1320
+        self.assertEqual(Decimal(str(dept_a_row["total_sales"])), Decimal("2200.00"))
+        self.assertEqual(Decimal(str(dept_a_row["total_profit"])), Decimal("880.00"))
+        self.assertEqual(Decimal(str(dept_a_row["total_cost"])), Decimal("1320.00"))
+
+    def test_by_item_with_monthly_trend(self):
+        response = self.client.get(
+            reverse("stockmonthlystatistic-by-item"),
+            {"year": 2026, "stock_item": self.item_a.pk},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["by_item"]), 1)
+        self.assertEqual(len(response.data["by_month"]), 2)
+        months = {row["month"] for row in response.data["by_month"]}
+        self.assertEqual(months, {1, 2})
+
+    def test_slow_movers_uses_actual_months_not_fixed_12(self):
+        # item_b: total_quantity=2 over 1 month of data -> avg=2.0, not 2/12=0.17
+        response = self.client.get(
+            reverse("stockmonthlystatistic-slow-movers"),
+            {"year": 2026, "threshold": "3"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        by_item = {row["stock_item_id"]: row for row in response.data}
+        self.assertIn(self.item_b.pk, by_item)
+        self.assertNotIn(self.item_a.pk, by_item)  # avg 110/month, well above threshold
+        self.assertEqual(by_item[self.item_b.pk]["avg_monthly_sales"], 2.0)
+        self.assertEqual(by_item[self.item_b.pk]["months_with_data"], 1)
+
+        # item_c: 2 months of quantity_sold=2 each must collapse into ONE
+        # row (total_quantity=4, months_with_data=2, avg=2.0) — regression
+        # guard for the GROUP BY fragmentation bug (StockMonthlyStatistic's
+        # Meta.ordering leaking year/month into the aggregation, which
+        # would otherwise produce two separate rows for this one item).
+        self.assertIn(self.item_c.pk, by_item)
+        self.assertEqual(len([r for r in response.data if r["stock_item_id"] == self.item_c.pk]), 1)
+        self.assertEqual(Decimal(str(by_item[self.item_c.pk]["total_quantity"])), Decimal("4"))
+        self.assertEqual(by_item[self.item_c.pk]["months_with_data"], 2)
+        self.assertEqual(by_item[self.item_c.pk]["avg_monthly_sales"], 2.0)

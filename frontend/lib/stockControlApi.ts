@@ -194,12 +194,29 @@ export const stockControlApi = {
     },
 
     /**
-     * Get low stock items
+     * Get low stock items. ?search=&level=critical|low, paginated.
+     * Returns the paginated envelope ({count, results, ...}) — the
+     * backend action now paginates this list, so callers that just want
+     * the array should read `.results`.
      */
-    getLowStock: async () => {
-      const response = await api.get<StockItem[]>(
-        ENDPOINTS.STOCK_CONTROL.STOCK_ITEMS_LOW_STOCK
+    getLowStock: async (filters?: { search?: string; level?: 'critical' | 'low'; page?: number; page_size?: number }) => {
+      const response = await api.get<PaginatedStockItems>(
+        ENDPOINTS.STOCK_CONTROL.STOCK_ITEMS_LOW_STOCK,
+        { params: filters }
       );
+      return response.data;
+    },
+
+    /**
+     * Parameterized stock valuation. ?code_from=&code_to=&department=
+     * &cost_basis=last|average&ordering=
+     */
+    getValuationReport: async (filters?: { code_from?: string; code_to?: string; department?: number; cost_basis?: 'last' | 'average'; ordering?: string }) => {
+      const response = await api.get<{
+        cost_basis: string;
+        total_value: number;
+        items: { stock_code: string; description: string; department_id: number | null; department_name: string | null; quantity_on_hand: number; unit_cost: number; value: number }[];
+      }>(ENDPOINTS.STOCK_CONTROL.STOCK_ITEMS_VALUATION_REPORT, { params: filters });
       return response.data;
     },
 
@@ -576,6 +593,42 @@ export const stockControlApi = {
       const response = await api.get<
         { stock_item_id: string; stock_item__description: string; total_quantity: number; total_value: number }[]
       >(ENDPOINTS.STOCK_CONTROL.TOP_SELLERS, { params: filters });
+      return response.data;
+    },
+
+    /**
+     * INCOMING and RETURN transactions together. ?supplier=&stock_item=&date_from=&date_to=
+     */
+    receivedReturnedReport: async (filters?: { supplier?: number; stock_item?: string; date_from?: string; date_to?: string; page?: number; page_size?: number }) => {
+      const response = await api.get<PaginatedStockTransactions>(
+        ENDPOINTS.STOCK_CONTROL.RECEIVED_RETURNED_REPORT,
+        { params: filters }
+      );
+      return response.data;
+    },
+
+    /** Sales/cost/profit grouped by department. ?year= */
+    statsByDepartment: async (filters?: { year?: number }) => {
+      const response = await api.get<
+        { department_id: number | null; department_name: string; total_quantity: number; total_sales: number; total_cost: number; total_profit: number; margin_pct: number; item_count: number }[]
+      >(ENDPOINTS.STOCK_CONTROL.STATS_BY_DEPARTMENT, { params: filters });
+      return response.data;
+    },
+
+    /** Sales/cost/profit grouped by item, with monthly trend when ?stock_item= is given. ?year=&stock_item= */
+    statsByItem: async (filters?: { year?: number; stock_item?: string }) => {
+      const response = await api.get<{
+        by_item: { stock_item_id: string; description: string; total_quantity: number; total_sales: number; total_cost: number; total_profit: number; margin_pct: number }[];
+        by_month: { month: number; total_quantity: number; total_sales: number; total_cost: number; total_profit: number; margin_pct: number }[];
+      }>(ENDPOINTS.STOCK_CONTROL.STATS_BY_ITEM, { params: filters });
+      return response.data;
+    },
+
+    /** Items whose average monthly sales quantity <= threshold. ?year=&threshold= */
+    statsSlowMovers: async (filters?: { year?: number; threshold?: number }) => {
+      const response = await api.get<
+        { stock_item_id: string; description: string; total_quantity: number; total_sales: number; months_with_data: number; avg_monthly_sales: number }[]
+      >(ENDPOINTS.STOCK_CONTROL.STATS_SLOW_MOVERS, { params: filters });
       return response.data;
     },
   },

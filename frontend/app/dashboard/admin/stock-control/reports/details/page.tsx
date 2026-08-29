@@ -3,16 +3,26 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getStockItems, getStockSummary } from '@/lib/stockApi';
+import { api } from '@/lib/api';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { 
-  Loader, Search, ArrowLeft, Download, Package, 
+import {
+  Loader, Search, ArrowLeft, Download, Package,
   Filter, AlertTriangle
 } from 'lucide-react';
 import Link from 'next/link';
 import { Pagination } from '@/components/ui/pagination';
+
+const ORDERING_OPTIONS = [
+  { value: 'stock_code', label: 'Stock Code' },
+  { value: 'description', label: 'Description' },
+  { value: 'department', label: 'Department' },
+  { value: 'quantity_on_hand', label: 'Quantity on Hand' },
+  { value: 'cost_price', label: 'Cost Price' },
+  { value: 'selling_price_1', label: 'Selling Price' },
+];
 
 export default function DetailsReportPage() {
   const [page, setPage] = useState(1);
@@ -20,11 +30,26 @@ export default function DetailsReportPage() {
     search: '',
     is_active: 'all',
     department: 'all',
+    code_from: '',
+    code_to: '',
+    ordering: 'stock_code',
   });
 
   const { data: summary } = useQuery({
     queryKey: ['stock-summary'],
     queryFn: getStockSummary,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Was previously declared in filter state but never had a UI control to
+  // set it — always 'all' regardless of what the user picked, since there
+  // was no picker at all.
+  const { data: departments } = useQuery({
+    queryKey: ['departments'],
+    queryFn: async () => {
+      const response = await api.get('/api/v1/settings/departments/');
+      return response.data.results || response.data;
+    },
     staleTime: 5 * 60 * 1000,
   });
 
@@ -34,9 +59,11 @@ export default function DetailsReportPage() {
       search: filters.search || undefined,
       is_active: filters.is_active === 'all' ? undefined : filters.is_active === 'true',
       department: filters.department === 'all' ? undefined : parseInt(filters.department),
+      code_from: filters.code_from || undefined,
+      code_to: filters.code_to || undefined,
       page,
       page_size: 25,
-      ordering: 'stock_code',
+      ordering: filters.ordering,
     }),
     staleTime: 30 * 1000,
   });
@@ -127,8 +154,8 @@ export default function DetailsReportPage() {
 
           <div>
             <label className="text-sm font-medium text-gray-700 mb-1 block">Status</label>
-            <Select 
-              value={filters.is_active} 
+            <Select
+              value={filters.is_active}
               onValueChange={(value) => handleFilterChange('is_active', value)}
             >
               <SelectTrigger>
@@ -138,6 +165,61 @@ export default function DetailsReportPage() {
                 <SelectItem value="all">All Items</SelectItem>
                 <SelectItem value="true">Active Only</SelectItem>
                 <SelectItem value="false">Inactive Only</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1 block">Department</label>
+            <Select
+              value={filters.department}
+              onValueChange={(value) => handleFilterChange('department', value)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Departments</SelectItem>
+                {departments?.map((dept: any) => (
+                  <SelectItem key={dept.id} value={dept.id.toString()}>
+                    {dept.department_name || dept.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1 block">Code From</label>
+            <Input
+              placeholder="e.g. 1000"
+              value={filters.code_from}
+              onChange={(e) => handleFilterChange('code_from', e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1 block">Code To</label>
+            <Input
+              placeholder="e.g. 9999"
+              value={filters.code_to}
+              onChange={(e) => handleFilterChange('code_to', e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1 block">Sort By</label>
+            <Select
+              value={filters.ordering}
+              onValueChange={(value) => handleFilterChange('ordering', value)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ORDERING_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

@@ -64,6 +64,8 @@ export interface StockItemFilters {
   is_active?: boolean;
   tax_code?: number;
   kvi_flag?: boolean;
+  code_from?: string;
+  code_to?: string;
   page?: number;
   page_size?: number;
   ordering?: string;
@@ -224,6 +226,9 @@ export interface StockTransaction {
 export interface StockTransactionFilters {
   stock_item?: string;
   transaction_type?: string;
+  department?: number;
+  debtor?: number;
+  supplier?: number;
   date_from?: string;
   date_to?: string;
   search?: string;
