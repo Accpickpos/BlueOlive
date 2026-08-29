@@ -8,6 +8,7 @@ from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -60,6 +61,7 @@ from .serializers import (
     StockTransactionSerializer,
 )
 from .permissions import IsStockAccountant, IsStockMover
+from .services import StockTransactionService
 
 # ─────────────────────────────────────────────
 # StockItem
@@ -151,7 +153,11 @@ class StockItemViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
 
     @action(detail=True, methods=["get"])
     def pricing(self, request, pk=None):
-        """Return all pricing information for a stock item."""
+        """
+        Return all pricing information for a stock item. Pass ?debtor=<id>
+        to also resolve an active ContractPricing entry for that debtor
+        (priority: item-specific -> department -> supplier).
+        """
         item = self.get_object()
         data = {
             "stock_code": item.stock_code,
@@ -167,6 +173,7 @@ class StockItemViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
             "gross_profit_pct_2": item.calculate_gross_profit(2),
             "gross_profit_pct_3": item.calculate_gross_profit(3),
             "active_special_deal": None,
+            "contract_price": None,
             "future_prices": FuturePricingSerializer(
                 item.future_prices.filter(is_applied=False).order_by("effective_date"),
                 many=True,
@@ -178,7 +185,33 @@ class StockItemViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
         ).first()
         if deal:
             data["active_special_deal"] = SpecialDealSerializer(deal).data
+
+        debtor_id = request.query_params.get("debtor")
+        if debtor_id:
+            contract = self._find_contract_pricing(item, debtor_id, today)
+            if contract:
+                data["contract_price"] = contract.get_price(stock_item=item)
         return Response(data)
+
+    @staticmethod
+    def _find_contract_pricing(item, debtor_id, today):
+        """Priority: item-specific -> department -> supplier."""
+        base_qs = (
+            ContractPricing.objects.filter(debtor_id=debtor_id, is_active=True)
+            .filter(Q(valid_from__isnull=True) | Q(valid_from__lte=today))
+            .filter(Q(valid_until__isnull=True) | Q(valid_until__gte=today))
+        )
+        for field, value in (
+            ("stock_item", item.pk),
+            ("department", item.department_id),
+            ("supplier", item.supplier_id),
+        ):
+            if value is None:
+                continue
+            contract = base_qs.filter(**{field: value}).first()
+            if contract:
+                return contract
+        return None
 
     @action(detail=True, methods=["get"])
     def transactions(self, request, pk=None):
@@ -272,9 +305,13 @@ class StockItemViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
         serializer.is_valid(raise_exception=True)
         serializer.save(created_by=request.user.username)
 
-        item.quantity_on_hand = F("quantity_on_hand") + qty
+        # Plain arithmetic, not F("quantity_on_hand") + qty: StockItem's
+        # pre_save signal (validate_qty_allocation) reads
+        # instance.quantity_on_hand directly, and an unresolved F()
+        # expression there isn't a concrete Decimal yet, which crashes
+        # every call to this action with a TypeError.
+        item.quantity_on_hand = item.quantity_on_hand + Decimal(str(qty))
         item.save(update_fields=["quantity_on_hand"])
-        item.refresh_from_db()
 
         return Response(
             {
@@ -382,6 +419,17 @@ class PackBundleIngredientViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 
 
 class StockTransactionViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+    """
+    CRUD for stock transactions.
+
+    INCOMING/RETURN/MANUFACTURE creates are delegated to
+    StockTransactionService, which moves quantity_on_hand atomically as
+    part of the same request — posting one of these types through the
+    plain serializer (as every other transaction type still does) would
+    create the record without ever touching stock. Writes require
+    IsStockMover, matching every other stock-moving action in this app.
+    """
+
     queryset = StockTransaction.objects.select_related(
         "stock_item", "department", "tax_code", "debtor", "supplier"
     )
@@ -399,8 +447,55 @@ class StockTransactionViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     ordering_fields = ["transaction_date", "id"]
     ordering = ["-transaction_date", "-id"]
 
+    STOCK_MOVING_TYPES = ("INCOMING", "RETURN", "MANUFACTURE")
+
+    def get_permissions(self):
+        if self.action == "create":
+            return [IsAuthenticated(), IsStockMover()]
+        return [IsAuthenticated()]
+
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user.username)
+        data = serializer.validated_data
+        tx_type = data.get("transaction_type")
+        username = self.request.user.username
+
+        if tx_type not in self.STOCK_MOVING_TYPES:
+            serializer.save(created_by=username)
+            return
+
+        try:
+            if tx_type == "INCOMING":
+                tx = StockTransactionService.create_incoming_transaction(
+                    stock_item=data["stock_item"],
+                    quantity=data.get("quantity_in") or 0,
+                    unit_cost=data.get("unit_cost") or 0,
+                    supplier=data.get("supplier"),
+                    comments=data.get("comments", "") or "",
+                    transaction_date=data.get("transaction_date"),
+                    created_by=username,
+                )
+            elif tx_type == "RETURN":
+                tx = StockTransactionService.create_return_transaction(
+                    stock_item=data["stock_item"],
+                    quantity=data.get("quantity_out") or 0,
+                    unit_cost=data.get("unit_cost") or 0,
+                    supplier=data.get("supplier"),
+                    comments=data.get("comments", "") or "",
+                    transaction_date=data.get("transaction_date"),
+                    created_by=username,
+                )
+            else:  # MANUFACTURE
+                tx = StockTransactionService.create_manufacture_transaction(
+                    bundle_stock_item=data["stock_item"],
+                    quantity=data.get("quantity_in") or 0,
+                    unit_cost=data.get("unit_cost") or None,
+                    comments=data.get("comments", "") or "",
+                    transaction_date=data.get("transaction_date"),
+                    created_by=username,
+                )
+        except ValueError as e:
+            raise DRFValidationError(str(e))
+        serializer.instance = tx
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -490,34 +585,38 @@ class StockTakeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             )
         items = take.items.select_related("stock_item")
         updated = 0
-        for item in items:
-            if not item.is_counted and not take.set_uncounted_to_zero:
-                continue
-            counted = item.quantity_counted
-            if take.reset_negatives_to_zero and counted < 0:
-                counted = 0
+        alias = take._state.db or "default"
+        with transaction.atomic(using=alias):
+            for item in items:
+                if not item.is_counted and not take.set_uncounted_to_zero:
+                    continue
+                counted = item.quantity_counted
+                if take.reset_negatives_to_zero and counted < 0:
+                    counted = 0
 
-            stock_item = item.stock_item
-            adjustment = Decimal(str(counted)) - stock_item.quantity_on_hand
-
-            stock_item.quantity_on_hand = counted
-            stock_item.save(update_fields=["quantity_on_hand"])
-            item.calculate_variance()
-
-            if adjustment != 0:
-                StockTransaction.objects.create(
-                    transaction_type="STOCK_TAKE",
-                    stock_item=stock_item,
-                    transaction_date=take.stock_take_date,
-                    quantity_in=adjustment if adjustment > 0 else Decimal("0"),
-                    quantity_out=-adjustment if adjustment < 0 else Decimal("0"),
-                    unit_cost=item.cost_price_at_count,
-                    comments=f"Stock take #{take.id}"[:30],
+                stock_item = StockItem.objects.select_for_update().get(
+                    pk=item.stock_item_id
                 )
+                adjustment = Decimal(str(counted)) - stock_item.quantity_on_hand
 
-            updated += 1
-        take.status = "UPDATED"
-        take.save(update_fields=["status"])
+                stock_item.quantity_on_hand = counted
+                stock_item.save(update_fields=["quantity_on_hand"])
+                item.calculate_variance()
+
+                if adjustment != 0:
+                    StockTransaction.objects.create(
+                        transaction_type="STOCK_TAKE",
+                        stock_item=stock_item,
+                        transaction_date=take.stock_take_date,
+                        quantity_in=adjustment if adjustment > 0 else Decimal("0"),
+                        quantity_out=-adjustment if adjustment < 0 else Decimal("0"),
+                        unit_cost=item.cost_price_at_count,
+                        comments=f"Stock take #{take.id}"[:30],
+                    )
+
+                updated += 1
+            take.status = "UPDATED"
+            take.save(update_fields=["status"])
         return Response({"message": f"Stock updated for {updated} items."})
 
     @action(detail=True, methods=["get"], url_path="variance-report")
@@ -577,6 +676,39 @@ class ContractPricingViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         "pricing_method",
         "is_active",
     ]
+
+    @action(detail=False, methods=["get"], url_path="active-for")
+    def active_for(self, request):
+        """
+        Resolve the active contract price for ?debtor=&stock_item=
+        (priority: item-specific -> department -> supplier), honoring
+        valid_from/valid_until.
+        """
+        debtor_id = request.query_params.get("debtor")
+        stock_code = request.query_params.get("stock_item")
+        if not debtor_id or not stock_code:
+            return Response(
+                {"error": "debtor and stock_item are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            item = StockItem.objects.get(pk=stock_code)
+        except StockItem.DoesNotExist:
+            return Response(
+                {"error": f"Unknown stock item '{stock_code}'."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        contract = StockItemViewSet._find_contract_pricing(
+            item, debtor_id, timezone.now().date()
+        )
+        if not contract:
+            return Response({"contract_price": None})
+        return Response(
+            {
+                "contract_price": contract.get_price(stock_item=item),
+                "contract": ContractPricingSerializer(contract).data,
+            }
+        )
 
 
 # ─────────────────────────────────────────────

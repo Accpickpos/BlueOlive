@@ -4,9 +4,15 @@ from decimal import Decimal
 from apps.creditors.models import Creditor
 from apps.debtors.models import Debtor
 from apps.settings.models import SalesDepartment, TaxCode
-from django.contrib.auth.models import User
-from django.test import TestCase
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
+from django.test import TestCase, override_settings
+from django.urls import reverse
 from django.utils import timezone
+from rest_framework import status
+from rest_framework.test import APITestCase
+
+User = get_user_model()
 
 from .models import (
     ContractPricing,
@@ -304,9 +310,7 @@ class ContractPricingTest(TestCase):
         """Set up test data"""
         cls.department = SalesDepartment.objects.create(number=1, name="Groceries")
 
-        cls.debtor = Debtor.objects.create(
-            account_number="DEB001", name="Test Debtor", contact_person="Jane Doe"
-        )
+        cls.debtor = Debtor.objects.create(dno=1001, dname="Test Debtor")
 
     def setUp(self):
         """Set up test fixtures"""
@@ -342,3 +346,106 @@ class ContractPricingTest(TestCase):
         price = contract.get_price(self.stock_item)
         expected = Decimal("100.00") * (1 + Decimal("20.00") / 100)
         self.assertEqual(price, expected)
+
+    def test_contract_pricing_valid_date_range(self):
+        """get_price() returns None outside valid_from/valid_until."""
+        today = timezone.now().date()
+        contract = ContractPricing.objects.create(
+            debtor=self.debtor,
+            stock_item=self.stock_item,
+            pricing_method="ACTUAL",
+            contract_price=Decimal("120.00"),
+            valid_from=today - timedelta(days=1),
+            valid_until=today + timedelta(days=1),
+        )
+        self.assertEqual(contract.get_price(), Decimal("120.00"))
+
+        contract.valid_until = today - timedelta(days=1)
+        contract.save()
+        self.assertIsNone(contract.get_price())
+
+    def test_contract_pricing_unbounded_dates_always_valid(self):
+        """Null valid_from/valid_until means unbounded on that side."""
+        contract = ContractPricing.objects.create(
+            debtor=self.debtor,
+            stock_item=self.stock_item,
+            pricing_method="ACTUAL",
+            contract_price=Decimal("120.00"),
+        )
+        self.assertEqual(contract.get_price(), Decimal("120.00"))
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+)
+class StockTransactionServiceEndpointTest(APITestCase):
+    """
+    API-level regression test for the bug this whole change fixes: posting
+    an INCOMING transaction through /stock-transactions/ used to create
+    the row without ever moving quantity_on_hand, and the endpoint had no
+    IsStockMover gate at all.
+
+    Overrides CACHES to locmem: DRF's throttle check reads through the
+    default cache backend, which is Redis in this project's settings —
+    not available in a plain test run, and unrelated to what these tests
+    are actually verifying.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.department = SalesDepartment.objects.create(number=1, name="Groceries")
+
+    def setUp(self):
+        self.item = StockItem.objects.create(
+            stock_code="TEST001",
+            description="Test Product",
+            department=self.department,
+            cost_price=Decimal("100.00"),
+            quantity_on_hand=Decimal("50"),
+        )
+        # is_superuser=True: ShopUser.save() requires an active tenant
+        # context for any non-superuser, which isn't set up in this
+        # single-DB test run (DISABLE_TENANT_ROUTER=1) — superuser status
+        # only bypasses that save() guard here, it's unrelated to (and
+        # doesn't satisfy on its own) the IsStockMover group check below.
+        self.mover = User.objects.create_user(
+            username="mover",
+            email="mover@example.com",
+            password="x",
+            is_superuser=True,
+        )
+        self.mover.groups.add(Group.objects.create(name="Cashier"))
+        self.plain_user = User.objects.create_user(
+            username="plain",
+            email="plain@example.com",
+            password="x",
+            is_superuser=True,
+        )
+
+    def test_non_mover_cannot_create_transaction(self):
+        self.client.force_authenticate(self.plain_user)
+        response = self.client.post(
+            reverse("stocktransaction-list"),
+            {
+                "transaction_type": "INCOMING",
+                "stock_item": self.item.stock_code,
+                "quantity_in": "5",
+                "unit_cost": "100.00",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_incoming_transaction_moves_quantity_on_hand(self):
+        self.client.force_authenticate(self.mover)
+        response = self.client.post(
+            reverse("stocktransaction-list"),
+            {
+                "transaction_type": "INCOMING",
+                "stock_item": self.item.stock_code,
+                "quantity_in": "5",
+                "unit_cost": "100.00",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.quantity_on_hand, Decimal("55"))

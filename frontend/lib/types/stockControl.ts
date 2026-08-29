@@ -322,22 +322,18 @@ export interface PaginatedStockTakes {
 export interface ContractPricing {
   id: number;
   debtor: number | string;
-  debtor_detail?: {
-    id: number;
-    customer_number: string;
-    name: string;
-  };
-  stock_item?: string;
-  stock_item_detail?: StockItem;
-  department?: number;
-  department_detail?: {
-    id: number;
-    name: string;
-  };
-  contract_price: number;
+  stock_item?: string | null;
+  department?: number | null;
+  supplier?: number | null;
+  pricing_method: 'ACTUAL' | 'COST_MARKUP';
+  contract_price?: number | null;
+  markup_percent?: number | null;
   discount_percent?: number;
-  effective_date: string;
-  end_date?: string;
+  last_selling_price?: number;
+  last_updated_date?: string | null;
+  valid_from?: string | null;
+  valid_until?: string | null;
+  is_fixed_pricing?: boolean;
   is_active: boolean;
   created_at?: string;
   updated_at?: string;

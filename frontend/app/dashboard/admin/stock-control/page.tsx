@@ -114,15 +114,15 @@ export default function StockControlOverviewPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { href: '/dashboard/admin/stock-control/maintenance/items', icon: Package, color: 'blue', title: 'Stock Items', desc: 'Create and maintain stock items' },
-              { href: '/dashboard/admin/stock-control/maintenance/special-deals', icon: Tags, color: 'purple', title: 'Special Deals', desc: 'Promotional pricing management' },
+              { href: '/dashboard/admin/stock-control/maintenance', icon: Tags, color: 'purple', title: 'Special Deals', desc: 'Promotional pricing management' },
               { href: '/dashboard/admin/stock-control/maintenance/prices', icon: DollarSign, color: 'green', title: 'Prices', desc: 'Cost and selling price management' },
               { href: '/dashboard/admin/stock-control/maintenance/departments', icon: Layers, color: 'indigo', title: 'Sales Depts', desc: 'Sales department setup' },
               { href: '/dashboard/admin/stock-control/maintenance/areas', icon: TrendingUp, color: 'amber', title: 'Sales Areas', desc: 'Salesman and area management' },
-              { href: '/dashboard/admin/stock-control/maintenance/contracts', icon: FileText, color: 'cyan', title: 'Contract Pricing', desc: 'Debtor-specific pricing' },
+              { href: '/dashboard/admin/stock-control/maintenance', icon: FileText, color: 'cyan', title: 'Contract Pricing', desc: 'Debtor-specific pricing' },
               { href: '/dashboard/admin/stock-control/maintenance/shrink-wraps', icon: Box, color: 'pink', title: 'Shrink Wraps', desc: 'Bulk to unit relationships' },
-              { href: '/dashboard/admin/stock-control/maintenance/packs', icon: Settings, color: 'gray', title: 'Packs/Bundles', desc: 'Finished goods and recipes' },
+              { href: '/dashboard/admin/stock-control/maintenance', icon: Settings, color: 'gray', title: 'Packs/Bundles', desc: 'Finished goods and recipes' },
             ].map((item) => (
-              <Link key={item.href} href={item.href}>
+              <Link key={item.title} href={item.href}>
                 <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer h-full">
                   <item.icon className={`w-8 h-8 text-${item.color}-600 mb-3`} />
                   <h3 className="font-bold">{item.title}</h3>
@@ -136,12 +136,12 @@ export default function StockControlOverviewPage() {
         <TabsContent value="transactions" className="mt-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { href: '/dashboard/admin/stock-control/transactions/incoming', icon: ArrowDown, color: 'green', title: 'Incoming Stock', desc: 'Goods received notes' },
-              { href: '/dashboard/admin/stock-control/transactions/returns', icon: ArrowUp, color: 'red', title: 'Stock Returns', desc: 'Returns to suppliers' },
+              { href: '/dashboard/admin/stock-control/transactions', icon: ArrowDown, color: 'green', title: 'Incoming Stock', desc: 'Goods received notes' },
+              { href: '/dashboard/admin/stock-control/transactions', icon: ArrowUp, color: 'red', title: 'Stock Returns', desc: 'Returns to suppliers' },
               { href: '/dashboard/admin/stock-control/transactions/stocktake', icon: Activity, color: 'amber', title: 'Stock Take', desc: 'Physical inventory count' },
-              { href: '/dashboard/admin/stock-control/transactions/manufacture', icon: Settings, color: 'blue', title: 'Manufacture', desc: 'Pack/bundle manufacturing' },
+              { href: '/dashboard/admin/stock-control/transactions', icon: Settings, color: 'blue', title: 'Manufacture', desc: 'Pack/bundle manufacturing' },
             ].map((item) => (
-              <Link key={item.href} href={item.href}>
+              <Link key={item.title} href={item.href}>
                 <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer h-full">
                   <item.icon className={`w-8 h-8 text-${item.color}-600 mb-3`} />
                   <h3 className="font-bold">{item.title}</h3>

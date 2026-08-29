@@ -73,15 +73,23 @@ export const stockControlApi = {
 
     /**
      * Thin typeahead lookup for stock item pickers — hits
-     * StockItemViewSet.lookup (LookupActionMixin), returns a flat array (no
-     * pagination envelope) of StockItemListSerializer rows.
+     * StockItemViewSet.lookup (LookupActionMixin), returns
+     * {results, count, has_more} of StockItemListSerializer rows.
      */
-    lookup: async (query: string, limit = 20): Promise<StockItem[]> => {
-      const response = await api.get<StockItem[]>(
+    lookup: async (
+      query: string,
+      limit = 20,
+      offset = 0
+    ): Promise<{ results: StockItem[]; count: number; hasMore: boolean }> => {
+      const response = await api.get<{ results: StockItem[]; count: number; has_more: boolean }>(
         `${ENDPOINTS.STOCK_CONTROL.STOCK_ITEMS}lookup/`,
-        { params: { search: query, limit } }
+        { params: { search: query, limit, offset } }
       );
-      return response.data;
+      return {
+        results: response.data.results,
+        count: response.data.count,
+        hasMore: response.data.has_more,
+      };
     },
 
     /**
@@ -588,6 +596,20 @@ export const stockControlApi = {
 
   // ============ STOCK TAKE ITEMS ============
   stockTakeItems: {
+    /**
+     * List stock take items, e.g. filter by { stock_take, stock_item } to
+     * find an existing row before deciding whether to create() or
+     * recordCount() against it.
+     */
+    list: async (filters?: { stock_take?: number; stock_item?: string; is_counted?: boolean }) => {
+      const response = await api.get<{ results: StockTakeItem[] } | StockTakeItem[]>(
+        ENDPOINTS.STOCK_CONTROL.STOCK_TAKE_ITEMS,
+        { params: filters }
+      );
+      const data = response.data as any;
+      return (data.results ?? data) as StockTakeItem[];
+    },
+
     /**
      * Add an item to a stock take, capturing the system quantity at the
      * time it's added. Count it afterwards via recordCount().

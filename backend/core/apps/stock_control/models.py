@@ -614,7 +614,13 @@ class StockTransaction(models.Model):
         StockItem, on_delete=models.PROTECT, related_name="transactions"
     )
     # DATE D 8
-    transaction_date = models.DateField(default=timezone.now)
+    # default=timezone.localdate, not timezone.now: this is a DateField, and
+    # timezone.now() returns a full datetime. When a caller omits
+    # transaction_date, DRF injects the model field's raw default into
+    # validated_data unconverted, so a stray datetime here reaches
+    # DateField.to_representation() on the response and fails its
+    # assert-not-a-datetime check.
+    transaction_date = models.DateField(default=timezone.localdate)
     # TIME C 5
     transaction_time = models.TimeField(
         null=True, blank=True, help_text="Time of transaction (HH:MM)"
@@ -820,7 +826,7 @@ class StockTake(models.Model):
         ("UPDATED", "Updated"),
     ]
 
-    stock_take_date = models.DateField(default=timezone.now)
+    stock_take_date = models.DateField(default=timezone.localdate)
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default="IN_PROGRESS"
     )
@@ -940,6 +946,12 @@ class ContractPricing(models.Model):
     last_updated_date = models.DateField(
         null=True, blank=True, help_text="LUPDATE - Last update date for contract"
     )
+    valid_from = models.DateField(
+        null=True, blank=True, help_text="Contract price valid from (unbounded if blank)"
+    )
+    valid_until = models.DateField(
+        null=True, blank=True, help_text="Contract price valid until (unbounded if blank)"
+    )
     is_fixed_pricing = models.BooleanField(
         default=False, help_text="FIXEDPRICE - Prevent POS from changing price"
     )
@@ -967,8 +979,18 @@ class ContractPricing(models.Model):
         )
         return f"Contract: {self.debtor.account_number} - {item_desc}"
 
+    def is_valid_today(self):
+        today = timezone.now().date()
+        if self.valid_from and today < self.valid_from:
+            return False
+        if self.valid_until and today > self.valid_until:
+            return False
+        return True
+
     def get_price(self, stock_item=None):
-        """Calculate contract price based on method"""
+        """Calculate contract price based on method, honoring valid_from/valid_until."""
+        if not self.is_valid_today():
+            return None
         if self.pricing_method == "ACTUAL":
             return self.contract_price
         elif self.pricing_method == "COST_MARKUP" and stock_item:
@@ -1116,7 +1138,7 @@ class GroupOrder(models.Model):
 
     id = models.BigAutoField(primary_key=True)
     group_order_number = models.CharField(max_length=20, unique=True)
-    order_date = models.DateField(default=timezone.now)
+    order_date = models.DateField(default=timezone.localdate)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="DRAFT")
     branch = models.ForeignKey(
         Branch, on_delete=models.PROTECT, related_name="group_orders"
@@ -1327,7 +1349,7 @@ class BranchTransferInvoice(models.Model):
         BranchTransfer, on_delete=models.CASCADE, related_name="invoice"
     )
     invoice_number = models.CharField(max_length=20, unique=True)
-    invoice_date = models.DateField(default=timezone.now)
+    invoice_date = models.DateField(default=timezone.localdate)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="DRAFT")
 
     subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
