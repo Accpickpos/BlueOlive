@@ -574,7 +574,23 @@ class StockTakeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         permission_classes=[IsAuthenticated, IsStockMover],
     )
     def update_stock(self, request, pk=None):
-        """Apply counted quantities as adjustments to stock QOH."""
+        """
+        Apply counted quantities as adjustments to stock QOH.
+
+        Body: { "mode": "overwrite" | "additive" }, default "overwrite".
+        - overwrite: quantity_counted IS the new QOH (unless the take is
+          After-Trading, see below).
+        - additive: quantity_counted is a DELTA added to current QOH,
+          for stock takes captured as "+" counts rather than absolute
+          readings. Mutually exclusive with an After-Trading take (v1 -
+          combining them is ambiguous and wasn't asked for).
+
+        When take.is_after_trading (real sales/receipts happened between
+        the physical count and this call), the count alone isn't the
+        correct target: target = counted + net stock movement recorded
+        since trading_start_date (excluding other STOCK_TAKE rows), so
+        those movements aren't clobbered by the count.
+        """
         take = self.get_object()
         if take.status not in ("COMPLETED", "IN_PROGRESS"):
             return Response(
@@ -583,6 +599,26 @@ class StockTakeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        mode = request.data.get("mode", "overwrite")
+        if mode not in ("overwrite", "additive"):
+            return Response(
+                {"error": "mode must be 'overwrite' or 'additive'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if mode == "additive" and take.is_after_trading:
+            return Response(
+                {
+                    "error": "additive mode cannot be combined with an After-Trading stock take."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if take.is_after_trading and not take.trading_start_date:
+            return Response(
+                {"error": "trading_start_date is required when is_after_trading is set."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         items = take.items.select_related("stock_item")
         updated = 0
         alias = take._state.db or "default"
@@ -597,9 +633,28 @@ class StockTakeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 stock_item = StockItem.objects.select_for_update().get(
                     pk=item.stock_item_id
                 )
-                adjustment = Decimal(str(counted)) - stock_item.quantity_on_hand
 
-                stock_item.quantity_on_hand = counted
+                if mode == "additive":
+                    target = stock_item.quantity_on_hand + counted
+                elif take.is_after_trading:
+                    movements = (
+                        StockTransaction.objects.filter(
+                            stock_item=stock_item,
+                            created_at__gte=take.trading_start_date,
+                        )
+                        .exclude(transaction_type="STOCK_TAKE")
+                        .aggregate(total_in=Sum("quantity_in"), total_out=Sum("quantity_out"))
+                    )
+                    net_movement = (movements["total_in"] or Decimal("0")) - (
+                        movements["total_out"] or Decimal("0")
+                    )
+                    target = counted + net_movement
+                else:
+                    target = counted
+
+                adjustment = target - stock_item.quantity_on_hand
+
+                stock_item.quantity_on_hand = target
                 stock_item.save(update_fields=["quantity_on_hand"])
                 item.calculate_variance()
 

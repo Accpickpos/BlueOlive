@@ -574,11 +574,14 @@ export const stockControlApi = {
     },
 
     /**
-     * Update stock from stock take
+     * Update stock from stock take. mode 'overwrite' (default) treats
+     * quantity_counted as the new QOH; 'additive' treats it as a delta
+     * added to current QOH.
      */
-    updateStock: async (id: number) => {
+    updateStock: async (id: number, mode?: 'overwrite' | 'additive') => {
       const response = await api.post(
-        ENDPOINTS.STOCK_CONTROL.STOCK_TAKE_UPDATE_STOCK(id)
+        ENDPOINTS.STOCK_CONTROL.STOCK_TAKE_UPDATE_STOCK(id),
+        mode ? { mode } : undefined
       );
       return response.data;
     },

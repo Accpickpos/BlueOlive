@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Trash2, Save, X } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { stockControlApi } from '@/lib/stockControlApi';
 
 interface StockAdjustmentsProps {
   onBack: () => void;
@@ -29,12 +30,17 @@ export default function StockAdjustments({ onBack }: StockAdjustmentsProps) {
     },
   });
 
-  // Create adjustment transaction
+  // Apply the adjustment via StockItemViewSet.adjust_stock, the endpoint
+  // that actually creates the ADJUSTMENT transaction and moves QOH in one
+  // step — this used to post a raw StockTransaction to a URL that doesn't
+  // exist, and even fixed to the right URL, type: 'ADJUSTMENT' isn't one
+  // of the types the backend moves stock for automatically.
   const createAdjustment = useMutation({
-    mutationFn: async (data: any) => {
-      const response = await api.post('/api/stock-control/transactions/', data);
-      return response.data;
-    },
+    mutationFn: async (data: { stockCode: string; quantity: number; comments: string }) =>
+      stockControlApi.stockItems.adjustStock(data.stockCode, {
+        quantity: data.quantity,
+        comments: data.comments,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stock-items'] });
       alert('Stock adjustment completed successfully!');
@@ -112,19 +118,11 @@ export default function StockAdjustments({ onBack }: StockAdjustmentsProps) {
 
     try {
       for (const adj of adjustments) {
-        const transactionData = {
-          transaction_type: 'ADJUSTMENT',
-          stock_item: adj.stock_code,
-          quantity_in: Math.max(0, adj.difference),
-          quantity_out: Math.max(0, -adj.difference),
-          unit_cost: 0,
-          unit_price: 0,
-          transaction_date: new Date().toISOString(),
-          transaction_number: `ADJ-${Date.now()}`,
-          reference: adj.reason,
-        };
-
-        await createAdjustment.mutateAsync(transactionData);
+        await createAdjustment.mutateAsync({
+          stockCode: adj.stock_code,
+          quantity: adj.difference,
+          comments: adj.reason,
+        });
       }
     } catch (error) {
       console.error('Error creating adjustment:', error);

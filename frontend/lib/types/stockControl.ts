@@ -563,9 +563,11 @@ export interface StockItemPricing {
 // ============================================================================
 
 export interface StockAdjustment {
-  stock_code: string;
-  adjustment_quantity: number;
-  comments: string;
+  // Matches StockItemViewSet.adjust_stock's body shape: signed quantity
+  // (positive = stock in, negative = stock out), not adjustment_quantity
+  // (no such field on the backend).
+  quantity: number;
+  comments?: string;
 }
 
 // ============================================================================

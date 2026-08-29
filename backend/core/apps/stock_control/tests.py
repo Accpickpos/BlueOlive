@@ -449,3 +449,140 @@ class StockTransactionServiceEndpointTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.item.refresh_from_db()
         self.assertEqual(self.item.quantity_on_hand, Decimal("55"))
+
+
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+)
+class StockTakeUpdateStockModeTest(APITestCase):
+    """
+    Phase 2: StockTakeViewSet.update_stock previously always overwrote QOH
+    with the counted quantity, with no additive mode and no branching on
+    is_after_trading despite those fields existing on the model.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.department = SalesDepartment.objects.create(number=1, name="Groceries")
+
+    def setUp(self):
+        self.mover = User.objects.create_user(
+            username="mover2",
+            email="mover2@example.com",
+            password="x",
+            is_superuser=True,
+        )
+        self.mover.groups.add(Group.objects.create(name="Cashier"))
+        self.client.force_authenticate(self.mover)
+
+        self.item = StockItem.objects.create(
+            stock_code="TAKE001",
+            description="Take Test Product",
+            department=self.department,
+            cost_price=Decimal("100.00"),
+            quantity_on_hand=Decimal("50"),
+        )
+
+    def _make_take(self, **kwargs):
+        return StockTake.objects.create(
+            stock_take_date=timezone.now().date(), status="IN_PROGRESS", **kwargs
+        )
+
+    def _make_item(self, take, counted):
+        return StockTakeItem.objects.create(
+            stock_take=take,
+            stock_item=self.item,
+            quantity_on_hand=self.item.quantity_on_hand,
+            quantity_counted=counted,
+            cost_price_at_count=self.item.cost_price,
+            is_counted=True,
+        )
+
+    def _update_stock(self, take, **body):
+        return self.client.post(
+            reverse("stocktake-update-stock", args=[take.id]), body
+        )
+
+    def test_overwrite_mode_is_the_default_and_matches_prior_behavior(self):
+        take = self._make_take()
+        self._make_item(take, Decimal("48"))
+
+        response = self._update_stock(take)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.quantity_on_hand, Decimal("48"))
+
+    def test_additive_mode_adds_counted_as_a_delta(self):
+        take = self._make_take()
+        self._make_item(take, Decimal("5"))
+
+        response = self._update_stock(take, mode="additive")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.quantity_on_hand, Decimal("55"))  # 50 + 5
+
+    def test_additive_mode_two_counts_sum_correctly(self):
+        take = self._make_take()
+        item = self._make_item(take, Decimal("5"))
+
+        self._update_stock(take, mode="additive")
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.quantity_on_hand, Decimal("55"))
+
+        # A second additive pass (e.g. a follow-up recount) adds again on
+        # top of the now-updated QOH.
+        item.quantity_counted = Decimal("3")
+        item.save(update_fields=["quantity_counted"])
+        take.status = "IN_PROGRESS"
+        take.save(update_fields=["status"])
+        self._update_stock(take, mode="additive")
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.quantity_on_hand, Decimal("58"))  # 55 + 3
+
+    def test_invalid_mode_rejected(self):
+        take = self._make_take()
+        self._make_item(take, Decimal("48"))
+        response = self._update_stock(take, mode="bogus")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_additive_and_after_trading_together_rejected(self):
+        take = self._make_take(
+            is_after_trading=True, trading_start_date=timezone.now()
+        )
+        self._make_item(take, Decimal("48"))
+        response = self._update_stock(take, mode="additive")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_after_trading_without_start_date_rejected(self):
+        take = self._make_take(is_after_trading=True)
+        self._make_item(take, Decimal("48"))
+        response = self._update_stock(take)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_after_trading_preserves_movement_since_count_started(self):
+        """
+        An INCOMING transaction posted after trading_start_date must
+        survive update_stock rather than being wiped out by the earlier
+        physical count: target = counted + net movement since
+        trading_start_date.
+        """
+        trading_start = timezone.now() - timedelta(hours=2)
+        take = self._make_take(is_after_trading=True, trading_start_date=trading_start)
+        # Physical count read 48 at count time (QOH was 50 then).
+        self._make_item(take, Decimal("48"))
+
+        # Real stock movement after the count started: +10 received.
+        StockTransaction.objects.create(
+            transaction_type="INCOMING",
+            stock_item=self.item,
+            quantity_in=Decimal("10"),
+            unit_cost=Decimal("100.00"),
+        )
+        self.item.quantity_on_hand = Decimal("60")  # 50 + 10, as INCOMING would apply
+        self.item.save(update_fields=["quantity_on_hand"])
+
+        response = self._update_stock(take)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.item.refresh_from_db()
+        # target = counted(48) + net_movement(+10) = 58
+        self.assertEqual(self.item.quantity_on_hand, Decimal("58"))
