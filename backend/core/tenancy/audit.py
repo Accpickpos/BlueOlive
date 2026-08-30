@@ -33,11 +33,19 @@ class AuditLog(models.Model):
         ("PERMISSION_CHANGE", "Permission Changed"),
         ("ROLE_CHANGE", "Role Changed"),
         ("TENANT_ACCESS", "Cross-Tenant Access Attempt"),
+        ("SUPERUSER_IMPERSONATION", "Superuser Tenant Impersonation"),
         ("DATA_ACCESS", "Sensitive Data Access"),
         ("PASSWORD_CHANGE", "Password Changed"),
+        ("POS_POSTED", "POS Document Posted"),
+        ("POS_CANCELLED", "POS Document Cancelled"),
     ]
 
-    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    # Not a ForeignKey: AuditLog lives in the shared default database, but the
+    # user performing the action is a ShopUser in a per-tenant database.
+    # Django's router forbids cross-database relations, so this is a plain
+    # soft reference (matches the `user_id INT` column with no FK constraint
+    # created in migration 0005_create_auditlog_table).
+    user_id = models.IntegerField(null=True, blank=True)
     action = models.CharField(max_length=20, choices=ACTION_CHOICES)
     resource_type = models.CharField(
         max_length=50, blank=True, help_text="Model name (e.g., 'ShopUser', 'Shop')"
@@ -70,13 +78,15 @@ class AuditLog(models.Model):
         )
         indexes = [
             models.Index(fields=["timestamp"]),
-            models.Index(fields=["user", "timestamp"]),
+            models.Index(fields=["user_id", "timestamp"]),
             models.Index(fields=["action", "timestamp"]),
             models.Index(fields=["tenant_id", "timestamp"]),
         ]
 
     def __str__(self):
-        return f"{self.get_action_display()} by {self.user} at {self.timestamp}"
+        return (
+            f"{self.get_action_display()} by user_id={self.user_id} at {self.timestamp}"
+        )
 
     @classmethod
     def log_action(
@@ -111,16 +121,20 @@ class AuditLog(models.Model):
         tenant = get_current_tenant()
         tenant_id = tenant.id if tenant else None
 
+        log_details = dict(details or {})
+        if user is not None and "username" not in log_details:
+            log_details["username"] = getattr(user, "username", "")
+
         try:
             cls.objects.create(
-                user=user,
+                user_id=getattr(user, "id", None),
                 action=action,
                 resource_type=resource_type or "",
                 resource_id=resource_id or "",
                 ip_address=ip_address,
                 user_agent=user_agent,
                 tenant_id=tenant_id,
-                details=details or {},
+                details=log_details,
                 success=success,
                 error_message=error_message or "",
             )
@@ -214,6 +228,13 @@ class UserAuditLog:
         )
 
     @staticmethod
+    def log_user_updated(request, user, changes=None):
+        """Log a user updating their own profile (self-service update)."""
+        UserAuditLog.log_update(
+            request, updated_user=user, actor_user=user, changes=changes
+        )
+
+    @staticmethod
     def log_delete(request, deleted_user, actor_user):
         """Log user deletion"""
         AuditLog.log_action(
@@ -251,6 +272,22 @@ class TenantAuditLog:
     """
 
     @staticmethod
+    def log_superuser_impersonation(request, superuser, target_tenant, reason=None):
+        """Log a superuser impersonating a tenant for support/debugging."""
+        AuditLog.log_action(
+            action="SUPERUSER_IMPERSONATION",
+            request=request,
+            user=superuser,
+            resource_type="Tenant",
+            resource_id=str(target_tenant.id),
+            details={
+                "target_tenant_id": target_tenant.id,
+                "target_tenant_slug": getattr(target_tenant, "slug", None),
+                "reason": reason or "Not specified",
+            },
+        )
+
+    @staticmethod
     def log_cross_tenant_access_attempt(
         request, user, attempted_tenant_id, actual_tenant_id
     ):
@@ -273,4 +310,41 @@ class TenantAuditLog:
         logger.warning(
             f"Cross-tenant access attempt: user_id={user.id if user else 'unknown'} "
             f"attempted_tenant={attempted_tenant_id}, actual_tenant={actual_tenant_id}"
+        )
+
+
+class POSAuditLog:
+    """
+    Convenience class for POS financial-document audit logging (sale/credit
+    note/cash return/receipt/cheque posting and cancellation). request=None
+    is safe here: log_action already guards ip_address/user_agent
+    extraction on `if request else None`, and these documents are posted
+    from service-layer code that doesn't have the request object threaded
+    through — only the acting user.
+    """
+
+    @staticmethod
+    def log_document_posted(user, document_type, document_number, details=None):
+        """Log a POS document (credit note, cash return, ...) being posted."""
+        AuditLog.log_action(
+            action="POS_POSTED",
+            request=None,
+            user=user,
+            resource_type=document_type,
+            resource_id=document_number,
+            details=details or {},
+        )
+
+    @staticmethod
+    def log_document_cancelled(
+        user, document_type, document_number, reason, details=None
+    ):
+        """Log a POS document (sale, credit note, cash return, ...) being cancelled."""
+        AuditLog.log_action(
+            action="POS_CANCELLED",
+            request=None,
+            user=user,
+            resource_type=document_type,
+            resource_id=document_number,
+            details={**(details or {}), "reason": reason},
         )

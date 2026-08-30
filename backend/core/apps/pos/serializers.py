@@ -598,6 +598,12 @@ class QuotationDetailSerializer(serializers.ModelSerializer):
     lines = QuotationLineSerializer(many=True, read_only=True)
     sales_area_detail = SalesAreaSimpleSerializer(source="sales_area", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    debtor_account_name = serializers.CharField(
+        source="debtor_account.dname", read_only=True, default=None
+    )
+    debtor_account_number = serializers.CharField(
+        source="debtor_account.dno", read_only=True, default=None
+    )
 
     class Meta:
         model = Quotation
@@ -624,20 +630,40 @@ class QuotationLineCreateSerializer(serializers.ModelSerializer):
         Enforce price/discount validation, mirroring CashSaleLineSerializer
         and InvoiceLineSerializer.validate() — previously quotation lines
         had no price validation at all.
+
+        price_level comes from the parent Quotation payload (self.root is
+        the QuotationCreateSerializer instance; initial_data is the raw,
+        not-yet-validated request body, available before nested-line
+        validation runs) rather than being hardcoded to 1 — previously the
+        Cost/Markup%/GP%/Level-2/3 basis chosen on the quotation header had
+        no effect on line pricing enforcement at all.
+
+        PriceValidationService only understands numeric levels 1-3; the
+        Quotation model also allows "COST"/"MARKUP"/"GP" (non-numeric)
+        price bases, which the service has no concept of. Enforcement is
+        skipped rather than faked for those — validating a cost-based line
+        against selling_price_1 would be actively wrong, not just
+        imprecise.
         """
         stock_code = data.get("stock_code")
         unit_price = data.get("unit_price")
         quantity = data.get("quantity", 1)
         discount_percent = data.get("discount_percentage", 0)
 
-        if stock_code and unit_price:
+        raw_price_level = self.root.initial_data.get("price_level", 1)
+        try:
+            price_level = int(raw_price_level)
+        except (TypeError, ValueError):
+            price_level = None
+
+        if stock_code and unit_price and price_level is not None:
             try:
                 result = PriceValidationService.validate_line_item_price(
                     stock_code=stock_code,
                     quantity=quantity,
                     unit_price=unit_price,
                     discount_percent=discount_percent,
-                    price_level=1,
+                    price_level=price_level,
                     transaction_date=date.today(),
                     enforce=True,
                 )
@@ -1344,6 +1370,7 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
     debtor_name = serializers.CharField(source="debtor.dname", read_only=True)
     debtor_account_number = serializers.CharField(source="debtor.dno", read_only=True)
     lines = InvoiceLineSerializer(many=True, read_only=True)
+    tenders = TenderSerializer(many=True, read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     profit_margin = serializers.ReadOnlyField()
     balance_due = serializers.ReadOnlyField()
@@ -1408,6 +1435,7 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
             "created_by",
             "notes",
             "lines",
+            "tenders",
             "created_at",
             "updated_at",
         ]

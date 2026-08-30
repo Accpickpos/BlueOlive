@@ -254,7 +254,7 @@ export interface TransactionResponse {
   [key: string]: any;
 }
 
-class POSTransactionAPI {
+export class POSTransactionAPI {
   /**
    * Make HTTP request using shared axios instance with error handling
    */
@@ -299,11 +299,13 @@ class POSTransactionAPI {
       console.log('Response data:', response.data);
       return response.data;
     } catch (error: any) {
-      console.error('=== POS API ERROR ===');
-      console.error('Error:', error);
-      console.error('Error response:', error.response?.data);
-      console.error('Error status:', error.response?.status);
-      
+      console.error(
+        `=== POS API ERROR === ${method} ${endpoint} -> ` +
+        `status=${error.response?.status ?? 'n/a'} ` +
+        `data=${JSON.stringify(error.response?.data) ?? 'n/a'} ` +
+        `message=${error.message}`
+      );
+
       if (error.response?.data?.detail) {
         throw new Error(error.response.data.detail);
       }
@@ -429,6 +431,31 @@ class POSTransactionAPI {
     return this.request('POST', `${ENDPOINTS.POS.INVOICES}${invoiceId}/apply_payment/`, { amount, payment_date: paymentDate });
   }
 
+  /**
+   * Collect a tender (cash/card/EFT/cheque/voucher) against an invoice and
+   * apply it as a payment. Unlike applyPaymentToInvoice, this records how
+   * the invoice was paid (Tender rows), not just that it was paid.
+   */
+  async tenderInvoice(invoiceId: string | number, tenders: TenderData[]): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.INVOICES}${invoiceId}/tender/`, { tenders });
+  }
+
+  /**
+   * Manual §1 "Invoice - Subtotal Discount Facility": apply a % discount
+   * (or, for a negative value, increase) to every line's unit price.
+   */
+  async applySubtotalDiscountToInvoice(invoiceId: string | number, percentage: number): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.INVOICES}${invoiceId}/apply_subtotal_discount/`, { percentage });
+  }
+
+  /**
+   * Manual §1 "Invoice - Set Selling Price Facility": rescale every line's
+   * price proportionally so the invoice total becomes targetTotal.
+   */
+  async applySetPriceOnInvoice(invoiceId: string | number, targetTotal: number): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.INVOICES}${invoiceId}/apply_set_price/`, { target_total: targetTotal });
+  }
+
   // ============================================================
   // DEBTOR SEARCH (for invoice creation)
   // ============================================================
@@ -442,11 +469,19 @@ class POSTransactionAPI {
 
   /**
    * Thin typeahead lookup for debtor pickers — hits DebtorViewSet.lookup
-   * (LookupActionMixin), returns a flat array (no pagination envelope) of
+   * (LookupActionMixin), returns {results, count, has_more} of
    * DebtorLookupSerializer rows: {account_number, name, balance, credit_limit, ...}.
    */
-  async lookupDebtors(query: string, limit = 20): Promise<any[]> {
-    return this.request('GET', `${ENDPOINTS.DEBTORS.ACCOUNTS}lookup/?search=${encodeURIComponent(query)}&limit=${limit}`);
+  async lookupDebtors(
+    query: string,
+    limit = 20,
+    offset = 0
+  ): Promise<{ results: any[]; count: number; hasMore: boolean }> {
+    const data = await this.request<{ results: any[]; count: number; has_more: boolean }>(
+      'GET',
+      `${ENDPOINTS.DEBTORS.ACCOUNTS}lookup/?search=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`
+    );
+    return { results: data.results, count: data.count, hasMore: data.has_more };
   }
 
   // ============================================================
@@ -519,6 +554,33 @@ class POSTransactionAPI {
    */
   async deleteCashSale(saleId: string | number): Promise<void> {
     await this.request('DELETE', `${ENDPOINTS.POS.CASH_SALES}${saleId}/`);
+  }
+
+  /**
+   * Manual §4 "Cash Sale" Subtotal Discount facility — same as
+   * applySubtotalDiscountToInvoice, for a cash sale.
+   */
+  async applySubtotalDiscountToCashSale(saleId: string | number, percentage: number): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.CASH_SALES}${saleId}/apply_subtotal_discount/`, { percentage });
+  }
+
+  /**
+   * Manual §4 "Cash Sale" Set Selling Price facility — same as
+   * applySetPriceOnInvoice, for a cash sale.
+   */
+  async applySetPriceOnCashSale(saleId: string | number, targetTotal: number): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.CASH_SALES}${saleId}/apply_set_price/`, { target_total: targetTotal });
+  }
+
+  /**
+   * Manual §4 "Cash Sale" note: "To convert a Cash Sale into an Account
+   * Sale, press [Page Down] at the Tender Routine." Creates a draft
+   * Invoice charged to the given debtor and cancels the source cash sale.
+   */
+  async convertCashSaleToInvoice(saleId: string | number, debtorAccountNumber: string): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.CASH_SALES}${saleId}/convert_to_invoice/`, {
+      debtor_account_number: debtorAccountNumber,
+    });
   }
 
   // ============================================================
@@ -629,6 +691,37 @@ class POSTransactionAPI {
   }
 
   /**
+   * Record a payment against a laybye. If this payment brings the balance
+   * to zero, the backend marks the laybye COMPLETED and — if it has a
+   * linked debtor account — auto-generates an invoice for it (see
+   * LaybyeService.make_payment), returned here as invoice_id/invoice_number.
+   */
+  async makePaymentOnLaybye(
+    laybyeId: string | number,
+    amount: number,
+    options?: { sales_area?: number; station_number?: number }
+  ): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.LAYBYES}${laybyeId}/make_payment/`, {
+      amount,
+      ...options,
+    });
+  }
+
+  /**
+   * Cancel a laybye, retaining an optional percentage of what's been paid.
+   */
+  async cancelLaybye(
+    laybyeId: string | number,
+    retentionPercentage: number = 0,
+    stationNumber?: number
+  ): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.LAYBYES}${laybyeId}/cancel_laybye/`, {
+      retention_percentage: retentionPercentage,
+      station_number: stationNumber,
+    });
+  }
+
+  /**
    * Partially update laybye
    */
   async partialUpdateLaybye(laybeyId: string | number, data: Partial<LaybeyCreateData>): Promise<TransactionResponse> {
@@ -728,6 +821,15 @@ class POSTransactionAPI {
     return this.request('POST', `${ENDPOINTS.POS.QUOTATIONS}${quotationId}/convert_to_invoice/`, data);
   }
 
+  /**
+   * Convert quotation to a cash sale — for customers with no debtor account.
+   * Unlike convert_to_invoice, no debtor is required; the cash sale is
+   * settled immediately via the given tenders.
+   */
+  async convertQuotationToCashSale(quotationId: string | number, tenders: TenderData[]): Promise<TransactionResponse> {
+    return this.request('POST', `${ENDPOINTS.POS.QUOTATIONS}${quotationId}/convert_to_cash_sale/`, { tenders });
+  }
+
   // ============================================================
   // CREDIT NOTES
   // ============================================================
@@ -738,6 +840,13 @@ class POSTransactionAPI {
    */
   async createCreditNote(data: CreditNoteCreateData): Promise<TransactionResponse> {
     return this.request('POST', ENDPOINTS.POS.CREDIT_NOTES, data);
+  }
+
+  /**
+   * Get credit note by ID.
+   */
+  async getCreditNote(creditNoteId: string | number): Promise<TransactionResponse> {
+    return this.request('GET', `${ENDPOINTS.POS.CREDIT_NOTES}${creditNoteId}/`);
   }
 
   /**
@@ -782,6 +891,13 @@ class POSTransactionAPI {
   }
 
   /**
+   * Get payout by ID.
+   */
+  async getPayout(payoutId: string | number): Promise<TransactionResponse> {
+    return this.request('GET', `${ENDPOINTS.POS.PAYOUTS}${payoutId}/`);
+  }
+
+  /**
    * List all payouts with optional filters.
    */
   async listPayouts(filters?: {
@@ -805,6 +921,17 @@ class POSTransactionAPI {
   }
 
   // ============================================================
+  // JOB CARDS
+  // ============================================================
+
+  /**
+   * Get job card by ID.
+   */
+  async getJobCard(jobCardId: string | number): Promise<TransactionResponse> {
+    return this.request('GET', `${ENDPOINTS.POS.JOB_CARDS}${jobCardId}/`);
+  }
+
+  // ============================================================
   // REPAIR CONTROLS
   // ============================================================
 
@@ -813,6 +940,13 @@ class POSTransactionAPI {
    */
   async createRepairControl(data: RepairCreateData): Promise<TransactionResponse> {
     return this.request('POST', ENDPOINTS.POS.REPAIRS, data);
+  }
+
+  /**
+   * Get repair voucher by ID.
+   */
+  async getRepairControl(repairId: string | number): Promise<TransactionResponse> {
+    return this.request('GET', `${ENDPOINTS.POS.REPAIRS}${repairId}/`);
   }
 
   /**
@@ -957,11 +1091,12 @@ class POSTransactionAPI {
   }
 
   /**
-   * Search across transaction types (matches TransactionQueryViewSet.search;
-   * only CASH_SALE, LAYBYE and QUOTATION are implemented server-side today).
+   * Search one transaction type by number/customer/date range (matches
+   * TransactionQueryViewSet.search — all 9 documented types are supported
+   * server-side; each call searches exactly one type).
    */
   async searchTransactionQueries(params: {
-    query_type: 'CASH_SALE' | 'LAYBYE' | 'QUOTATION';
+    query_type: TransactionQueryType;
     transaction_number?: string;
     customer_name?: string;
     date_from?: string;

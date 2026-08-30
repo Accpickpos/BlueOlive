@@ -167,6 +167,29 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 SECURE_HSTS_PRELOAD = not DEBUG
 SECURE_SSL_REDIRECT = not DEBUG
 
+# Content-Security-Policy — the actual user-facing app is the separate
+# Next.js frontend (which has its own nonce-based CSP in
+# frontend/middleware.ts); Django's only real HTML surface is /admin/
+# (every custom TemplateView route in core/urls.py is commented out), so
+# this policy only needs to keep the admin working. Django admin has
+# shipped with no required inline scripts since 3.1, so script-src can stay
+# strict; style-src keeps 'unsafe-inline' since admin's own CSS/JS may set
+# inline styles and there's no nonce mechanism for style attributes anyway
+# (they can't execute JS, so allowing them is low-risk).
+CONTENT_SECURITY_POLICY = {
+    "DIRECTIVES": {
+        "default-src": ["'self'"],
+        "script-src": ["'self'"],
+        "style-src": ["'self'", "'unsafe-inline'"],
+        "img-src": ["'self'", "data:"],
+        "font-src": ["'self'"],
+        "object-src": ["'none'"],
+        "base-uri": ["'self'"],
+        "form-action": ["'self'"],
+        "frame-ancestors": ["'none'"],
+    }
+}
+
 
 # JWT Configuration
 SIMPLE_JWT = {
@@ -234,6 +257,7 @@ REST_FRAMEWORK = {
 # Middleware
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "csp.middleware.CSPMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",

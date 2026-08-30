@@ -218,6 +218,54 @@ class CreditorViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet)
         return Response(serializer.data)
 
 
+def _apportion_grn_surcharge(grn):
+    """Apportion a GRN's header-level surcharge across lines by value share
+    and fold it into each stock item's landed cost price."""
+    for line in grn.line_items.select_related("stock_item"):
+        if not line.quantity_received:
+            continue
+        share = (line.line_subtotal / grn.subtotal) * grn.surcharge_amount
+        per_unit = share / line.quantity_received
+        stock_item = line.stock_item
+        stock_item.refresh_from_db(fields=["cost_price"])
+        stock_item.cost_price = stock_item.cost_price + per_unit
+        stock_item.save(update_fields=["cost_price"])
+        if grn.creditor.update_selling_price_on_receipt:
+            stock_item.apply_markups()
+
+
+def _resolve_rfc_stock(rfc, new_status):
+    """Move stock back in when a pending RFC resolves to Replaced (RE,
+    replacement stock received) or Cancelled (CA, reverses the original
+    movement made when the RFC's lines were captured)."""
+    from apps.stock_control.models import StockTransaction
+    from apps.stock_control.services import StockTransactionService
+    from django.db import transaction as db_transaction
+
+    for line in rfc.line_items.select_related("stock_item"):
+        quantity = (
+            line.quantity_credited
+            if new_status == "RE" and line.quantity_credited
+            else line.quantity_returned
+        )
+        if not quantity:
+            continue
+
+        stock_item = line.stock_item
+        alias = stock_item._state.db or "default"
+        with db_transaction.atomic(using=alias):
+            StockTransaction.objects.create(
+                transaction_type="RFC_OUT",
+                stock_item=stock_item,
+                quantity_in=quantity,
+                unit_cost=line.unit_cost,
+                supplier=rfc.creditor,
+                transaction_date=timezone.now().date(),
+                comments=f"RFC {rfc.rfc_number} {new_status}"[:30],
+            )
+            StockTransactionService.adjust_quantity_on_hand(stock_item, quantity)
+
+
 # ============================================================================
 # GOODS RECEIVED NOTE
 # ============================================================================
@@ -301,6 +349,16 @@ class GoodsReceivedNoteViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         grn = self.get_object()
         if grn.is_posted:
             return Response({"detail": "GRN is already posted."}, status=400)
+
+        # Manual §Transactions "GRN": surcharge (freight-in etc.) must be
+        # apportioned across lines and folded into landed stock cost.
+        # Previously computed at header level only and never reached the
+        # stock item — the base quantity/cost movement already happened
+        # when the lines were created (see grn_lineitem_post_save); this
+        # adds surcharge on top exactly once, since post can't be called twice.
+        if grn.surcharge_amount and grn.subtotal:
+            _apportion_grn_surcharge(grn)
+
         grn.is_posted = True
         grn.posted_at = timezone.now()
         grn.save()
@@ -842,8 +900,21 @@ class RFCViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             return Response(
                 {"detail": f"Invalid status. Choose from: {valid}"}, status=400
             )
+
+        old_status = rfc.status
         rfc.status = new_status
         rfc.save()
+
+        # Manual: "Stock movement between normal stock and the RFC bucket."
+        # Quantity left normal stock when the lines were captured (see
+        # rfc_lineitem_post_save, gated on status=='PE'). Resolving a
+        # pending RFC either brings replacement stock back in (RE) or
+        # reverses the original movement (CA) — gated on old_status=='PE'
+        # so this can only fire once per RFC, whichever status it first
+        # resolves to.
+        if old_status == "PE" and new_status in ("RE", "CA"):
+            _resolve_rfc_stock(rfc, new_status)
+
         return Response(RFCSerializer(rfc).data)
 
 

@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Eye } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/lib/useAuth";
 import { usePOSAPI } from "@/lib/posApi";
@@ -100,6 +101,7 @@ export default function QuotesPage() {
                     <th className="text-right py-2">Amount</th>
                     <th className="text-left py-2">Expiry Date</th>
                     <th className="text-left py-2">Status</th>
+                    <th className="text-center py-2">View</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -117,6 +119,15 @@ export default function QuotesPage() {
                         }`}>
                           {quote.status.replace(/_/g, " ")}
                         </span>
+                      </td>
+                      <td className="py-3 text-center">
+                        <Link
+                          href={`/dashboard/pos/quotes/${quote.id}`}
+                          className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600"
+                          aria-label={`View quote ${quote.number}`}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Link>
                       </td>
                     </tr>
                   ))}

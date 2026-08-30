@@ -603,6 +603,7 @@ class CreditorJournalSerializer(serializers.ModelSerializer):
             "additional_reference",
             "journal_type",
             "journal_amount",
+            "age_period",
             "age_current",
             "age_30",
             "age_60",

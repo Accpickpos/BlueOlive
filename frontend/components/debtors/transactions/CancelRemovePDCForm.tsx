@@ -56,7 +56,7 @@ export default function CancelRemovePDCForm() {
           ? response.results.map((d: any) => ({
               id: d.id,
               name: d.name,
-              account: d.account_number || '',
+              account: d.customer_number != null ? String(d.customer_number) : '',
             }))
           : [];
         setDebtors(options);
@@ -82,24 +82,27 @@ export default function CancelRemovePDCForm() {
     setLoadingPDCs(true);
     try {
       const response = await debtorsApi.pdcs.list(debtorId);
-      let pdcs: PDCRecord[] = [];
+      // DpdcSerializer exposes debtor_id/expected_date, not
+      // debtor/debtor_account/cheque_date/is_active — build the display
+      // name/account from the already-loaded debtors list instead, and
+      // treat anything not yet CLEARED or DISHONOURED as cancellable
+      // (matches DpdcViewSet.cancel's own guard).
+      const debtor = debtors.find((d) => d.id === debtorId);
       const mapPdc = (pdc: any): PDCRecord => ({
         id: pdc.id,
-        debtor_id: pdc.debtor,
-        debtor_name: pdc.debtor_name || `Debtor ${pdc.debtor_account || pdc.debtor}`,
-        debtor_account: pdc.debtor_account || '',
+        debtor_id: pdc.debtor_id,
+        debtor_name: debtor?.name || `Debtor ${pdc.debtor_id}`,
+        debtor_account: debtor?.account || '',
         amount: parseFloat(pdc.amount),
-        pdc_date: pdc.cheque_date,
+        pdc_date: pdc.expected_date,
         posting_date: pdc.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
       });
+      const isCancellable = (pdc: any) => pdc.status !== 'CLEARED' && pdc.status !== 'DISHONOURED';
+      let pdcs: PDCRecord[] = [];
       if (response.results) {
-        pdcs = response.results
-          .filter((pdc: any) => pdc.is_active === true)
-          .map(mapPdc);
+        pdcs = response.results.filter(isCancellable).map(mapPdc);
       } else if (Array.isArray(response)) {
-        pdcs = (response as any[])
-          .filter((pdc: any) => pdc.is_active === true)
-          .map(mapPdc);
+        pdcs = (response as any[]).filter(isCancellable).map(mapPdc);
       }
       setPdcRecords(pdcs);
       setError(pdcs.length === 0 ? 'No post-dated cheques found for this debtor.' : '');

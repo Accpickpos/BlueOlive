@@ -34,7 +34,7 @@ export function CreditorPicker({
   return (
     <SearchCombobox<CreditorAccount>
       queryKeyPrefix="creditor-lookup"
-      searchFn={(query) => creditorsApi.accounts.lookup(query)}
+      searchFn={(query, offset) => creditorsApi.accounts.lookup(query, 20, offset)}
       getId={(creditor) => creditor.id}
       getLabel={(creditor) => creditor.name}
       renderOption={(creditor) => (

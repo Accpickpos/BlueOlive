@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { apiRequest, getApiErrorMessage } from '@/lib/api';
+import debtorsApi from '@/lib/debtorsApi';
 
 interface ReceiptRecord {
   id: string;
@@ -117,18 +118,11 @@ export default function BatchReceiptPostingForm() {
       }
 
       const transactionPromises = validReceipts.map(receipt =>
-        apiRequest('/api/v1/debtors/transactions/', {
-          method: 'POST',
-          body: {
-            debtor_id: receipt.debtor_id,
-            transaction_type: 'RCT',
-            transaction_number: receipt.reference || `RCT-${formData.batch_reference}-${receipt.id}`,
-            transaction_date: formData.posting_date,
-            amount: parseFloat(receipt.amount),
-            vat_amount: 0,
-            reference: `Batch: ${formData.batch_reference}`,
-            additional_reference: receipt.reference,
-          }
+        debtorsApi.transactions.postReceipt({
+          debtor_id: receipt.debtor_id,
+          amount: parseFloat(receipt.amount),
+          reference_number: receipt.reference || `Batch: ${formData.batch_reference}`,
+          transaction_date: formData.posting_date,
         })
       );
 

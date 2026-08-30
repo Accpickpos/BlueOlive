@@ -82,6 +82,7 @@ class DebtorListSerializer(serializers.ModelSerializer):
     fax = serializers.CharField(source="dfax", read_only=True)
     area_code = serializers.IntegerField(source="darea", read_only=True)
     account_type = serializers.CharField(source="acctype", read_only=True)
+    interest_flag = serializers.CharField(source="dintflag", read_only=True)
     credit_limit = serializers.DecimalField(
         source="dclimit", max_digits=12, decimal_places=2, read_only=True
     )
@@ -106,6 +107,7 @@ class DebtorListSerializer(serializers.ModelSerializer):
             "email",
             "darea",
             "acctype",
+            "dintflag",
             "dclimit",
             "dcrnt",
             "total_balance",
@@ -123,6 +125,7 @@ class DebtorListSerializer(serializers.ModelSerializer):
             "fax",
             "area_code",
             "account_type",
+            "interest_flag",
             "credit_limit",
             "balance_current",
             "balance_brought_forward",
@@ -298,9 +301,8 @@ class DebtorDetailSerializer(serializers.ModelSerializer):
             "damtlpd",
             "ddatlpd",
             "dateopened",
-            "dscontra",
-            "dlimit Adjdate",
-            "lastpayment_date",
+            "date_opened",
+            "last_payment_date",
             "total_balance",
             "overdue_balance",
             "is_blocked_flag",
@@ -669,11 +671,34 @@ class DebteopenSerializer(serializers.ModelSerializer):
     DebtorService and DebteopenViewSet.allocate/allocate_receipt — they must
     not be settable via a raw PATCH, which would bypass the allocation
     amount-bounds checks those actions enforce.
+
+    `dno` (the FK field) serializes as Debtor's internal pk by default —
+    not the business account number every frontend list/picker calls
+    "debtor id" (DebtorListSerializer aliases id=dno). debtor_account_number
+    /debtor_name expose the business number/name directly so callers don't
+    have to guess at (or mis-correlate against) the raw FK id.
     """
+
+    debtor_account_number = serializers.IntegerField(source="dno.dno", read_only=True)
+    debtor_name = serializers.CharField(source="dno.dname", read_only=True)
 
     class Meta:
         model = Debtopen
-        fields = "__all__"
+        fields = [
+            "id",
+            "dno",
+            "debtor_account_number",
+            "debtor_name",
+            "dtrano",
+            "type",
+            "date",
+            "total",
+            "balancedue",
+            "ageflag",
+            "posted",
+            "created_at",
+            "updated_at",
+        ]
         read_only_fields = ["balancedue", "posted", "ageflag", "total"]
 
 

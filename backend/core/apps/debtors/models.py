@@ -594,6 +594,7 @@ class DebtorTransaction(TimeStampedModel):
     SOURCE_CHOICES = [
         ("POS", "Point of Sale"),
         ("INVOICE", "Invoice Entry"),
+        ("CREDIT_NOTE", "Credit Note Entry"),
         ("IMPORT", "Bulk Import"),
         ("MANUAL", "Manual Entry"),
     ]
@@ -766,7 +767,7 @@ class DebtorTransaction(TimeStampedModel):
 
     def __str__(self):
         return (
-            f"{self.transaction_number} - {self.debtor.name} ({self.transaction_date})"
+            f"{self.transaction_number} - {self.debtor.dname} ({self.transaction_date})"
         )
 
     def clean(self):
@@ -775,7 +776,12 @@ class DebtorTransaction(TimeStampedModel):
             errors["subtotal"] = (
                 "Subtotal cannot be negative for this transaction type."
             )
-        if self.vat_amount < 0:
+        # A credit note reverses output VAT already charged, so its
+        # vat_amount is legitimately negative too — this exemption mirrors
+        # the subtotal one above; without it, no CN/CR/RF transaction could
+        # ever satisfy both "vat_amount >= 0" and "total_amount < 0" at the
+        # same time as total_amount = subtotal + vat_amount.
+        if self.vat_amount < 0 and self.transaction_type not in ["CN", "CR", "RF"]:
             errors["vat_amount"] = "VAT amount cannot be negative."
         expected_total = self.subtotal + self.vat_amount
         if abs(self.total_amount - expected_total) > Decimal("0.01"):
@@ -1120,10 +1126,21 @@ class Dpdc(TimeStampedModel):
 class Debtopen(TimeStampedModel):
     """Open item transactions (DEBTOPEN table)."""
 
+    # post_debtran (services.py) writes whatever `dtype` the caller passed
+    # here for Open Item accounts — same bug class already fixed on
+    # DebtorAudit above: this list didn't include "RCP" (receipts) or
+    # "INT" (interest charges), the exact dtype values post_receipt/
+    # interest-charging actually use, so Debtopen.objects.create() was
+    # broken for every real Open Item receipt/interest post before this
+    # fix. "PY" is kept (not renamed to "PM"/"RCP") because it's also the
+    # legacy DBF code written by import_debtor_open_items_from_dbf.py for
+    # historical imported data.
     TRANSACTION_TYPE_CHOICES = [
         ("IN", "Invoice"),
         ("CN", "Credit Note"),
         ("PY", "Payment"),
+        ("RCP", "Receipt"),
+        ("INT", "Interest Charge"),
         ("JD", "Journal Debit"),
         ("JC", "Journal Credit"),
         ("DM", "Debit Memo"),
@@ -1146,7 +1163,7 @@ class Debtopen(TimeStampedModel):
     )
     dtrano = models.CharField(max_length=6, help_text="Transaction number (DTRANO)")
     type = models.CharField(
-        max_length=2,
+        max_length=3,
         choices=TRANSACTION_TYPE_CHOICES,
         help_text="Transaction type (TYPE)",
     )
@@ -1258,10 +1275,29 @@ class ReceiptAllocation(TimeStampedModel):
 class DebtorAudit(models.Model):
     """Debtor Audit file (DEBTORAUD table)."""
 
+    # type/thistype are populated directly from whatever `dtype` callers
+    # pass into DebtorService.post_debtran (see services.py) or from
+    # Debtopen.type — this previously had its own, inconsistent vocabulary
+    # (e.g. "CR" meant "Credit Note" here but "Cash Return" on
+    # DebtorTransaction) that didn't even cover the type codes every real
+    # caller (post_receipt="RCP", post_journal="JD"/"JC", interest
+    # charging="INT") actually writes, so every DebtorAudit.objects.create()
+    # call was one full_clean() away from raising "not a valid choice" —
+    # aligned to DebtorTransaction.TRANSACTION_TYPE_CHOICES (the
+    # authoritative source of these values) plus the allocation-specific
+    # codes ("PA"/"AD"/"AL") this model already had no other source for.
     TRANSACTION_TYPE_CHOICES = [
         ("IN", "Invoice"),
-        ("CR", "Credit Note"),
-        ("PA", "Payment"),
+        ("CN", "Credit Note"),
+        ("CS", "Cash Sale"),
+        ("CR", "Cash Return"),
+        ("PM", "Payment"),
+        ("RCP", "Receipt"),
+        ("INT", "Interest Charge"),
+        ("JD", "Journal Debit"),
+        ("JC", "Journal Credit"),
+        ("RF", "Refund"),
+        ("PA", "Payment (legacy)"),
         ("AD", "Adjustment"),
         ("DM", "Debit Memo"),
         ("CM", "Credit Memo"),
@@ -1279,13 +1315,13 @@ class DebtorAudit(models.Model):
         max_length=6, db_column="dtrano", help_text="Transaction number (DTRANO)"
     )
     type = models.CharField(
-        max_length=2,
+        max_length=3,
         choices=TRANSACTION_TYPE_CHOICES,
         db_column="type",
         help_text="Transaction type (TYPE)",
     )
     thistype = models.CharField(
-        max_length=2,
+        max_length=3,
         choices=TRANSACTION_TYPE_CHOICES,
         db_column="thistype",
         help_text="Current transaction type (THISTYPE)",

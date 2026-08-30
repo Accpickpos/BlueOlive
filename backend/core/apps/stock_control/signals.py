@@ -41,10 +41,25 @@ def calculate_stock_item_markups(sender, instance, **kwargs):
 
 @receiver(pre_save, sender=StockItem)
 def validate_qty_allocation(sender, instance, **kwargs):
-    """Validate that allocated + sale_order don't exceed QOH"""
-    total_allocated = instance.quantity_allocated + instance.quantity_sale_order
+    """
+    Validate that allocated + sale_order don't exceed available QOH.
 
-    if total_allocated > instance.quantity_on_hand:
+    Compared against max(QOH, 0), not QOH directly: quantity_on_hand can
+    already be negative — from legacy imported data (several service-type
+    items, e.g. wheel balancing/alignment, were imported with negative QOH
+    outright) or from allow_negative_quantities intentionally permitting an
+    oversell. allocated/sale_order are never negative, so comparing them
+    against a negative QOH is unsatisfiable by construction (0 + 0 is still
+    "more than" a negative number) and would permanently block every future
+    save of that item, not just the one that made QOH negative. Flooring at
+    zero keeps the check meaningful — you still can't allocate against
+    stock that isn't there — without bricking the record once it dips
+    below zero.
+    """
+    total_allocated = instance.quantity_allocated + instance.quantity_sale_order
+    available_for_allocation = max(instance.quantity_on_hand, Decimal("0"))
+
+    if total_allocated > available_for_allocation:
         raise ValidationError(
             f"Allocated quantity ({instance.quantity_allocated}) + "
             f"Sale Order quantity ({instance.quantity_sale_order}) "

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/useAuth';
 import { usePOSAPI } from '@/lib/posApi';
@@ -17,6 +17,7 @@ interface DraftLine {
   description: string;
   quantity: number;
   unit_price: number;
+  cost_price: number;
   tax_code: number;
 }
 
@@ -28,24 +29,43 @@ export default function CreateLaybyePage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Manual §8 "Laybye Control": "The Expiry date defaults to 3 months from
+  // laybye date and the deposit to [X]% of the Total Due; amend if
+  // required." No configurable percentage exists anywhere in the system,
+  // so 25% is a hardcoded starting default here.
+  const DEFAULT_DEPOSIT_PERCENT = 0.25;
+
+  const defaultExpiryDate = () => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 3);
+    return d.toISOString().split('T')[0];
+  };
+
   const [formData, setFormData] = useState({
     laybye_number: '',
     customer_name: '',
     telephone: '',
     deposit_amount: '',
     laybye_date: new Date().toISOString().split('T')[0],
-    expiry_date: '',
+    expiry_date: defaultExpiryDate(),
     item_description: '',
   });
+  const [depositTouched, setDepositTouched] = useState(false);
 
   const [debtor, setDebtor] = useState<{ account_number: string; name: string } | null>(null);
   const [lines, setLines] = useState<DraftLine[]>([]);
-  const [draftItem, setDraftItem] = useState<{ stock_code: string; description: string; tax_code: number } | null>(null);
+  const [draftItem, setDraftItem] = useState<{
+    stock_code: string;
+    description: string;
+    tax_code: number;
+    cost_price: number;
+  } | null>(null);
   const [draftQty, setDraftQty] = useState('1');
   const [draftPrice, setDraftPrice] = useState('');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+    if (name === 'deposit_amount') setDepositTouched(true);
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -62,6 +82,7 @@ export default function CreateLaybyePage() {
         description: draftItem.description,
         quantity: qty,
         unit_price: price,
+        cost_price: draftItem.cost_price,
         tax_code: draftItem.tax_code,
       },
     ]);
@@ -79,6 +100,18 @@ export default function CreateLaybyePage() {
   const totalAmount = subtotal + vat;
   const depositAmount = parseFloat(formData.deposit_amount) || 0;
   const outstandingBalance = totalAmount - depositAmount;
+
+  // Keep the deposit at the default 25% of total as items are added,
+  // until the user edits it directly — then leave their value alone.
+  useEffect(() => {
+    if (depositTouched) return;
+    const defaultDeposit = totalAmount * DEFAULT_DEPOSIT_PERCENT;
+    setFormData((prev) => ({
+      ...prev,
+      deposit_amount: totalAmount > 0 ? defaultDeposit.toFixed(2) : '',
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalAmount, depositTouched]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,6 +150,7 @@ export default function CreateLaybyePage() {
           description: l.description,
           quantity: l.quantity,
           unit_price: l.unit_price,
+          cost_price: l.cost_price,
           tax_code: l.tax_code,
         })),
       });
@@ -248,13 +282,15 @@ export default function CreateLaybyePage() {
                 <div className="md:col-span-2">
                   <label className="block text-xs font-medium text-gray-600 mb-1">Stock Item</label>
                   <StockItemPicker
-                    onSelect={(item) =>
+                    onSelect={(item) => {
                       setDraftItem({
                         stock_code: item.stock_code,
                         description: item.description,
                         tax_code: item.tax_code === 0 || item.tax_code === 'ZERO' ? 0 : 1,
-                      })
-                    }
+                        cost_price: item.cost_price,
+                      });
+                      setDraftPrice(String(item.selling_price ?? ''));
+                    }}
                     placeholder={draftItem ? draftItem.description : 'Search stock items...'}
                     disabled={loading}
                   />

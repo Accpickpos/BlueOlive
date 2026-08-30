@@ -44,10 +44,10 @@ def generate_debtor_report(request):
     if report_type == "summary":
         debtors = Debtor.objects.all()
         aggregates = debtors.aggregate(
-            total_balance=Sum("balance_current"),
-            total_30=Sum("balance_30_days"),
-            total_60=Sum("balance_60_days"),
-            total_90=Sum("balance_90_days"),
+            total_balance=Sum("dcrnt"),
+            total_30=Sum("d30"),
+            total_60=Sum("d60"),
+            total_90=Sum("d90"),
         )
         return Response(
             {

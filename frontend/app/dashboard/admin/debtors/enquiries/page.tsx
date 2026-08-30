@@ -9,16 +9,18 @@ import SalesDepartmentsEnquiry from '@/components/debtors/enquiries/SalesDepartm
 import SalesmanEnquiry from '@/components/debtors/enquiries/SalesmanEnquiry';
 import PostDatedChequeListingEnquiry from '@/components/debtors/enquiries/PostDatedChequeListingEnquiry';
 import AccountSalesHistoryEnquiry from '@/components/debtors/enquiries/AccountSalesHistoryEnquiry';
+import UnmatchedItemsEnquiry from '@/components/debtors/enquiries/UnmatchedItemsEnquiry';
 
-type EnquiryType = 
-  | 'individual' 
-  | 'summary' 
-  | 'topaccounts' 
-  | 'transactions' 
-  | 'departments' 
-  | 'salesman' 
-  | 'pdc' 
-  | 'saleshistory';
+type EnquiryType =
+  | 'individual'
+  | 'summary'
+  | 'topaccounts'
+  | 'transactions'
+  | 'departments'
+  | 'salesman'
+  | 'pdc'
+  | 'saleshistory'
+  | 'unmatched';
 
 const menuItems = [
   {
@@ -69,6 +71,12 @@ const menuItems = [
     icon: '📈',
     description: 'Sales Transactions for Selected Debtor',
   },
+  {
+    id: 'unmatched',
+    title: 'Unmatched Items',
+    icon: '🔍',
+    description: 'Unallocated Open Item Transactions by Ageing/Balance',
+  },
 ];
 
 export default function DebtorsEnquiriesPage() {
@@ -111,6 +119,7 @@ export default function DebtorsEnquiriesPage() {
         {activeEnquiry === 'salesman' && <SalesmanEnquiry />}
         {activeEnquiry === 'pdc' && <PostDatedChequeListingEnquiry />}
         {activeEnquiry === 'saleshistory' && <AccountSalesHistoryEnquiry />}
+        {activeEnquiry === 'unmatched' && <UnmatchedItemsEnquiry />}
       </div>
     </div>
   );

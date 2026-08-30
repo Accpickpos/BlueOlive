@@ -1,73 +1,89 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { apiRequest, getApiErrorMessage } from '@/lib/api';
+import debtorsApi from '@/lib/debtorsApi';
+import { getApiErrorMessage } from '@/lib/api';
+import type { AgeAnalysis } from '@/lib/types/debtors';
 
-interface InterestData {
-  debtor_id: number;
-  interest_rate: string;
-  calculation_date: string;
-  reference: string;
-}
-
-interface DebtorBalance {
+interface DebtorOption {
   id: number;
   name: string;
   current_balance: number;
+  dintflag: string | boolean;
 }
 
-export default function InterestChargingForm() {
-  const [formData, setFormData] = useState<InterestData>({
-    debtor_id: 0,
-    interest_rate: '10.5',
-    calculation_date: new Date().toISOString().split('T')[0],
-    reference: '',
-  });
+// DebtorService.calculate_interest's start_period buckets (2=30 days
+// onward .. 7=180 days only) — matches the aged buckets returned by
+// GET /api/v1/debtors/{id}/age_analysis/ (index 0 = Current, which is
+// never chargeable — the manual only charges interest on overdue balances).
+const CHARGE_PERIODS = [
+  { value: 2, label: '30 Days & Older' },
+  { value: 3, label: '60 Days & Older' },
+  { value: 4, label: '90 Days & Older' },
+  { value: 5, label: '120 Days & Older' },
+  { value: 6, label: '150 Days & Older' },
+  { value: 7, label: '180 Days Only' },
+];
 
-  const [debtors, setDebtors] = useState<DebtorBalance[]>([]);
-  const [selectedDebtor, setSelectedDebtor] = useState<DebtorBalance | null>(null);
+export default function InterestChargingForm() {
+  const [debtorId, setDebtorId] = useState<number>(0);
+  const [rate, setRate] = useState('1.0');
+  const [startPeriod, setStartPeriod] = useState(2);
+  const [chargeCreditBalances, setChargeCreditBalances] = useState(false);
+  const [calculationDate, setCalculationDate] = useState(new Date().toISOString().split('T')[0]);
+
+  const [debtors, setDebtors] = useState<DebtorOption[]>([]);
+  const [loadingDebtors, setLoadingDebtors] = useState(true);
+  const [ageAnalysis, setAgeAnalysis] = useState<AgeAnalysis | null>(null);
+  const [loadingAgeAnalysis, setLoadingAgeAnalysis] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [loadingDebtors, setLoadingDebtors] = useState(true);
 
   useEffect(() => {
-    loadDebtors();
+    debtorsApi.accounts
+      .list()
+      .then((response) => {
+        setDebtors(
+          (response.results || []).map((d: any) => ({
+            id: d.id,
+            name: d.name,
+            current_balance: d.total_balance ?? d.dcrnt ?? 0,
+            dintflag: d.interest_flag ?? d.dintflag ?? 'N',
+          }))
+        );
+      })
+      .catch(() => console.error('Failed to load debtors'))
+      .finally(() => setLoadingDebtors(false));
   }, []);
 
-  const loadDebtors = async () => {
-    try {
-      const response = await apiRequest('/api/v1/debtors/');
-      if ((response as any).results) {
-        setDebtors((response as any).results);
-      }
-    } catch (err) {
-      console.error('Failed to load debtors');
-    } finally {
-      setLoadingDebtors(false);
+  useEffect(() => {
+    if (!debtorId) {
+      setAgeAnalysis(null);
+      return;
     }
-  };
+    setLoadingAgeAnalysis(true);
+    debtorsApi.accounts
+      .getAgeAnalysis(debtorId)
+      .then(setAgeAnalysis)
+      .catch(() => setAgeAnalysis(null))
+      .finally(() => setLoadingAgeAnalysis(false));
+  }, [debtorId]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+  const selectedDebtor = debtors.find(d => d.id === debtorId) || null;
+  const chargesInterest = selectedDebtor && (selectedDebtor.dintflag === 'Y' || selectedDebtor.dintflag === true);
 
-    if (name === 'debtor_id') {
-      const debtor = debtors.find(d => d.id === parseInt(value));
-      setSelectedDebtor(debtor || null);
-    }
-  };
-
-  const calculateInterest = () => {
-    if (!selectedDebtor || !formData.interest_rate) {
-      return 0;
-    }
-    const balance = Math.max(0, selectedDebtor.current_balance);
-    const rate = parseFloat(formData.interest_rate) || 0;
-    return (balance * rate) / 100;
+  // Preview only — the authoritative amount is computed server-side by
+  // DebtorService.calculate_interest at submit time from the same buckets.
+  const previewInterest = () => {
+    if (!ageAnalysis?.buckets?.length) return 0;
+    const startIndex = startPeriod - 1; // bucket 0 = Current, never charged
+    const buckets = ageAnalysis.buckets.slice(startIndex);
+    const base = buckets.reduce((sum, b) => {
+      if (!chargeCreditBalances && b.amount < 0) return sum;
+      return sum + b.amount;
+    }, 0);
+    return (base * (parseFloat(rate) || 0)) / 100;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -77,39 +93,25 @@ export default function InterestChargingForm() {
     setSuccess('');
 
     try {
-      if (!formData.debtor_id || !formData.interest_rate) {
-        setError('Please fill in all required fields');
+      if (!debtorId || !rate) {
+        setError('Please select a debtor and interest rate');
         setLoading(false);
         return;
       }
 
-      const interestAmount = calculateInterest();
-      
-      const response = await apiRequest(
-        '/api/v1/debtors/transactions/',
-        {
-          method: 'POST',
-          body: {
-            debtor_id: parseInt(formData.debtor_id.toString()),
-            transaction_type: 'INT',
-            transaction_number: `INT-${new Date().getTime()}`,
-            transaction_date: formData.calculation_date,
-            amount: interestAmount,
-            vat_amount: 0,
-            reference: formData.reference || `Interest charge @ ${formData.interest_rate}%`,
-            additional_reference: `Interest charge calculated on balance of R${selectedDebtor?.current_balance.toFixed(2)}`,
-          }
-        }
-      );
-
-      setSuccess(`Interest charge of R${interestAmount.toFixed(2)} posted successfully`);
-      setFormData({
-        debtor_id: 0,
-        interest_rate: '10.5',
-        calculation_date: new Date().toISOString().split('T')[0],
-        reference: '',
+      const trans = await debtorsApi.transactions.chargeInterest({
+        debtor_id: debtorId,
+        transaction_date: calculationDate,
+        rate: (parseFloat(rate) || 0) / 100,
+        start_period: startPeriod,
+        charge_credit_balances: chargeCreditBalances,
       });
-      setSelectedDebtor(null);
+
+      setSuccess(`Interest charge of R${Number((trans as any).total_amount ?? previewInterest()).toFixed(2)} posted successfully`);
+      setDebtorId(0);
+      setRate('1.0');
+      setStartPeriod(2);
+      setChargeCreditBalances(false);
     } catch (err: any) {
       setError(getApiErrorMessage(err, 'Failed to charge interest'));
     } finally {
@@ -131,15 +133,18 @@ export default function InterestChargingForm() {
         </div>
       )}
 
+      <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-800">
+        Manual §2.2 "Interest Charging": this should only be done at month end after a backup.
+      </div>
+
       {/* Debtor Selection */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
           Debtor <span className="text-red-500">*</span>
         </label>
         <select
-          name="debtor_id"
-          value={formData.debtor_id}
-          onChange={handleChange}
+          value={debtorId}
+          onChange={(e) => setDebtorId(parseInt(e.target.value) || 0)}
           disabled={loadingDebtors}
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
         >
@@ -150,42 +155,85 @@ export default function InterestChargingForm() {
             </option>
           ))}
         </select>
+        {selectedDebtor && !chargesInterest && (
+          <p className="text-xs text-orange-600 mt-1">
+            This debtor is not flagged to charge interest (Charge Interest = No on the account).
+          </p>
+        )}
       </div>
 
-      {/* Current Balance Display */}
-      {selectedDebtor && (
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-gray-700">
-            <span className="font-medium">Current Balance:</span> R{selectedDebtor.current_balance.toFixed(2)}
-          </p>
+      {/* Aged Balance Preview */}
+      {debtorId > 0 && (
+        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+          <p className="text-sm font-medium text-gray-700 mb-2">Aged Balance</p>
+          {loadingAgeAnalysis ? (
+            <p className="text-sm text-gray-500">Loading...</p>
+          ) : (
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 text-xs">
+              {ageAnalysis?.buckets?.map((bucket, idx) => (
+                <div
+                  key={bucket.label}
+                  className={`p-2 rounded border ${idx >= startPeriod - 1 ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'}`}
+                >
+                  <p className="text-gray-500">{bucket.label}</p>
+                  <p className="font-semibold">R{bucket.amount.toFixed(2)}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       {/* Interest Rate */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Interest Rate (%) <span className="text-red-500">*</span>
+          Interest Rate (% per month) <span className="text-red-500">*</span>
         </label>
         <input
           type="number"
-          name="interest_rate"
           step="0.01"
-          value={formData.interest_rate}
-          onChange={handleChange}
-          placeholder="10.5"
+          value={rate}
+          onChange={(e) => setRate(e.target.value)}
+          placeholder="1.0"
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
-        <p className="text-xs text-gray-500 mt-1">Monthly or annual interest rate to apply</p>
       </div>
 
-      {/* Calculated Interest */}
-      {selectedDebtor && (
+      {/* Charge Period */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Charge Interest On <span className="text-red-500">*</span>
+        </label>
+        <select
+          value={startPeriod}
+          onChange={(e) => setStartPeriod(parseInt(e.target.value))}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        >
+          {CHARGE_PERIODS.map(period => (
+            <option key={period.value} value={period.value}>{period.label}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Credit Balances */}
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={chargeCreditBalances}
+          onChange={(e) => setChargeCreditBalances(e.target.checked)}
+          className="rounded"
+        />
+        <span className="text-sm text-gray-700">Pay Interest on Credit Balances</span>
+      </label>
+
+      {/* Calculated Interest Preview */}
+      {debtorId > 0 && (
         <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
           <p className="text-lg font-semibold text-green-700">
-            Interest to Charge: R{calculateInterest().toFixed(2)}
+            Estimated Interest: R{previewInterest().toFixed(2)}
           </p>
           <p className="text-xs text-gray-600 mt-1">
-            Based on balance of R{selectedDebtor.current_balance.toFixed(2)} at {formData.interest_rate}%
+            Final amount is computed server-side from the debtor's current aged balances at posting time.
           </p>
         </div>
       )}
@@ -197,24 +245,8 @@ export default function InterestChargingForm() {
         </label>
         <input
           type="date"
-          name="calculation_date"
-          value={formData.calculation_date}
-          onChange={handleChange}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
-      </div>
-
-      {/* Reference */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Reference / Notes
-        </label>
-        <input
-          type="text"
-          name="reference"
-          value={formData.reference}
-          onChange={handleChange}
-          placeholder="e.g., Monthly interest charge"
+          value={calculationDate}
+          onChange={(e) => setCalculationDate(e.target.value)}
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
       </div>

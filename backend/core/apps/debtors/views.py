@@ -22,7 +22,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
 from rest_framework.response import Response
 
-from .filters import DebtorFilter, DebtorTransactionFilter
+from .filters import DebteopenFilter, DebtorFilter, DebtorTransactionFilter, DpdcFilter
 from .models import Darea, Debtopen, Debtor, DebtorAudit, DebtorTransaction, Dpdc
 from .permissions import (
     CanChargeInterest,
@@ -470,19 +470,29 @@ class DebtorViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def convert_category(self, request, pk=None):
-        """Convert debtor to a different category."""
+        """
+        Convert debtor to a different account category (Open Item <-> BBF).
+        See DebtorService.convert_account_category for the Debtopen
+        take-on/clear-down this triggers.
+        """
         try:
             debtor = self.get_object()
             new_category = request.data.get("category")
 
-            if not new_category:
+            if new_category is None:
                 return Response(
                     {"error": "Category is required"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            debtor.acctype = new_category
-            debtor.save(update_fields=["acctype"])
+            valid_categories = {choice[0] for choice in Debtor.ACCOUNT_TYPE_CHOICES}
+            if new_category not in valid_categories:
+                return Response(
+                    {"error": f"Category must be one of {sorted(valid_categories)}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            DebtorService.convert_account_category(debtor, new_category)
 
             return Response(
                 {
@@ -492,6 +502,70 @@ class DebtorViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet):
             )
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["get"], url_path="age_analysis")
+    def age_analysis_detail(self, request, pk=None):
+        """Get the aged-balance breakdown for a single debtor."""
+        try:
+            debtor = self.get_object()
+
+            buckets = [
+                {"label": "Current", "amount": float(debtor.dcrnt)},
+                {"label": "1-30 Days", "amount": float(debtor.d30)},
+                {"label": "31-60 Days", "amount": float(debtor.d60)},
+                {"label": "61-90 Days", "amount": float(debtor.d90)},
+                {"label": "91-120 Days", "amount": float(debtor.d120)},
+                {"label": "121-150 Days", "amount": float(debtor.d150)},
+                {"label": "150+ Days", "amount": float(debtor.d180)},
+            ]
+            total_balance = float(debtor.total_balance)
+            for bucket in buckets:
+                bucket["percentage"] = (
+                    (bucket["amount"] / total_balance * 100) if total_balance else 0
+                )
+
+            data = {
+                "debtor_id": debtor.id,
+                "debtor_number": str(debtor.dno),
+                "debtor_name": debtor.dname,
+                "buckets": buckets,
+                "total_balance": total_balance,
+                "credit_limit": float(debtor.dclimit),
+                "utilization_percentage": (
+                    float(debtor.total_balance) / float(debtor.dclimit) * 100
+                    if debtor.dclimit > 0
+                    else 0
+                ),
+                "analysis_date": str(date.today()),
+            }
+            return Response(data)
+        except Exception as e:
+            return Response(
+                {"status": "error", "message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    @action(detail=True, methods=["get"])
+    def statement(self, request, pk=None):
+        """Get a debtor statement for a period (opening/closing balance + transactions)."""
+        try:
+            debtor = self.get_object()
+            start_date = request.query_params.get("start_date")
+            end_date = request.query_params.get("end_date")
+
+            statement_data = DebtorService.get_debtor_statement(
+                debtor, start_date=start_date, end_date=end_date
+            )
+            statement_data["transactions"] = DebtorTransactionSerializer(
+                statement_data["transactions"], many=True
+            ).data
+            statement_data["debtor"] = DebtorListSerializer(debtor).data
+            return Response(statement_data)
+        except Exception as e:
+            return Response(
+                {"status": "error", "message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     @action(detail=True, methods=["get"])
     def sales_history(self, request, pk=None):
@@ -632,7 +706,15 @@ class DebtorTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     def post_receipt(self, request):
         """Record a receipt (payment) against a debtor's account."""
         try:
-            debtor = Debtor.objects.get(pk=request.data.get("debtor_id"))
+            # NOTE: "debtor_id" here is the debtor's business account number
+            # (Debtor.dno) — the value every frontend list/picker calls
+            # debtor.id (DebtorListSerializer/DebtorDetailSerializer alias
+            # id=dno, and DebtorViewSet itself resolves /debtors/{x}/ via
+            # lookup_field="dno"), NOT Django's internal auto pk. A raw
+            # pk= lookup here would only coincidentally succeed when dno
+            # happens to equal the internal id (e.g. freshly seeded demo
+            # data) and fail for any real imported dataset.
+            debtor = Debtor.objects.get(dno=request.data.get("debtor_id"))
             amount = Decimal(str(request.data.get("amount", 0)))
             trans = DebtorService.post_receipt(
                 debtor=debtor,
@@ -666,13 +748,22 @@ class DebtorTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     def post_debit(self, request):
         """Post a debit journal (increases the amount owing)."""
         try:
-            debtor = Debtor.objects.get(pk=request.data.get("debtor_id"))
+            # NOTE: "debtor_id" here is the debtor's business account number
+            # (Debtor.dno) — the value every frontend list/picker calls
+            # debtor.id (DebtorListSerializer/DebtorDetailSerializer alias
+            # id=dno, and DebtorViewSet itself resolves /debtors/{x}/ via
+            # lookup_field="dno"), NOT Django's internal auto pk. A raw
+            # pk= lookup here would only coincidentally succeed when dno
+            # happens to equal the internal id (e.g. freshly seeded demo
+            # data) and fail for any real imported dataset.
+            debtor = Debtor.objects.get(dno=request.data.get("debtor_id"))
             amount = Decimal(str(request.data.get("amount", 0)))
             trans = DebtorService.post_journal(
                 debtor=debtor,
                 journal_type="JD",
                 amount=amount,
                 custref=request.data.get("description", ""),
+                age_period=str(request.data.get("age_period", "0")),
             )
             return Response(
                 DebtorTransactionSerializer(trans).data, status=status.HTTP_201_CREATED
@@ -701,13 +792,22 @@ class DebtorTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     def post_credit(self, request):
         """Post a credit journal (reduces the amount owing)."""
         try:
-            debtor = Debtor.objects.get(pk=request.data.get("debtor_id"))
+            # NOTE: "debtor_id" here is the debtor's business account number
+            # (Debtor.dno) — the value every frontend list/picker calls
+            # debtor.id (DebtorListSerializer/DebtorDetailSerializer alias
+            # id=dno, and DebtorViewSet itself resolves /debtors/{x}/ via
+            # lookup_field="dno"), NOT Django's internal auto pk. A raw
+            # pk= lookup here would only coincidentally succeed when dno
+            # happens to equal the internal id (e.g. freshly seeded demo
+            # data) and fail for any real imported dataset.
+            debtor = Debtor.objects.get(dno=request.data.get("debtor_id"))
             amount = Decimal(str(request.data.get("amount", 0)))
             trans = DebtorService.post_journal(
                 debtor=debtor,
                 journal_type="JC",
                 amount=amount,
                 custref=request.data.get("description", ""),
+                age_period=str(request.data.get("age_period", "0")),
             )
             return Response(
                 DebtorTransactionSerializer(trans).data, status=status.HTTP_201_CREATED
@@ -736,17 +836,34 @@ class DebtorTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     def charge_interest(self, request):
         """
         Charge interest on a single debtor's overdue balance. If `amount` is
-        given, that value is charged directly; otherwise it's computed from
-        the debtor's aged balances via DebtorService.calculate_interest.
+        given, that value is charged directly (manual override); otherwise
+        it's computed from the debtor's aged balances via
+        DebtorService.calculate_interest using `rate` (fraction, e.g. 0.01
+        for 1%), `start_period` (2=30 days .. 7=180 days) and
+        `charge_credit_balances`.
         """
         try:
-            debtor = Debtor.objects.get(pk=request.data.get("debtor_id"))
+            # NOTE: "debtor_id" here is the debtor's business account number
+            # (Debtor.dno) — the value every frontend list/picker calls
+            # debtor.id (DebtorListSerializer/DebtorDetailSerializer alias
+            # id=dno, and DebtorViewSet itself resolves /debtors/{x}/ via
+            # lookup_field="dno"), NOT Django's internal auto pk. A raw
+            # pk= lookup here would only coincidentally succeed when dno
+            # happens to equal the internal id (e.g. freshly seeded demo
+            # data) and fail for any real imported dataset.
+            debtor = Debtor.objects.get(dno=request.data.get("debtor_id"))
             raw_amount = request.data.get("amount")
-            interest = (
-                Decimal(str(raw_amount))
-                if raw_amount
-                else DebtorService.calculate_interest(debtor)
-            )
+            if raw_amount:
+                interest = Decimal(str(raw_amount))
+            else:
+                interest = DebtorService.calculate_interest(
+                    debtor,
+                    rate=float(request.data.get("rate", 0.01)),
+                    start_period=int(request.data.get("start_period", 2)),
+                    charge_credit_balances=bool(
+                        request.data.get("charge_credit_balances", False)
+                    ),
+                )
             if interest <= 0:
                 return Response(
                     {"status": "error", "message": "No interest to charge"},
@@ -779,6 +896,32 @@ class DebtorTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+    @action(
+        detail=False,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, CanChargeInterest],
+    )
+    def charge_interest_batch(self, request):
+        """
+        Month-end interest run — manual §2.2 "3. Interest Charging": "This
+        should only be done at month end after a backup." Charges every
+        debtor with dintflag='Y' via DebtorService.charge_interest_batch.
+        """
+        try:
+            result = DebtorService.charge_interest_batch(
+                rate=float(request.data.get("rate", 0.01)),
+                start_period=int(request.data.get("start_period", 2)),
+                charge_credit_balances=bool(
+                    request.data.get("charge_credit_balances", False)
+                ),
+            )
+            return Response({"status": "success", **result})
+        except Exception as e:
+            return Response(
+                {"status": "error", "message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
 
 class DebteopenViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """
@@ -789,8 +932,7 @@ class DebteopenViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     serializer_class = DebteopenSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    # FIX: 'customer_number' → 'dno' to match Debtopen model FK
-    filterset_fields = ["dno", "type", "posted", "ageflag"]
+    filterset_class = DebteopenFilter
     ordering_fields = ["date", "total"]
     ordering = ["-date"]
 
@@ -823,38 +965,57 @@ class DebteopenViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         permission_classes=[IsAuthenticated, CanPostInvoice],
     )
     def allocate(self, request, pk=None):
-        """Allocate payment against a single open item."""
+        """
+        Allocate payment against a single open item. Routes through
+        DebtorService.apply_receipt_allocation — same audited path as
+        allocate_receipt (the batch/multi-item variant) — so every
+        allocation gets a ReceiptAllocation row and DebtorAudit entry and
+        the full-settlement-only discount rule is enforced, rather than
+        directly mutating balancedue with no trail.
+        """
         try:
             open_item = self.get_object()
             allocation_amount = Decimal(str(request.data.get("amount", 0)))
+            settlement_discount = request.data.get("settlement_discount", 0)
+            receipt_id = request.data.get("receipt_transaction_id") or request.data.get(
+                "receipt_id"
+            )
 
-            if allocation_amount <= 0:
-                return Response(
-                    {
-                        "status": "error",
-                        "message": "Allocation amount must be greater than zero",
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
+            with db_transaction.atomic():
+                if receipt_id:
+                    receipt_transaction = DebtorTransaction.objects.get(
+                        pk=receipt_id, debtor=open_item.dno
+                    )
+                else:
+                    debtor = Debtor.objects.select_for_update().get(pk=open_item.dno_id)
+                    receipt_transaction = DebtorService.post_receipt(
+                        debtor=debtor, amount=allocation_amount
+                    )
+
+                DebtorService.apply_receipt_allocation(
+                    open_item=open_item,
+                    amount_paid=allocation_amount,
+                    settlement_discount=settlement_discount,
+                    receipt_transaction=receipt_transaction,
                 )
 
-            if allocation_amount > open_item.balancedue:
-                return Response(
-                    {
-                        "status": "error",
-                        "message": "Allocation cannot exceed balance due",
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            open_item.balancedue -= allocation_amount
-            open_item.save(update_fields=["balancedue"])
-
+            open_item.refresh_from_db()
             return Response(
                 {
                     "status": "success",
                     "message": "Payment allocated successfully",
                     "new_balance": float(open_item.balancedue),
                 }
+            )
+        except DebtorTransaction.DoesNotExist:
+            return Response(
+                {"status": "error", "message": "Receipt transaction not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except ValueError as e:
+            return Response(
+                {"status": "error", "message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
             )
         except Exception as e:
             return Response(
@@ -889,6 +1050,12 @@ class DebteopenViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         results = []
         try:
             with db_transaction.atomic():
+                # debtor_id here is the business account number (Debtor.dno)
+                # — same convention as DebtorTransactionViewSet's actions —
+                # not Django's internal pk. Resolve it once up front so
+                # every lookup below uses the real internal pk.
+                debtor = Debtor.objects.select_for_update().get(dno=debtor_id)
+
                 # Route through the same DebtorTransaction the receipt was
                 # posted against — required now that allocations persist a
                 # ReceiptAllocation row (FK to DebtorTransaction). Falls back
@@ -897,10 +1064,9 @@ class DebteopenViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 # posting a receipt first.
                 if receipt_id:
                     receipt_transaction = DebtorTransaction.objects.get(
-                        pk=receipt_id, debtor_id=debtor_id
+                        pk=receipt_id, debtor=debtor
                     )
                 else:
-                    debtor = Debtor.objects.select_for_update().get(pk=debtor_id)
                     total_amount = sum(Decimal(str(a["amount"])) for a in allocations)
                     receipt_transaction = DebtorService.post_receipt(
                         debtor=debtor, amount=total_amount
@@ -908,7 +1074,7 @@ class DebteopenViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 
                 for alloc in allocations:
                     open_item = Debtopen.objects.select_for_update().get(
-                        pk=alloc["open_item_id"], dno_id=debtor_id
+                        pk=alloc["open_item_id"], dno=debtor
                     )
                     DebtorService.apply_receipt_allocation(
                         open_item=open_item,
@@ -924,6 +1090,11 @@ class DebteopenViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                     )
 
             return Response({"status": "success", "allocations": results})
+        except Debtor.DoesNotExist:
+            return Response(
+                {"status": "error", "message": "Debtor not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
         except Debtopen.DoesNotExist:
             return Response(
                 {"status": "error", "message": "Open item not found for this debtor"},
@@ -945,8 +1116,7 @@ class DpdcViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     serializer_class = DpdcSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    # 'dno' is correct — matches Dpdc model FK
-    filterset_fields = ["dno", "status", "date"]
+    filterset_class = DpdcFilter
     ordering_fields = ["date", "amount"]
     ordering = ["date"]
 
@@ -1038,7 +1208,16 @@ class DpdcViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 )
 
             pdc.status = "DISHONOURED"
-            pdc.save(update_fields=["status"])
+            update_fields = ["status"]
+
+            cancellation_note = request.data.get("notes")
+            reason = request.data.get("cancellation_reason")
+            if cancellation_note or reason:
+                note_line = f"[Cancelled{f' - {reason}' if reason else ''}] {cancellation_note or ''}".strip()
+                pdc.notes = f"{pdc.notes}\n{note_line}".strip() if pdc.notes else note_line
+                update_fields.append("notes")
+
+            pdc.save(update_fields=update_fields)
 
             return Response(
                 {"status": "success", "message": "PDC marked as dishonoured"}

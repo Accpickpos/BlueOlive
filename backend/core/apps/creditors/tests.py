@@ -16,12 +16,8 @@ from .models import (
     RFC,
     CreditorTransaction,
     CreditorTransactionLine,
-    ExpenseCategory,
-    ExpenseMonthlyTotal,
     OpenItemAllocation,
     RFCLineItem,
-    Supplier,
-    SupplierMonthlyPurchase,
 )
 
 

@@ -55,15 +55,19 @@ export const creditorsMasterApi = {
 
     /**
      * Thin typeahead lookup for creditor/supplier pickers — hits
-     * CreditorViewSet.lookup (LookupActionMixin), returns a flat array (no
-     * pagination envelope) of CreditorListSerializer rows.
+     * CreditorViewSet.lookup (LookupActionMixin), returns
+     * {results, count, has_more} of CreditorListSerializer rows.
      */
-    lookup: async (query: string, limit = 20): Promise<CreditorAccount[]> => {
-      const { data } = await api.get<CreditorAccount[]>(
+    lookup: async (
+      query: string,
+      limit = 20,
+      offset = 0
+    ): Promise<{ results: CreditorAccount[]; count: number; hasMore: boolean }> => {
+      const { data } = await api.get<{ results: CreditorAccount[]; count: number; has_more: boolean }>(
         `${ENDPOINTS.CREDITORS.ACCOUNTS}lookup/`,
-        { params: { search: query, limit } }
+        { params: { search: query, limit, offset } }
       );
-      return data;
+      return { results: data.results, count: data.count, hasMore: data.has_more };
     },
 
     get: async (id: string | number) => {

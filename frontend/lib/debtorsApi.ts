@@ -216,6 +216,8 @@ export const debtorsApi = {
       amount: number;
       description: string;
       transaction_date: string;
+      /** Open Item accounts only — Debtopen ageflag bucket ("0".."4") the journal is allocated to. */
+      age_period?: string;
     }) => {
       const response = await api.post<Transaction>(
         `${ENDPOINTS.DEBTORS.TRANSACTIONS}post_debit/`,
@@ -232,6 +234,8 @@ export const debtorsApi = {
       amount: number;
       description: string;
       transaction_date: string;
+      /** Open Item accounts only — Debtopen ageflag bucket ("0".."4") the journal is allocated to. */
+      age_period?: string;
     }) => {
       const response = await api.post<Transaction>(
         `${ENDPOINTS.DEBTORS.TRANSACTIONS}post_credit/`,
@@ -257,16 +261,39 @@ export const debtorsApi = {
     },
 
     /**
-     * Charge interest on debtor account
+     * Charge interest on debtor account. Pass `amount` to override the
+     * charge directly, or omit it and pass `rate`/`start_period`/
+     * `charge_credit_balances` to have the backend compute it from the
+     * debtor's aged balances (DebtorService.calculate_interest).
      */
     chargeInterest: async (data: {
       debtor_id: number;
-      amount: number;
-      transaction_date: string;
+      amount?: number;
+      transaction_date?: string;
+      /** Monthly interest rate as a fraction, e.g. 0.01 for 1%. */
+      rate?: number;
+      /** Ageing bucket interest starts from: 2=30 days .. 7=180 days. */
+      start_period?: number;
+      charge_credit_balances?: boolean;
     }) => {
       const response = await api.post<Transaction>(
         `${ENDPOINTS.DEBTORS.TRANSACTIONS}charge_interest/`,
         data
+      );
+      return response.data;
+    },
+
+    /**
+     * Month-end interest run across every debtor with dintflag='Y'.
+     */
+    chargeInterestBatch: async (data?: {
+      rate?: number;
+      start_period?: number;
+      charge_credit_balances?: boolean;
+    }) => {
+      const response = await api.post(
+        `${ENDPOINTS.DEBTORS.TRANSACTIONS}charge_interest_batch/`,
+        data || {}
       );
       return response.data;
     },
@@ -278,9 +305,10 @@ export const debtorsApi = {
      * List open items for debtor
      */
     list: async (debtorId?: number) => {
+      // DebteopenViewSet.filterset_fields exposes the FK as 'dno', not 'debtor_id'.
       const response = await api.get<PaginatedResponse<OpenItem>>(
         ENDPOINTS.DEBTORS.OPEN_ITEMS,
-        { params: debtorId ? { debtor_id: debtorId } : {} }
+        { params: debtorId ? { dno: debtorId } : {} }
       );
       return response.data;
     },
@@ -291,6 +319,16 @@ export const debtorsApi = {
     get: async (id: number) => {
       const response = await api.get<OpenItem>(
         `${ENDPOINTS.DEBTORS.OPEN_ITEMS}${id}/`
+      );
+      return response.data;
+    },
+
+    /**
+     * List outstanding (unmatched/unallocated) open items across all debtors.
+     */
+    outstanding: async () => {
+      const response = await api.get<PaginatedResponse<OpenItem>>(
+        `${ENDPOINTS.DEBTORS.OPEN_ITEMS}outstanding/`
       );
       return response.data;
     },
@@ -320,9 +358,10 @@ export const debtorsApi = {
      * List post-dated cheques
      */
     list: async (debtorId?: number) => {
+      // DpdcViewSet.filterset_fields exposes the FK as 'dno', not 'debtor_id'.
       const response = await api.get<PaginatedResponse<PostDatedCheque>>(
         ENDPOINTS.DEBTORS.POST_DATED_CHEQUES,
-        { params: debtorId ? { debtor_id: debtorId } : {} }
+        { params: debtorId ? { dno: debtorId } : {} }
       );
       return response.data;
     },
