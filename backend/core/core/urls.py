@@ -21,7 +21,7 @@ from apps.creditors.urls import urlpatterns as creditors_urls
 # Import routers from business apps
 from apps.debtors.urls import debtors_router
 from apps.gas.urls import router as gas_router
-from apps.general_ledger.urls import router as general_ledger_router
+from apps.general_ledger.urls import urlpatterns as general_ledger_urls
 from apps.messaging.urls import urlpatterns as messaging_urls
 from apps.pos.urls import router as pos_router
 from apps.purchase_orders.urls import router as purchase_orders_router
@@ -75,7 +75,7 @@ v1_api_patterns = [
     path("purchase-orders/", include(purchase_orders_router.urls)),
     path("pos/", include(pos_router.urls)),
     path("settings/", include(settings_router.urls)),
-    path("general-ledger/", include(general_ledger_router.urls)),
+    path("general-ledger/", include(general_ledger_urls)),
     path("messaging/", include(messaging_urls)),
     path("stockfinder/", include(stockfinder_router.urls)),
     path("gas/", include(gas_router.urls)),
@@ -118,7 +118,7 @@ urlpatterns = [
     path("api/purchase-orders/", include(purchase_orders_router.urls)),
     path("api/pos/", include(pos_router.urls)),
     path("api/settings/", include(settings_router.urls)),
-    path("api/general-ledger/", include(general_ledger_router.urls)),
+    path("api/general-ledger/", include(general_ledger_urls)),
     path("api/messaging/", include(messaging_urls)),
     # Template views for SPA
     # path('', TemplateView.as_view(template_name='index.html'), name='home'),

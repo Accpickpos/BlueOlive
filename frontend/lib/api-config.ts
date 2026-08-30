@@ -164,6 +164,42 @@ export const ENDPOINTS = {
     TRANSACTIONS: `${API_V1_BASE}/general-ledger/transactions/`,
     STANDING_JOURNALS: `${API_V1_BASE}/general-ledger/standing-journals/`,
     SPREAD_SHEETS: `${API_V1_BASE}/general-ledger/spread-sheets/`,
+    BATCHES: `${API_V1_BASE}/general-ledger/batches/`,
+    REPORT_FORMATS: `${API_V1_BASE}/general-ledger/report-formats/`,
+    PARAMETERS: `${API_V1_BASE}/general-ledger/parameters/`,
+    INTEGRATION_SETTINGS: `${API_V1_BASE}/general-ledger/integration-settings/`,
+
+    // Master account actions
+    MASTER_ACCOUNT_HISTORY: (id: string | number) => `${API_V1_BASE}/general-ledger/master-accounts/${id}/account_history/`,
+    MASTER_ACCOUNTS_SUMMARY: `${API_V1_BASE}/general-ledger/master-accounts/summary/`,
+    MASTER_ACCOUNTS_BALANCE_SUMMARY: `${API_V1_BASE}/general-ledger/master-accounts/balance_summary/`,
+
+    // Batch actions
+    BATCH_BALANCE_CHECK: `${API_V1_BASE}/general-ledger/batches/balance_check/`,
+    BATCH_POST: `${API_V1_BASE}/general-ledger/batches/post/`,
+
+    // Standing journal actions
+    STANDING_JOURNAL_VALIDATE: `${API_V1_BASE}/general-ledger/standing-journals/validate_balance/`,
+    STANDING_JOURNAL_POST_DUE: `${API_V1_BASE}/general-ledger/standing-journals/post_due/`,
+    STANDING_JOURNAL_ACTIVE: `${API_V1_BASE}/general-ledger/standing-journals/active_journals/`,
+
+    // Parameters actions (GLParam is a singleton, pk always 1)
+    PARAMETERS_CURRENT: `${API_V1_BASE}/general-ledger/parameters/1/`,
+    SYSTEM_STATUS: `${API_V1_BASE}/general-ledger/parameters/system_status/`,
+    PERIOD_END: `${API_V1_BASE}/general-ledger/parameters/period_end/`,
+    YEAR_END: `${API_V1_BASE}/general-ledger/parameters/year_end/`,
+
+    // Integration settings singleton
+    INTEGRATION_SETTINGS_CURRENT: `${API_V1_BASE}/general-ledger/integration-settings/1/`,
+
+    // Reports
+    TRIAL_BALANCE: `${API_V1_BASE}/general-ledger/reports/trial-balance/`,
+    INCOME_STATEMENT: `${API_V1_BASE}/general-ledger/reports/income-statement/`,
+    BALANCE_SHEET: `${API_V1_BASE}/general-ledger/reports/balance-sheet/`,
+
+    // Integration transfer
+    INTEGRATION_TRANSFER: `${API_V1_BASE}/general-ledger/integration/transfer/`,
+    INTEGRATION_OUTSTANDING: `${API_V1_BASE}/general-ledger/integration/outstanding/`,
   },
 
   // ===== STOCK CONTROL =====

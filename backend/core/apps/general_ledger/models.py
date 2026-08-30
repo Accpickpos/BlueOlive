@@ -208,6 +208,128 @@ class GLMast(TimeStampedModel):
         return f"{self.accno} - {self.name}"
 
 
+class GLIntegrationSettings(TimeStampedModel):
+    """GL Integration Settings - control-account mapping for the Integration
+    Transfer pipeline that posts Debtors/Creditors/Stock Control/Cash Book
+    transactions into GL. Singleton (pk=1), mirrors apps.gas.models
+    .RentalSettings's account-mapping pattern: every field is nullable, and
+    IntegrationTransferService validates the fields a given source needs are
+    configured before posting anything for that source (see
+    RentalService._require_gl_accounts for the pattern being copied)."""
+
+    debtors_control_accno = models.BigIntegerField(
+        null=True, blank=True, help_text="Debtors Control account"
+    )
+    creditors_control_accno = models.BigIntegerField(
+        null=True, blank=True, help_text="Creditors Control account"
+    )
+    bank_control_accno = models.BigIntegerField(
+        null=True, blank=True, help_text="Bank Control account"
+    )
+    cash_control_accno = models.BigIntegerField(
+        null=True, blank=True, help_text="Cash Control account"
+    )
+    sales_accno = models.BigIntegerField(
+        null=True, blank=True, help_text="Sales / Revenue control account"
+    )
+    vat_output_accno = models.BigIntegerField(
+        null=True, blank=True, help_text="VAT Output (payable) control account"
+    )
+    vat_input_accno = models.BigIntegerField(
+        null=True, blank=True, help_text="VAT Input (receivable) control account"
+    )
+    stock_control_accno = models.BigIntegerField(
+        null=True, blank=True, help_text="Stock Control account"
+    )
+    stock_shrinkage_expense_accno = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="Stock shrinkage/loss expense account (stock take net losses)",
+    )
+    stock_gain_income_accno = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="Stock gain income account (stock take net gains)",
+    )
+    debtors_interest_income_accno = models.BigIntegerField(
+        null=True, blank=True, help_text="Interest charged to debtors — income account"
+    )
+    debtors_suspense_accno = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="Offsetting account for manual debtor journal adjustments (JD/JC)",
+    )
+    creditors_discount_received_accno = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="Discount received on creditor payments (optional split)",
+    )
+    creditors_suspense_accno = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="Offsetting account for manual creditor journal adjustments",
+    )
+    cashbook_default_income_accno = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="Fallback income account for cash book transactions with no "
+        "category-level GL mapping",
+    )
+    cashbook_default_expense_accno = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="Fallback expense account for cash book transactions with no "
+        "category-level GL mapping",
+    )
+
+    class Meta:
+        verbose_name = "GL Integration Settings"
+        verbose_name_plural = "GL Integration Settings"
+
+    def __str__(self):
+        return "GL Integration Settings"
+
+
+class GLIntegrationLog(TimeStampedModel):
+    """Records every source-app document that has been transferred into GL
+    via the Integration Transfer pipeline. This is the sole idempotency
+    mechanism for Integration — a (source_app, source_model, source_pk)
+    tuple already present here is never transferred again — and it also
+    answers the spec's "Outstanding Batches" enquiry (posted source records
+    NOT in this log) without any schema changes to the source apps
+    themselves (debtors/creditors/stock_control/cash_book)."""
+
+    SOURCE_APP_CHOICES = [
+        ("debtors", "Debtors"),
+        ("creditors", "Creditors"),
+        ("stock_control", "Stock Control"),
+        ("cash_book", "Cash Book"),
+    ]
+
+    source_app = models.CharField(max_length=20, choices=SOURCE_APP_CHOICES)
+    source_model = models.CharField(max_length=50)
+    source_pk = models.BigIntegerField()
+    gl_batchno = models.BigIntegerField(help_text="GLTran.batchno this record posted to")
+    transferred_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "GL Integration Log"
+        verbose_name_plural = "GL Integration Log"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source_app", "source_model", "source_pk"],
+                name="unique_gl_integration_source",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["source_app", "source_model"]),
+            models.Index(fields=["gl_batchno"]),
+        ]
+
+    def __str__(self):
+        return f"{self.source_app}.{self.source_model}#{self.source_pk} -> batch {self.gl_batchno}"
+
+
 class GLTran(TimeStampedModel):
     """GL Transaction - Transaction Details for Journal Entries"""
 
@@ -326,6 +448,18 @@ class GLParam(TimeStampedModel):
         validators=[MinValueValidator(1900), MaxValueValidator(9999)],
         default=2026,
         help_text="Current Year (4 digits)",
+    )
+
+    # Retained Earnings Account (Year End closing target)
+    retained_earnings_accno = models.BigIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(99999999)],
+        help_text=(
+            "GLMast.accno that Income Statement accounts are closed against "
+            "at Year End. Must be configured (a Balance Sheet, credit-normal "
+            "equity account) before year_end can run."
+        ),
     )
 
     class Meta:

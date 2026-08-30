@@ -42,3 +42,52 @@ class CanManageGL(permissions.BasePermission):
                 ).exists()
             )
         )
+
+
+class CanPostGLBatch(CanManageGL):
+    """Posting a captured GLBatch into GLTran — same tier as CanManageGL
+    (routine accounting work), kept as a separate class so batch-posting can
+    be gated independently of plain GLBatch CRUD if that's ever needed."""
+
+
+class CanPostStandingJournal(CanManageGL):
+    """Posting due Standing Journals — same tier as CanManageGL."""
+
+
+class _GLSupervisorOnly(permissions.BasePermission):
+    """Stricter tier than CanManageGL: is_superuser, role == ADMIN, or
+    membership in the Admin/GLSupervisor groups only — deliberately excludes
+    plain ACCOUNTANT. Used for irreversible or cross-module operations
+    (Period End, Year End, Integration Transfer) where segregation of duties
+    matters, matching the split already visible in
+    apps/creditors/permissions.py (e.g. CanPostCreditorPayment vs
+    CanReconcileCreditor)."""
+
+    def has_permission(self, request, view):
+        if not (request.user and request.user.is_authenticated):
+            return False
+
+        return (
+            request.user.is_superuser
+            or (hasattr(request.user, "role") and request.user.role == "ADMIN")
+            or (
+                hasattr(request.user, "groups")
+                and request.user.groups.filter(
+                    name__in=["Admin", "GLSupervisor"]
+                ).exists()
+            )
+        )
+
+
+class CanPerformPeriodEnd(_GLSupervisorOnly):
+    """Advancing GLParam.curperiod — irreversible, restricted to Admin/GLSupervisor."""
+
+
+class CanPerformYearEnd(_GLSupervisorOnly):
+    """Running the Year End close — irreversible, restricted to Admin/GLSupervisor."""
+
+
+class CanRunGLIntegration(_GLSupervisorOnly):
+    """Running the Integration Transfer pipeline — posts real financial
+    entries across 4 modules from a configurable account mapping; a wrong
+    mapping produces wrong postings, so this is restricted to Admin/GLSupervisor."""

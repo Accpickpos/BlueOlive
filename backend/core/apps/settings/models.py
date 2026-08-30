@@ -522,6 +522,13 @@ class IncomeCategory(TimeStampedModel, ActiveModel):
     name = models.CharField(
         max_length=100, unique=True, help_text="Income category name"
     )
+    gl_accno = models.BigIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(99999999)],
+        help_text="GLMast.accno this category posts to via GL Integration Transfer. "
+        "Falls back to GLIntegrationSettings.cashbook_default_income_accno when unset.",
+    )
 
     # === SYSTEM GENERATED FIELDS ===
     total_mtd = models.DecimalField(
@@ -587,6 +594,13 @@ class ExpenseCategory(TimeStampedModel, ActiveModel):
         choices=CATEGORY_TYPE_CHOICES,
         default="BOTH",
         help_text="Where this category can be used",
+    )
+    gl_accno = models.BigIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(99999999)],
+        help_text="GLMast.accno this category posts to via GL Integration Transfer. "
+        "Falls back to GLIntegrationSettings.cashbook_default_expense_accno when unset.",
     )
 
     # === SYSTEM GENERATED FIELDS ===

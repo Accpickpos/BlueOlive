@@ -7,20 +7,47 @@ from datetime import date
 from decimal import Decimal
 
 from apps.shop_filter_mixin import ShopFilterMixin
+from django.db import transaction
 from django.db.models import Avg, Count, F, Max, Min, Q, Sum
+from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from .models import GLBatch, GLMast, GLSpread, GLStJnl, GLTran
-from .permissions import CanManageGL
+from .exceptions import GLPostingException
+from .models import (
+    GLBatch,
+    GLIntegrationSettings,
+    GLMast,
+    GLParam,
+    GLRep,
+    GLSpread,
+    GLStJnl,
+    GLTran,
+)
+from .permissions import (
+    CanManageGL,
+    CanPerformPeriodEnd,
+    CanPerformYearEnd,
+    CanPostGLBatch,
+    CanPostStandingJournal,
+)
 from .serializers import (
+    GLBatchDetailSerializer,
+    GLBatchListSerializer,
+    GLBatchSerializer,
+    GLIntegrationSettingsSerializer,
     GLMastDetailSerializer,
     GLMastListSerializer,
     GLMastSerializer,
+    GLParamSerializer,
+    GLRepDetailSerializer,
+    GLRepListSerializer,
+    GLRepSerializer,
     GLSpreadDetailSerializer,
     GLSpreadListSerializer,
     GLSpreadSerializer,
@@ -31,6 +58,7 @@ from .serializers import (
     GLTranListSerializer,
     GLTranSerializer,
 )
+from .services import GLPostingService
 
 
 class GLMastViewSet(ShopFilterMixin, viewsets.ModelViewSet):
@@ -281,6 +309,27 @@ class GLTranViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             return GLTranDetailSerializer
         return GLTranSerializer
 
+    def create(self, request, *args, **kwargs):
+        """
+        A single GLTran row can never satisfy the spec's "only journals in
+        balance will be saved" rule — one row is one leg of a double-entry
+        posting, not a complete transaction. Direct creation through this
+        endpoint is blocked entirely; balanced postings must go through
+        GLBatch capture (/general-ledger/batches/{batchno}/post/) or a
+        Standing Journal (/general-ledger/standing-journals/post_due/).
+
+        System-sourced postings (e.g. apps.gas.services.LedgerPostingService,
+        the Integration Transfer pipeline) write GLTran via the ORM/
+        GLPostingService directly and never go through this ViewSet, so
+        blocking create() here does not affect them.
+        """
+        raise ValidationError(
+            "Direct single-row GL postings are not permitted — a GL transaction "
+            "must be part of a balanced journal. Use GLBatch capture "
+            "(POST /general-ledger/batches/ then .../post/) or a Standing Journal "
+            "instead."
+        )
+
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         for field in self.IMMUTABLE_FIELDS_ON_UPDATE:
@@ -521,6 +570,151 @@ class GLStJnlViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         elif self.action == "retrieve":
             return GLStJnlDetailSerializer
         return GLStJnlSerializer
+
+    @staticmethod
+    def _journal_balance(journalno, exclude_pk=None):
+        """Sum amount by drorcr across every GLStJnl row sharing journalno
+        (a standing journal is one journalno with 2+ lines, one row per
+        account/leg — mirrors how a GLBatch groups lines by batchno).
+        Returns (total_debit, total_credit)."""
+        qs = GLStJnl.objects.filter(journalno=journalno)
+        if exclude_pk is not None:
+            qs = qs.exclude(pk=exclude_pk)
+        total_debit = qs.filter(drorcr="D").aggregate(total=Sum("amount"))[
+            "total"
+        ] or Decimal("0.00")
+        total_credit = qs.filter(drorcr="C").aggregate(total=Sum("amount"))[
+            "total"
+        ] or Decimal("0.00")
+        return total_debit, total_credit
+
+    def _validate_balance_with(self, journalno, drorcr, amount, exclude_pk=None):
+        """Raise ValidationError if adding/editing this one line would leave
+        journalno's full set of lines unbalanced. A standing journal is only
+        meaningful as a complete, balanced set — a lone unbalanced leg must
+        never be persisted, same rule as GLBatch/GLTran."""
+        total_debit, total_credit = self._journal_balance(
+            journalno, exclude_pk=exclude_pk
+        )
+        if drorcr == "D":
+            total_debit += amount
+        else:
+            total_credit += amount
+        if total_debit != total_credit:
+            raise ValidationError(
+                f"Journal {journalno} would not balance: debits={total_debit}, "
+                f"credits={total_credit}. Standing journal lines must net to zero "
+                "across the whole journalno before they can be saved — add the "
+                "offsetting line(s) in the same request sequence, or adjust the amount."
+            )
+
+    def perform_create(self, serializer):
+        self._validate_balance_with(
+            serializer.validated_data["journalno"],
+            serializer.validated_data["drorcr"],
+            serializer.validated_data["amount"],
+        )
+        serializer.save()
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        journalno = serializer.validated_data.get("journalno", instance.journalno)
+        drorcr = serializer.validated_data.get("drorcr", instance.drorcr)
+        amount = serializer.validated_data.get("amount", instance.amount)
+        self._validate_balance_with(journalno, drorcr, amount, exclude_pk=instance.pk)
+        serializer.save()
+
+    @action(detail=False, methods=["get"])
+    def validate_balance(self, request):
+        """Check whether a journalno's full set of lines currently balances."""
+        journalno = request.query_params.get("journalno")
+        if not journalno:
+            return Response(
+                {"error": "journalno parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        total_debit, total_credit = self._journal_balance(journalno)
+        return Response(
+            {
+                "journalno": journalno,
+                "total_debit": float(total_debit),
+                "total_credit": float(total_credit),
+                "is_balanced": total_debit == total_credit,
+            }
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, CanPostStandingJournal],
+    )
+    def post_due(self, request):
+        """
+        Post every Standing Journal group (grouped by journalno) whose
+        nextperiod matches GLParam.curperiod.
+
+        Per group: re-validate the balance server-side (skip + report, never
+        crash the whole run, on any group that doesn't balance — a bad
+        journal shouldn't block every other due journal), post via
+        GLPostingService.post_batch, increment timesbal on every row in the
+        group, and advance nextperiod (wrapping 12 -> 1) unless timesbal has
+        now reached times (that journal is complete and stops appearing in
+        future post_due runs, same filter active_journals already uses:
+        timesbal < times).
+        """
+        param, _ = GLParam.objects.select_for_update().get_or_create(pk=1)
+        due_journalnos = (
+            GLStJnl.objects.filter(
+                nextperiod=param.curperiod, timesbal__lt=F("times")
+            )
+            .values_list("journalno", flat=True)
+            .distinct()
+        )
+
+        posted, skipped_unbalanced, completed = [], [], []
+
+        with transaction.atomic():
+            for journalno in due_journalnos:
+                rows = list(GLStJnl.objects.filter(journalno=journalno))
+                total_debit = sum(r.amount for r in rows if r.drorcr == "D")
+                total_credit = sum(r.amount for r in rows if r.drorcr == "C")
+                if total_debit != total_credit:
+                    skipped_unbalanced.append(journalno)
+                    continue
+
+                lines = [
+                    {
+                        "accno": r.accno,
+                        "type": r.drorcr,
+                        "amount": r.amount,
+                        "reference": f"STJ{journalno}",
+                        "details": r.details,
+                    }
+                    for r in rows
+                ]
+                try:
+                    GLPostingService.post_batch(lines)
+                except GLPostingException:
+                    skipped_unbalanced.append(journalno)
+                    continue
+
+                posted.append(journalno)
+                for r in rows:
+                    r.timesbal += 1
+                    if r.timesbal >= r.times:
+                        completed.append(journalno)
+                    else:
+                        r.nextperiod = r.nextperiod % 12 + 1
+                    r.save(update_fields=["timesbal", "nextperiod", "updated_at"])
+
+        return Response(
+            {
+                "journals_posted": posted,
+                "journals_skipped_unbalanced": skipped_unbalanced,
+                "journals_completed": sorted(set(completed)),
+            }
+        )
 
     @action(detail=False, methods=["get"])
     def by_account(self, request):
@@ -804,3 +998,490 @@ class GLSpreadViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             )
 
         return Response(results)
+
+
+class GLBatchViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+    """
+    ViewSet for GL Batch staging entries — manual/human-captured journal
+    lines awaiting review, grouped by batchno. This is the spec's staging
+    unit: lines accumulate here first, get checked for balance, and only a
+    balanced batchno can be transferred (posted) into GLTran.
+
+    Provides CRUD for staging rows plus:
+    - balance_check: running Dr/Cr totals for a batchno (client-side sanity check)
+    - post: server-revalidated transfer of a balanced batchno into GLTran
+    """
+
+    queryset = GLBatch.objects.all()
+    permission_classes = [IsAuthenticated]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    filterset_fields = ["accno", "batchno", "drorcr", "source", "period"]
+    search_fields = ["reference", "details", "station"]
+    ordering_fields = ["capturedat", "date", "batchno", "accno", "amount"]
+    ordering = ["-capturedat", "batchno", "accno"]
+
+    def get_permissions(self):
+        """Read stays open to any authenticated user; create/update/delete
+        require CanManageGL's Accountant/Admin role check."""
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, CanManageGL]
+        return [permission() for permission in permission_classes]
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return GLBatchListSerializer
+        elif self.action == "retrieve":
+            return GLBatchDetailSerializer
+        return GLBatchSerializer
+
+    def perform_update(self, serializer):
+        """A batch line that has already been posted is a historical
+        record, same rule as GLTran — don't allow editing it out from under
+        the ledger it was transferred into."""
+        if serializer.instance.postdate is not None:
+            raise ValidationError(
+                "This batch line has already been posted to the ledger and cannot "
+                "be edited."
+            )
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.postdate is not None:
+            raise ValidationError(
+                "This batch line has already been posted to the ledger and cannot "
+                "be deleted."
+            )
+        super().perform_destroy(instance)
+
+    @action(detail=False, methods=["get"])
+    def balance_check(self, request):
+        """Get running Dr/Cr totals for a batchno — lets the UI show
+        balanced/unbalanced status before attempting to post."""
+        batchno = request.query_params.get("batchno")
+        if not batchno:
+            return Response(
+                {"error": "batchno parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        lines = self.get_queryset().filter(batchno=batchno)
+        if not lines.exists():
+            return Response(
+                {
+                    "status": "no_data",
+                    "message": f"No batch lines found for batch {batchno}",
+                }
+            )
+
+        total_debit = lines.filter(drorcr="D").aggregate(total=Sum("amount"))[
+            "total"
+        ] or Decimal("0.00")
+        total_credit = lines.filter(drorcr="C").aggregate(total=Sum("amount"))[
+            "total"
+        ] or Decimal("0.00")
+        already_posted = lines.filter(postdate__isnull=False).exists()
+
+        return Response(
+            {
+                "batchno": batchno,
+                "line_count": lines.count(),
+                "total_debit": float(total_debit),
+                "total_credit": float(total_credit),
+                "is_balanced": total_debit == total_credit,
+                "already_posted": already_posted,
+            }
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, CanPostGLBatch],
+    )
+    def post(self, request):
+        """
+        Transfer a balanced batchno's lines into GLTran and update GLMast
+        period balances, then stamp every line's postdate/postime.
+
+        Balance is re-validated server-side regardless of what balance_check
+        returned earlier — never trust the client. Rejects if unbalanced, if
+        the batchno has no lines, or if any line was already posted.
+        """
+        batchno = request.data.get("batchno")
+        if not batchno:
+            return Response(
+                {"error": "batchno is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        with transaction.atomic():
+            lines_qs = GLBatch.objects.select_for_update().filter(batchno=batchno)
+            rows = list(lines_qs)
+            if not rows:
+                return Response(
+                    {"error": f"No batch lines found for batch {batchno}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if any(r.postdate is not None for r in rows):
+                return Response(
+                    {"error": f"Batch {batchno} has already been posted."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            lines = [
+                {
+                    "accno": r.accno,
+                    "type": r.drorcr,
+                    "amount": r.amount,
+                    "date": r.date,
+                    "reference": r.reference,
+                    "details": r.details,
+                    "period": r.period,
+                    "source": r.source,
+                }
+                for r in rows
+            ]
+
+            try:
+                gl_batchno = GLPostingService.post_batch(lines)
+            except GLPostingException as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+            now = timezone.now()
+            for r in rows:
+                r.postdate = now.date()
+                r.postime = now.strftime("%H:%M")
+            GLBatch.objects.bulk_update(rows, ["postdate", "postime"])
+
+        return Response(
+            {
+                "batchno": batchno,
+                "gl_batchno": gl_batchno,
+                "lines_posted": len(rows),
+            }
+        )
+
+
+class GLRepViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+    """
+    ViewSet for GL Report Format rows (Maintenance only — defines the layout
+    Income Statement/Balance Sheet reports are built from; does not itself
+    compute anything, see general_ledger/reports.py for that).
+    """
+
+    queryset = GLRep.objects.all()
+    permission_classes = [IsAuthenticated]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    filterset_fields = ["type", "fieldtype"]
+    search_fields = ["name"]
+    ordering_fields = ["type", "line"]
+    ordering = ["type", "line"]
+
+    def get_permissions(self):
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, CanManageGL]
+        return [permission() for permission in permission_classes]
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return GLRepListSerializer
+        elif self.action == "retrieve":
+            return GLRepDetailSerializer
+        return GLRepSerializer
+
+
+class _SingletonViewSetMixin:
+    """Shared plumbing for a pk=1 singleton resource (GLParam,
+    GLIntegrationSettings): get_object always resolves to the one row
+    regardless of the URL pk, auto-creating it on first access, and
+    list/create are disabled since there is exactly one row."""
+
+    singleton_model = None
+
+    def get_object(self):
+        obj, _ = self.singleton_model.objects.get_or_create(pk=1)
+        return obj
+
+    def list(self, request, *args, **kwargs):
+        serializer = self.get_serializer(self.get_object())
+        return Response(serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        raise ValidationError(
+            f"{self.singleton_model.__name__} is a singleton — use PATCH on the "
+            "existing row instead of creating a new one."
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        raise ValidationError(f"{self.singleton_model.__name__} cannot be deleted.")
+
+
+class GLParamViewSet(_SingletonViewSetMixin, viewsets.ModelViewSet):
+    """
+    ViewSet for the GL Parameters singleton (current period/year, next batch
+    number, retained earnings account). No create/delete — there is exactly
+    one row. Also exposes the higher-risk period/year-end actions and a
+    read-only system status enquiry.
+    """
+
+    singleton_model = GLParam
+    queryset = GLParam.objects.all()
+    serializer_class = GLParamSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, CanManageGL]
+        return [permission() for permission in permission_classes]
+
+    @action(detail=False, methods=["get"])
+    def system_status(self, request):
+        """Read-only enquiry: current period/year, outstanding (unposted)
+        batch count, and the most recent posted transaction date."""
+        param = self.get_object()
+        outstanding_batches = GLBatch.objects.filter(postdate__isnull=True)
+        last_transaction = GLTran.objects.aggregate(last_date=Max("date"))[
+            "last_date"
+        ]
+
+        return Response(
+            {
+                "startper": param.startper,
+                "curperiod": param.curperiod,
+                "currentyr": param.currentyr,
+                "adjusted": param.adjusted,
+                "next_batchno": param.batchno + 1,
+                "outstanding_batches": outstanding_batches.count(),
+                "outstanding_batchnos": sorted(
+                    set(outstanding_batches.values_list("batchno", flat=True))
+                ),
+                "last_transaction_date": last_transaction,
+                "retained_earnings_accno": param.retained_earnings_accno,
+            }
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, CanPerformPeriodEnd],
+    )
+    def period_end(self, request):
+        """
+        Advance curperiod (wraps 13 -> 1). Guarded on there being no
+        unposted GLBatch rows anywhere — an outstanding batch left behind at
+        period end would post into the wrong period once finally
+        transferred, silently corrupting that period's balances.
+        """
+        with transaction.atomic():
+            param = GLParam.objects.select_for_update().get_or_create(pk=1)[0]
+            outstanding = GLBatch.objects.filter(postdate__isnull=True)
+            if outstanding.exists():
+                return Response(
+                    {
+                        "error": "Cannot perform Period End — unposted batch entries "
+                        "remain. Post or clear them first.",
+                        "outstanding_batchnos": sorted(
+                            set(outstanding.values_list("batchno", flat=True))
+                        ),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            previous_period = param.curperiod
+            param.curperiod = param.curperiod % 13 + 1
+            param.save(update_fields=["curperiod", "updated_at"])
+
+        return Response(
+            {"previous_period": previous_period, "curperiod": param.curperiod}
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, CanPerformYearEnd],
+    )
+    def year_end(self, request):
+        """
+        Year End close. See general_ledger/services.py's GLPostingService
+        docstring for the posting primitive this uses, and the plan's
+        year-end algorithm for the full ordering rationale — in short:
+        snapshot lastyear1..12 BEFORE any zeroing, post the Income Statement
+        closing journal (which reads period1..13) BEFORE zeroing those
+        accounts, then reset periods/advance the year. Reversing that order
+        silently posts a zero net_income closing journal.
+        """
+        with transaction.atomic():
+            param = GLParam.objects.select_for_update().get_or_create(pk=1)[0]
+
+            if param.curperiod != 13:
+                return Response(
+                    {
+                        "error": "Year End can only run from period 13 (the "
+                        f"adjustment period) — current period is {param.curperiod}."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            outstanding = GLBatch.objects.filter(postdate__isnull=True)
+            if outstanding.exists():
+                return Response(
+                    {
+                        "error": "Cannot perform Year End — unposted batch entries "
+                        "remain. Post or clear them first.",
+                        "outstanding_batchnos": sorted(
+                            set(outstanding.values_list("batchno", flat=True))
+                        ),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not param.retained_earnings_accno:
+                return Response(
+                    {
+                        "error": "GLParam.retained_earnings_accno is not configured — "
+                        "set it before running Year End."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            accounts = list(GLMast.objects.select_for_update().all())
+            by_accno = {a.accno: a for a in accounts}
+
+            # 1. Snapshot BEFORE any zeroing, and persist immediately — step 4
+            #    re-reads one account (retained earnings) fresh from the DB
+            #    after posting, which would otherwise silently discard an
+            #    in-memory-only snapshot on that one row.
+            for account in accounts:
+                for month in range(1, 13):
+                    setattr(
+                        account,
+                        f"lastyear{month}",
+                        getattr(account, f"period{month}"),
+                    )
+            GLMast.objects.bulk_update(
+                accounts, [f"lastyear{m}" for m in range(1, 13)]
+            )
+
+            # 2. Compute each Income Statement account's signed contribution
+            #    from its pre-closing balance (reads period1..13, so this
+            #    must happen before step 4 zeroes them).
+            income_accounts = [a for a in accounts if a.type == "I"]
+            closing_lines = []
+            net_income = Decimal("0.00")
+            for account in income_accounts:
+                balance = sum(
+                    getattr(account, f"period{p}") for p in range(1, 14)
+                )
+                if balance == 0:
+                    continue
+                contribution = balance if account.drorcr == "C" else -balance
+                net_income += contribution
+                closing_lines.append(
+                    {
+                        "accno": account.accno,
+                        "type": "C" if account.drorcr == "D" else "D",
+                        "amount": abs(balance),
+                        "reference": f"YE{param.currentyr}",
+                        "details": f"Year end close - {account.name}"[:30],
+                    }
+                )
+
+            # 3. Post the closing journal. GLPostingService.post_batch()
+            #    fetches and saves its own GLMast rows internally, so this
+            #    does not touch the `accounts` list's in-memory state.
+            if closing_lines and net_income != 0:
+                closing_lines.append(
+                    {
+                        "accno": param.retained_earnings_accno,
+                        "type": "C" if net_income > 0 else "D",
+                        "amount": abs(net_income),
+                        "reference": f"YE{param.currentyr}",
+                        "details": "Year end - retained earnings"[:30],
+                    }
+                )
+                gl_batchno = GLPostingService.post_batch(closing_lines)
+                # The retained earnings account's period balance just changed
+                # in the DB via post_batch's own GLMast instance — refresh
+                # this one row so step 4's balbfwd carry-forward includes it.
+                retained_earnings_account = by_accno.get(
+                    param.retained_earnings_accno
+                )
+                if retained_earnings_account is not None:
+                    retained_earnings_account.refresh_from_db()
+            else:
+                gl_batchno = None
+
+            # 4. Zero Income Statement periods/budgets (forced to exactly 0,
+            #    not derived from post_batch's effect, since a closing entry
+            #    was only posted for accounts with a non-zero balance).
+            #    Carry forward Balance Sheet balances into balbfwd and zero
+            #    their periods — using each account's own in-memory period
+            #    values, which are still accurate except for the retained
+            #    earnings account, refreshed just above.
+            for account in accounts:
+                update_fields = ["updated_at"]
+                if account.type == "I":
+                    for p in range(1, 14):
+                        setattr(account, f"period{p}", Decimal("0.00"))
+                        update_fields.append(f"period{p}")
+                    for m in range(1, 13):
+                        setattr(account, f"budget{m}", Decimal("0.00"))
+                        update_fields.append(f"budget{m}")
+                    account.save(update_fields=update_fields)
+                elif account.type == "B":
+                    total = sum(
+                        getattr(account, f"period{p}") for p in range(1, 14)
+                    )
+                    account.balbfwd = account.balbfwd + total
+                    update_fields.append("balbfwd")
+                    for p in range(1, 14):
+                        setattr(account, f"period{p}", Decimal("0.00"))
+                        update_fields.append(f"period{p}")
+                    account.save(update_fields=update_fields)
+
+            previous_year = param.currentyr
+            param.currentyr += 1
+            param.curperiod = param.startper
+            param.adjusted = "N"
+            param.save(update_fields=["currentyr", "curperiod", "adjusted", "updated_at"])
+
+        return Response(
+            {
+                "previous_year": previous_year,
+                "currentyr": param.currentyr,
+                "curperiod": param.curperiod,
+                "net_income": float(net_income),
+                "closing_gl_batchno": gl_batchno,
+            }
+        )
+
+
+class GLIntegrationSettingsViewSet(_SingletonViewSetMixin, viewsets.ModelViewSet):
+    """
+    ViewSet for the GL Integration Settings singleton — control-account
+    mapping used by the Integration Transfer pipeline (see
+    general_ledger/integration.py). No create/delete — there is exactly one
+    row.
+    """
+
+    singleton_model = GLIntegrationSettings
+    queryset = GLIntegrationSettings.objects.all()
+    serializer_class = GLIntegrationSettingsSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.request.method in SAFE_METHODS:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, CanManageGL]
+        return [permission() for permission in permission_classes]

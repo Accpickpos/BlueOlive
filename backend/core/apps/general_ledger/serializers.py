@@ -1,6 +1,16 @@
 from rest_framework import serializers
 
-from .models import GLMast, GLSpread, GLStJnl, GLTran
+from .models import (
+    GLBatch,
+    GLIntegrationLog,
+    GLIntegrationSettings,
+    GLMast,
+    GLParam,
+    GLRep,
+    GLSpread,
+    GLStJnl,
+    GLTran,
+)
 
 
 class GLMastSerializer(serializers.ModelSerializer):
@@ -271,3 +281,208 @@ class GLSpreadListSerializer(serializers.ModelSerializer):
             "curcredit",
         ]
         read_only_fields = ["id"]
+
+
+class GLBatchSerializer(serializers.ModelSerializer):
+    """Serializer for GL Batch staging entries"""
+
+    drorcr_display = serializers.CharField(source="get_drorcr_display", read_only=True)
+    source_display = serializers.CharField(source="get_source_display", read_only=True)
+
+    class Meta:
+        model = GLBatch
+        fields = [
+            "id",
+            "accno",
+            "batchno",
+            "capturedat",
+            "date",
+            "time",
+            "drorcr",
+            "drorcr_display",
+            "source",
+            "source_display",
+            "station",
+            "reference",
+            "details",
+            "amount",
+            "postdate",
+            "postime",
+            "period",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "postdate",
+            "postime",
+            "created_at",
+            "updated_at",
+            "drorcr_display",
+            "source_display",
+        ]
+
+
+class GLBatchListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for GL Batch list views"""
+
+    drorcr_display = serializers.CharField(source="get_drorcr_display", read_only=True)
+
+    class Meta:
+        model = GLBatch
+        fields = [
+            "id",
+            "accno",
+            "batchno",
+            "date",
+            "drorcr",
+            "drorcr_display",
+            "reference",
+            "details",
+            "amount",
+            "postdate",
+            "period",
+        ]
+        read_only_fields = ["id", "postdate", "drorcr_display"]
+
+
+class GLBatchDetailSerializer(GLBatchSerializer):
+    """Detailed serializer for GL Batch entries"""
+
+    class Meta(GLBatchSerializer.Meta):
+        pass
+
+
+class GLRepSerializer(serializers.ModelSerializer):
+    """Serializer for GL Report Format rows"""
+
+    type_display = serializers.CharField(source="get_type_display", read_only=True)
+    fieldtype_display = serializers.CharField(
+        source="get_fieldtype_display", read_only=True
+    )
+    printdet_display = serializers.CharField(
+        source="get_printdet_display", read_only=True
+    )
+
+    class Meta:
+        model = GLRep
+        fields = [
+            "id",
+            "type",
+            "type_display",
+            "fieldtype",
+            "fieldtype_display",
+            "line",
+            "printdet",
+            "printdet_display",
+            "name",
+            "start",
+            "endcalc",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "type_display",
+            "fieldtype_display",
+            "printdet_display",
+        ]
+
+
+class GLRepListSerializer(GLRepSerializer):
+    """List serializer for GL Report Format rows (same shape — rows are small)"""
+
+    class Meta(GLRepSerializer.Meta):
+        pass
+
+
+class GLRepDetailSerializer(GLRepSerializer):
+    """Detailed serializer for GL Report Format rows"""
+
+    class Meta(GLRepSerializer.Meta):
+        pass
+
+
+class GLParamSerializer(serializers.ModelSerializer):
+    """Serializer for GL Parameters (singleton — pk is always 1)"""
+
+    adjusted_display = serializers.CharField(
+        source="get_adjusted_display", read_only=True
+    )
+
+    class Meta:
+        model = GLParam
+        fields = [
+            "id",
+            "startper",
+            "batchno",
+            "curperiod",
+            "adjusted",
+            "adjusted_display",
+            "currentyr",
+            "retained_earnings_accno",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "batchno",
+            "curperiod",
+            "adjusted",
+            "currentyr",
+            "created_at",
+            "updated_at",
+            "adjusted_display",
+        ]
+
+
+class GLIntegrationSettingsSerializer(serializers.ModelSerializer):
+    """Serializer for GL Integration Settings (singleton — pk is always 1)"""
+
+    class Meta:
+        model = GLIntegrationSettings
+        fields = [
+            "id",
+            "debtors_control_accno",
+            "creditors_control_accno",
+            "bank_control_accno",
+            "cash_control_accno",
+            "sales_accno",
+            "vat_output_accno",
+            "vat_input_accno",
+            "stock_control_accno",
+            "stock_shrinkage_expense_accno",
+            "stock_gain_income_accno",
+            "debtors_interest_income_accno",
+            "debtors_suspense_accno",
+            "creditors_discount_received_accno",
+            "creditors_suspense_accno",
+            "cashbook_default_income_accno",
+            "cashbook_default_expense_accno",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class GLIntegrationLogSerializer(serializers.ModelSerializer):
+    """Serializer for GL Integration Log entries (read-only audit trail)"""
+
+    source_app_display = serializers.CharField(
+        source="get_source_app_display", read_only=True
+    )
+
+    class Meta:
+        model = GLIntegrationLog
+        fields = [
+            "id",
+            "source_app",
+            "source_app_display",
+            "source_model",
+            "source_pk",
+            "gl_batchno",
+            "transferred_at",
+        ]
+        read_only_fields = fields
