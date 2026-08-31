@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { ENDPOINTS } from '@/lib/api-config';
-import { SearchCombobox } from '@/components/ui/search-combobox';
+import { SearchCombobox, type SearchComboboxResults } from '@/components/ui/search-combobox';
 
 interface Debtor {
   id: number;
@@ -26,16 +26,21 @@ export default function DebtorSearch({ onSelect }: DebtorSearchProps) {
   const [recentDebtors, setRecentDebtors] = useState<Debtor[]>([]);
 
   useEffect(() => {
-    api.get<Debtor[]>(`${ENDPOINTS.DEBTORS.ACCOUNTS}lookup/`, { params: { limit: 6 } })
-      .then((response) => setRecentDebtors(response.data || []))
+    api.get<{ results: Debtor[] }>(`${ENDPOINTS.DEBTORS.ACCOUNTS}lookup/`, { params: { limit: 6 } })
+      .then((response) => setRecentDebtors(response.data?.results || []))
       .catch((err) => console.error('Failed to load recent debtors', err));
   }, []);
 
-  const search = async (query: string): Promise<Debtor[]> => {
-    const response = await api.get<Debtor[]>(`${ENDPOINTS.DEBTORS.ACCOUNTS}lookup/`, {
-      params: { search: query, limit: 20 },
-    });
-    return response.data || [];
+  const search = async (query: string, offset: number): Promise<SearchComboboxResults<Debtor>> => {
+    const response = await api.get<{ results: Debtor[]; count: number; has_more: boolean }>(
+      `${ENDPOINTS.DEBTORS.ACCOUNTS}lookup/`,
+      { params: { search: query, limit: 20, offset } }
+    );
+    return {
+      results: response.data?.results || [],
+      count: response.data?.count,
+      hasMore: response.data?.has_more || false,
+    };
   };
 
   return (

@@ -6,17 +6,57 @@ import { usePOSAPI } from '@/lib/posApi';
 import { useRouter, useParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowLeft, Printer } from 'lucide-react';
+import { Loader2, ArrowLeft, Printer, FileText } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { DebtorPicker } from '@/components/pos/DebtorPicker';
 
 export default function CashSaleDetailPage() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const params = useParams();
   const posAPI = usePOSAPI(user?.tenant?.slug);
-  
+
   const [sale, setSale] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Manual §4 "Cash Sale" note: "To convert a Cash Sale into an Account
+  // Sale, press [Page Down] at the Tender Routine." Only offered while the
+  // sale hasn't been posted/cancelled yet.
+  const [convertDialogOpen, setConvertDialogOpen] = useState(false);
+  const [selectedDebtor, setSelectedDebtor] = useState<{ account_number: string; name: string } | null>(null);
+  const [converting, setConverting] = useState(false);
+  const [convertError, setConvertError] = useState<string | null>(null);
+
+  const handleConvert = async () => {
+    if (!selectedDebtor) {
+      setConvertError('Select a customer to charge this sale to');
+      return;
+    }
+    setConverting(true);
+    setConvertError(null);
+    try {
+      const result: any = await posAPI.convertCashSaleToInvoice(sale.id, selectedDebtor.account_number);
+      const invoiceId = result?.invoice?.id;
+      if (invoiceId) {
+        router.push(`/dashboard/pos/invoices/${invoiceId}`);
+      } else {
+        setConvertDialogOpen(false);
+      }
+    } catch (err: any) {
+      console.error('Error converting cash sale to invoice:', err);
+      setConvertError(err.message || 'Failed to convert to account sale');
+    } finally {
+      setConverting(false);
+    }
+  };
 
   useEffect(() => {
     const fetchSale = async () => {
@@ -91,10 +131,25 @@ export default function CashSaleDetailPage() {
               </p>
             </div>
           </div>
-          <Button variant="outline">
-            <Printer className="h-4 w-4 mr-2" />
-            Print
-          </Button>
+          <div className="flex gap-2">
+            {!sale.is_posted && !sale.is_cancelled && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSelectedDebtor(null);
+                  setConvertError(null);
+                  setConvertDialogOpen(true);
+                }}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Convert to Account Sale
+              </Button>
+            )}
+            <Button variant="outline">
+              <Printer className="h-4 w-4 mr-2" />
+              Print
+            </Button>
+          </div>
         </div>
 
         <Card>
@@ -197,6 +252,43 @@ export default function CashSaleDetailPage() {
           </Card>
         </div>
       </div>
+
+      <Dialog open={convertDialogOpen} onOpenChange={setConvertDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Convert to Account Sale</DialogTitle>
+            <DialogDescription>
+              Select the customer to charge this sale to. A draft invoice will be created and this cash sale will be cancelled.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <DebtorPicker onSelect={setSelectedDebtor} />
+            {selectedDebtor && (
+              <p className="text-sm text-gray-600 mt-2">Selected: {selectedDebtor.name}</p>
+            )}
+            {convertError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm mt-3">
+                {convertError}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConvertDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleConvert} disabled={converting || !selectedDebtor}>
+              {converting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Converting...
+                </>
+              ) : (
+                'Convert'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

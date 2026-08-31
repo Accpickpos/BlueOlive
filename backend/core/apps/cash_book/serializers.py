@@ -14,6 +14,7 @@ from .models import (
     CashBookTransaction,
     CashFloat,
     CashWithdrawal,
+    ExpenseCategory,
     ExpenseCategoryBalance,
     IncomeCategory,
     IncomeCategoryBalance,
@@ -27,6 +28,12 @@ from .models import (
 class IncomeCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = IncomeCategory
+        fields = "__all__"
+
+
+class ExpenseCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ExpenseCategory
         fields = "__all__"
 
 
@@ -151,20 +158,41 @@ class OtherIncomeSerializer(serializers.ModelSerializer):
         read_only_fields = ("transaction", "vat_amount", "tax_code")
 
 
-class CreateOtherIncomeSerializer(serializers.Serializer):
-    transaction_date = serializers.DateField()
+class OtherIncomeBatchLineSerializer(serializers.Serializer):
+    """One category line of a multi-line Other Income deposit batch (spec:
+    a single deposit slip may cover several income categories in one
+    submission)."""
+
     income_category_id = serializers.IntegerField()
     value_excl_vat = serializers.DecimalField(max_digits=12, decimal_places=2)
+    tax_code = serializers.IntegerField(default=1, required=False)
+    description = serializers.CharField(
+        max_length=200, required=False, allow_blank=True
+    )
+
+
+class CreateOtherIncomeSerializer(serializers.Serializer):
+    transaction_date = serializers.DateField()
+    # Multi-line batch: when provided, one CashBookTransaction+OtherIncome
+    # is created per line (sharing this submission's reference/paid_into),
+    # and income_category_id/value_excl_vat below are ignored.
+    lines = OtherIncomeBatchLineSerializer(many=True, required=False)
+    income_category_id = serializers.IntegerField(required=False)
+    value_excl_vat = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False
+    )
     tax_amount = serializers.DecimalField(
         max_digits=12, decimal_places=2, required=False, allow_null=True
     )
-    total_incl_vat = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_incl_vat = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False
+    )
     tax_code = serializers.IntegerField(
         default=1, help_text="1=14%, 2=0%, 3=Exempt, 4=Foreign"
     )
     audit_type = serializers.IntegerField(default=2, help_text="2 = Sundry Income")
     category_id = serializers.IntegerField(required=False, allow_null=True)
-    description = serializers.CharField(max_length=200)
+    description = serializers.CharField(max_length=200, required=False, allow_blank=True)
     reference = serializers.CharField(max_length=20, required=False, allow_blank=True)
     paid_into = serializers.ChoiceField(choices=["CASH", "BANK"], default="CASH")
     bank_account_number = serializers.CharField(
@@ -191,20 +219,39 @@ class OtherExpenseSerializer(serializers.ModelSerializer):
         read_only_fields = ("transaction", "vat_amount", "tax_code")
 
 
-class CreateOtherExpenseSerializer(serializers.Serializer):
-    transaction_date = serializers.DateField()
+class OtherExpenseBatchLineSerializer(serializers.Serializer):
+    """One category line of a multi-line Other Expense petty-cash batch
+    (spec: a single petty cash slip may cover several expense categories in
+    one submission)."""
+
     expense_category_id = serializers.IntegerField()
     value_excl_vat = serializers.DecimalField(max_digits=12, decimal_places=2)
+    tax_code = serializers.IntegerField(default=1, required=False)
+    description = serializers.CharField(
+        max_length=200, required=False, allow_blank=True
+    )
+
+
+class CreateOtherExpenseSerializer(serializers.Serializer):
+    transaction_date = serializers.DateField()
+    # Multi-line batch — see CreateOtherIncomeSerializer.lines.
+    lines = OtherExpenseBatchLineSerializer(many=True, required=False)
+    expense_category_id = serializers.IntegerField(required=False)
+    value_excl_vat = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False
+    )
     tax_amount = serializers.DecimalField(
         max_digits=12, decimal_places=2, required=False, allow_null=True
     )
-    total_incl_vat = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total_incl_vat = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False
+    )
     tax_code = serializers.IntegerField(
         default=1, help_text="1=14%, 2=0%, 3=Exempt, 4=Foreign"
     )
     audit_type = serializers.IntegerField(default=4, help_text="4 = Expenses")
     category_id = serializers.IntegerField(required=False, allow_null=True)
-    description = serializers.CharField(max_length=200)
+    description = serializers.CharField(max_length=200, required=False, allow_blank=True)
     reference = serializers.CharField(max_length=20, required=False, allow_blank=True)
     paid_from = serializers.ChoiceField(choices=["CASH", "BANK"], default="CASH")
     bank_account_number = serializers.CharField(
@@ -492,8 +539,16 @@ class AddReconciliationItemSerializer(serializers.Serializer):
 
 
 class CompleteReconciliationSerializer(serializers.Serializer):
-    outstanding_deposits = serializers.DecimalField(max_digits=15, decimal_places=2)
-    outstanding_cheques = serializers.DecimalField(max_digits=15, decimal_places=2)
+    # Optional: when omitted, BankReconciliationViewSet.complete() derives
+    # both totals from transactions tagged 'P' (Pending/outstanding) via
+    # ReconciliationService.get_outstanding_summary(), instead of requiring
+    # them to be hand-typed from a paper bank statement.
+    outstanding_deposits = serializers.DecimalField(
+        max_digits=15, decimal_places=2, required=False
+    )
+    outstanding_cheques = serializers.DecimalField(
+        max_digits=15, decimal_places=2, required=False
+    )
     bank_errors = serializers.DecimalField(max_digits=15, decimal_places=2, default=0)
     book_errors = serializers.DecimalField(max_digits=15, decimal_places=2, default=0)
     notes = serializers.CharField(required=False, allow_blank=True)

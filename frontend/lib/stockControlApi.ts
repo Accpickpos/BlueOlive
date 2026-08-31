@@ -73,15 +73,23 @@ export const stockControlApi = {
 
     /**
      * Thin typeahead lookup for stock item pickers — hits
-     * StockItemViewSet.lookup (LookupActionMixin), returns a flat array (no
-     * pagination envelope) of StockItemListSerializer rows.
+     * StockItemViewSet.lookup (LookupActionMixin), returns
+     * {results, count, has_more} of StockItemListSerializer rows.
      */
-    lookup: async (query: string, limit = 20): Promise<StockItem[]> => {
-      const response = await api.get<StockItem[]>(
+    lookup: async (
+      query: string,
+      limit = 20,
+      offset = 0
+    ): Promise<{ results: StockItem[]; count: number; hasMore: boolean }> => {
+      const response = await api.get<{ results: StockItem[]; count: number; has_more: boolean }>(
         `${ENDPOINTS.STOCK_CONTROL.STOCK_ITEMS}lookup/`,
-        { params: { search: query, limit } }
+        { params: { search: query, limit, offset } }
       );
-      return response.data;
+      return {
+        results: response.data.results,
+        count: response.data.count,
+        hasMore: response.data.has_more,
+      };
     },
 
     /**
@@ -166,12 +174,49 @@ export const stockControlApi = {
     },
 
     /**
-     * Get low stock items
+     * Reverse lookup: which packs/bundles use this item as an ingredient.
      */
-    getLowStock: async () => {
-      const response = await api.get<StockItem[]>(
-        ENDPOINTS.STOCK_CONTROL.STOCK_ITEMS_LOW_STOCK
+    usedInBundles: async (stockCode: string) => {
+      const response = await api.get<
+        { pack_bundle_stock_code: string; pack_bundle_description: string; quantity_required: number; cost_at_creation: number }[]
+      >(ENDPOINTS.STOCK_CONTROL.STOCK_ITEM_USED_IN_BUNDLES(stockCode));
+      return response.data;
+    },
+
+    /**
+     * Sales of this item grouped by debtor (Stock Item History's Debtor split).
+     */
+    debtorBreakdown: async (stockCode: string) => {
+      const response = await api.get<
+        { debtor_id: number; debtor__dname: string; total_quantity: number; total_value: number }[]
+      >(ENDPOINTS.STOCK_CONTROL.STOCK_ITEM_DEBTOR_BREAKDOWN(stockCode));
+      return response.data;
+    },
+
+    /**
+     * Get low stock items. ?search=&level=critical|low, paginated.
+     * Returns the paginated envelope ({count, results, ...}) — the
+     * backend action now paginates this list, so callers that just want
+     * the array should read `.results`.
+     */
+    getLowStock: async (filters?: { search?: string; level?: 'critical' | 'low'; page?: number; page_size?: number }) => {
+      const response = await api.get<PaginatedStockItems>(
+        ENDPOINTS.STOCK_CONTROL.STOCK_ITEMS_LOW_STOCK,
+        { params: filters }
       );
+      return response.data;
+    },
+
+    /**
+     * Parameterized stock valuation. ?code_from=&code_to=&department=
+     * &cost_basis=last|average&ordering=
+     */
+    getValuationReport: async (filters?: { code_from?: string; code_to?: string; department?: number; cost_basis?: 'last' | 'average'; ordering?: string }) => {
+      const response = await api.get<{
+        cost_basis: string;
+        total_value: number;
+        items: { stock_code: string; description: string; department_id: number | null; department_name: string | null; quantity_on_hand: number; unit_cost: number; value: number }[];
+      }>(ENDPOINTS.STOCK_CONTROL.STOCK_ITEMS_VALUATION_REPORT, { params: filters });
       return response.data;
     },
 
@@ -244,6 +289,25 @@ export const stockControlApi = {
     getActiveToday: async () => {
       const response = await api.get<SpecialDeal[]>(
         ENDPOINTS.STOCK_CONTROL.SPECIAL_DEALS_ACTIVE_TODAY
+      );
+      return response.data;
+    },
+
+    /**
+     * Create one SpecialDeal per active stock item in a department,
+     * pricing each from its own current selling price.
+     */
+    bulkCreateForDepartment: async (data: {
+      department: number;
+      start_date: string;
+      end_date: string;
+      increase_decrease: '+' | '-';
+      percentage_rand: 'P' | 'R';
+      amount: number;
+    }) => {
+      const response = await api.post<{ message: string; count: number }>(
+        ENDPOINTS.STOCK_CONTROL.SPECIAL_DEALS_BULK_DEPARTMENT,
+        data
       );
       return response.data;
     },
@@ -479,6 +543,96 @@ export const stockControlApi = {
     },
   },
 
+  // ============ ENQUIRY AGGREGATIONS ============
+  enquiries: {
+    /**
+     * Each item's share of total SALE value. ?department=&date_from=&date_to=
+     */
+    stockContribution: async (filters?: { department?: number; date_from?: string; date_to?: string }) => {
+      const response = await api.get<
+        { stock_item_id: string; stock_item__description: string; total_quantity: number; total_value: number; contribution_pct: number }[]
+      >(ENDPOINTS.STOCK_CONTROL.STOCK_CONTRIBUTION, { params: filters });
+      return response.data;
+    },
+
+    /**
+     * SALE transactions grouped by department. ?date_from=&date_to=
+     */
+    salesByDepartment: async (filters?: { date_from?: string; date_to?: string }) => {
+      const response = await api.get<
+        { department_id: number | null; department__name: string | null; total_quantity: number; total_value: number }[]
+      >(ENDPOINTS.STOCK_CONTROL.SALES_BY_DEPARTMENT, { params: filters });
+      return response.data;
+    },
+
+    /**
+     * SALE transactions bucketed by hour of day. ?date_from=&date_to=&department=
+     */
+    hourlyAnalysis: async (filters?: { date_from?: string; date_to?: string; department?: number }) => {
+      const response = await api.get<
+        { hour: number; total_quantity: number; total_value: number; transaction_count: number }[]
+      >(ENDPOINTS.STOCK_CONTROL.HOURLY_ANALYSIS, { params: filters });
+      return response.data;
+    },
+
+    /**
+     * INCOMING transactions. ?supplier=&stock_item=&date_from=&date_to=
+     */
+    purchaseHistory: async (filters?: { supplier?: number; stock_item?: string; date_from?: string; date_to?: string }) => {
+      const response = await api.get<PaginatedStockTransactions>(
+        ENDPOINTS.STOCK_CONTROL.PURCHASE_HISTORY,
+        { params: filters }
+      );
+      return response.data;
+    },
+
+    /**
+     * Best-selling items by quantity. ?department=&date_from=&date_to=&limit=
+     */
+    topSellers: async (filters?: { department?: number; date_from?: string; date_to?: string; limit?: number }) => {
+      const response = await api.get<
+        { stock_item_id: string; stock_item__description: string; total_quantity: number; total_value: number }[]
+      >(ENDPOINTS.STOCK_CONTROL.TOP_SELLERS, { params: filters });
+      return response.data;
+    },
+
+    /**
+     * INCOMING and RETURN transactions together. ?supplier=&stock_item=&date_from=&date_to=
+     */
+    receivedReturnedReport: async (filters?: { supplier?: number; stock_item?: string; date_from?: string; date_to?: string; page?: number; page_size?: number }) => {
+      const response = await api.get<PaginatedStockTransactions>(
+        ENDPOINTS.STOCK_CONTROL.RECEIVED_RETURNED_REPORT,
+        { params: filters }
+      );
+      return response.data;
+    },
+
+    /** Sales/cost/profit grouped by department. ?year= */
+    statsByDepartment: async (filters?: { year?: number }) => {
+      const response = await api.get<
+        { department_id: number | null; department_name: string; total_quantity: number; total_sales: number; total_cost: number; total_profit: number; margin_pct: number; item_count: number }[]
+      >(ENDPOINTS.STOCK_CONTROL.STATS_BY_DEPARTMENT, { params: filters });
+      return response.data;
+    },
+
+    /** Sales/cost/profit grouped by item, with monthly trend when ?stock_item= is given. ?year=&stock_item= */
+    statsByItem: async (filters?: { year?: number; stock_item?: string }) => {
+      const response = await api.get<{
+        by_item: { stock_item_id: string; description: string; total_quantity: number; total_sales: number; total_cost: number; total_profit: number; margin_pct: number }[];
+        by_month: { month: number; total_quantity: number; total_sales: number; total_cost: number; total_profit: number; margin_pct: number }[];
+      }>(ENDPOINTS.STOCK_CONTROL.STATS_BY_ITEM, { params: filters });
+      return response.data;
+    },
+
+    /** Items whose average monthly sales quantity <= threshold. ?year=&threshold= */
+    statsSlowMovers: async (filters?: { year?: number; threshold?: number }) => {
+      const response = await api.get<
+        { stock_item_id: string; description: string; total_quantity: number; total_sales: number; months_with_data: number; avg_monthly_sales: number }[]
+      >(ENDPOINTS.STOCK_CONTROL.STATS_SLOW_MOVERS, { params: filters });
+      return response.data;
+    },
+  },
+
   // ============ STOCK MOVEMENT LEDGER ============
   movementLedger: {
     /**
@@ -566,11 +720,14 @@ export const stockControlApi = {
     },
 
     /**
-     * Update stock from stock take
+     * Update stock from stock take. mode 'overwrite' (default) treats
+     * quantity_counted as the new QOH; 'additive' treats it as a delta
+     * added to current QOH.
      */
-    updateStock: async (id: number) => {
+    updateStock: async (id: number, mode?: 'overwrite' | 'additive') => {
       const response = await api.post(
-        ENDPOINTS.STOCK_CONTROL.STOCK_TAKE_UPDATE_STOCK(id)
+        ENDPOINTS.STOCK_CONTROL.STOCK_TAKE_UPDATE_STOCK(id),
+        mode ? { mode } : undefined
       );
       return response.data;
     },
@@ -588,6 +745,20 @@ export const stockControlApi = {
 
   // ============ STOCK TAKE ITEMS ============
   stockTakeItems: {
+    /**
+     * List stock take items, e.g. filter by { stock_take, stock_item } to
+     * find an existing row before deciding whether to create() or
+     * recordCount() against it.
+     */
+    list: async (filters?: { stock_take?: number; stock_item?: string; is_counted?: boolean }) => {
+      const response = await api.get<{ results: StockTakeItem[] } | StockTakeItem[]>(
+        ENDPOINTS.STOCK_CONTROL.STOCK_TAKE_ITEMS,
+        { params: filters }
+      );
+      const data = response.data as any;
+      return (data.results ?? data) as StockTakeItem[];
+    },
+
     /**
      * Add an item to a stock take, capturing the system quantity at the
      * time it's added. Count it afterwards via recordCount().
@@ -691,7 +862,7 @@ export const stockControlApi = {
     /**
      * List lookup keys
      */
-    list: async (filters?: { stock_item?: string; is_active?: boolean }) => {
+    list: async (filters?: { stock_item?: string }) => {
       const response = await api.get<PaginatedLookupKeys>(
         ENDPOINTS.STOCK_CONTROL.LOOKUP_KEYS,
         { params: filters }

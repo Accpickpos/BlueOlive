@@ -1,6 +1,16 @@
 from django.contrib import admin
 
-from .models import GLMast, GLSpread, GLStJnl, GLTran
+from .models import (
+    GLBatch,
+    GLIntegrationLog,
+    GLIntegrationSettings,
+    GLMast,
+    GLParam,
+    GLRep,
+    GLSpread,
+    GLStJnl,
+    GLTran,
+)
 
 
 @admin.register(GLMast)
@@ -169,6 +179,93 @@ class GLStJnlAdmin(admin.ModelAdmin):
             {"fields": ("created_at", "updated_at"), "classes": ("collapse",)},
         ),
     )
+
+
+@admin.register(GLBatch)
+class GLBatchAdmin(admin.ModelAdmin):
+    list_display = (
+        "batchno",
+        "accno",
+        "date",
+        "drorcr",
+        "source",
+        "amount",
+        "period",
+        "postdate",
+    )
+    list_filter = ("drorcr", "source", "period", "capturedat", "postdate")
+    search_fields = ("batchno", "accno", "reference", "details")
+    ordering = ("-capturedat", "batchno", "accno")
+    readonly_fields = ("postdate", "postime", "created_at", "updated_at")
+
+
+@admin.register(GLRep)
+class GLRepAdmin(admin.ModelAdmin):
+    list_display = ("type", "line", "fieldtype", "name", "start", "endcalc")
+    list_filter = ("type", "fieldtype")
+    search_fields = ("name",)
+    ordering = ("type", "line")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(GLParam)
+class GLParamAdmin(admin.ModelAdmin):
+    list_display = (
+        "currentyr",
+        "curperiod",
+        "startper",
+        "batchno",
+        "adjusted",
+        "retained_earnings_accno",
+    )
+    readonly_fields = ("created_at", "updated_at")
+
+    def has_add_permission(self, request):
+        """Singleton — only one row should ever exist."""
+        return not GLParam.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(GLIntegrationSettings)
+class GLIntegrationSettingsAdmin(admin.ModelAdmin):
+    readonly_fields = ("created_at", "updated_at")
+
+    def has_add_permission(self, request):
+        """Singleton — only one row should ever exist."""
+        return not GLIntegrationSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(GLIntegrationLog)
+class GLIntegrationLogAdmin(admin.ModelAdmin):
+    list_display = (
+        "source_app",
+        "source_model",
+        "source_pk",
+        "gl_batchno",
+        "transferred_at",
+    )
+    list_filter = ("source_app", "source_model")
+    search_fields = ("source_pk", "gl_batchno")
+    ordering = ("-transferred_at",)
+    readonly_fields = (
+        "source_app",
+        "source_model",
+        "source_pk",
+        "gl_batchno",
+        "transferred_at",
+    )
+
+    def has_add_permission(self, request):
+        """Written only by IntegrationTransferService — never by hand."""
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(GLSpread)

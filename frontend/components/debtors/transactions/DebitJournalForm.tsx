@@ -1,38 +1,75 @@
 'use client';
 
-import { useState } from 'react';
-import { apiRequest, getApiErrorMessage } from '@/lib/api';
+import { useState, useEffect } from 'react';
+import debtorsApi from '@/lib/debtorsApi';
+import { getApiErrorMessage } from '@/lib/api';
+
+interface DebtorOption {
+  id: number;
+  name: string;
+  acctype: string;
+}
+
+// Debtopen.AGEING_CHOICES — manual §2.2 "Debit Journal for Open Item
+// Debtors": "The total value of the journal may only be allocated to ONE
+// ageing period."
+const AGE_PERIODS = [
+  { value: '0', label: 'Current' },
+  { value: '1', label: '30 Days' },
+  { value: '2', label: '60 Days' },
+  { value: '3', label: '90 Days' },
+  { value: '4', label: '120+ Days' },
+];
 
 interface DebitJournalData {
   debtor_id: number;
-  transaction_number: string;
   transaction_date: string;
   amount: string;
-  vat_amount: string;
   reference: string;
   additional_reference: string;
+  age_period: string;
 }
 
 export default function DebitJournalForm() {
   const [formData, setFormData] = useState<DebitJournalData>({
     debtor_id: 0,
-    transaction_number: '',
     transaction_date: new Date().toISOString().split('T')[0],
     amount: '',
-    vat_amount: '0',
     reference: '',
     additional_reference: '',
+    age_period: '0',
   });
 
+  const [debtors, setDebtors] = useState<DebtorOption[]>([]);
+  const [loadingDebtors, setLoadingDebtors] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    debtorsApi.accounts
+      .list()
+      .then((response) => {
+        setDebtors(
+          (response.results || []).map((d: any) => ({
+            id: d.id,
+            name: d.name,
+            acctype: d.account_type ?? d.acctype ?? '',
+          }))
+        );
+      })
+      .catch(() => console.error('Failed to load debtors'))
+      .finally(() => setLoadingDebtors(false));
+  }, []);
+
+  const selectedDebtor = debtors.find((d) => d.id === formData.debtor_id) || null;
+  const isOpenItem = selectedDebtor?.acctype === 'O';
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: name === 'debtor_id' ? parseInt(value) || 0 : value,
     }));
   };
 
@@ -43,35 +80,32 @@ export default function DebitJournalForm() {
     setSuccess('');
 
     try {
-      if (!formData.debtor_id || !formData.transaction_number || !formData.amount) {
-        setError('Please fill in all required fields');
+      if (!formData.debtor_id || !formData.amount || !formData.reference.trim()) {
+        setError('Please fill in all required fields, including a reference motivating the journal');
         setLoading(false);
         return;
       }
 
-      const response = await apiRequest(
-        '/api/v1/debtors/transactions/',
-        {
-          method: 'POST',
-          body: {
-            ...formData,
-            transaction_type: 'DBJ',
-            debtor_id: parseInt(formData.debtor_id.toString()),
-            amount: parseFloat(formData.amount),
-            vat_amount: parseFloat(formData.vat_amount || '0'),
-          }
-        }
-      );
+      const description = formData.additional_reference
+        ? `${formData.reference} - ${formData.additional_reference}`
+        : formData.reference;
 
-      setSuccess(`Debit Journal #${formData.transaction_number} posted successfully`);
+      await debtorsApi.transactions.postDebit({
+        debtor_id: formData.debtor_id,
+        amount: parseFloat(formData.amount),
+        description,
+        transaction_date: formData.transaction_date,
+        ...(isOpenItem ? { age_period: formData.age_period } : {}),
+      });
+
+      setSuccess('Debit Journal posted successfully');
       setFormData({
         debtor_id: 0,
-        transaction_number: '',
         transaction_date: new Date().toISOString().split('T')[0],
         amount: '',
-        vat_amount: '0',
         reference: '',
         additional_reference: '',
+        age_period: '0',
       });
     } catch (err: any) {
       setError(getApiErrorMessage(err, 'Failed to post debit journal'));
@@ -99,29 +133,20 @@ export default function DebitJournalForm() {
         <label className="block text-sm font-medium text-gray-700 mb-2">
           Debtor <span className="text-red-500">*</span>
         </label>
-        <input
-          type="number"
+        <select
           name="debtor_id"
           value={formData.debtor_id}
           onChange={handleChange}
-          placeholder="Enter Debtor ID"
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
-      </div>
-
-      {/* Transaction Number */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Journal Number <span className="text-red-500">*</span>
-        </label>
-        <input
-          type="text"
-          name="transaction_number"
-          value={formData.transaction_number}
-          onChange={handleChange}
-          placeholder="e.g., DBJ001"
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
+          disabled={loadingDebtors}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+        >
+          <option value="">Select a debtor...</option>
+          {debtors.map(debtor => (
+            <option key={debtor.id} value={debtor.id}>
+              {debtor.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Transaction Date */}
@@ -138,62 +163,68 @@ export default function DebitJournalForm() {
         />
       </div>
 
-      {/* Amount Fields */}
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Amount (ex VAT) <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="number"
-            name="amount"
-            step="0.01"
-            value={formData.amount}
-            onChange={handleChange}
-            placeholder="0.00"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            VAT Amount
-          </label>
-          <input
-            type="number"
-            name="vat_amount"
-            step="0.01"
-            value={formData.vat_amount}
-            onChange={handleChange}
-            placeholder="0.00"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-        </div>
+      {/* Amount */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Journal Amount <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="number"
+          name="amount"
+          step="0.01"
+          value={formData.amount}
+          onChange={handleChange}
+          placeholder="0.00"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
       </div>
+
+      {/* Ageing Period — Open Item debtors only */}
+      {isOpenItem && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Allocate to Ageing Period <span className="text-red-500">*</span>
+          </label>
+          <select
+            name="age_period"
+            value={formData.age_period}
+            onChange={handleChange}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            {AGE_PERIODS.map(period => (
+              <option key={period.value} value={period.value}>{period.label}</option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-500 mt-1">
+            Open Item accounts: the full journal amount may only be allocated to ONE ageing period.
+          </p>
+        </div>
+      )}
 
       {/* Reference Fields */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Reference
+          Additional Reference <span className="text-red-500">*</span>
         </label>
         <input
           type="text"
           name="reference"
           value={formData.reference}
           onChange={handleChange}
-          placeholder="e.g., Invoice #INV123"
+          placeholder="Short explanation motivating the journal — appears on the Debtor's Statement"
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
       </div>
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Additional Reference
+          Notes
         </label>
         <textarea
           name="additional_reference"
           value={formData.additional_reference}
           onChange={handleChange}
-          placeholder="Additional notes or reference information"
+          placeholder="Additional notes (optional)"
           rows={3}
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />

@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Search, Building2, BarChart3 } from 'lucide-react';
+import { Search, Building2, BarChart3, ListOrdered, Percent, FileClock, ClipboardList } from 'lucide-react';
 
 export default function CashBookEnquiriesPage() {
   const enquiryOptions = [
@@ -20,6 +20,34 @@ export default function CashBookEnquiriesPage() {
       href: '/dashboard/admin/cash-book/enquiries/monthly-analysis',
       color: 'purple',
     },
+    {
+      title: 'Transaction Scroll',
+      description: 'Continuous, ordered scroll of every transaction',
+      icon: <ListOrdered className="w-8 h-8" />,
+      href: '/dashboard/admin/cash-book/enquiries/transaction-scroll',
+      color: 'indigo',
+    },
+    {
+      title: 'Category & Tax Analysis',
+      description: 'Income/expense by category, split by value and VAT',
+      icon: <Percent className="w-8 h-8" />,
+      href: '/dashboard/admin/cash-book/enquiries/category-tax-analysis',
+      color: 'emerald',
+    },
+    {
+      title: 'PDC Listing',
+      description: 'Cheques issued but not yet presented at the bank',
+      icon: <FileClock className="w-8 h-8" />,
+      href: '/dashboard/admin/cash-book/enquiries/pdc-listing',
+      color: 'amber',
+    },
+    {
+      title: 'Control Summary',
+      description: 'Period-end reconciling totals for the cash book',
+      icon: <ClipboardList className="w-8 h-8" />,
+      href: '/dashboard/admin/cash-book/enquiries/control-summary',
+      color: 'rose',
+    },
   ];
 
   return (
@@ -35,7 +63,7 @@ export default function CashBookEnquiriesPage() {
       </div>
 
       <div className="p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl">
           {enquiryOptions.map((option) => (
             <Link
               key={option.href}

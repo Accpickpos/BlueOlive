@@ -28,6 +28,7 @@ from .models import (
     CashBookTransaction,
     CashFloat,
     CashWithdrawal,
+    ExpenseCategory,
     ExpenseCategoryBalance,
     IncomeCategory,
     IncomeCategoryBalance,
@@ -64,6 +65,7 @@ from .serializers import (
     CreateOtherExpenseSerializer,
     CreateOtherIncomeSerializer,
     CreateUnpresentedChequeSerializer,
+    ExpenseCategorySerializer,
     ExpenseCategoryBalanceSerializer,
     IncomeCategoryBalanceSerializer,
     IncomeCategorySerializer,
@@ -87,6 +89,29 @@ class IncomeCategoryViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 
     queryset = IncomeCategory.objects.all()
     serializer_class = IncomeCategorySerializer
+    permission_classes = [IsAuthenticated, CanViewTransactions]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    search_fields = ["name", "number"]
+    ordering_fields = ["number", "name"]
+    ordering = ["number"]
+
+
+class ExpenseCategoryViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+    """
+    API endpoint for Expense Categories. Previously unregistered — the
+    frontend's cashBookApi.expenseCategories client and
+    ENDPOINTS.CASH_BOOK.EXPENSE_CATEGORIES pointed at
+    /cash-book/expense-categories/, but no route existed for it anywhere in
+    cash_book/urls.py, so the Expense Categories maintenance page 404'd on
+    every request.
+    """
+
+    queryset = ExpenseCategory.objects.all()
+    serializer_class = ExpenseCategorySerializer
     permission_classes = [IsAuthenticated, CanViewTransactions]
     filter_backends = [
         DjangoFilterBackend,
@@ -192,6 +217,108 @@ class CashBookTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet)
         balances = BalanceCalculationService.get_current_balances()
         return Response(balances)
 
+    @action(detail=True, methods=["patch"])
+    def tag(self, request, pk=None):
+        """
+        Set a transaction's bank reconciliation tag (per spec CBTAG).
+        This is the "tagging" workflow the manual describes for Bank
+        Reconciliation: mark a bank transaction as Pending (outstanding —
+        not yet on the bank statement), Reconciled, or Disputed. A
+        reconciliation's outstanding deposit/cheque totals are then derived
+        from transactions tagged 'P' (see BankReconciliationViewSet.
+        outstanding_summary) instead of being hand-typed.
+        """
+        transaction = self.get_object()
+        tag = request.data.get("bank_recon_tag")
+        valid_tags = dict(CashBookTransaction._meta.get_field("bank_recon_tag").choices)
+        if tag not in valid_tags:
+            return Response(
+                {"error": f"bank_recon_tag must be one of {list(valid_tags)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if transaction.is_reconciled:
+            return Response(
+                {"error": "Cannot re-tag a reconciled transaction."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        transaction.bank_recon_tag = tag
+        transaction.save(update_fields=["bank_recon_tag"])
+        return Response(CashBookTransactionSerializer(transaction).data)
+
+    @action(detail=False, methods=["post"])
+    def bulk_tag(self, request):
+        """Tag multiple transactions at once (per spec CBTAG bulk tagging)."""
+        transaction_ids = request.data.get("transaction_ids", [])
+        tag = request.data.get("bank_recon_tag")
+        valid_tags = dict(CashBookTransaction._meta.get_field("bank_recon_tag").choices)
+        if tag not in valid_tags:
+            return Response(
+                {"error": f"bank_recon_tag must be one of {list(valid_tags)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not transaction_ids:
+            return Response(
+                {"error": "transaction_ids list is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        updated = (
+            CashBookTransaction.objects.filter(
+                id__in=transaction_ids, is_reconciled=False
+            ).update(bank_recon_tag=tag)
+        )
+        return Response({"updated": updated})
+
+    @action(detail=False, methods=["get"])
+    def category_tax_analysis(self, request):
+        """Category & Tax Analysis enquiry: income/expense by category with VAT split."""
+        start_date = request.query_params.get("start_date")
+        end_date = request.query_params.get("end_date")
+        if not start_date or not end_date:
+            return Response(
+                {"error": "start_date and end_date parameters are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from .business_services import CashBookReportService
+
+        return Response(
+            CashBookReportService.get_category_tax_analysis(start_date, end_date)
+        )
+
+    @action(detail=False, methods=["get"])
+    def control_summary(self, request):
+        """Control Summary enquiry: period totals reconciling the cash book at a glance."""
+        start_date = request.query_params.get("start_date")
+        end_date = request.query_params.get("end_date")
+        if not start_date or not end_date:
+            return Response(
+                {"error": "start_date and end_date parameters are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from .business_services import CashBookReportService
+
+        return Response(
+            CashBookReportService.get_control_summary(start_date, end_date)
+        )
+
+    @action(detail=False, methods=["get"])
+    def monthly_category_series(self, request):
+        """Monthly Category Analysis enquiry: real per-month income/expense totals for a year."""
+        year = request.query_params.get("year")
+        if not year:
+            return Response(
+                {"error": "year parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from .business_services import CashBookReportService
+
+        try:
+            year = int(year)
+        except ValueError:
+            return Response(
+                {"error": "year must be an integer"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        return Response(CashBookReportService.get_monthly_category_series(year))
+
 
 class OtherIncomeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Other Income transactions"""
@@ -211,40 +338,63 @@ class OtherIncomeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 
     @db_transaction.atomic
     def create(self, request, *args, **kwargs):
-        """Create other income transaction"""
+        """
+        Create other income transaction(s). `lines` (optional) supports the
+        spec's multi-line deposit batch — several income categories
+        captured in one submission — by creating one CashBookTransaction +
+        OtherIncome per line, all sharing this submission's reference/
+        paid_into/bank_account_number. Without `lines`, behaves exactly as
+        before (single category line).
+        """
         serializer = CreateOtherIncomeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         try:
             data = serializer.validated_data
-            # value_excl_vat + tax_code drive the base transaction; VAT/total
-            # are computed authoritatively by create_transaction() itself —
-            # the serializer's own tax_amount/total_incl_vat are for the
-            # client's pre-submit preview only, not sent to the DB layer.
-            base_transaction = CashBookTransactionService.create_transaction(
-                transaction_type="OTHER_INCOME",
-                transaction_date=data["transaction_date"],
-                value_excl_vat=data["value_excl_vat"],
-                tax_code=data.get("tax_code", 1),
-                audit_type=data.get("audit_type", 2),
-                category_id=data.get("category_id"),
-                reference=data.get("reference", ""),
-                description=data["description"],
-                account_type="BANK" if data.get("paid_into") == "BANK" else "CASH",
-                bank_account_number=data.get("bank_account_number", ""),
-                created_by=request.user.username,
-            )
-            other_income = OtherIncome.objects.create(
-                transaction=base_transaction,
-                income_category_id=data["income_category_id"],
-                is_vat_inclusive=False,
-                vat_amount=base_transaction.tax_amount,
-                tax_code=data.get("tax_code", 1),
-                paid_into=data.get("paid_into", "CASH"),
-            )
+            account_type = "BANK" if data.get("paid_into") == "BANK" else "CASH"
+            lines = data.get("lines")
+            if not lines:
+                lines = [
+                    {
+                        "income_category_id": data["income_category_id"],
+                        "value_excl_vat": data["value_excl_vat"],
+                        "tax_code": data.get("tax_code", 1),
+                        "description": data.get("description", ""),
+                    }
+                ]
 
-            response_serializer = OtherIncomeSerializer(other_income)
-            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+            created = []
+            for line in lines:
+                # value_excl_vat + tax_code drive the base transaction;
+                # VAT/total are computed authoritatively by
+                # create_transaction() itself.
+                base_transaction = CashBookTransactionService.create_transaction(
+                    transaction_type="OTHER_INCOME",
+                    transaction_date=data["transaction_date"],
+                    value_excl_vat=line["value_excl_vat"],
+                    tax_code=line.get("tax_code", data.get("tax_code", 1)),
+                    audit_type=data.get("audit_type", 2),
+                    category_id=data.get("category_id"),
+                    reference=data.get("reference", ""),
+                    description=line.get("description") or data.get("description", ""),
+                    account_type=account_type,
+                    bank_account_number=data.get("bank_account_number", ""),
+                    created_by=request.user.username,
+                )
+                other_income = OtherIncome.objects.create(
+                    transaction=base_transaction,
+                    income_category_id=line["income_category_id"],
+                    is_vat_inclusive=False,
+                    vat_amount=base_transaction.tax_amount,
+                    tax_code=line.get("tax_code", data.get("tax_code", 1)),
+                    paid_into=data.get("paid_into", "CASH"),
+                )
+                created.append(other_income)
+
+            response_data = OtherIncomeSerializer(created, many=True).data
+            if len(created) == 1 and not data.get("lines"):
+                return Response(response_data[0], status=status.HTTP_201_CREATED)
+            return Response(response_data, status=status.HTTP_201_CREATED)
 
         except ValidationError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -273,37 +423,58 @@ class OtherExpenseViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 
     @db_transaction.atomic
     def create(self, request, *args, **kwargs):
-        """Create other expense transaction"""
+        """
+        Create other expense transaction(s). `lines` (optional) supports
+        the spec's multi-line petty cash batch — see
+        OtherIncomeViewSet.create for the shared pattern.
+        """
         serializer = CreateOtherExpenseSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         try:
             data = serializer.validated_data
-            base_transaction = CashBookTransactionService.create_transaction(
-                transaction_type="OTHER_EXPENSE",
-                transaction_date=data["transaction_date"],
-                value_excl_vat=data["value_excl_vat"],
-                tax_code=data.get("tax_code", 1),
-                audit_type=data.get("audit_type", 4),
-                category_id=data.get("category_id"),
-                reference=data.get("reference", ""),
-                description=data["description"],
-                account_type="BANK" if data.get("paid_from") == "BANK" else "CASH",
-                bank_account_number=data.get("bank_account_number", ""),
-                created_by=request.user.username,
-            )
-            other_expense = OtherExpense.objects.create(
-                transaction=base_transaction,
-                expense_category_id=data["expense_category_id"],
-                is_vat_inclusive=False,
-                vat_amount=base_transaction.tax_amount,
-                tax_code=data.get("tax_code", 1),
-                paid_from=data.get("paid_from", "CASH"),
-                petty_cash_slip_number=data.get("petty_cash_slip_number", ""),
-            )
+            account_type = "BANK" if data.get("paid_from") == "BANK" else "CASH"
+            lines = data.get("lines")
+            if not lines:
+                lines = [
+                    {
+                        "expense_category_id": data["expense_category_id"],
+                        "value_excl_vat": data["value_excl_vat"],
+                        "tax_code": data.get("tax_code", 1),
+                        "description": data.get("description", ""),
+                    }
+                ]
 
-            response_serializer = OtherExpenseSerializer(other_expense)
-            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+            created = []
+            for line in lines:
+                base_transaction = CashBookTransactionService.create_transaction(
+                    transaction_type="OTHER_EXPENSE",
+                    transaction_date=data["transaction_date"],
+                    value_excl_vat=line["value_excl_vat"],
+                    tax_code=line.get("tax_code", data.get("tax_code", 1)),
+                    audit_type=data.get("audit_type", 4),
+                    category_id=data.get("category_id"),
+                    reference=data.get("reference", ""),
+                    description=line.get("description") or data.get("description", ""),
+                    account_type=account_type,
+                    bank_account_number=data.get("bank_account_number", ""),
+                    created_by=request.user.username,
+                )
+                other_expense = OtherExpense.objects.create(
+                    transaction=base_transaction,
+                    expense_category_id=line["expense_category_id"],
+                    is_vat_inclusive=False,
+                    vat_amount=base_transaction.tax_amount,
+                    tax_code=line.get("tax_code", data.get("tax_code", 1)),
+                    paid_from=data.get("paid_from", "CASH"),
+                    petty_cash_slip_number=data.get("petty_cash_slip_number", ""),
+                )
+                created.append(other_expense)
+
+            response_data = OtherExpenseSerializer(created, many=True).data
+            if len(created) == 1 and not data.get("lines"):
+                return Response(response_data[0], status=status.HTTP_201_CREATED)
+            return Response(response_data, status=status.HTTP_201_CREATED)
 
         except ValidationError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -676,9 +847,22 @@ class BankReconciliationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         data = serializer.validated_data
 
         try:
-            # Update reconciliation data
-            reconciliation.outstanding_deposits = data["outstanding_deposits"]
-            reconciliation.outstanding_cheques = data["outstanding_cheques"]
+            # Outstanding totals: use what was submitted, or derive them
+            # from tagged ('P') transactions when the operator used the
+            # tagging workflow instead of hand-typing the totals.
+            if "outstanding_deposits" in data and "outstanding_cheques" in data:
+                reconciliation.outstanding_deposits = data["outstanding_deposits"]
+                reconciliation.outstanding_cheques = data["outstanding_cheques"]
+            else:
+                derived = ReconciliationService.get_outstanding_summary(
+                    reconciliation.bank_account_number
+                )
+                reconciliation.outstanding_deposits = data.get(
+                    "outstanding_deposits", derived["outstanding_deposits"]
+                )
+                reconciliation.outstanding_cheques = data.get(
+                    "outstanding_cheques", derived["outstanding_cheques"]
+                )
             reconciliation.bank_errors = data.get("bank_errors", Decimal("0"))
             reconciliation.book_errors = data.get("book_errors", Decimal("0"))
             reconciliation.notes = data.get("notes", reconciliation.notes)
@@ -696,6 +880,52 @@ class BankReconciliationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 
         except ValidationError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=["get"])
+    def outstanding_summary(self, request):
+        """Preview the outstanding deposit/cheque totals tagged 'P' for a bank account."""
+        bank_account_number = request.query_params.get("bank_account_number")
+        if not bank_account_number:
+            return Response(
+                {"error": "bank_account_number parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(ReconciliationService.get_outstanding_summary(bank_account_number))
+
+    @action(detail=True, methods=["post"])
+    def month_end(self, request, pk=None):
+        """
+        Month End for Bank Reconciliation. Requires the reconciliation to
+        already be COMPLETED — Month End closes the period, it doesn't
+        reconcile it. At completion time, every transaction tagged 'R'
+        (Reconciled) was already matched to this statement and marked
+        is_reconciled (see ReconciliationService.complete_reconciliation);
+        transactions still tagged 'P' (Pending) were never matched and are
+        left as-is so they carry forward automatically into the next
+        reconciliation. Month End just closes this period (REVIEWED) and
+        reports what's carrying forward.
+        """
+        reconciliation = self.get_object()
+
+        if reconciliation.status != "COMPLETED":
+            return Response(
+                {"error": "Reconciliation must be completed before Month End."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        carried_summary = ReconciliationService.get_outstanding_summary(
+            reconciliation.bank_account_number
+        )
+
+        reconciliation.status = "REVIEWED"
+        reconciliation.save(update_fields=["status"])
+
+        return Response(
+            {
+                "reconciliation_number": reconciliation.reconciliation_number,
+                "carried_forward_summary": carried_summary,
+            }
+        )
 
 
 class CashFloatViewSet(ShopFilterMixin, viewsets.ModelViewSet):

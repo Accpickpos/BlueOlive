@@ -8,9 +8,18 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import psycopg2
-from apps.saas_admin.import_views import _import_department_record, _uoc
+from apps.debtors.models import Debtopen, Debtor, DebtorAudit, DebtorTransaction
+from apps.saas_admin.import_views import (
+    _import_debtoaud_record,
+    _import_debtopen_record,
+    _import_debtor_record,
+    _import_debtran_record,
+    _import_department_record,
+    _uoc,
+)
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db import connections
 from django.test import SimpleTestCase
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
@@ -195,6 +204,220 @@ class UocNotNullForeignKeyTestCase(SimpleTestCase):
         finally:
             conn.close()
         self.assertEqual(row[0], dept_id)
+
+
+class DebtorImportPipelineTestCase(SimpleTestCase):
+    """
+    Regression tests for three compounding bugs in the debtor-transaction
+    import path (debtran/debtopen/debtoaud), found while auditing whether
+    DebtorOpenItem could be deleted as unused:
+
+    1. _import_debtran_record wrote into DebtorOpenItem instead of
+       DebtorTransaction (copy-paste from _import_debtopen_record).
+    2. _import_debtopen_record's target, DebtorOpenItem, maps to a
+       different physical table ("debtopen") than the one the live app
+       reads (Debtopen, table "debtors_debtopen") — imported data landed
+       somewhere the app could never show a user.
+    3. _uoc's _resolve_fields assumed Django's default column-naming
+       convention (FK field -> "{field}_id"), which is wrong for several
+       of these models' explicit db_column overrides (e.g. DebtorAudit.dno
+       -> db_column="dno", not "dno_id"), and DEBTOPEN_CSV_TO_MODEL_FIELD_MAP/
+       DEBTOAUD_CSV_TO_MODEL_FIELD_MAP targeted field names that don't
+       exist on the real models at all.
+
+    Creates real Debtor/DebtorTransaction/Debtopen/DebtorAudit tables (via
+    Django's own schema editor, so the structure is identical to what a
+    real migration produces) in a throwaway schema, then exercises the
+    actual _import_*_record functions end-to-end through _uoc's raw-psycopg2
+    path — the one real imports actually use.
+    """
+
+    # Needed because setUpClass uses Django's own connections["default"]
+    # (via DatabaseSchemaEditor) in addition to the raw psycopg2 connection
+    # _uoc itself uses — SimpleTestCase forbids ORM DB access by default.
+    databases = {"default"}
+
+    SCHEMA = "test_debtor_import_schema"
+
+    @classmethod
+    def _connect(cls):
+        db = settings.DATABASES["default"]
+        conn = psycopg2.connect(
+            dbname=db["NAME"],
+            user=db["USER"],
+            password=db["PASSWORD"],
+            host=db["HOST"],
+            port=int(db["PORT"]),
+        )
+        conn.autocommit = True
+        return conn
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        conn = cls._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"DROP SCHEMA IF EXISTS {cls.SCHEMA} CASCADE")
+                cur.execute(f"CREATE SCHEMA {cls.SCHEMA}")
+                # TimeStampedModel's created_by/updated_by FKs point at
+                # AUTH_USER_MODEL (shop_users.ShopUser) — create a minimal
+                # placeholder so those deferred FK constraints have
+                # something to reference; this test never populates either
+                # field, so an id-only stand-in is enough.
+                cur.execute(
+                    f"CREATE TABLE {cls.SCHEMA}.shop_users_shopuser "
+                    f"(id BIGSERIAL PRIMARY KEY)"
+                )
+        finally:
+            conn.close()
+
+        # Create the real model tables via Django's own schema editor, so
+        # the structure (including every db_column override) is identical
+        # to what `migrate` would produce — not a hand-maintained copy that
+        # could drift from the model.
+        from django.db.backends.postgresql.schema import DatabaseSchemaEditor
+
+        django_conn = connections["default"]
+        django_conn.close()
+        django_conn.connect()
+        with django_conn.cursor() as cur:
+            cur.execute(f'SET search_path TO "{cls.SCHEMA}", public')
+        django_conn.commit()
+
+        with DatabaseSchemaEditor(django_conn) as schema_editor:
+            for model in (Debtor, DebtorTransaction, Debtopen, DebtorAudit):
+                with django_conn.cursor() as cur:
+                    cur.execute(f'SET search_path TO "{cls.SCHEMA}", public')
+                schema_editor.create_model(model)
+        django_conn.commit()
+        django_conn.close()
+
+    @classmethod
+    def tearDownClass(cls):
+        conn = cls._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"DROP SCHEMA IF EXISTS {cls.SCHEMA} CASCADE")
+        finally:
+            conn.close()
+        super().tearDownClass()
+
+    def setUp(self):
+        # _resolve_debtor (called by every _import_*_record fixed by this
+        # change) looks the debtor up via the regular Django ORM connection
+        # — unlike _uoc's raw-psycopg2 path, that connection's search_path
+        # isn't self-contained, so it must be pointed at the test schema
+        # for every test method, not just once in setUpClass.
+        django_conn = connections["default"]
+        django_conn.close()
+        django_conn.connect()
+        with django_conn.cursor() as cur:
+            cur.execute(f'SET search_path TO "{self.SCHEMA}", public')
+        django_conn.commit()
+
+        # A debtor row every test's FK lookups resolve against. Shared
+        # across test methods in this class (no per-test truncation), so
+        # this is idempotent create-or-update, not necessarily "created".
+        result = _import_debtor_record(
+            "default",
+            {"dno": 5001, "dname": "Import Pipeline Test Debtor"},
+            "create_or_update",
+            schema_name=self.SCHEMA,
+        )
+        self.assertIn(result, ("created", "updated"))
+        # FK columns on DebtorTransaction/Debtopen/DebtorAudit store the
+        # Debtor row's actual primary key (standard Django FK behavior) —
+        # not the business-meaningful "dno" value, even though several of
+        # those columns are also (confusingly) *named* "dno" via
+        # db_column. Tests below compare against this, not against 5001.
+        self.debtor_pk = Debtor.objects.using("default").get(dno=5001).pk
+
+    def _select_one(self, table, where_col, where_val):
+        conn = self._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f'SET search_path TO "{self.SCHEMA}", public')
+                cur.execute(
+                    f'SELECT * FROM "{table}" WHERE "{where_col}" = %s',  # nosec B608
+                    [where_val],
+                )
+                columns = [d[0] for d in cur.description]
+                row = cur.fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(
+            row, f"No row found in {table} where {where_col}={where_val}"
+        )
+        return dict(zip(columns, row))
+
+    def test_debtran_writes_to_debtor_transaction_not_debtor_open_item(self):
+        result = _import_debtran_record(
+            "default",
+            {
+                "debtor": 5001,
+                "transaction_number": "000001",
+                "transaction_date": "2026-01-15",
+                "transaction_type": "IN",
+                "subtotal": "100.00",
+                "total_amount": "115.00",
+            },
+            "create_or_update",
+            schema_name=self.SCHEMA,
+        )
+        self.assertEqual(result, "created")
+
+        row = self._select_one("debtran", "dtrano", "000001")
+        # DebtorTransaction.debtor has an explicit db_column="dno" override
+        # (no "_id" suffix) — unlike Debtopen.dno below, which has none.
+        self.assertEqual(row["dno"], self.debtor_pk)
+        self.assertEqual(str(row["dtsub"]), "100.00")
+        self.assertEqual(str(row["dttot"]), "115.00")
+
+    def test_debtopen_writes_to_debtopen_table_debtopen_model(self):
+        result = _import_debtopen_record(
+            "default",
+            {
+                "dno": 5001,
+                "dtrano": "000002",
+                "type": "IN",
+                "date": "2026-01-15",
+                "total": "115.00",
+                "balancedue": "115.00",
+            },
+            "create_or_update",
+            schema_name=self.SCHEMA,
+        )
+        self.assertEqual(result, "created")
+
+        row = self._select_one("debtors_debtopen", "dtrano", "000002")
+        self.assertEqual(row["dno_id"], self.debtor_pk)
+        self.assertEqual(str(row["total"]), "115.00")
+        self.assertEqual(str(row["balancedue"]), "115.00")
+
+    def test_debtoaud_writes_real_field_names_not_fictional_ones(self):
+        result = _import_debtoaud_record(
+            "default",
+            {
+                "dno": 5001,
+                "dtrano": "000003",
+                "type": "IN",
+                "thistype": "IN",
+                "thistran": "000003",
+                "date": "2026-01-15",
+                "amount": "115.00",
+            },
+            "create_or_update",
+            schema_name=self.SCHEMA,
+        )
+        self.assertEqual(result, "created")
+
+        row = self._select_one("debtoraud", "dtrano", "000003")
+        # DebtorAudit.dno also has an explicit db_column="dno" override.
+        self.assertEqual(row["dno"], self.debtor_pk)
+        self.assertEqual(row["thistype"], "IN")
+        self.assertEqual(row["thistran"], "000003")
+        self.assertEqual(str(row["amount"]), "115.00")
 
 
 # ============================================================

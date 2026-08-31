@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Save, X, ChevronUp, ChevronDown } from 'lucide-react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { stockControlApi } from '@/lib/stockControlApi';
 
 interface StockCountProps {
   onBack: () => void;
@@ -14,17 +15,19 @@ export default function StockCount({ onBack }: StockCountProps) {
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
   const [countedQuantities, setCountedQuantities] = useState<{ [key: string]: number }>({});
   const [stockItems, setStockItems] = useState<any[]>([]);
-  const queryClient = useQueryClient();
+  // stock_code -> StockTakeItem id, so re-saving (e.g. after Previous) updates
+  // the existing row instead of hitting the (stock_take, stock_item) unique
+  // constraint on a second create.
+  const savedItemIds = useRef<{ [stockCode: string]: number }>({});
 
   // Create new stock take session
   const createStockTake = useMutation({
     mutationFn: async () => {
-      const response = await api.post('/api/stock-control/stock-takes/', {
+      return stockControlApi.stockTakes.create({
         stock_take_date: new Date().toISOString().split('T')[0],
         status: 'IN_PROGRESS',
         description: 'Physical stock count session',
       });
-      return response.data;
     },
     onSuccess: (data) => {
       setStockTakeId(data.id);
@@ -49,14 +52,20 @@ export default function StockCount({ onBack }: StockCountProps) {
       if (!stockTakeId || !stockItems[currentItemIndex]) {
         throw new Error('Invalid stock take or item');
       }
-      
+
       const item = stockItems[currentItemIndex];
-      const response = await api.post(`/api/stock-control/stock-takes/${stockTakeId}/items/`, {
+      const existingId = savedItemIds.current[item.stock_code];
+      if (existingId) {
+        return stockControlApi.stockTakeItems.recordCount(existingId, quantity);
+      }
+
+      const created = await stockControlApi.stockTakeItems.create({
+        stock_take: stockTakeId,
         stock_item: item.stock_code,
-        quantity_counted: quantity,
         quantity_on_hand: item.quantity_on_hand,
       });
-      return response.data;
+      savedItemIds.current[item.stock_code] = created.id;
+      return stockControlApi.stockTakeItems.recordCount(created.id, quantity);
     },
     onSuccess: () => {
       // Move to next item

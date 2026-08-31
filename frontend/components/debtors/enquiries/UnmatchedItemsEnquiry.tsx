@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { apiRequest } from '@/lib/api';
+import debtorsApi from '@/lib/debtorsApi';
 
 interface UnmatchedItem {
   id: number;
@@ -14,6 +14,28 @@ interface UnmatchedItem {
   balance_due: number;
   days_overdue: number;
 }
+
+const TYPE_LABELS: Record<string, string> = {
+  IN: 'Invoice',
+  CN: 'Credit Note',
+  PY: 'Payment',
+  RCP: 'Receipt',
+  INT: 'Interest Charge',
+  JD: 'Journal Debit',
+  JC: 'Journal Credit',
+  DM: 'Debit Memo',
+  CM: 'Credit Memo',
+};
+
+const TYPE_COLORS: Record<string, string> = {
+  IN: 'bg-red-100 text-red-800',
+  CN: 'bg-yellow-100 text-yellow-800',
+  PY: 'bg-green-100 text-green-800',
+  RCP: 'bg-green-100 text-green-800',
+  INT: 'bg-purple-100 text-purple-800',
+  JD: 'bg-blue-100 text-blue-800',
+  JC: 'bg-blue-100 text-blue-800',
+};
 
 export default function UnmatchedItemsEnquiry() {
   const [unmatchedItems, setUnmatchedItems] = useState<UnmatchedItem[]>([]);
@@ -28,49 +50,36 @@ export default function UnmatchedItemsEnquiry() {
 
   const loadUnmatchedItems = async () => {
     try {
-      // Load all debtors with their transactions and filter unmatched (Open Item)
-      const response = await apiRequest('/api/v1/debtors/');
-      let debtors = (response as any).results || response;
-      
-      // Ensure debtors is an array
-      if (!Array.isArray(debtors)) {
-        debtors = [];
-      }
-      
-      const allUnmatched: UnmatchedItem[] = [];
+      // DebteopenViewSet.outstanding() lists every Open Item account's
+      // unmatched/partially-allocated transactions (balancedue > 0,
+      // posted='Y') directly off the Debtopen model — the same open-item
+      // ledger receipt allocation posts against — rather than re-deriving
+      // "unmatched" from DebtorTransaction client-side. debtor_name comes
+      // straight off DebteopenSerializer (item.dno is Debtor's internal pk,
+      // not its account number, so it can't be correlated against a
+      // separately-loaded debtor list).
+      const itemsResponse = await debtorsApi.openItems.outstanding();
+      const items = ((itemsResponse as any).results || itemsResponse || []) as any[];
+      const today = new Date();
 
-      // For each debtor, get their transactions and filter Open Items
-      for (const debtor of debtors) {
-        if (debtor.account_category === 'O') { // Open Item type
-          try {
-            const txResponse = await apiRequest(`/api/v1/debtors/transactions/?debtor=${debtor.id}`);
-            const transactions = (txResponse as any).results || txResponse || [];
-            
-            // Filter unmatched transactions (those with outstanding balance)
-            transactions.forEach((tx: any) => {
-              if (tx.total_amount > 0 && ['INV', 'CRN', 'CSH'].includes(tx.transaction_type)) {
-                const txDate = new Date(tx.transaction_date);
-                const today = new Date();
-                const daysOverdue = Math.floor((today.getTime() - txDate.getTime()) / (1000 * 60 * 60 * 24));
-
-                allUnmatched.push({
-                  id: tx.id,
-                  debtor_id: debtor.id,
-                  debtor_name: debtor.name,
-                  transaction_type: tx.transaction_type,
-                  transaction_number: tx.transaction_number,
-                  transaction_date: tx.transaction_date,
-                  amount: tx.total_amount,
-                  balance_due: tx.total_amount,
-                  days_overdue: daysOverdue,
-                });
-              }
-            });
-          } catch (err) {
-            console.error(`Failed to load transactions for debtor ${debtor.id}`);
-          }
-        }
-      }
+      const allUnmatched: UnmatchedItem[] = items.map((item) => {
+        const txDate = new Date(item.date);
+        const daysOverdue = Math.max(
+          0,
+          Math.floor((today.getTime() - txDate.getTime()) / (1000 * 60 * 60 * 24))
+        );
+        return {
+          id: item.id,
+          debtor_id: item.debtor_account_number,
+          debtor_name: item.debtor_name || `Debtor ${item.debtor_account_number}`,
+          transaction_type: item.type,
+          transaction_number: item.dtrano,
+          transaction_date: item.date,
+          amount: parseFloat(item.total),
+          balance_due: parseFloat(item.balancedue),
+          days_overdue: daysOverdue,
+        };
+      });
 
       setUnmatchedItems(allUnmatched);
     } catch (err) {
@@ -81,27 +90,8 @@ export default function UnmatchedItemsEnquiry() {
     }
   };
 
-  const getTransactionTypeDisplay = (type: string) => {
-    const types: Record<string, string> = {
-      'INV': 'Invoice',
-      'CRN': 'Credit Note',
-      'CSH': 'Cash Sale',
-      'CSR': 'Cash Return',
-      'RCT': 'Receipt',
-    };
-    return types[type] || type;
-  };
-
-  const getTypeColor = (type: string) => {
-    const colors: Record<string, string> = {
-      'INV': 'bg-red-100 text-red-800',
-      'CRN': 'bg-yellow-100 text-yellow-800',
-      'CSH': 'bg-green-100 text-green-800',
-      'CSR': 'bg-blue-100 text-blue-800',
-      'RCT': 'bg-green-100 text-green-800',
-    };
-    return colors[type] || 'bg-gray-100 text-gray-800';
-  };
+  const getTransactionTypeDisplay = (type: string) => TYPE_LABELS[type] || type;
+  const getTypeColor = (type: string) => TYPE_COLORS[type] || 'bg-gray-100 text-gray-800';
 
   const getAgeingColor = (days: number) => {
     if (days > 180) return 'text-red-700';
@@ -111,7 +101,7 @@ export default function UnmatchedItemsEnquiry() {
   };
 
   const uniqueDebtors = [...new Set(unmatchedItems.map(item => item.debtor_name))];
-  const filteredItems = selectedDebtor 
+  const filteredItems = selectedDebtor
     ? unmatchedItems.filter(item => item.debtor_name === selectedDebtor)
     : unmatchedItems;
 
@@ -215,9 +205,9 @@ export default function UnmatchedItemsEnquiry() {
               </thead>
               <tbody>
                 {filteredItems
-                  .sort((a, b) => 
-                    viewMode === 'balance' 
-                      ? b.balance_due - a.balance_due 
+                  .sort((a, b) =>
+                    viewMode === 'balance'
+                      ? b.balance_due - a.balance_due
                       : b.days_overdue - a.days_overdue
                   )
                   .map(item => (

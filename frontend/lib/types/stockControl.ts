@@ -64,6 +64,8 @@ export interface StockItemFilters {
   is_active?: boolean;
   tax_code?: number;
   kvi_flag?: boolean;
+  code_from?: string;
+  code_to?: string;
   page?: number;
   page_size?: number;
   ordering?: string;
@@ -224,6 +226,9 @@ export interface StockTransaction {
 export interface StockTransactionFilters {
   stock_item?: string;
   transaction_type?: string;
+  department?: number;
+  debtor?: number;
+  supplier?: number;
   date_from?: string;
   date_to?: string;
   search?: string;
@@ -322,22 +327,18 @@ export interface PaginatedStockTakes {
 export interface ContractPricing {
   id: number;
   debtor: number | string;
-  debtor_detail?: {
-    id: number;
-    customer_number: string;
-    name: string;
-  };
-  stock_item?: string;
-  stock_item_detail?: StockItem;
-  department?: number;
-  department_detail?: {
-    id: number;
-    name: string;
-  };
-  contract_price: number;
+  stock_item?: string | null;
+  department?: number | null;
+  supplier?: number | null;
+  pricing_method: 'ACTUAL' | 'COST_MARKUP';
+  contract_price?: number | null;
+  markup_percent?: number | null;
   discount_percent?: number;
-  effective_date: string;
-  end_date?: string;
+  last_selling_price?: number;
+  last_updated_date?: string | null;
+  valid_from?: string | null;
+  valid_until?: string | null;
+  is_fixed_pricing?: boolean;
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
@@ -356,10 +357,8 @@ export interface PaginatedContractPricing {
 
 export interface OneTouchLookupKey {
   id: number;
-  lookup_key: string;
+  key_character: string;
   stock_item: string;
-  stock_item_detail?: StockItem;
-  is_active: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -567,9 +566,11 @@ export interface StockItemPricing {
 // ============================================================================
 
 export interface StockAdjustment {
-  stock_code: string;
-  adjustment_quantity: number;
-  comments: string;
+  // Matches StockItemViewSet.adjust_stock's body shape: signed quantity
+  // (positive = stock in, negative = stock out), not adjustment_quantity
+  // (no such field on the backend).
+  quantity: number;
+  comments?: string;
 }
 
 // ============================================================================

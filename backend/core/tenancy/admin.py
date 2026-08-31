@@ -120,17 +120,17 @@ class AuditLogAdmin(admin.ModelAdmin):
 
     list_display = (
         "timestamp",
-        "user",
+        "user_id",
         "action",
         "resource_type",
         "ip_address",
         "success",
     )
     list_filter = ("action", "success", "timestamp", "tenant_id")
-    search_fields = ("user__username", "ip_address", "resource_id")
+    search_fields = ("=user_id", "ip_address", "resource_id")
     readonly_fields = (
         "timestamp",
-        "user",
+        "user_id",
         "action",
         "resource_type",
         "resource_id",

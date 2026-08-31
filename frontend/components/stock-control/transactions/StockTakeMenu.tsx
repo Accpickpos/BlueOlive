@@ -6,6 +6,7 @@ import PrintStockTakeForms from './stock-take/PrintStockTakeForms';
 import StockCount from './stock-take/StockCount';
 import VarianceReport from './stock-take/VarianceReport';
 import StockValuation from './stock-take/StockValuation';
+import StockTakeUpdate from './stock-take/StockTakeUpdate';
 import StockAdjustments from './stock-take/StockAdjustments';
 
 interface StockTakeMenuProps {
@@ -18,6 +19,7 @@ type StockTakeOption =
   | 'count'
   | 'variance'
   | 'valuation'
+  | 'update'
   | 'adjustments';
 
 export default function StockTakeMenu({ onBack }: StockTakeMenuProps) {
@@ -132,7 +134,7 @@ export default function StockTakeMenu({ onBack }: StockTakeMenuProps) {
 
           {/* Stock Take Update */}
           <button
-            onClick={() => setCurrentOption('adjustments')}
+            onClick={() => setCurrentOption('update')}
             className="p-6 bg-white border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-lg transition text-left"
           >
             <div className="flex items-start gap-4">
@@ -188,6 +190,10 @@ export default function StockTakeMenu({ onBack }: StockTakeMenuProps) {
 
       {currentOption === 'valuation' && (
         <StockValuation onBack={() => setCurrentOption('menu')} />
+      )}
+
+      {currentOption === 'update' && (
+        <StockTakeUpdate onBack={() => setCurrentOption('menu')} />
       )}
 
       {currentOption === 'adjustments' && (

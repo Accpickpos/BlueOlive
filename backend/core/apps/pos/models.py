@@ -317,37 +317,35 @@ class Invoice(TimeStampedModel):
 
         self.save()
 
-        # Create debtor transaction. transaction_number is a 6-char field
-        # (legacy DTRANO sequence) — invoice_number (e.g. "INV-20260729-00001")
-        # doesn't fit it, so generate the same per-debtor sequence
-        # DebtorService.post_debtran uses rather than truncating and risking
-        # a collision.
-        from apps.debtors.models import DebtorTransaction
+        # Post to the debtor's ledger through the same path every other
+        # invoice-posting route uses. This used to create the
+        # DebtorTransaction directly, which bypassed DebtorService's
+        # balance update (debtor.dcrnt) and — for Open Item accounts — the
+        # Debtopen row that receipt allocation needs to ever pay this
+        # invoice off. transaction_number (DTRANO) is a 6-char legacy
+        # sequence — invoice_number (e.g. "INV-20260729-00001") doesn't fit
+        # it, so post_debtran generates its own per-debtor sequence rather
+        # than truncating and risking a collision; the invoice_number is
+        # kept as source_reference instead.
+        from apps.debtors.services import DebtorService
 
-        last_tran = (
-            DebtorTransaction.objects.filter(debtor=self.debtor)
-            .order_by("-transaction_number")
-            .first()
-        )
-        try:
-            new_dtrano = (
-                str(int(last_tran.transaction_number) + 1).zfill(6)
-                if last_tran
-                else "000001"
-            )
-        except (ValueError, TypeError):
-            new_dtrano = "000001"
-
-        DebtorTransaction.objects.create(
+        # recalculate_totals() sums 4-decimal-place InvoiceLine amounts into
+        # these fields, so they can carry 4dp precision in memory even
+        # though the column (and DebtorTransaction's) is 2dp — quantize
+        # here since DebtorTransaction.save() calls full_clean(), unlike
+        # Invoice.save() which deliberately skips it for this exact reason.
+        two_dp = Decimal("0.01")
+        DebtorService.post_debtran(
             debtor=self.debtor,
-            transaction_number=new_dtrano,
-            transaction_type="IN",
+            dtype="IN",
+            dttot=self.total_amount.quantize(two_dp),
+            dtsub=self.subtotal.quantize(two_dp),
+            dtgst=self.vat_amount.quantize(two_dp),
+            ordno=self.order_number,
+            custref=self.customer_reference,
             transaction_date=self.invoice_date,
-            subtotal=self.subtotal,
-            vat_amount=self.vat_amount,
-            total_amount=self.total_amount,
-            status="posted",
-            created_by=posted_by,
+            source_type="INVOICE",
+            source_reference=self.invoice_number,
         )
 
     def mark_as_paid(self, payment_date=None, amount=None):
@@ -815,6 +813,106 @@ class CashSale(TimeStampedModel):
     def __str__(self):
         return f"Cash Sale {self.sale_number}"
 
+    def apply_subtotal_discount(self, percentage):
+        """
+        Manual §4 "Cash Sale" Update Transaction facilities — same Subtotal
+        Discount Facility as Invoice; see Invoice.apply_subtotal_discount.
+        """
+        percentage = Decimal(str(percentage))
+        factor = (Decimal(100) - percentage) / Decimal(100)
+        if factor < 0:
+            raise ValidationError("Subtotal discount cannot exceed 100%.")
+
+        lines = list(self.lines.exclude(quantity=0))
+        if not lines:
+            raise ValidationError("Cash Sale has no line items to discount.")
+
+        if percentage > 0:
+            for line in lines:
+                if not line.stock_code:
+                    continue
+                try:
+                    stock_item = StockItem.objects.get(stock_code=line.stock_code)
+                except StockItem.DoesNotExist:
+                    continue
+                if percentage > stock_item.maximum_discount_percent:
+                    raise ValidationError(
+                        f"Subtotal discount of {percentage}% exceeds the maximum discount "
+                        f"of {stock_item.maximum_discount_percent}% allowed for line "
+                        f"{line.line_number} ({line.stock_code})."
+                    )
+
+        for line in lines:
+            line.unit_price = (line.unit_price * factor).quantize(Decimal("0.0001"))
+            line.save()
+
+        self.refresh_from_db()
+        return self
+
+    def apply_set_price(self, target_total):
+        """
+        Manual §4 "Cash Sale" Update Transaction facilities — same Set
+        Selling Price Facility as Invoice; see Invoice.apply_set_price.
+        Note CashSaleLine.line_total is VAT-inclusive (unlike InvoiceLine,
+        and like JobCardLine), so this doesn't add a separate vat_amount —
+        mirrors JobCard.apply_set_price.
+        """
+        from .calculation_service import CalculationService
+
+        target_total = Decimal(str(target_total))
+        if target_total <= 0:
+            raise ValidationError("Target total must be greater than zero.")
+
+        lines = [ln for ln in self.lines.exclude(quantity=0) if ln.line_total > 0]
+        if not lines:
+            raise ValidationError("Cash Sale has no priced line items to adjust.")
+
+        current_total = self.total_amount
+        if current_total <= 0:
+            raise ValidationError("Cash Sale has no current total to scale from.")
+
+        ratio = target_total / current_total
+        largest_line_id = max(lines, key=lambda ln: ln.line_total).pk
+
+        for line in lines:
+            new_incl = (line.line_total * ratio).quantize(Decimal("0.01"))
+            is_taxable = line.tax_code in CalculationService.TAXABLE_TAX_CODES
+            vat_factor = (
+                (Decimal(1) + CalculationService.VAT_RATE) if is_taxable else Decimal(1)
+            )
+            new_excl = new_incl / vat_factor
+
+            discount_factor = (Decimal(100) - line.discount_percentage) / Decimal(100)
+            if discount_factor <= 0 or line.quantity <= 0:
+                continue
+            line.unit_price = (new_excl / (line.quantity * discount_factor)).quantize(
+                Decimal("0.0001")
+            )
+            line.save()
+
+        self.refresh_from_db()
+        residual = target_total - self.total_amount
+        if residual != 0:
+            largest_line = self.lines.get(pk=largest_line_id)
+            is_taxable = largest_line.tax_code in CalculationService.TAXABLE_TAX_CODES
+            vat_factor = (
+                (Decimal(1) + CalculationService.VAT_RATE) if is_taxable else Decimal(1)
+            )
+            discount_factor = (
+                Decimal(100) - largest_line.discount_percentage
+            ) / Decimal(100)
+            if discount_factor > 0 and largest_line.quantity > 0:
+                unit_price_delta = (
+                    residual / vat_factor / discount_factor / largest_line.quantity
+                )
+                largest_line.unit_price = (
+                    largest_line.unit_price + unit_price_delta
+                ).quantize(Decimal("0.0001"))
+                largest_line.save()
+
+        self.refresh_from_db()
+        return self
+
 
 class CashSaleLine(TimeStampedModel):
     """Cash sale line item."""
@@ -1056,6 +1154,7 @@ class Quotation(TimeStampedModel):
     STATUS_CHOICES = [
         ("ACTIVE", "Active"),
         ("CONVERTED_TO_INVOICE", "Converted to Invoice"),
+        ("CONVERTED_TO_CASH_SALE", "Converted to Cash Sale"),
         ("INVOICED", "Invoiced"),
         ("EXPIRED", "Expired"),
         ("CANCELLED", "Cancelled"),
@@ -1304,6 +1403,7 @@ class JobCard(TimeStampedModel):
     STATUS_CHOICES = [
         ("ACTIVE", "Active"),
         ("CONVERTED_TO_INVOICE", "Converted to Invoice"),
+        ("CONVERTED_TO_CASH_SALE", "Converted to Cash Sale"),
         ("CANCELLED", "Cancelled"),
     ]
 

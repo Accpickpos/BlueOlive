@@ -164,6 +164,42 @@ export const ENDPOINTS = {
     TRANSACTIONS: `${API_V1_BASE}/general-ledger/transactions/`,
     STANDING_JOURNALS: `${API_V1_BASE}/general-ledger/standing-journals/`,
     SPREAD_SHEETS: `${API_V1_BASE}/general-ledger/spread-sheets/`,
+    BATCHES: `${API_V1_BASE}/general-ledger/batches/`,
+    REPORT_FORMATS: `${API_V1_BASE}/general-ledger/report-formats/`,
+    PARAMETERS: `${API_V1_BASE}/general-ledger/parameters/`,
+    INTEGRATION_SETTINGS: `${API_V1_BASE}/general-ledger/integration-settings/`,
+
+    // Master account actions
+    MASTER_ACCOUNT_HISTORY: (id: string | number) => `${API_V1_BASE}/general-ledger/master-accounts/${id}/account_history/`,
+    MASTER_ACCOUNTS_SUMMARY: `${API_V1_BASE}/general-ledger/master-accounts/summary/`,
+    MASTER_ACCOUNTS_BALANCE_SUMMARY: `${API_V1_BASE}/general-ledger/master-accounts/balance_summary/`,
+
+    // Batch actions
+    BATCH_BALANCE_CHECK: `${API_V1_BASE}/general-ledger/batches/balance_check/`,
+    BATCH_POST: `${API_V1_BASE}/general-ledger/batches/post/`,
+
+    // Standing journal actions
+    STANDING_JOURNAL_VALIDATE: `${API_V1_BASE}/general-ledger/standing-journals/validate_balance/`,
+    STANDING_JOURNAL_POST_DUE: `${API_V1_BASE}/general-ledger/standing-journals/post_due/`,
+    STANDING_JOURNAL_ACTIVE: `${API_V1_BASE}/general-ledger/standing-journals/active_journals/`,
+
+    // Parameters actions (GLParam is a singleton, pk always 1)
+    PARAMETERS_CURRENT: `${API_V1_BASE}/general-ledger/parameters/1/`,
+    SYSTEM_STATUS: `${API_V1_BASE}/general-ledger/parameters/system_status/`,
+    PERIOD_END: `${API_V1_BASE}/general-ledger/parameters/period_end/`,
+    YEAR_END: `${API_V1_BASE}/general-ledger/parameters/year_end/`,
+
+    // Integration settings singleton
+    INTEGRATION_SETTINGS_CURRENT: `${API_V1_BASE}/general-ledger/integration-settings/1/`,
+
+    // Reports
+    TRIAL_BALANCE: `${API_V1_BASE}/general-ledger/reports/trial-balance/`,
+    INCOME_STATEMENT: `${API_V1_BASE}/general-ledger/reports/income-statement/`,
+    BALANCE_SHEET: `${API_V1_BASE}/general-ledger/reports/balance-sheet/`,
+
+    // Integration transfer
+    INTEGRATION_TRANSFER: `${API_V1_BASE}/general-ledger/integration/transfer/`,
+    INTEGRATION_OUTSTANDING: `${API_V1_BASE}/general-ledger/integration/outstanding/`,
   },
 
   // ===== STOCK CONTROL =====
@@ -204,11 +240,28 @@ export const ENDPOINTS = {
     STOCK_ITEM_TRANSACTIONS:    (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/transactions/`,
     STOCK_ITEM_MONTHLY_STATS:   (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/monthly-stats/`,
     STOCK_ITEM_ADJUST_STOCK:    (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/adjust-stock/`,
+    STOCK_ITEM_USED_IN_BUNDLES: (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/used-in-bundles/`,
+    STOCK_ITEM_DEBTOR_BREAKDOWN: (code: string) => `${API_V1_BASE}/stock-control/stock-items/${code}/debtor-breakdown/`,
     STOCK_ITEMS_LOW_STOCK:      `${API_V1_BASE}/stock-control/stock-items/low-stock/`,
     STOCK_ITEMS_NEEDS_REORDER:  `${API_V1_BASE}/stock-control/stock-items/needs-reorder/`,
+    STOCK_ITEMS_VALUATION_REPORT: `${API_V1_BASE}/stock-control/stock-items/valuation-report/`,
+
+    // ── Enquiry aggregations (StockTransactionViewSet) ─────────────────────
+    STOCK_CONTRIBUTION:         `${API_V1_BASE}/stock-control/stock-transactions/stock-contribution/`,
+    SALES_BY_DEPARTMENT:        `${API_V1_BASE}/stock-control/stock-transactions/sales-by-department/`,
+    HOURLY_ANALYSIS:            `${API_V1_BASE}/stock-control/stock-transactions/hourly-analysis/`,
+    PURCHASE_HISTORY:           `${API_V1_BASE}/stock-control/stock-transactions/purchase-history/`,
+    TOP_SELLERS:                `${API_V1_BASE}/stock-control/stock-transactions/top-sellers/`,
+    RECEIVED_RETURNED_REPORT:   `${API_V1_BASE}/stock-control/stock-transactions/received-returned-report/`,
+
+    // ── Monthly Statistic report aggregations ───────────────────────────────
+    STATS_BY_DEPARTMENT:        `${API_V1_BASE}/stock-control/monthly-statistics/by-department/`,
+    STATS_BY_ITEM:              `${API_V1_BASE}/stock-control/monthly-statistics/by-item/`,
+    STATS_SLOW_MOVERS:          `${API_V1_BASE}/stock-control/monthly-statistics/slow-movers/`,
 
     // ── Special Deals dynamic actions ──────────────────────────────────────
-    SPECIAL_DEALS_ACTIVE_TODAY: `${API_V1_BASE}/stock-control/special-deals/active-today/`,
+    SPECIAL_DEALS_ACTIVE_TODAY:  `${API_V1_BASE}/stock-control/special-deals/active-today/`,
+    SPECIAL_DEALS_BULK_DEPARTMENT: `${API_V1_BASE}/stock-control/special-deals/bulk-department/`,
 
     // ── Future Pricing dynamic actions ─────────────────────────────────────
     FUTURE_PRICING_APPLY:       (id: number) => `${API_V1_BASE}/stock-control/future-pricing/${id}/apply/`,

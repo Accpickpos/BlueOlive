@@ -21,33 +21,25 @@ export default function ReorderReportPage() {
     level: 'all',
   });
 
+  // Filtered + server-side-paginated list for the table. search/level are
+  // now real backend params (StockItemViewSet.low_stock) instead of being
+  // fetched in full and refiltered client-side on every keystroke.
   const { data: lowStockItems, isLoading } = useQuery({
     queryKey: ['low-stock-items', filters, page],
-    queryFn: async () => {
-      const result = await stockControlApi.stockItems.getLowStock();
-      // Client-side filtering since API doesn't support all filters
-      let filtered = result;
-      
-      if (filters.search) {
-        const search = filters.search.toLowerCase();
-        filtered = filtered.filter((item: any) =>
-          item.stock_code.toLowerCase().includes(search) ||
-          (item.description && item.description.toLowerCase().includes(search))
-        );
-      }
-      
-      if (filters.level === 'critical') {
-        filtered = filtered.filter((item: any) => item.quantity_on_hand <= 0);
-      } else if (filters.level === 'low') {
-        filtered = filtered.filter((item: any) => item.quantity_on_hand > 0 && item.quantity_on_hand <= item.reorder_quantity);
-      }
-      
-      return {
-        count: filtered.length,
-        results: filtered.slice((page - 1) * 25, page * 25),
-        all: filtered
-      };
-    },
+    queryFn: () => stockControlApi.stockItems.getLowStock({
+      search: filters.search || undefined,
+      level: filters.level === 'all' ? undefined : (filters.level as 'critical' | 'low'),
+      page,
+      page_size: 25,
+    }),
+    staleTime: 30 * 1000,
+  });
+
+  // Unfiltered list for the summary cards, which reflect the whole
+  // reorder list regardless of the search/level filters above.
+  const { data: allLowStock } = useQuery({
+    queryKey: ['low-stock-items-all'],
+    queryFn: () => stockControlApi.stockItems.getLowStock({ page_size: 1000 }),
     staleTime: 30 * 1000,
   });
 
@@ -57,10 +49,10 @@ export default function ReorderReportPage() {
   };
 
   const exportToCSV = () => {
-    if (!lowStockItems?.all) return;
-    
+    if (!allLowStock?.results) return;
+
     const headers = ['Stock Code', 'Description', 'QOH', 'Reorder Qty', 'Shortage', 'Cost Price', 'Reorder Value', 'Status'];
-    const rows = lowStockItems.all.map((item: any) => [
+    const rows = allLowStock.results.map((item: any) => [
       item.stock_code,
       item.description || '',
       item.quantity_on_hand,
@@ -81,7 +73,7 @@ export default function ReorderReportPage() {
   };
 
   // Calculate summary stats
-  const allItems = lowStockItems?.all || [];
+  const allItems = allLowStock?.results || [];
   const outOfStock = allItems.filter((item: any) => item.quantity_on_hand <= 0);
   const lowStock = allItems.filter((item: any) => item.quantity_on_hand > 0 && item.quantity_on_hand <= item.reorder_quantity);
   const totalReorderValue = allItems.reduce((sum: number, item: any) => {

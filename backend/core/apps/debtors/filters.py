@@ -9,7 +9,7 @@ import django_filters
 from django.db import models
 from django.db.models import Q, Sum
 
-from .models import Debtor, DebtorTransaction
+from .models import Debtopen, Debtor, DebtorTransaction, Dpdc
 
 
 class DebtorFilter(django_filters.FilterSet):
@@ -181,3 +181,33 @@ class DebtorTransactionFilter(django_filters.FilterSet):
             value = int(value)
             return queryset.filter(transaction_date__quarter=value)
         return queryset
+
+
+class DebteopenFilter(django_filters.FilterSet):
+    """
+    Filter for Debtopen (open item) records.
+
+    Every frontend list/picker treats "debtor id" as Debtor.dno (the
+    business account number) — DebtorListSerializer/DebtorDetailSerializer
+    alias id=dno, and DebtorViewSet itself resolves /debtors/{x}/ via
+    lookup_field="dno". django-filter's default ForeignKey filter for
+    Meta.fields=["dno"] would instead match Django's internal pk, which no
+    frontend caller ever has — so ?dno=<value> here is explicitly routed
+    through the FK to Debtor.dno instead.
+    """
+
+    dno = django_filters.NumberFilter(field_name="dno__dno")
+
+    class Meta:
+        model = Debtopen
+        fields = ["type", "posted", "ageflag"]
+
+
+class DpdcFilter(django_filters.FilterSet):
+    """Filter for Dpdc (post-dated cheque) records — see DebteopenFilter."""
+
+    dno = django_filters.NumberFilter(field_name="dno__dno")
+
+    class Meta:
+        model = Dpdc
+        fields = ["status", "date"]

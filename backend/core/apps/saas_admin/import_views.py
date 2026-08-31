@@ -15,7 +15,7 @@ Supported model_type values and their target models/tables:
   DEBTOR TRANSACTIONS:
     debtran      → DebtorTransaction (db_table: debtran)
                    NOTE: dtran.csv is a subset of debtran — use model_type=debtran for both.
-    debtopen     → DebtorOpenItem    (db_table: debtopen)
+    debtopen     → Debtopen          (db_table: debtors_debtopen)
     debtoaud     → DebtorAudit       (db_table: debtoraud)
     dpdc         → Dpdc              (db_table: as configured)
 
@@ -64,9 +64,9 @@ from apps.creditors.models import (
 # Debtor transaction models
 # Master data models
 from apps.debtors.models import (
+    Debtopen,
     Debtor,
     DebtorAudit,
-    DebtorOpenItem,
     DebtorTransaction,
     Dpdc,
 )
@@ -250,29 +250,33 @@ DEBTRAN_CSV_TO_MODEL_FIELD_MAP = {
     "VATREF": "vat_reference",
 }
 
-# debtopen.csv → DebtorOpenItem
-# TOTAL maps to original_amount (the model field name), NOT total_amount.
+# debtopen.csv → Debtopen (NOT DebtorOpenItem — that's a different Django
+# model mapped to a different physical table that the live app never
+# reads; see the docstring on _import_debtopen_record). Field names below
+# are Debtopen's own terse, DBF-derived field names.
 # AGEFLAG is CharField '0'-'4', not integer.
 DEBTOPEN_CSV_TO_MODEL_FIELD_MAP = {
-    "DNO": "debtor",  # FK — customer_number lookup
-    "DTRANO": "transaction_number",
-    "TYPE": "transaction_type",
-    "DATE": "transaction_date",
-    "TOTAL": "original_amount",
-    "BALANCEDUE": "balance_due",
-    "AGEFLAG": "age_flag",
+    "DNO": "dno",  # FK — customer_number lookup
+    "DTRANO": "dtrano",
+    "TYPE": "type",
+    "DATE": "date",
+    "TOTAL": "total",
+    "BALANCEDUE": "balancedue",
+    "AGEFLAG": "ageflag",
     "POSTED": "posted",
 }
 
-# debtoaud.csv → DebtorAudit
-# THISTYPE → current_type. THISTRAN → current_transaction.
+# debtoaud.csv → DebtorAudit. Field names below are DebtorAudit's own field
+# names (dno/dtrano/type/thistype/thistran/date) — this map previously used
+# fictional names ("debtor"/"transaction_number"/"current_type"/
+# "current_transaction"/"audit_date") that don't exist on the model at all.
 DEBTOAUD_CSV_TO_MODEL_FIELD_MAP = {
-    "DNO": "debtor",  # FK — customer_number lookup
-    "DTRANO": "transaction_number",
-    "TYPE": "transaction_type",
-    "THISTYPE": "current_type",
-    "THISTRAN": "current_transaction",
-    "DATE": "audit_date",
+    "DNO": "dno",  # FK — customer_number lookup
+    "DTRANO": "dtrano",
+    "TYPE": "type",
+    "THISTYPE": "thistype",
+    "THISTRAN": "thistran",
+    "DATE": "date",
     "AMOUNT": "amount",
 }
 
@@ -883,7 +887,13 @@ def _uoc(manager, lookup, defaults, mode, schema_name=None):
             options=f"-c search_path={schema_name},public -c statement_timeout=0",
             connect_timeout=10,
         )
-        # Timestamp columns from TimeStampedModel — not in CSV, use NOW()
+        # Timestamp columns from TimeStampedModel — not in CSV, use NOW().
+        # Reduced below to whichever of these actually exist on the target
+        # table: DebtorAudit (table "debtoraud") is a plain models.Model,
+        # not a TimeStampedModel, so it has neither column at all — every
+        # create/update into it previously failed with "column created_at
+        # of relation debtoraud does not exist" regardless of what data was
+        # being written.
         _TS_COLS = {"created_at", "updated_at"}
 
         # autocommit must be set before ANY query — psycopg2 implicitly starts
@@ -943,6 +953,19 @@ def _uoc(manager, lookup, defaults, mode, schema_name=None):
             for (_fk_col,) in _info.fetchall():
                 _not_null_cols.pop(_fk_col, None)
 
+            # Reduce _TS_COLS to whichever of created_at/updated_at this
+            # table actually has — see the comment on _TS_COLS above.
+            _info.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = %s AND table_name = %s
+                  AND column_name IN ('created_at', 'updated_at')
+            """,
+                [schema_name, bare_table],
+            )
+            _TS_COLS = {row[0] for row in _info.fetchall()}
+
         # Now switch to manual transaction mode for the actual DML
         _raw.autocommit = False
 
@@ -965,15 +988,29 @@ def _uoc(manager, lookup, defaults, mode, schema_name=None):
                         fields[col] = ""
 
         def _resolve_fields(fields):
-            """Translate FK model instances to _id columns and unwrap their PK values."""
+            """
+            Translate Django field names to actual DB columns and unwrap FK
+            model instances to their PK — via the model's own field
+            metadata, not by assuming Django's default naming convention.
+            Several debtor models here override db_column in ways that
+            convention-based guessing gets wrong (e.g. DebtorAudit.dno has
+            db_column="dno", not "dno_id"; Debtopen.dno has no override at
+            all, so it IS "dno_id" — both need the real answer from the
+            model, not a hardcoded rule). Falls back to the raw key
+            unchanged if the manager's model metadata can't answer (e.g. a
+            lightweight test double standing in for a real Django model, or
+            a genuinely unknown field name) — same behavior as before this
+            fix for anything this can't resolve.
+            """
             from django.db.models import Model
 
             resolved = {}
             for k, v in fields.items():
-                if isinstance(v, Model):
-                    resolved[f"{k}_id"] = v.pk
-                else:
-                    resolved[k] = v
+                try:
+                    column = manager.model._meta.get_field(k).column
+                except Exception:
+                    column = k
+                resolved[column] = v.pk if isinstance(v, Model) else v
             return resolved
 
         def _build_insert(all_fields):
@@ -1009,9 +1046,10 @@ def _uoc(manager, lookup, defaults, mode, schema_name=None):
                 lookup_clause = " AND ".join(f'"{k}" = %s' for k in resolved_lookup)
                 lookup_vals = list(resolved_lookup.values())
 
-                # Always include created_at/updated_at in inserts
-                defaults.setdefault("created_at", None)
-                defaults.setdefault("updated_at", None)
+                # Always include created_at/updated_at in inserts, for
+                # whichever of the two this table actually has.
+                for _ts_col in _TS_COLS:
+                    defaults.setdefault(_ts_col, None)
 
                 if mode == "create_only":
                     _cur.execute(
@@ -1032,7 +1070,8 @@ def _uoc(manager, lookup, defaults, mode, schema_name=None):
                 elif mode == "update_only":
                     if not defaults:
                         return "skipped"
-                    defaults["updated_at"] = None  # force updated_at = NOW()
+                    if "updated_at" in _TS_COLS:
+                        defaults["updated_at"] = None  # force updated_at = NOW()
                     set_clause, update_vals = _build_update(defaults)
                     _cur.execute(
                         f'UPDATE "{bare_table}" SET {set_clause} WHERE {lookup_clause}',  # nosec B608
@@ -1048,7 +1087,8 @@ def _uoc(manager, lookup, defaults, mode, schema_name=None):
                         lookup_vals,
                     )
                     if _cur.fetchone():
-                        defaults["updated_at"] = None  # force updated_at = NOW()
+                        if "updated_at" in _TS_COLS:
+                            defaults["updated_at"] = None  # force updated_at = NOW()
                         set_clause, update_vals = _build_update(defaults)
                         if update_vals or "updated_at" in defaults:
                             _cur.execute(
@@ -1679,7 +1719,7 @@ def _import_debtran_record(db_alias, record, mode, schema_name=None, **_):
     defaults.setdefault("source_type", "IMPORT")
     defaults.setdefault("status", "posted")
     return _uoc(
-        DebtorOpenItem.objects.using(db_alias),
+        DebtorTransaction.objects.using(db_alias),
         {"debtor": debtor, "transaction_number": tran_no},
         defaults,
         mode,
@@ -1688,17 +1728,22 @@ def _import_debtran_record(db_alias, record, mode, schema_name=None, **_):
 
 
 def _import_debtopen_record(db_alias, record, mode, schema_name=None, **_):
-    """debtopen.csv → DebtorOpenItem."""
-    tran_no = record.get("transaction_number")
-    debtor = _resolve_debtor(db_alias, record.get("debtor"))
+    """
+    debtopen.csv → Debtopen. Previously targeted DebtorOpenItem, a
+    different Django model mapped to a different physical table
+    ("debtopen") than the one the live app actually reads (Debtopen, table
+    "debtors_debtopen") — imported data was landing somewhere the running
+    app could never show a user. Field names below match Debtopen's own
+    (terse, DBF-derived) field names, not DebtorOpenItem's.
+    """
+    tran_no = record.get("dtrano")
+    debtor = _resolve_debtor(db_alias, record.get("dno"))
     defaults = {
-        k: v
-        for k, v in record.items()
-        if k not in ("transaction_number", "debtor") and v is not None
+        k: v for k, v in record.items() if k not in ("dtrano", "dno") and v is not None
     }
     return _uoc(
-        DebtorOpenItem.objects.using(db_alias),
-        {"debtor": debtor, "transaction_number": tran_no},
+        Debtopen.objects.using(db_alias),
+        {"dno": debtor, "dtrano": tran_no},
         defaults,
         mode,
         schema_name=schema_name,
@@ -1706,18 +1751,23 @@ def _import_debtopen_record(db_alias, record, mode, schema_name=None, **_):
 
 
 def _import_debtoaud_record(db_alias, record, mode, schema_name=None, **_):
-    """debtoaud.csv → DebtorAudit."""
-    tran_no = record.get("transaction_number")
-    audit_date = record.get("audit_date")
-    debtor = _resolve_debtor(db_alias, record.get("debtor"))
+    """
+    debtoaud.csv → DebtorAudit. Field names below match DebtorAudit's own
+    field names (dno/dtrano/date), not the fictional names
+    ("debtor"/"transaction_number"/"audit_date") the CSV map previously
+    used — those don't exist on the model at all.
+    """
+    tran_no = record.get("dtrano")
+    audit_date = record.get("date")
+    debtor = _resolve_debtor(db_alias, record.get("dno"))
     defaults = {
         k: v
         for k, v in record.items()
-        if k not in ("transaction_number", "audit_date", "debtor") and v is not None
+        if k not in ("dtrano", "date", "dno") and v is not None
     }
     return _uoc(
         DebtorAudit.objects.using(db_alias),
-        {"debtor": debtor, "transaction_number": tran_no, "audit_date": audit_date},
+        {"dno": debtor, "dtrano": tran_no, "date": audit_date},
         defaults,
         mode,
         schema_name=schema_name,

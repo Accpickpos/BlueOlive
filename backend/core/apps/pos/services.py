@@ -9,16 +9,21 @@ from decimal import Decimal
 
 from apps.debtors.models import Debtor
 from apps.stock_control.models import StockItem, StockTransaction
+from django.db import router as db_router
 from django.db import transaction
 from django.db.models import F, Q, Sum
 from django.utils import timezone
+from tenancy.audit import POSAuditLog
 
 from .calculation_service import CalculationService
 from .exceptions import InsufficientStock, InvalidDocumentState, POSValidationException
 from .models import (
+    CashACheque,
     CashControl,
+    CashReturn,
     CashSale,
     CashSaleLine,
+    CreditNote,
     Invoice,
     InvoiceLine,
     JobCard,
@@ -28,6 +33,7 @@ from .models import (
     LaybyePayment,
     Quotation,
     QuotationLine,
+    ReceiptOnAccount,
     Repair,
     Tender,
 )
@@ -337,13 +343,119 @@ class CashSaleService:
 
     @staticmethod
     @transaction.atomic
-    def cancel_cash_sale(cash_sale, reason=""):
+    def convert_cash_sale_to_invoice(cash_sale, debtor, user=None):
+        """
+        Manual §4 "Cash Sale" note: "To convert a Cash Sale into an Account
+        Sale, press [Page Down] at the Tender Routine." Mirrors
+        QuotationService.convert_quotation_to_invoice's document-creation
+        shape.
+
+        Args:
+            cash_sale: CashSale instance to convert
+            debtor: Debtor instance (customer) to charge the sale to
+
+        Returns:
+            Invoice: Created invoice
+
+        Raises:
+            ValueError: If the cash sale cannot be converted
+        """
+        if cash_sale.is_posted:
+            raise ValueError("Cannot convert an already-posted cash sale to an invoice")
+        if cash_sale.is_cancelled:
+            raise ValueError("Cannot convert a cancelled cash sale to an invoice")
+        if not debtor:
+            raise ValueError(
+                "Debtor is required to create invoice. Please select a debtor."
+            )
+
+        from apps.settings.models import SalesArea
+
+        today = date.today()
+        invoice_count = Invoice.objects.filter(invoice_date=today).count() + 1
+        invoice_number = (
+            f"INV-{today.year}{today.month:02d}{today.day:02d}-{invoice_count:05d}"
+        )
+
+        # CashSale.sales_area is a ForeignKey; Invoice.sales_area is a
+        # CharField(max_length=2) code — same conversion as
+        # QuotationService.convert_quotation_to_invoice.
+        sales_area_code = None
+        if cash_sale.sales_area:
+            sales_area_code = str(cash_sale.sales_area.number).zfill(2)
+        else:
+            default_sales_area = SalesArea.objects.filter(is_active=True).first()
+            if default_sales_area:
+                sales_area_code = str(default_sales_area.number).zfill(2)
+
+        invoice = Invoice.objects.create(
+            debtor=debtor,
+            invoice_number=invoice_number,
+            invoice_date=today,
+            delivery_name=cash_sale.customer_name,
+            delivery_address_line1=cash_sale.delivery_address,
+            delivery_telephone=cash_sale.telephone,
+            order_number=cash_sale.order_number,
+            sales_area=sales_area_code,
+            subtotal=cash_sale.subtotal,
+            vat_amount=cash_sale.vat_amount,
+            total_amount=cash_sale.total_amount,
+            total_cost=cash_sale.total_cost,
+            gross_profit=cash_sale.gross_profit,
+            status="DRAFT",
+            is_posted=False,
+        )
+
+        for cs_line in cash_sale.lines.all():
+            # CashSaleLine.line_total is VAT-inclusive (see
+            # CashSale.apply_set_price's docstring); InvoiceLine.line_total
+            # is exclusive — subtract vat_amount rather than copying
+            # directly, or the invoice would double-count VAT.
+            InvoiceLine.objects.create(
+                invoice=invoice,
+                line_number=cs_line.line_number,
+                stock_code=cs_line.stock_code,
+                description=cs_line.description,
+                quantity=cs_line.quantity,
+                unit_price=cs_line.unit_price,
+                discount_percentage=cs_line.discount_percentage,
+                tax_code=cs_line.tax_code,
+                line_total=cs_line.line_total - cs_line.vat_amount,
+                vat_amount=cs_line.vat_amount,
+                cost_price=cs_line.cost_price,
+                line_cost=cs_line.quantity * cs_line.cost_price,
+                line_profit=cs_line.line_profit,
+            )
+
+        # CashSale has no status field (only is_posted/is_cancelled
+        # booleans, unlike Quotation/JobCard) — reuse is_cancelled rather
+        # than adding a migration for a distinct "converted" state.
+        cash_sale.is_cancelled = True
+        cash_sale.save(update_fields=["is_cancelled", "updated_at"])
+
+        POSAuditLog.log_document_cancelled(
+            user,
+            "CashSale",
+            cash_sale.sale_number,
+            f"Converted to invoice {invoice.invoice_number}",
+        )
+
+        logger.info(
+            f"Converted cash sale {cash_sale.sale_number} to invoice "
+            f"{invoice.invoice_number} for debtor {debtor.dno}"
+        )
+
+        return invoice
+
+    @staticmethod
+    def cancel_cash_sale(cash_sale, reason="", user=None):
         """
         Cancel a cash sale.
 
         Args:
             cash_sale: CashSale instance
             reason: Cancellation reason
+            user: The user performing the cancellation (for the audit trail)
 
         Returns:
             CashSale: Updated cash sale
@@ -356,50 +468,60 @@ class CashSaleService:
                 "Cash Sale", cash_sale.sale_number, "CANCELLED", "cancel"
             )
 
-        if cash_sale.is_posted:
-            # Reverse stock movements
-            for line in cash_sale.lines.all():
-                if line.stock_code:
-                    try:
-                        stock_item = StockItem.objects.get(stock_code=line.stock_code)
+        # CashSale/StockItem are shop-app models routed to the tenant's own
+        # DB alias, never "default" — see the identical fix/comment on
+        # LaybyeService.create_laybye below.
+        alias = db_router.db_for_write(CashSale) or "default"
+        with transaction.atomic(using=alias):
+            if cash_sale.is_posted:
+                # Reverse stock movements
+                for line in cash_sale.lines.all():
+                    if line.stock_code:
+                        try:
+                            stock_item = StockItem.objects.select_for_update().get(
+                                stock_code=line.stock_code
+                            )
 
-                        # Reverse quantity
-                        stock_item.quantity_on_hand += line.quantity
-                        stock_item.save()
+                            # Reverse quantity
+                            stock_item.quantity_on_hand += line.quantity
+                            stock_item.save()
 
-                        # Create reversing movement. transaction_number is an
-                        # IntegerField and there's no separate `reference`
-                        # field on this model — both the sale number and
-                        # cancellation reason need to go in `comments`.
-                        StockTransaction.objects.create(
-                            stock_item=stock_item,
-                            transaction_type="RETURN",
-                            transaction_date=date.today(),
-                            comments=f"CANC-{cash_sale.sale_number}"[:30],
-                            quantity_in=line.quantity,
-                            quantity_balance=stock_item.quantity_on_hand,
-                            unit_cost=line.cost_price,
-                            unit_price=line.unit_price,
-                            station_number=cash_sale.station_number,
-                        )
+                            # Create reversing movement. transaction_number is an
+                            # IntegerField and there's no separate `reference`
+                            # field on this model — both the sale number and
+                            # cancellation reason need to go in `comments`.
+                            StockTransaction.objects.create(
+                                stock_item=stock_item,
+                                transaction_type="RETURN",
+                                transaction_date=date.today(),
+                                comments=f"CANC-{cash_sale.sale_number}"[:30],
+                                quantity_in=line.quantity,
+                                quantity_balance=stock_item.quantity_on_hand,
+                                unit_cost=line.cost_price,
+                                unit_price=line.unit_price,
+                                station_number=cash_sale.station_number,
+                            )
 
-                        logger.info(
-                            f"Reversed stock for cancelled sale {cash_sale.sale_number}: "
-                            f"{line.stock_code} increased by {line.quantity}"
-                        )
-                    except StockItem.DoesNotExist:
-                        logger.warning(
-                            f"Stock item {line.stock_code} not found for reversal"
-                        )
+                            logger.info(
+                                f"Reversed stock for cancelled sale {cash_sale.sale_number}: "
+                                f"{line.stock_code} increased by {line.quantity}"
+                            )
+                        except StockItem.DoesNotExist:
+                            logger.warning(
+                                f"Stock item {line.stock_code} not found for reversal"
+                            )
 
-            # Also reverse the till totals update_cash_control() made when
-            # this sale was posted — previously only stock was reversed,
-            # leaving CashControl permanently overstated after a cancel.
-            CashControlService.reverse_cash_sale(cash_sale)
+                # Also reverse the till totals update_cash_control() made when
+                # this sale was posted — previously only stock was reversed,
+                # leaving CashControl permanently overstated after a cancel.
+                CashControlService.reverse_cash_sale(cash_sale)
 
-        cash_sale.is_cancelled = True
-        cash_sale.save()
+            cash_sale.is_cancelled = True
+            cash_sale.save()
 
+        POSAuditLog.log_document_cancelled(
+            user, "CashSale", cash_sale.sale_number, reason
+        )
         logger.info(f"Cancelled cash sale {cash_sale.sale_number}. Reason: {reason}")
         return cash_sale
 
@@ -485,8 +607,7 @@ class CreditNoteService:
     """Service class for credit note operations."""
 
     @staticmethod
-    @transaction.atomic
-    def cancel_credit_note(credit_note, reason=""):
+    def cancel_credit_note(credit_note, reason="", user=None):
         """
         Cancel a credit note — reverses exactly what post_credit did: the
         stock increment per line (a credit note returns stock, so cancelling
@@ -497,40 +618,80 @@ class CreditNoteService:
                 "Credit Note", credit_note.credit_number, "CANCELLED", "cancel"
             )
 
-        if credit_note.is_posted:
-            for line in credit_note.lines.all():
-                if line.stock_code:
+        # CreditNote/StockItem are shop-app models routed to the tenant's
+        # own DB alias, never "default" — see the identical fix/comment on
+        # LaybyeService.create_laybye below.
+        alias = db_router.db_for_write(CreditNote) or "default"
+        with transaction.atomic(using=alias):
+            if credit_note.is_posted:
+                for line in credit_note.lines.all():
+                    if line.stock_code:
+                        try:
+                            stock_item = StockItem.objects.select_for_update().get(
+                                stock_code=line.stock_code
+                            )
+                            stock_item.quantity_on_hand -= line.quantity
+                            stock_item.save()
+                            StockTransaction.objects.create(
+                                stock_item=stock_item,
+                                transaction_type="SALE",
+                                transaction_date=date.today(),
+                                comments=f"CANC-{credit_note.credit_number}"[:30],
+                                quantity_out=line.quantity,
+                                quantity_balance=stock_item.quantity_on_hand,
+                                unit_price=line.unit_price,
+                                station_number=credit_note.station_number,
+                            )
+                        except StockItem.DoesNotExist:
+                            logger.warning(
+                                f"Stock item {line.stock_code} not found for reversal"
+                            )
+
+                CashControlService.reverse_credit_note(
+                    credit_note.credit_date,
+                    credit_note.cashier,
+                    credit_note.station_number,
+                    credit_note.total_amount,
+                )
+
+                # Reverse the debtor-ledger post from post_credit (an
+                # account credit note reduces the balance owed, same
+                # direction a receipt does, so it reverses the same way
+                # ReceiptOnAccountService.cancel_receipt does: an
+                # equal-and-opposite journal debit rather than mutating
+                # history).
+                if credit_note.refund_type == "ACCOUNT" and credit_note.debtor_account:
+                    from apps.debtors.models import Debtor
+                    from apps.debtors.services import DebtorService
+
                     try:
-                        stock_item = StockItem.objects.get(stock_code=line.stock_code)
-                        stock_item.quantity_on_hand -= line.quantity
-                        stock_item.save()
-                        StockTransaction.objects.create(
-                            stock_item=stock_item,
-                            transaction_type="SALE",
-                            transaction_date=date.today(),
-                            comments=f"CANC-{credit_note.credit_number}"[:30],
-                            quantity_out=line.quantity,
-                            quantity_balance=stock_item.quantity_on_hand,
-                            unit_price=line.unit_price,
-                            station_number=credit_note.station_number,
-                        )
-                    except StockItem.DoesNotExist:
-                        logger.warning(
-                            f"Stock item {line.stock_code} not found for reversal"
-                        )
+                        debtor = Debtor.objects.get(dno=int(credit_note.debtor_account))
+                    except (Debtor.DoesNotExist, ValueError, TypeError):
+                        debtor = None
 
-            CashControlService.reverse_credit_note(
-                credit_note.credit_date,
-                credit_note.cashier,
-                credit_note.station_number,
-                credit_note.total_amount,
-            )
+                    if debtor:
+                        try:
+                            DebtorService.post_journal(
+                                debtor=debtor,
+                                journal_type="JD",
+                                amount=credit_note.total_amount,
+                                custref=f"CANC-{credit_note.credit_number}"[:10],
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"Failed to reverse debtor ledger for "
+                                f"cancelled credit note "
+                                f"{credit_note.credit_number}: {e}"
+                            )
 
-        credit_note.is_cancelled = True
-        credit_note.cancel_reason = reason
-        credit_note.cancelled_at = timezone.now()
-        credit_note.save()
+            credit_note.is_cancelled = True
+            credit_note.cancel_reason = reason
+            credit_note.cancelled_at = timezone.now()
+            credit_note.save()
 
+        POSAuditLog.log_document_cancelled(
+            user, "CreditNote", credit_note.credit_number, reason
+        )
         logger.info(
             f"Cancelled credit note {credit_note.credit_number}. Reason: {reason}"
         )
@@ -541,8 +702,7 @@ class CashReturnService:
     """Service class for cash return operations."""
 
     @staticmethod
-    @transaction.atomic
-    def cancel_cash_return(cash_return, reason=""):
+    def cancel_cash_return(cash_return, reason="", user=None):
         """
         Cancel a cash return — reverses exactly what post_return did: the
         stock increment per line and the CashControl cash-refunds total.
@@ -552,40 +712,50 @@ class CashReturnService:
                 "Cash Return", cash_return.return_number, "CANCELLED", "cancel"
             )
 
-        if cash_return.is_posted:
-            for line in cash_return.lines.all():
-                if line.stock_code:
-                    try:
-                        stock_item = StockItem.objects.get(stock_code=line.stock_code)
-                        stock_item.quantity_on_hand -= line.quantity
-                        stock_item.save()
-                        StockTransaction.objects.create(
-                            stock_item=stock_item,
-                            transaction_type="SALE",
-                            transaction_date=date.today(),
-                            comments=f"CANC-{cash_return.return_number}"[:30],
-                            quantity_out=line.quantity,
-                            quantity_balance=stock_item.quantity_on_hand,
-                            unit_price=line.unit_price,
-                            station_number=cash_return.station_number,
-                        )
-                    except StockItem.DoesNotExist:
-                        logger.warning(
-                            f"Stock item {line.stock_code} not found for reversal"
-                        )
+        # CashReturn/StockItem are shop-app models routed to the tenant's
+        # own DB alias, never "default" — see the identical fix/comment on
+        # LaybyeService.create_laybye below.
+        alias = db_router.db_for_write(CashReturn) or "default"
+        with transaction.atomic(using=alias):
+            if cash_return.is_posted:
+                for line in cash_return.lines.all():
+                    if line.stock_code:
+                        try:
+                            stock_item = StockItem.objects.select_for_update().get(
+                                stock_code=line.stock_code
+                            )
+                            stock_item.quantity_on_hand -= line.quantity
+                            stock_item.save()
+                            StockTransaction.objects.create(
+                                stock_item=stock_item,
+                                transaction_type="SALE",
+                                transaction_date=date.today(),
+                                comments=f"CANC-{cash_return.return_number}"[:30],
+                                quantity_out=line.quantity,
+                                quantity_balance=stock_item.quantity_on_hand,
+                                unit_price=line.unit_price,
+                                station_number=cash_return.station_number,
+                            )
+                        except StockItem.DoesNotExist:
+                            logger.warning(
+                                f"Stock item {line.stock_code} not found for reversal"
+                            )
 
-            CashControlService.reverse_cash_return(
-                cash_return.return_date,
-                cash_return.cashier,
-                cash_return.station_number,
-                cash_return.total_amount,
-            )
+                CashControlService.reverse_cash_return(
+                    cash_return.return_date,
+                    cash_return.cashier,
+                    cash_return.station_number,
+                    cash_return.total_amount,
+                )
 
-        cash_return.is_cancelled = True
-        cash_return.cancel_reason = reason
-        cash_return.cancelled_at = timezone.now()
-        cash_return.save()
+            cash_return.is_cancelled = True
+            cash_return.cancel_reason = reason
+            cash_return.cancelled_at = timezone.now()
+            cash_return.save()
 
+        POSAuditLog.log_document_cancelled(
+            user, "CashReturn", cash_return.return_number, reason
+        )
         logger.info(
             f"Cancelled cash return {cash_return.return_number}. Reason: {reason}"
         )
@@ -596,8 +766,7 @@ class ReceiptOnAccountService:
     """Service class for receipt-on-account operations."""
 
     @staticmethod
-    @transaction.atomic
-    def cancel_receipt(receipt, reason=""):
+    def cancel_receipt(receipt, reason="", user=None):
         """
         Cancel a receipt on account — reverses the CashControl receipts
         total, and if the receipt was actually posted to the debtor's
@@ -611,36 +780,44 @@ class ReceiptOnAccountService:
                 "Receipt", receipt.receipt_number, "CANCELLED", "cancel"
             )
 
-        if receipt.is_posted:
-            CashControlService.reverse_receipt(
-                receipt.receipt_date,
-                receipt.cashier,
-                receipt.station_number,
-                receipt.total_amount,
-                receipt.tender_type,
-            )
+        # ReceiptOnAccount is a shop-app model routed to the tenant's own DB
+        # alias, never "default" — see the identical fix/comment on
+        # LaybyeService.create_laybye below.
+        alias = db_router.db_for_write(ReceiptOnAccount) or "default"
+        with transaction.atomic(using=alias):
+            if receipt.is_posted:
+                CashControlService.reverse_receipt(
+                    receipt.receipt_date,
+                    receipt.cashier,
+                    receipt.station_number,
+                    receipt.total_amount,
+                    receipt.tender_type,
+                )
 
-            if receipt.debtor_transaction_id:
-                from apps.debtors.services import DebtorService
+                if receipt.debtor_transaction_id:
+                    from apps.debtors.services import DebtorService
 
-                try:
-                    DebtorService.post_journal(
-                        debtor=receipt.debtor_transaction.debtor,
-                        journal_type="JD",
-                        amount=receipt.total_amount,
-                        custref=f"CANC-{receipt.receipt_number}"[:10],
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Failed to reverse debtor ledger for cancelled receipt "
-                        f"{receipt.receipt_number}: {e}"
-                    )
+                    try:
+                        DebtorService.post_journal(
+                            debtor=receipt.debtor_transaction.debtor,
+                            journal_type="JD",
+                            amount=receipt.total_amount,
+                            custref=f"CANC-{receipt.receipt_number}"[:10],
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to reverse debtor ledger for cancelled receipt "
+                            f"{receipt.receipt_number}: {e}"
+                        )
 
-        receipt.is_cancelled = True
-        receipt.cancel_reason = reason
-        receipt.cancelled_at = timezone.now()
-        receipt.save()
+            receipt.is_cancelled = True
+            receipt.cancel_reason = reason
+            receipt.cancelled_at = timezone.now()
+            receipt.save()
 
+        POSAuditLog.log_document_cancelled(
+            user, "ReceiptOnAccount", receipt.receipt_number, reason
+        )
         logger.info(f"Cancelled receipt {receipt.receipt_number}. Reason: {reason}")
         return receipt
 
@@ -649,27 +826,34 @@ class CashAChequeService:
     """Service class for cash-a-cheque operations."""
 
     @staticmethod
-    @transaction.atomic
-    def cancel_cash_a_cheque(cheque, reason=""):
+    def cancel_cash_a_cheque(cheque, reason="", user=None):
         """Cancel a cash-a-cheque transaction — reverses the CashControl cashed-cheques total."""
         if cheque.is_cancelled:
             raise InvalidDocumentState(
                 "Cash A Cheque", cheque.transaction_number, "CANCELLED", "cancel"
             )
 
-        if cheque.is_processed:
-            CashControlService.reverse_cashed_cheque(
-                cheque.transaction_date,
-                cheque.cashier,
-                cheque.station_number,
-                cheque.cash_paid,
-            )
+        # CashACheque is a shop-app model routed to the tenant's own DB
+        # alias, never "default" — see the identical fix/comment on
+        # LaybyeService.create_laybye below.
+        alias = db_router.db_for_write(CashACheque) or "default"
+        with transaction.atomic(using=alias):
+            if cheque.is_processed:
+                CashControlService.reverse_cashed_cheque(
+                    cheque.transaction_date,
+                    cheque.cashier,
+                    cheque.station_number,
+                    cheque.cash_paid,
+                )
 
-        cheque.is_cancelled = True
-        cheque.cancel_reason = reason
-        cheque.cancelled_at = timezone.now()
-        cheque.save()
+            cheque.is_cancelled = True
+            cheque.cancel_reason = reason
+            cheque.cancelled_at = timezone.now()
+            cheque.save()
 
+        POSAuditLog.log_document_cancelled(
+            user, "CashACheque", cheque.transaction_number, reason
+        )
         logger.info(
             f"Cancelled cash-a-cheque {cheque.transaction_number}. Reason: {reason}"
         )
@@ -680,7 +864,6 @@ class LaybyeService:
     """Service class for laybye operations."""
 
     @staticmethod
-    @transaction.atomic
     def create_laybye(laybye_data, lines_data):
         """
         Create a new laybye with lines.
@@ -695,91 +878,106 @@ class LaybyeService:
         Raises:
             POSValidationException: If validation fails
         """
-        # total_amount/balance_due have no default and aren't nullable —
-        # seed placeholders now, the real values get computed from lines and
-        # saved a few lines down. Without this the initial create() raises
-        # an IntegrityError before a single line is even processed.
-        laybye = Laybye.objects.create(
-            **laybye_data,
-            total_amount=Decimal("0.00"),
-            balance_due=Decimal("0.00"),
-        )
+        # Laybye/StockItem are shop-app models routed to the tenant's own DB
+        # alias, never "default" — a bare transaction.atomic() only opens a
+        # transaction on "default", leaving the tenant connection untransacted
+        # (true driver-level autocommit), so _move_stock_for_line's
+        # select_for_update() below raised TransactionManagementError. Same
+        # fix as DebtorService.post_debtran: open the transaction on the
+        # alias the router actually sends these models to.
+        alias = db_router.db_for_write(Laybye) or "default"
+        with transaction.atomic(using=alias):
+            # total_amount/balance_due have no default and aren't nullable —
+            # seed placeholders now, the real values get computed from lines
+            # and saved a few lines down. Without this the initial create()
+            # raises an IntegrityError before a single line is even processed.
+            laybye = Laybye.objects.create(
+                **laybye_data,
+                total_amount=Decimal("0.00"),
+                balance_due=Decimal("0.00"),
+            )
 
-        total_amount = Decimal("0.00")
+            total_amount = Decimal("0.00")
 
-        for idx, line_data in enumerate(lines_data, start=1):
-            line_data["line_number"] = idx
+            for idx, line_data in enumerate(lines_data, start=1):
+                # LaybyeLine has no line_number field (unlike InvoiceLine/
+                # QuotationLine/CashSaleLine) — it orders by transaction_date/
+                # transaction_time instead. `idx` here is only used for error
+                # messages below.
 
-            # Validate price/discount against configured pricing before
-            # committing the line — previously laybye lines had no price
-            # validation at all, unlike CashSale/Invoice/Quotation lines.
-            # A stock_code that isn't found is treated as a manual entry
-            # and skipped, matching the serializer-level checks elsewhere.
-            stock_code = line_data.get("stock_code")
-            if stock_code and line_data.get("unit_price") is not None:
+                # Validate price/discount against configured pricing before
+                # committing the line — previously laybye lines had no price
+                # validation at all, unlike CashSale/Invoice/Quotation lines.
+                # A stock_code that isn't found is treated as a manual entry
+                # and skipped, matching the serializer-level checks elsewhere.
+                stock_code = line_data.get("stock_code")
+                if stock_code and line_data.get("unit_price") is not None:
+                    try:
+                        PriceValidationService.validate_line_item_price(
+                            stock_code=stock_code,
+                            quantity=line_data["quantity"],
+                            unit_price=line_data["unit_price"],
+                            discount_percent=line_data.get(
+                                "discount_percentage", Decimal("0.00")
+                            ),
+                            price_level=1,
+                            transaction_date=laybye_data.get("laybye_date")
+                            or date.today(),
+                            enforce=True,
+                        )
+                    except POSValidationException as e:
+                        if "not found" in str(e):
+                            pass
+                        else:
+                            raise POSValidationException(f"Line {idx}: {e}")
+
+                # Calculate line totals using service
                 try:
-                    PriceValidationService.validate_line_item_price(
-                        stock_code=stock_code,
+                    line_calcs = CalculationService.calculate_line_totals(
                         quantity=line_data["quantity"],
                         unit_price=line_data["unit_price"],
-                        discount_percent=line_data.get(
+                        discount_percentage=line_data.get(
                             "discount_percentage", Decimal("0.00")
                         ),
-                        price_level=1,
-                        transaction_date=laybye_data.get("laybye_date") or date.today(),
-                        enforce=True,
+                        tax_code=line_data.get("tax_code", 1),
                     )
-                except POSValidationException as e:
-                    if "not found" in str(e):
-                        pass
-                    else:
-                        raise POSValidationException(f"Line {idx}: {e}")
 
-            # Calculate line totals using service
-            try:
-                line_calcs = CalculationService.calculate_line_totals(
-                    quantity=line_data["quantity"],
-                    unit_price=line_data["unit_price"],
-                    discount_percentage=line_data.get(
-                        "discount_percentage", Decimal("0.00")
-                    ),
-                    tax_code=line_data.get("tax_code", 1),
-                )
+                    # line_total is excl-VAT here (LaybyeLine has its own
+                    # separate vat_amount field, same convention as
+                    # InvoiceLine) — use line_total_before_vat, not the
+                    # VAT-inclusive line_total key.
+                    line_data["line_total"] = line_calcs["line_total_before_vat"]
+                    line_data["vat_amount"] = line_calcs["vat_amount"]
 
-                # line_total is excl-VAT here (LaybyeLine has its own separate
-                # vat_amount field, same convention as InvoiceLine) — use
-                # line_total_before_vat, not the VAT-inclusive line_total key.
-                line_data["line_total"] = line_calcs["line_total_before_vat"]
-                line_data["vat_amount"] = line_calcs["vat_amount"]
+                    line = LaybyeLine.objects.create(laybye=laybye, **line_data)
+                    total_amount += line_calcs[
+                        "line_total"
+                    ]  # VAT-inclusive, correct for the laybye total
 
-                line = LaybyeLine.objects.create(laybye=laybye, **line_data)
-                total_amount += line_calcs[
-                    "line_total"
-                ]  # VAT-inclusive, correct for the laybye total
+                except Exception as e:
+                    logger.error(f"Error creating laybye line {idx}: {str(e)}")
+                    raise POSValidationException(
+                        f"Error creating laybye line {idx}: {str(e)}"
+                    )
 
-            except Exception as e:
-                logger.error(f"Error creating laybye line {idx}: {str(e)}")
-                raise POSValidationException(
-                    f"Error creating laybye line {idx}: {str(e)}"
-                )
+                # Move sale-type lines into "laybye stock" — same LAYBYE_IN/
+                # OUT transaction pair the model already defines but nothing
+                # posted to. Goods leave general inventory now, not at final
+                # payment (mirrors how rentals/PO receiving avoid
+                # double-counting stock).
+                if line.transaction_type == "SP" and line.stock_code:
+                    LaybyeService._move_stock_for_line(line, direction="out")
 
-            # Move sale-type lines into "laybye stock" — same LAYBYE_IN/OUT
-            # transaction pair the model already defines but nothing posted
-            # to. Goods leave general inventory now, not at final payment
-            # (mirrors how rentals/PO receiving avoid double-counting stock).
-            if line.transaction_type == "SP" and line.stock_code:
-                LaybyeService._move_stock_for_line(line, direction="out")
+            # Update laybye totals
+            laybye.total_amount = total_amount
+            laybye.balance_due = total_amount - laybye.deposit_amount
+            laybye.amount_paid = laybye.deposit_amount
+            laybye.save()
 
-        # Update laybye totals
-        laybye.total_amount = total_amount
-        laybye.balance_due = total_amount - laybye.deposit_amount
-        laybye.amount_paid = laybye.deposit_amount
-        laybye.save()
-
-        logger.info(
-            f"Created laybye {laybye.laybye_number} with {len(lines_data)} lines"
-        )
-        return laybye
+            logger.info(
+                f"Created laybye {laybye.laybye_number} with {len(lines_data)} lines"
+            )
+            return laybye
 
     @staticmethod
     def _move_stock_for_line(line, direction):
@@ -922,7 +1120,6 @@ class LaybyeService:
         return payment, invoice
 
     @staticmethod
-    @transaction.atomic
     def cancel_laybye(laybye, retention_percentage=0):
         """
         Cancel a laybye and calculate refund.
@@ -964,15 +1161,22 @@ class LaybyeService:
         retention_amount = laybye.amount_paid * (retention_percentage / 100)
         refund_amount = laybye.amount_paid - retention_amount
 
-        laybye.status = "CANCELLED"
-        laybye.retention_percentage = retention_percentage
-        laybye.refund_amount = refund_amount
-        laybye.save()
+        # laybye is already a shop-app instance, so laybye._state.db is
+        # already the tenant alias the router sent it to (never "default")
+        # — same TransactionManagementError risk as create_laybye above,
+        # since _move_stock_for_line's select_for_update() needs a real
+        # transaction on that same connection.
+        alias = laybye._state.db or "default"
+        with transaction.atomic(using=alias):
+            laybye.status = "CANCELLED"
+            laybye.retention_percentage = retention_percentage
+            laybye.refund_amount = refund_amount
+            laybye.save()
 
-        # Return the goods from laybye stock back to general inventory.
-        for line in laybye.lines.filter(transaction_type="SP"):
-            if line.stock_code:
-                LaybyeService._move_stock_for_line(line, direction="in")
+            # Return the goods from laybye stock back to general inventory.
+            for line in laybye.lines.filter(transaction_type="SP"):
+                if line.stock_code:
+                    LaybyeService._move_stock_for_line(line, direction="in")
 
         logger.info(f"Cancelled laybye {laybye.laybye_number}. Refund: {refund_amount}")
         return laybye
@@ -1050,8 +1254,8 @@ class QuotationService:
         Raises:
             ValueError: If job card cannot be converted
         """
-        if job_card.status == "CONVERTED_TO_INVOICE":
-            raise ValueError("Job card already converted to invoice")
+        if job_card.status in ("CONVERTED_TO_INVOICE", "CONVERTED_TO_CASH_SALE"):
+            raise ValueError("Job card already converted")
 
         if job_card.status == "CANCELLED":
             raise ValueError("Cannot convert cancelled job card to invoice")
@@ -1239,6 +1443,121 @@ class QuotationService:
         )
 
         return invoice
+
+    @staticmethod
+    @transaction.atomic
+    def convert_job_card_to_cash_sale(
+        job_card, tenders_data=None, cashier=None, station_number=1
+    ):
+        """
+        Convert job card to a Cash Sale, for walk-in customers with no
+        debtor account. Mirrors convert_job_card_to_invoice's line-copying,
+        but targets CashSale/CashSaleLine instead — matching
+        RepairService.invoice_customer's cash branch and
+        Invoice.requires_cash_tender's "ends with a Tender Routine" pattern
+        for customers with no account to post to.
+
+        Does not call CashSaleService.post_cash_sale (which deducts stock):
+        convert_job_card_to_invoice doesn't touch stock either, since job
+        cards already track materials as work proceeds — posting stock here
+        too would double-count it. Posting remains a deliberate follow-up
+        step via the normal Cash Sale "post_sale" action, same as any other
+        cash sale.
+
+        Args:
+            job_card: JobCard instance to convert
+            tenders_data: optional list of tender dicts (tender_type, amount, ...)
+            cashier: ShopUser to record as cashier
+            station_number: POS station number
+
+        Returns:
+            CashSale: Created cash sale
+
+        Raises:
+            ValueError: If job card cannot be converted
+        """
+        if job_card.status in ("CONVERTED_TO_INVOICE", "CONVERTED_TO_CASH_SALE"):
+            raise ValueError("Job card already converted")
+
+        if job_card.status == "CANCELLED":
+            raise ValueError("Cannot convert cancelled job card to a cash sale")
+
+        import uuid
+
+        sale_number = f"CS-{uuid.uuid4().hex[:8].upper()}"
+        while CashSale.objects.filter(sale_number=sale_number).exists():
+            sale_number = f"CS-{uuid.uuid4().hex[:8].upper()}"
+
+        cash_sale = CashSale.objects.create(
+            sale_number=sale_number,
+            sale_date=date.today(),
+            customer_name=job_card.customer_name,
+            delivery_address=job_card.address,
+            telephone=job_card.telephone,
+            order_number=job_card.order_number,
+            job_card_number=job_card.job_number,
+            sales_area=job_card.sales_area,
+            cashier=cashier,
+            station_number=station_number,
+            subtotal=(
+                round(job_card.subtotal, 2) if job_card.subtotal else Decimal("0.00")
+            ),
+            vat_amount=(
+                round(job_card.vat_amount, 2)
+                if job_card.vat_amount
+                else Decimal("0.00")
+            ),
+            total_amount=(
+                round(job_card.total_amount, 2)
+                if job_card.total_amount
+                else Decimal("0.00")
+            ),
+            total_cost=(
+                round(job_card.total_cost, 2)
+                if job_card.total_cost
+                else Decimal("0.00")
+            ),
+            gross_profit=(
+                round(job_card.gross_profit, 2)
+                if job_card.gross_profit
+                else Decimal("0.00")
+            ),
+        )
+
+        for job_line in job_card.lines.all():
+            line_cost = (
+                (job_line.quantity * job_line.cost_price)
+                if job_line.cost_price
+                else Decimal("0.00")
+            )
+            CashSaleLine.objects.create(
+                cash_sale=cash_sale,
+                line_number=job_line.line_number,
+                stock_code=job_line.stock_code,
+                description=job_line.description,
+                quantity=job_line.quantity,
+                unit_price=job_line.unit_price,
+                discount_percentage=job_line.discount_percentage,
+                tax_code=job_line.tax_code,
+                line_total=job_line.line_total,
+                vat_amount=job_line.vat_amount,
+                cost_price=job_line.cost_price,
+                line_profit=job_line.line_profit,
+            )
+
+        for tender_data in tenders_data or []:
+            tender_data = dict(tender_data)
+            tender_data["amount"] = Decimal(str(tender_data.get("amount", 0)))
+            Tender.objects.create(cash_sale=cash_sale, **tender_data)
+
+        job_card.status = "CONVERTED_TO_CASH_SALE"
+        job_card.save(update_fields=["status", "updated_at"])
+
+        logger.info(
+            f"Converted job card {job_card.job_number} to cash sale {cash_sale.sale_number}"
+        )
+
+        return cash_sale
 
     @transaction.atomic
     def convert_laybye_to_invoice(laybye, debtor):
@@ -1492,6 +1811,116 @@ class QuotationService:
         )
 
         return invoice
+
+    @staticmethod
+    @transaction.atomic
+    def convert_quotation_to_cash_sale(
+        quotation, tenders_data=None, cashier=None, station_number=1
+    ):
+        """
+        Convert quotation to a Cash Sale, for walk-in customers with no
+        debtor account. Mirrors convert_job_card_to_cash_sale's line-copying
+        and convert_quotation_to_invoice's guard checks, but targets
+        CashSale/CashSaleLine instead of Invoice — CashSale has no debtor FK
+        at all, so this is the path for a customer who isn't in the debtor
+        list.
+
+        Args:
+            quotation: Quotation instance to convert
+            tenders_data: optional list of tender dicts (tender_type, amount, ...)
+            cashier: ShopUser to record as cashier
+            station_number: POS station number
+
+        Returns:
+            CashSale: Created cash sale
+
+        Raises:
+            ValueError: If quotation cannot be converted
+        """
+        if quotation.status == "CONVERTED_TO_INVOICE":
+            raise ValueError("Quotation already converted to invoice")
+
+        if quotation.status == "CONVERTED_TO_CASH_SALE":
+            raise ValueError("Quotation already converted to a cash sale")
+
+        if quotation.status == "CANCELLED":
+            raise ValueError("Cannot convert cancelled quotation to a cash sale")
+
+        if quotation.status == "EXPIRED":
+            raise ValueError("Cannot convert expired quotation to a cash sale")
+
+        import uuid
+
+        sale_number = f"CS-{uuid.uuid4().hex[:8].upper()}"
+        while CashSale.objects.filter(sale_number=sale_number).exists():
+            sale_number = f"CS-{uuid.uuid4().hex[:8].upper()}"
+
+        sales_area = quotation.sales_area
+
+        cash_sale = CashSale.objects.create(
+            sale_number=sale_number,
+            sale_date=date.today(),
+            customer_name=quotation.customer_name,
+            delivery_address=quotation.address_line1,
+            telephone=quotation.telephone,
+            sales_area=sales_area,
+            cashier=cashier,
+            station_number=station_number,
+            subtotal=(
+                round(quotation.subtotal, 2) if quotation.subtotal else Decimal("0.00")
+            ),
+            vat_amount=(
+                round(quotation.vat_amount, 2)
+                if quotation.vat_amount
+                else Decimal("0.00")
+            ),
+            total_amount=(
+                round(quotation.total_amount, 2)
+                if quotation.total_amount
+                else Decimal("0.00")
+            ),
+            total_cost=Decimal("0.00"),
+            gross_profit=(
+                round(quotation.gross_profit, 2)
+                if quotation.gross_profit
+                else Decimal("0.00")
+            ),
+        )
+
+        for quote_line in quotation.lines.all():
+            line_cost = (
+                (quote_line.quantity * quote_line.cost_price)
+                if quote_line.cost_price
+                else Decimal("0.00")
+            )
+            CashSaleLine.objects.create(
+                cash_sale=cash_sale,
+                line_number=quote_line.line_number,
+                stock_code=quote_line.stock_code,
+                description=quote_line.description,
+                quantity=quote_line.quantity,
+                unit_price=quote_line.unit_price,
+                discount_percentage=quote_line.discount_percentage,
+                tax_code=quote_line.tax_code,
+                line_total=quote_line.line_total,
+                vat_amount=quote_line.vat_amount,
+                cost_price=quote_line.cost_price,
+                line_profit=quote_line.line_total - line_cost,
+            )
+
+        for tender_data in tenders_data or []:
+            tender_data = dict(tender_data)
+            tender_data["amount"] = Decimal(str(tender_data.get("amount", 0)))
+            Tender.objects.create(cash_sale=cash_sale, **tender_data)
+
+        quotation.status = "CONVERTED_TO_CASH_SALE"
+        quotation.save()
+
+        logger.info(
+            f"Converted quotation {quotation.quotation_number} to cash sale {cash_sale.sale_number}"
+        )
+
+        return cash_sale
 
 
 class RepairService:

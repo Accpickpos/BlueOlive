@@ -43,11 +43,24 @@ export default function PrintStockTakeForms({ onBack }: PrintStockTakeFormsProps
     try {
       setIsPrinting(true);
       
-      // Build query parameters
+      // Build query parameters. sortOrder ('code'/'description'/etc) maps
+      // to the backend's ordering_fields; filterStatus maps to is_active
+      // (backend has no filter_status/sort_order params — these used to
+      // be sent verbatim and silently ignored, so sort and status filter
+      // never actually worked).
+      const orderingMap: Record<string, string> = {
+        code: 'stock_code',
+        description: 'description',
+        department: 'department',
+        supplier: 'supplier_code',
+        bin: 'bin_number',
+      };
       const params = new URLSearchParams({
-        sort_order: sortOrder,
+        ordering: orderingMap[sortOrder] || 'stock_code',
+        page_size: '1000',
         ...(filterDepartment && { department: filterDepartment }),
-        filter_status: filterStatus,
+        ...(filterStatus === 'active' && { is_active: 'true' }),
+        ...(filterStatus === 'inactive' && { is_active: 'false' }),
       });
 
       // Fetch stock items to print

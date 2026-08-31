@@ -247,6 +247,24 @@ class Creditor(TimeStampedModel, ActiveModel):
             setattr(self, attr, Decimal("0"))
 
         for item in self.open_items.filter(is_fully_allocated=False):
+            # Single-ageing-period rule: an item pinned to a fixed bucket
+            # (journals — see CreditorJournal.age_period) is never re-aged
+            # from a due date. "0".."6" map to the 7 balance_* buckets below.
+            if item.ageing_flag:
+                bucket_attr = {
+                    "0": "balance_current",
+                    "1": "balance_30_days",
+                    "2": "balance_60_days",
+                    "3": "balance_90_days",
+                    "4": "balance_120_days",
+                    "5": "balance_150_days",
+                    "6": "balance_180_days",
+                }.get(item.ageing_flag)
+                if bucket_attr:
+                    setattr(
+                        self, bucket_attr, getattr(self, bucket_attr) + item.balance_due
+                    )
+                    continue
             if not item.due_date:
                 self.balance_current += item.balance_due
                 continue
@@ -607,7 +625,12 @@ class CreditorInvoice(AgedBalanceMixin, CreditorTransaction):
                 num = int(last.transaction_number.split("-")[-1]) + 1 if last else 1
             except (ValueError, AttributeError, IndexError):
                 num = 1
-            self.transaction_number = f"SUPINV-{num:06d}"
+            # FIX: transaction_number is CharField(max_length=10) (STRANO
+            # C(10) in the legacy DBF) — the old "SUPINV-NNNNNN" format was
+            # 13 chars and made every CreditorInvoice creation raise a hard
+            # StringDataRightTruncation at the DB level. "INV-NNNNNN" fits
+            # exactly, matching GoodsReceivedNote's "GRN-NNNNNN" convention.
+            self.transaction_number = f"INV-{num:06d}"
         self._set_due_date()
         super().save(*args, **kwargs)
 
@@ -692,7 +715,9 @@ class CreditorCreditNote(AgedBalanceMixin, CreditorTransaction):
                 num = int(last.transaction_number.split("-")[-1]) + 1 if last else 1
             except (ValueError, AttributeError, IndexError):
                 num = 1
-            self.transaction_number = f"SUPCN-{num:06d}"
+            # FIX: same StringDataRightTruncation bug as CreditorInvoice —
+            # "SUPCN-NNNNNN" (12 chars) exceeded the 10-char DB column.
+            self.transaction_number = f"CRN-{num:06d}"
         self._set_due_date()
         super().save(*args, **kwargs)
 
@@ -785,7 +810,9 @@ class CreditorPayment(AgedBalanceMixin, CreditorTransaction):
                 num = int(last.transaction_number.split("-")[-1]) + 1 if last else 1
             except (ValueError, AttributeError, IndexError):
                 num = 1
-            self.transaction_number = f"SUPPAY-{num:06d}"
+            # FIX: same StringDataRightTruncation bug as CreditorInvoice —
+            # "SUPPAY-NNNNNN" (13 chars) exceeded the 10-char DB column.
+            self.transaction_number = f"PAY-{num:06d}"
         self.settlement_discount_amount = self.amount_due - self.amount_paid
         if self.amount_due > 0:
             self.settlement_discount_percent = (
@@ -813,6 +840,26 @@ class CreditorJournal(AgedBalanceMixin, CreditorTransaction):
     JOURNAL_TYPE_CHOICES = [("DJ", "Debit Journal"), ("CJ", "Credit Journal")]
     journal_type = models.CharField(max_length=2, choices=JOURNAL_TYPE_CHOICES)
     journal_amount = models.DecimalField(max_digits=15, decimal_places=2)
+
+    # FIX: single-ageing-period rule for Open Item journals — a journal has
+    # no invoice due date to age from, so the manual requires the user to
+    # pin its full value to ONE ageing bucket at entry instead of letting it
+    # age dynamically. Mirrors debtors' Debtopen.ageflag / age_period.
+    AGE_PERIOD_CHOICES = [
+        ("0", "Current"),
+        ("1", "30 Days"),
+        ("2", "60 Days"),
+        ("3", "90 Days"),
+        ("4", "120 Days"),
+        ("5", "150 Days"),
+        ("6", "180+ Days"),
+    ]
+    age_period = models.CharField(
+        max_length=1,
+        choices=AGE_PERIOD_CHOICES,
+        default="0",
+        help_text="Ageing bucket this journal's full value is pinned to (Open Item accounts).",
+    )
 
     class Meta:
         db_table = "creditor_journals"
@@ -1047,6 +1094,16 @@ class CreditorOpenItem(models.Model):
             )
 
     def get_age_bucket(self):
+        if self.ageing_flag:
+            return {
+                "0": "current",
+                "1": "30",
+                "2": "60",
+                "3": "90",
+                "4": "120",
+                "5": "150",
+                "6": "180",
+            }.get(self.ageing_flag, "current")
         if not self.due_date:
             return "current"
         days = (timezone.now().date() - self.due_date).days

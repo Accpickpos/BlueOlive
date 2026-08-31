@@ -50,7 +50,7 @@ jobs:
 
       - name: Run Safety check
         run: |
-          safety check --file=backend/core/requirements.txt || true
+          safety check --file=backend/core/requirements.txt
 
   test:
     name: Test Suite
@@ -115,3 +115,57 @@ jobs:
           file: ./coverage.xml
           flags: unittests
           name: blueolive-backend
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # Lint/type-check/build are non-blocking for now: this branch already
+      # has 29 pre-existing TypeScript errors in unrelated modules
+      # (creditors/purchase-orders/debtors-dashboard) that fail both
+      # type-check and `next build`, and eslint.config.mjs uses the ESLint 9
+      # flat-config API while eslint@8.57 is installed, so lint can't even
+      # run. None of this was introduced by the POS audit fixes — it's
+      # tracked as a separate follow-up. `npm test` (the new suite added
+      # alongside this CI job) is the one gate that's actually clean today,
+      # so it's the only blocking step. Flip the others to blocking once the
+      # pre-existing errors and the eslint version mismatch are fixed.
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint || true
+
+      - name: Type check
+        working-directory: frontend
+        run: npm run type-check || true
+
+      - name: Test
+        working-directory: frontend
+        run: npm test
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build || true
+
+      # Non-blocking for now: the pinned Next.js version currently carries
+      # ~17 pre-existing high-severity advisories that `npm audit fix` can't
+      # resolve without a Next.js version bump — a separate, riskier upgrade
+      # tracked as a follow-up, not bundled into this CI-gate fix. Flip this
+      # to blocking once that upgrade lands.
+      - name: Audit dependencies (high/critical)
+        working-directory: frontend
+        run: npm audit --audit-level=high || true

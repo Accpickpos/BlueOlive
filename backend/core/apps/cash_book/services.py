@@ -12,6 +12,7 @@ from typing import Dict, Optional, Tuple
 
 from django.conf import settings
 from django.db import transaction as db_transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 from .business_services import (
@@ -686,6 +687,42 @@ class ReconciliationService:
     """Service for bank reconciliation"""
 
     @staticmethod
+    def get_outstanding_summary(bank_account_number: str) -> Dict[str, Decimal]:
+        """
+        Derive the reconciliation's outstanding-deposit/outstanding-cheque
+        totals from transactions tagged 'P' (Pending) — the manual's
+        "tagging" workflow: an operator tags each bank transaction that
+        hasn't yet appeared on the bank statement, and reconciliation totals
+        are summed from those tags rather than hand-typed. Outstanding
+        cheques also folds in unpresented cheques from the dedicated
+        UnpresentedCheque register (issued cheques tracked separately from
+        the day-to-day CashBookTransaction feed).
+        """
+        pending = CashBookTransaction.objects.filter(
+            account_type="BANK",
+            bank_account_number=bank_account_number,
+            bank_recon_tag="P",
+            is_reconciled=False,
+        )
+        outstanding_deposits = sum(
+            (t.amount for t in pending if t.is_debit), Decimal("0")
+        )
+        outstanding_cheques = sum(
+            (t.amount for t in pending if t.is_credit), Decimal("0")
+        )
+
+        unpresented_total = UnpresentedCheque.objects.filter(
+            is_presented=False
+        ).aggregate(total=Sum("total"))["total"] or Decimal("0")
+        outstanding_cheques += unpresented_total
+
+        return {
+            "outstanding_deposits": outstanding_deposits,
+            "outstanding_cheques": outstanding_cheques,
+            "pending_transaction_count": pending.count(),
+        }
+
+    @staticmethod
     def validate_reconciliation(reconciliation: BankReconciliation) -> Tuple[bool, str]:
         """
         Validate if reconciliation balances.
@@ -736,12 +773,26 @@ class ReconciliationService:
         reconciliation.completed_by = completed_by
         reconciliation.save()
 
-        # Mark transactions as reconciled
+        # Mark transactions as reconciled: explicit reconciliation items
+        # (added via add_item)...
         for item in reconciliation.items.all():
             if item.transaction:
                 item.transaction.is_reconciled = True
                 item.transaction.reconciliation = reconciliation
                 item.transaction.save(update_fields=["is_reconciled", "reconciliation"])
+
+        # ...and every transaction on this bank account tagged 'R'
+        # (Reconciled) via the tagging workflow — transactions tagged 'P'
+        # (Pending) are deliberately left untouched: they're still
+        # outstanding against the bank statement and carry forward into the
+        # next reconciliation (see BankReconciliationViewSet.month_end).
+        tagged_reconciled = CashBookTransaction.objects.filter(
+            account_type="BANK",
+            bank_account_number=reconciliation.bank_account_number,
+            bank_recon_tag="R",
+            is_reconciled=False,
+        )
+        tagged_reconciled.update(is_reconciled=True, reconciliation=reconciliation)
 
         return True, "Reconciliation completed successfully"
 

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Save, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { stockControlApi } from '@/lib/stockControlApi';
 
 interface ManufactureItemsProps {
   onBack: () => void;
@@ -30,12 +31,14 @@ export default function ManufactureItems({ onBack }: ManufactureItemsProps) {
     },
   });
 
-  // Create manufacture transaction
+  // Create manufacture transaction. A single MANUFACTURE post is enough —
+  // the backend (StockTransactionService.create_manufacture_transaction)
+  // fans out to a BUNDLE_USE transaction per BOM ingredient and moves QOH
+  // on both the bundle and every ingredient atomically; this form used to
+  // post the bundle and each ingredient as separate client-driven
+  // transactions to a URL that didn't exist.
   const createManufacture = useMutation({
-    mutationFn: async (data: any) => {
-      const response = await api.post('/api/stock-control/transactions/', data);
-      return response.data;
-    },
+    mutationFn: async (data: any) => stockControlApi.transactions.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pack-bundles'] });
       queryClient.invalidateQueries({ queryKey: ['stock-items'] });
@@ -102,35 +105,17 @@ export default function ManufactureItems({ onBack }: ManufactureItemsProps) {
         if (!proceed) return;
       }
 
-      // Create manufacture transaction for bundle
-      const bundleTransactionData = {
+      // One MANUFACTURE post is enough — the backend fans out to a
+      // BUNDLE_USE transaction per BOM ingredient and moves QOH on both
+      // the bundle and every ingredient atomically.
+      await createManufacture.mutateAsync({
         transaction_type: 'MANUFACTURE',
         stock_item: selectedBundleCode,
         quantity_in: quantityManufactured,
         unit_cost: selectedBundle.total_cost,
-        unit_price: selectedBundle.total_cost,
-        transaction_date: new Date(dateOfManufacture).toISOString(),
-        transaction_number: `MFG-${Date.now()}`,
-        reference: `Manufactured ${quantityManufactured} units`,
-      };
-
-      await createManufacture.mutateAsync(bundleTransactionData);
-
-      // Create transactions for each ingredient
-      for (const ingredient of selectedBundle.ingredients) {
-        const ingredientTransactionData = {
-          transaction_type: 'BUNDLE_USE',
-          stock_item: ingredient.ingredient_stock.stock_code,
-          quantity_out: ingredient.quantity * quantityManufactured,
-          unit_cost: ingredient.ingredient_stock.cost_price,
-          unit_price: ingredient.ingredient_stock.cost_price,
-          transaction_date: new Date(dateOfManufacture).toISOString(),
-          transaction_number: `MFG-${Date.now()}`,
-          reference: `Used in manufacturing bundle ${selectedBundleCode}`,
-        };
-
-        await createManufacture.mutateAsync(ingredientTransactionData);
-      }
+        transaction_date: dateOfManufacture,
+        comments: `Manufactured ${quantityManufactured} units`.slice(0, 30),
+      });
     } catch (error) {
       console.error('Error creating manufacture transaction:', error);
     }

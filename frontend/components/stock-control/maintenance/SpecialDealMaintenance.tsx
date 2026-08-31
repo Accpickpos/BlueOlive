@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ArrowLeft, Plus, Search, Edit2, Trash2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { stockControlApi } from '@/lib/stockControlApi';
 
 interface SpecialDeal {
   id?: string;
@@ -153,6 +154,46 @@ export default function SpecialDealMaintenance({ onBack }: SpecialDealMaintenanc
     }
   });
 
+  // Bulk-by-department mutation — one SpecialDeal per active item in the
+  // department, each priced from its own current selling price.
+  const bulkDepartmentMutation = useMutation({
+    mutationFn: (data: {
+      department: number;
+      start_date: string;
+      end_date: string;
+      increase_decrease: '+' | '-';
+      percentage_rand: 'P' | 'R';
+      amount: number;
+    }) => stockControlApi.specialDeals.bulkCreateForDepartment(data),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['special-deals'] });
+      setShowForm(false);
+      setEditingId(null);
+      setFormData({
+        stock_code: '',
+        cost_price: 0,
+        special_cost_price: 0,
+        start_date: '',
+        end_date: '',
+        markup_percentage: 0,
+        type: 'individual',
+        department: '',
+        increase_decrease: '+',
+        percentage_rand: 'P',
+        amount: 0,
+        sales_price_levels: ''
+      });
+      alert(result.message);
+    },
+    onError: (err: any) => {
+      const data = err?.response?.data;
+      const msg = data && typeof data === 'object'
+        ? Object.entries(data).map(([k, v]: any) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | ')
+        : err?.message ?? 'Unknown error';
+      alert(`Bulk deal creation failed: ${msg}`);
+    },
+  });
+
   const handleEdit = (deal: SpecialDeal) => {
     setFormData(deal);
     setEditingId(deal.id || '');
@@ -161,8 +202,24 @@ export default function SpecialDealMaintenance({ onBack }: SpecialDealMaintenanc
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Transform form data to backend format
+
+    if (dealType === 'department') {
+      if (!formData.department || !formData.amount || !formData.start_date || !formData.end_date) {
+        alert('Department, amount, start date and end date are required.');
+        return;
+      }
+      bulkDepartmentMutation.mutate({
+        department: Number(formData.department),
+        start_date: formData.start_date,
+        end_date: formData.end_date,
+        increase_decrease: formData.increase_decrease || '+',
+        percentage_rand: formData.percentage_rand || 'P',
+        amount: formData.amount,
+      });
+      return;
+    }
+
+    // Individual item pricing — transform form data to backend format
     const submitData: any = {
       stock_item: formData.stock_code, // Backend expects stock_item with stock code
       special_cost_price: formData.special_cost_price,
@@ -171,9 +228,8 @@ export default function SpecialDealMaintenance({ onBack }: SpecialDealMaintenanc
       is_active: true,
     };
 
-    // Calculate selling prices based on markup_percentage if using individual pricing
-    if (dealType === 'individual' && formData.markup_percentage) {
-      // Use markup_percentage to calculate selling prices from special_cost_price
+    // Calculate selling prices based on markup_percentage
+    if (formData.markup_percentage) {
       const markup = formData.markup_percentage / 100;
       const basePrice = formData.special_cost_price * (1 + markup);
       submitData.special_selling_price_1 = basePrice;
@@ -182,16 +238,6 @@ export default function SpecialDealMaintenance({ onBack }: SpecialDealMaintenanc
       submitData.special_markup_1 = formData.markup_percentage;
       submitData.special_markup_2 = formData.markup_percentage;
       submitData.special_markup_3 = formData.markup_percentage;
-    } else if (dealType === 'department' && formData.amount) {
-      // For department deals, apply amount change across all price levels
-      const changeAmount = formData.increase_decrease === '+' ? formData.amount : -formData.amount;
-      const isPercentage = formData.percentage_rand === 'P';
-      
-      // These would be applied per item in a department, so just store the amount
-      submitData.special_cost_price = formData.special_cost_price;
-      submitData.special_selling_price_1 = formData.amount;
-      submitData.special_selling_price_2 = formData.amount;
-      submitData.special_selling_price_3 = formData.amount;
     }
 
     mutation.mutate(submitData);
@@ -362,13 +408,13 @@ export default function SpecialDealMaintenance({ onBack }: SpecialDealMaintenanc
               <>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Department *
+                    Department Number *
                   </label>
                   <input
-                    type="text"
+                    type="number"
                     value={formData.department}
                     onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                    placeholder="Department"
+                    placeholder="Department number"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                     required
                   />
@@ -416,18 +462,10 @@ export default function SpecialDealMaintenance({ onBack }: SpecialDealMaintenanc
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Sales Price Levels (e.g., 1,2,3 or 9 for all)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.sales_price_levels || ''}
-                    onChange={(e) => setFormData({ ...formData, sales_price_levels: e.target.value })}
-                    placeholder="1,2,3 or 9"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                </div>
+                <p className="text-xs text-gray-500 md:col-span-2">
+                  Applies to all active items in the department, adjusting each item's own
+                  Selling Price 1/2/3 by this amount.
+                </p>
               </>
             )}
 
@@ -460,10 +498,16 @@ export default function SpecialDealMaintenance({ onBack }: SpecialDealMaintenanc
             <div className="md:col-span-2 flex gap-3">
               <button
                 type="submit"
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || bulkDepartmentMutation.isPending}
                 className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
-                {mutation.isPending ? 'Saving...' : editingId ? 'Update Deal' : 'Create Deal'}
+                {mutation.isPending || bulkDepartmentMutation.isPending
+                  ? 'Saving...'
+                  : dealType === 'department'
+                  ? 'Create Deals for Department'
+                  : editingId
+                  ? 'Update Deal'
+                  : 'Create Deal'}
               </button>
               <button
                 type="button"

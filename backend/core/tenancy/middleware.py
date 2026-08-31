@@ -901,15 +901,22 @@ class SubscriptionMiddleware:
         Returns JSON response for API requests or HTML page for regular requests.
         """
         from django.http import JsonResponse
+        from django.utils import timezone
 
         status = subscription_status.get("status", "UNKNOWN")
         warning = subscription_status.get("warning", "Subscription access blocked")
 
-        # Check if there's a grace period
+        # Check if there's a grace period. Previously this only checked
+        # self.grace_days > 0 with no comparison against elapsed time, so
+        # any EXPIRED tenant got unconditional, indefinite access as long as
+        # SUBSCRIPTION_GRACE_DAYS was configured — the grace period never
+        # actually ended.
         subscription = subscription_status.get("subscription")
         if subscription and status == "EXPIRED" and self.grace_days > 0:
-            # Allow access during grace period
-            return self.get_response(request)
+            days_since_expiry = (timezone.now().date() - subscription.end_date).days
+            if days_since_expiry <= self.grace_days:
+                # Still within the grace period — allow access.
+                return self.get_response(request)
 
         if request.path.startswith("/api/"):
             return JsonResponse(

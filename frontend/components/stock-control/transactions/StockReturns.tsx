@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Trash2, Save, X } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { stockControlApi } from '@/lib/stockControlApi';
 
 interface StockItem {
   stock_code: string;
@@ -83,10 +84,7 @@ export default function StockReturns({ onBack }: StockReturnsProps) {
 
   // Create return transaction
   const createTransaction = useMutation({
-    mutationFn: async (data: any) => {
-      const response = await api.post('/api/stock-control/transactions/', data);
-      return response.data;
-    },
+    mutationFn: async (data: any) => stockControlApi.transactions.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stock-transactions'] });
       // Reset form
@@ -247,28 +245,29 @@ export default function StockReturns({ onBack }: StockReturnsProps) {
     }
 
     try {
-      // Create a transaction for each line
+      // Create a transaction for each line. The serializer uses
+      // SlugRelatedField(slug_field='stock_code') for stock_item, and has
+      // no invoice_date/invoice_number/vat_type/reference fields — those
+      // only exist in this form's UI, so fold the credit note number and
+      // additional reference into comments (max 30 chars) instead.
+      const noteParts = [creditNoteNumber, additionalReference].filter(Boolean);
       for (const line of lines) {
-        // Find the stock item to get its code
         const stockItemData = stockItems.find(s => s.stock_code === line.stock_code);
-        
-        const transactionData = {
+
+        const transactionData: Record<string, unknown> = {
           transaction_type: 'RETURN',
           stock_item: stockItemData?.stock_code || line.stock_code,
-          supplier: supplierId || null,
-          invoice_date: documentDate,
-          invoice_number: creditNoteNumber,
-          vat_type: vatType,
-          additional_reference: additionalReference,
           quantity_out: line.quantity,
           unit_cost: line.unit_cost,
           unit_price: line.unit_cost,
-          vat_amount: line.vat_amount,
-          total_amount: line.line_total,
-          transaction_date: new Date().toISOString(),
-          transaction_number: creditNoteNumber,
-          reference: additionalReference,
+          discount: 0,
+          transaction_date: documentDate,
+          comments: noteParts.join(' - ').slice(0, 30),
         };
+        if (supplierId !== '') transactionData.supplier = supplierId;
+        if (line.tax_code !== undefined && line.tax_code !== ('' as unknown)) {
+          transactionData.tax_code = line.tax_code;
+        }
 
         await createTransaction.mutateAsync(transactionData);
       }

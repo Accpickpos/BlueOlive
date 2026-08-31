@@ -32,6 +32,7 @@ import {
   X,
   Key,
   Repeat,
+  BookOpen,
 } from "lucide-react";
 
 // ================== MENU CONFIG ==================
@@ -90,6 +91,18 @@ const menuConfig = [
           { type: "link", name: "Transactions", href: "/dashboard/admin/cash-book/transactions", icon: DollarSign },
           { type: "link", name: "Enquiries", href: "/dashboard/admin/cash-book/enquiries", icon: Search },
           { type: "link", name: "Reports", href: "/dashboard/admin/cash-book/reports", icon: BarChart },
+        ],
+      },
+      {
+        type: "nested",
+        name: "General Ledger",
+        base: "/dashboard/admin/general-ledger",
+        icon: BookOpen,
+        children: [
+          { type: "link", name: "Maintenance", href: "/dashboard/admin/general-ledger/maintenance", icon: FileText },
+          { type: "link", name: "Transactions", href: "/dashboard/admin/general-ledger/transactions", icon: DollarSign },
+          { type: "link", name: "Enquiries", href: "/dashboard/admin/general-ledger/enquiries", icon: Search },
+          { type: "link", name: "Reports", href: "/dashboard/admin/general-ledger/reports", icon: BarChart },
         ],
       },
       {

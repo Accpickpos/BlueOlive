@@ -96,7 +96,6 @@ class DebtorService:
         }
 
     @staticmethod
-    @transaction.atomic
     def post_debtran(
         debtor,
         dtype,
@@ -109,6 +108,10 @@ class DebtorService:
         del2="",
         del3="",
         del4="",
+        transaction_date=None,
+        source_type="MANUAL",
+        source_reference="",
+        age_period="0",
     ):
         """
         Post a transaction to the debtor's account (DEBTRAN).
@@ -123,6 +126,17 @@ class DebtorService:
             ordno: Order number
             custref: Customer reference
             del1-4: Delivery details
+            transaction_date: Date of the transaction (defaults to today)
+            source_type: One of DebtorTransaction.SOURCE_CHOICES
+            source_reference: Link to the originating record (e.g. invoice_number)
+            age_period: Debtopen.ageflag bucket ("0".."4") the Open Item row
+                (if any is created for this transaction) is posted into.
+                Manual §2.2 "Debit/Credit Journal for Open Item Debtors":
+                "The total value of the journal may only be allocated to
+                ONE ageing period" — callers that let the user choose a
+                period (post_journal) pass it through here; everything
+                else defaults to "0" (Current), same as before this param
+                existed.
         """
         if debtor.is_blocked:
             raise ValueError(f"Account {debtor.dno} is blocked")
@@ -133,89 +147,111 @@ class DebtorService:
         if dtgst is None:
             dtgst = Decimal("0.00")
 
-        # Lock the debtor row to prevent concurrent transaction number generation
-        debtor = Debtor.objects.select_for_update().get(pk=debtor.pk)
+        # select_for_update() requires an active transaction on whatever
+        # connection `debtor` is routed to. debtor is a shop-app model, so
+        # that's the tenant's own DB alias — never "default" — and tenant
+        # connections run in true driver-level autocommit
+        # (tenancy/utils.py sets ISOLATION_LEVEL_AUTOCOMMIT), so a bare
+        # transaction.atomic() (which only opens a transaction on
+        # "default") leaves the tenant connection un-transacted and
+        # select_for_update() raises TransactionManagementError. Using the
+        # alias debtor was actually loaded on opens the transaction on the
+        # right connection.
+        alias = debtor._state.db or "default"
+        with transaction.atomic(using=alias):
+            # Lock the debtor row to prevent concurrent transaction number
+            # generation
+            debtor = Debtor.objects.select_for_update().get(pk=debtor.pk)
 
-        # Create sequential transaction number (within lock to prevent duplicates)
-        last_tran = (
-            DebtorTransaction.objects.filter(debtor=debtor)
-            .order_by("-transaction_number")
-            .first()
-        )
-        new_dtrano = (
-            str(int(last_tran.transaction_number) + 1).zfill(6)
-            if last_tran
-            else "000001"
-        )
+            # Create sequential transaction number (within lock to prevent duplicates)
+            last_tran = (
+                DebtorTransaction.objects.filter(debtor=debtor)
+                .order_by("-transaction_number")
+                .first()
+            )
+            new_dtrano = (
+                str(int(last_tran.transaction_number) + 1).zfill(6)
+                if last_tran
+                else "000001"
+            )
 
-        # Create debtor transaction (DEBTRAN)
-        trans = DebtorTransaction.objects.create(
-            debtor=debtor,
-            transaction_number=new_dtrano,
-            transaction_type=dtype,
-            transaction_date=date.today(),
-            subtotal=dtsub,
-            vat_amount=dtgst,
-            total_amount=dttot,
-            vat_status="S",  # Default to Taxable
-            source_type="MANUAL",
-            order_number=ordno,
-            customer_reference=custref,
-            description_line1=del1,
-            description_line2=del2,
-            description_line3=del3,
-            description_line4=del4,
-        )
+            # Create debtor transaction (DEBTRAN). dttot/dtsub/dtgst are
+            # always passed in as positive magnitudes (matching every
+            # existing caller, e.g. Invoice.post()'s dtype="IN"), but
+            # DebtorTransaction.clean() requires CN/CR/RF transactions to
+            # be *stored* with a negative total_amount ("Credit
+            # transactions should have negative amounts") — flip the sign
+            # only for storage here; the balance_change calc below still
+            # uses the original positive dttot.
+            stored_sign = Decimal("-1") if dtype in ["CN", "CR", "RF"] else Decimal("1")
+            trans = DebtorTransaction.objects.create(
+                debtor=debtor,
+                transaction_number=new_dtrano,
+                transaction_type=dtype,
+                transaction_date=transaction_date or date.today(),
+                subtotal=dtsub * stored_sign,
+                vat_amount=dtgst * stored_sign,
+                total_amount=dttot * stored_sign,
+                vat_status="S",  # Default to Taxable
+                source_type=source_type,
+                source_reference=source_reference,
+                order_number=ordno,
+                customer_reference=custref,
+                description_line1=del1,
+                description_line2=del2,
+                description_line3=del3,
+                description_line4=del4,
+            )
 
-        # Determine if transaction increases or decreases balance
-        if dtype in ["IN", "DM"]:  # Invoice, Debit Memo
-            balance_change = dttot
-        elif dtype in ["CN", "CM"]:  # Credit Note, Credit Memo
-            balance_change = -dttot
-        elif dtype in ["RCP", "JC"]:  # Receipt, Journal Credit
-            balance_change = -dttot
-        else:
-            balance_change = dttot
+            # Determine if transaction increases or decreases balance
+            if dtype in ["IN", "DM"]:  # Invoice, Debit Memo
+                balance_change = dttot
+            elif dtype in ["CN", "CM"]:  # Credit Note, Credit Memo
+                balance_change = -dttot
+            elif dtype in ["RCP", "JC"]:  # Receipt, Journal Credit
+                balance_change = -dttot
+            else:
+                balance_change = dttot
 
-        # Update debtor balance (goes to current)
-        debtor.dcrnt += balance_change
-        debtor.dsalesm += dttot if dtype == "IN" else Decimal("0.00")
-        debtor.dsalesy += dttot if dtype == "IN" else Decimal("0.00")
-        debtor.save()
+            # Update debtor balance (goes to current)
+            debtor.dcrnt += balance_change
+            debtor.dsalesm += dttot if dtype == "IN" else Decimal("0.00")
+            debtor.dsalesy += dttot if dtype == "IN" else Decimal("0.00")
+            debtor.save()
 
-        # Create open item record (DEBTOPEN) for Open Item accounts only.
-        # BBF accounts track balance purely via the aging buckets updated
-        # above (dcrnt/d30/.../d180) — they don't need per-transaction
-        # tracking. Open Item accounts need EVERY transaction individually
-        # trackable until matched/settled (manual: "all outstanding and
-        # unmatched transaction types are listed"; receipts "must be
-        # allocated to specific transactions"). This condition was
-        # previously inverted (`!= 'O'`), which meant Open Item debtors —
-        # the ones this mechanism exists for — never got any open-item
-        # records at all, breaking enquiry screens and receipt allocation
-        # for that account type entirely.
-        if debtor.acctype == "O":
-            Debtopen.objects.create(
+            # Create open item record (DEBTOPEN) for Open Item accounts only.
+            # BBF accounts track balance purely via the aging buckets updated
+            # above (dcrnt/d30/.../d180) — they don't need per-transaction
+            # tracking. Open Item accounts need EVERY transaction individually
+            # trackable until matched/settled (manual: "all outstanding and
+            # unmatched transaction types are listed"; receipts "must be
+            # allocated to specific transactions"). This condition was
+            # previously inverted (`!= 'O'`), which meant Open Item debtors —
+            # the ones this mechanism exists for — never got any open-item
+            # records at all, breaking enquiry screens and receipt allocation
+            # for that account type entirely.
+            if debtor.acctype == "O":
+                Debtopen.objects.create(
+                    dno=debtor,
+                    dtrano=new_dtrano,
+                    type=dtype,
+                    date=date.today(),
+                    total=abs(dttot),
+                    balancedue=abs(dttot) if balance_change > 0 else Decimal("0.00"),
+                    ageflag=age_period,
+                    posted="Y",
+                )
+
+            # Create audit record (DEBTORAUD)
+            DebtorAudit.objects.create(
                 dno=debtor,
                 dtrano=new_dtrano,
                 type=dtype,
+                thistype=dtype,
+                thistran=new_dtrano,
                 date=date.today(),
-                total=abs(dttot),
-                balancedue=abs(dttot) if balance_change > 0 else Decimal("0.00"),
-                ageflag="0",  # Current
-                posted="Y",
+                amount=dttot,
             )
-
-        # Create audit record (DEBTORAUD)
-        DebtorAudit.objects.create(
-            dno=debtor,
-            dtrano=new_dtrano,
-            type=dtype,
-            thistype=dtype,
-            thistran=new_dtrano,
-            date=date.today(),
-            amount=dttot,
-        )
 
         return trans
 
@@ -291,6 +327,8 @@ class DebtorService:
         debtor.damtlpd = amount
         debtor.save()
 
+        DebtorService._post_receipt_to_cash_book(debtor, trans, amount)
+
         if debtor.acctype == "O" and allocations:
             for alloc in allocations:
                 open_item = Debtopen.objects.select_for_update().get(
@@ -307,6 +345,31 @@ class DebtorService:
                 )
 
         return trans
+
+    @staticmethod
+    def _post_receipt_to_cash_book(debtor, trans, amount):
+        """
+        Manual §1 "2. Receipts on Account" / Cash Book module: a debtor
+        receipt is documented as "(Updates Debtors and Cash Book)" — the
+        till/bank actually received `amount` (the tendered amount, not
+        `post_total`, which may include a non-cash settlement discount).
+        Posted as CASH per spec's basic case; no configured "default bank
+        account" concept exists yet to attribute an electronic receipt to a
+        specific account (see Cash Book module TODOs).
+        """
+        from apps.cash_book.business_services import CashBookTransactionService
+
+        CashBookTransactionService.create_transaction(
+            transaction_type="RECEIPT",
+            transaction_date=trans.transaction_date,
+            value_excl_vat=amount,
+            tax_code=2,
+            audit_type=1,
+            reference=trans.transaction_number[:20],
+            description=f"Receipt from {debtor.dname} ({debtor.dno})"[:200],
+            account_type="CASH",
+            created_by="debtors",
+        )
 
     @staticmethod
     @transaction.atomic
@@ -375,7 +438,7 @@ class DebtorService:
 
     @staticmethod
     @transaction.atomic
-    def post_journal(debtor, journal_type, amount, custref=""):
+    def post_journal(debtor, journal_type, amount, custref="", age_period="0"):
         """
         Post a debit or credit journal adjustment to the debtor's account.
 
@@ -385,6 +448,12 @@ class DebtorService:
                           'JC' (Journal Credit, reduces balance owing)
             amount: Journal amount (positive)
             custref: Customer reference / reason for the journal
+            age_period: Open Item accounts only — manual §2.2 "Debit/Credit
+                Journal for Open Item Debtors": "The total value of the
+                journal may only be allocated to ONE ageing period."
+                One of Debtopen.AGEING_CHOICES ("0"=Current .. "4"=120+
+                Days). Ignored for Balance Brought Forward accounts (no
+                Debtopen row is created for them).
         """
         if journal_type not in ("JD", "JC"):
             raise ValueError("journal_type must be 'JD' or 'JC'")
@@ -402,6 +471,10 @@ class DebtorService:
         if not custref or not custref.strip():
             raise ValueError("A reference/motivation is required for journal entries")
 
+        valid_age_periods = {choice[0] for choice in Debtopen.AGEING_CHOICES}
+        if age_period not in valid_age_periods:
+            raise ValueError(f"age_period must be one of {sorted(valid_age_periods)}")
+
         return DebtorService.post_debtran(
             debtor=debtor,
             dtype=journal_type,
@@ -409,7 +482,74 @@ class DebtorService:
             dtsub=amount,
             dtgst=Decimal("0.00"),
             custref=custref,
+            age_period=age_period,
         )
+
+    @staticmethod
+    @transaction.atomic
+    def convert_account_category(debtor, new_category):
+        """
+        Manual §Maintenance "Account Category Conversions" (Open Item <->
+        Balance Brought Forward):
+
+        - Open Item -> BBF: "confirm conversion from Open Item to Balance
+          Brought Forward and [Yes] to clear all open item transactions" —
+          the aggregate ageing buckets (dcrnt/d30/.../d180) already carry
+          the correct balance (they're maintained for every account
+          regardless of acctype — see post_debtran), so the per-transaction
+          Debtopen rows are no longer needed once acctype stops being 'O'
+          and are cleared.
+        - BBF -> Open Item: "The Open Item Entry Screen will appear ... to
+          enter all outstanding transactions" — auto-take-on one Debtopen
+          row per non-zero aged bucket so the account has itemized open
+          items to allocate receipts against going forward.
+
+        Returns the updated debtor.
+        """
+        old_category = debtor.acctype
+        debtor.acctype = new_category
+        debtor.save(update_fields=["acctype"])
+
+        if old_category == new_category:
+            return debtor
+
+        if old_category == "O" and new_category != "O":
+            Debtopen.objects.filter(dno=debtor).delete()
+
+        elif old_category != "O" and new_category == "O":
+            # Debtopen.AGEING_CHOICES only has 5 buckets ("0".."4"), so
+            # d120/d150/d180 all collapse into "4" (120+ Days) — same
+            # grouping DebtorViewSet.age_analysis already uses.
+            aged_buckets = [
+                (debtor.dcrnt, "0"),
+                (debtor.d30, "1"),
+                (debtor.d60, "2"),
+                (debtor.d90, "3"),
+                (debtor.d120, "4"),
+                (debtor.d150, "4"),
+                (debtor.d180, "4"),
+            ]
+            last_tran = (
+                DebtorTransaction.objects.filter(debtor=debtor)
+                .order_by("-transaction_number")
+                .first()
+            )
+            next_number = int(last_tran.transaction_number) + 1 if last_tran else 1
+            for amount, ageflag in aged_buckets:
+                if amount and amount > 0:
+                    Debtopen.objects.create(
+                        dno=debtor,
+                        dtrano=str(next_number).zfill(6),
+                        type="JD",
+                        date=date.today(),
+                        total=amount,
+                        balancedue=amount,
+                        ageflag=ageflag,
+                        posted="Y",
+                    )
+                    next_number += 1
+
+        return debtor
 
     @staticmethod
     def calculate_interest(
@@ -515,19 +655,22 @@ class DebtorService:
 
         # Get transactions for period
         transactions = DebtorTransaction.objects.filter(
-            dno=debtor, dtdate__gte=start_date, dtdate__lte=end_date
-        ).order_by("dtdate")
+            debtor=debtor,
+            transaction_date__gte=start_date,
+            transaction_date__lte=end_date,
+        ).order_by("transaction_date")
 
         # Calculate opening balance (transactions before start_date)
         opening_transactions = DebtorTransaction.objects.filter(
-            dno=debtor, dtdate__lt=start_date
-        ).aggregate(total=Sum("dttot"))
+            debtor=debtor, transaction_date__lt=start_date
+        ).aggregate(total=Sum("total_amount"))
         opening_balance = opening_transactions["total"] or Decimal("0.00")
 
         # Calculate closing balance
-        closing_balance = opening_balance + transactions.aggregate(total=Sum("dttot"))[
+        period_total = transactions.aggregate(total=Sum("total_amount"))[
             "total"
         ] or Decimal("0.00")
+        closing_balance = opening_balance + period_total
 
         return {
             "debtor": debtor,

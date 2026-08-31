@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { ArrowLeft, Download } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { stockControlApi } from '@/lib/stockControlApi';
 
 interface VarianceReportProps {
   onBack: () => void;
@@ -16,19 +16,18 @@ export default function VarianceReport({ onBack }: VarianceReportProps) {
   const { data: stockTakes } = useQuery({
     queryKey: ['stock-takes'],
     queryFn: async () => {
-      const response = await api.get('/api/stock-control/stock-takes/');
-      return response.data.results || response.data;
+      const result = await stockControlApi.stockTakes.list();
+      return result.results ?? result;
     },
   });
 
-  // Fetch variance items
+  // Fetch variance items — the dedicated variance-report action already
+  // filters to non-zero variance server-side.
   const { data: varianceItems, isLoading } = useQuery({
     queryKey: ['variance-items', selectedStockTake],
     queryFn: async () => {
       if (!selectedStockTake) return [];
-      const response = await api.get(`/api/stock-control/stock-takes/${selectedStockTake}/items/`);
-      const items = response.data.results || response.data;
-      return items.filter((item: any) => item.variance_quantity !== 0);
+      return stockControlApi.stockTakes.getVarianceReport(selectedStockTake);
     },
     enabled: !!selectedStockTake,
   });
@@ -90,8 +89,8 @@ export default function VarianceReport({ onBack }: VarianceReportProps) {
               <tbody>
                 {varianceItems?.map((item: any, index: number) => (
                   <tr key={index} className={`border-b ${item.variance_quantity < 0 ? 'bg-red-50' : 'bg-green-50'}`}>
-                    <td className="px-4 py-2 font-medium">{item.stock_item.stock_code}</td>
-                    <td className="px-4 py-2">{item.stock_item.description}</td>
+                    <td className="px-4 py-2 font-medium">{item.stock_item_detail?.stock_code ?? item.stock_item}</td>
+                    <td className="px-4 py-2">{item.stock_item_detail?.description ?? ''}</td>
                     <td className="text-right px-4 py-2">{item.quantity_on_hand.toFixed(2)}</td>
                     <td className="text-right px-4 py-2">{item.quantity_counted.toFixed(2)}</td>
                     <td className={`text-right px-4 py-2 font-semibold ${item.variance_quantity < 0 ? 'text-red-600' : 'text-green-600'}`}>

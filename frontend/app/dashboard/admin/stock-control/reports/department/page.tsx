@@ -3,14 +3,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { stockControlApi } from '@/lib/stockControlApi';
-import { getStockItems } from '@/lib/stockApi';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { 
-  Loader, ArrowLeft, Layers, Download, Search,
-  TrendingUp, TrendingDown, Percent
+import {
+  Loader, ArrowLeft, Layers, Download,
+  TrendingUp, Percent
 } from 'lucide-react';
 import Link from 'next/link';
 import { Pagination } from '@/components/ui/pagination';
@@ -22,85 +20,47 @@ export default function DepartmentAnalysisPage() {
 
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
 
-  // Fetch monthly statistics
-  const { data: monthlyStats, isLoading: statsLoading } = useQuery({
-    queryKey: ['monthly-stats-dept', year],
-    queryFn: () => stockControlApi.monthlyStats.list({ year }),
+  // Backend-aggregated sales/cost/profit by department — was previously
+  // computed client-side by joining monthlyStats against a full 1000-item
+  // stock-items fetch, reading total_sales/total_cost/gross_profit fields
+  // that don't exist on StockMonthlyStatisticSerializer (real fields:
+  // value_sold/profit_value; cost is derived as value_sold - profit_value),
+  // so every number in this report rendered as R0 regardless of real data.
+  const { data: rows, isLoading: statsLoading } = useQuery({
+    queryKey: ['stats-by-department', year],
+    queryFn: () => stockControlApi.enquiries.statsByDepartment({ year }),
     staleTime: 30 * 1000,
   });
 
-  // Fetch stock items to get department info
-  const { data: stockItems } = useQuery({
-    queryKey: ['stock-items-dept'],
-    queryFn: () => getStockItems({ page_size: 1000 }),
-    staleTime: 5 * 60 * 1000,
-  });
+  const departments = (rows || []).map((r) => ({ id: r.department_id, name: r.department_name }));
 
-  // Get unique departments
-  const departments = stockItems?.results?.reduce((acc: any[], item: any) => {
-    const dept = item.department_detail?.name || 'Unassigned';
-    if (!acc.find(d => d.name === dept)) {
-      acc.push({ id: item.department, name: dept });
-    }
-    return acc;
-  }, []) || [];
+  const byDepartment = (rows || [])
+    .filter((r) => !selectedDepartment || r.department_name === selectedDepartment)
+    .map((r) => ({
+      name: r.department_name,
+      totalSales: Number(r.total_sales || 0),
+      totalCost: Number(r.total_cost || 0),
+      totalProfit: Number(r.total_profit || 0),
+      quantitySold: Number(r.total_quantity || 0),
+      margin: r.margin_pct,
+      itemCount: r.item_count,
+    }));
 
-  // Process data by department
-  const processData = () => {
-    if (!monthlyStats?.results) return { byDepartment: [], totals: null };
+  const totals = byDepartment.length
+    ? byDepartment.reduce(
+        (acc, d) => ({
+          sales: acc.sales + d.totalSales,
+          cost: acc.cost + d.totalCost,
+          profit: acc.profit + d.totalProfit,
+          quantity: acc.quantity + d.quantitySold,
+          departmentCount: acc.departmentCount + 1,
+          margin: 0,
+        }),
+        { sales: 0, cost: 0, profit: 0, quantity: 0, departmentCount: 0, margin: 0 }
+      )
+    : null;
+  if (totals) totals.margin = totals.sales > 0 ? (totals.profit / totals.sales) * 100 : 0;
 
-    const deptMap = new Map();
-    let grandTotal = { sales: 0, cost: 0, profit: 0, quantity: 0 };
-
-    monthlyStats.results.forEach((stat: any) => {
-      const deptName = stat.stock_item_detail?.department_detail?.name || 
-                      stockItems?.results?.find((i: any) => i.stock_code === stat.stock_item)?.department_detail?.name ||
-                      'Unassigned';
-      
-      if (selectedDepartment && deptName !== selectedDepartment) return;
-
-      const existing = deptMap.get(deptName) || {
-        name: deptName,
-        totalSales: 0,
-        totalCost: 0,
-        totalProfit: 0,
-        quantitySold: 0,
-        itemCount: new Set(),
-      };
-
-      existing.totalSales += stat.total_sales || 0;
-      existing.totalCost += stat.total_cost || 0;
-      existing.totalProfit += stat.gross_profit || 0;
-      existing.quantitySold += stat.quantity_sold || 0;
-      existing.itemCount.add(stat.stock_item);
-
-      deptMap.set(deptName, existing);
-
-      // Add to grand totals
-      grandTotal.sales += stat.total_sales || 0;
-      grandTotal.cost += stat.total_cost || 0;
-      grandTotal.profit += stat.gross_profit || 0;
-      grandTotal.quantity += stat.quantity_sold || 0;
-    });
-
-    const byDepartment = Array.from(deptMap.values())
-      .map((dept: any) => ({
-        ...dept,
-        itemCount: dept.itemCount.size,
-        margin: dept.totalSales > 0 ? (dept.totalProfit / dept.totalSales) * 100 : 0,
-      }))
-      .sort((a: any, b: any) => b.totalSales - a.totalSales);
-
-    const totals = {
-      ...grandTotal,
-      margin: grandTotal.sales > 0 ? (grandTotal.profit / grandTotal.sales) * 100 : 0,
-      departmentCount: byDepartment.length,
-    };
-
-    return { byDepartment, totals };
-  };
-
-  const { byDepartment, totals } = processData();
   const paginatedDepts = byDepartment.slice((page - 1) * 10, page * 10);
 
   const exportToCSV = () => {

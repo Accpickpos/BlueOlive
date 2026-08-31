@@ -9,6 +9,8 @@ from decimal import Decimal
 
 from apps.shop_filter_mixin import ShopFilterMixin
 from django.core.exceptions import ValidationError
+from django.db import router as db_router
+from django.db import transaction
 from django.db.models import Count, Sum
 from django.db.models.functions import ExtractHour
 from django.utils import timezone
@@ -17,6 +19,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from tenancy.audit import POSAuditLog
 
 from .calculation_service import CalculationService
 from .exceptions import (
@@ -196,7 +199,7 @@ class CashSaleViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet
         reason = request.data.get("reason", "")
 
         try:
-            CashSaleService.cancel_cash_sale(cash_sale, reason)
+            CashSaleService.cancel_cash_sale(cash_sale, reason, user=request.user)
             return Response(
                 {
                     "status": "success",
@@ -210,6 +213,110 @@ class CashSaleViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet
             POSValidationException,
             POSStateException,
         ) as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["post"])
+    def apply_subtotal_discount(self, request, pk=None):
+        """Manual §4 'Cash Sale' Update Transaction 'S' option."""
+        cash_sale = self.get_object()
+        percentage = request.data.get("percentage")
+
+        if percentage is None:
+            return Response(
+                {"error": "percentage is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            cash_sale.apply_subtotal_discount(Decimal(str(percentage)))
+            return Response(
+                {
+                    "status": "success",
+                    "message": f"Subtotal discount of {percentage}% applied to cash sale {cash_sale.sale_number}",
+                    "cash_sale": CashSaleDetailSerializer(cash_sale).data,
+                }
+            )
+        except (
+            ValueError,
+            InvalidDocumentState,
+            InsufficientStock,
+            POSValidationException,
+            POSStateException,
+        ) as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["post"])
+    def apply_set_price(self, request, pk=None):
+        """Manual §4 'Cash Sale' Update Transaction 'Set Price' option."""
+        cash_sale = self.get_object()
+        target_total = request.data.get("target_total")
+
+        if target_total is None:
+            return Response(
+                {"error": "target_total is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            cash_sale.apply_set_price(Decimal(str(target_total)))
+            return Response(
+                {
+                    "status": "success",
+                    "message": f"Total of cash sale {cash_sale.sale_number} set to {target_total}",
+                    "cash_sale": CashSaleDetailSerializer(cash_sale).data,
+                }
+            )
+        except (
+            ValueError,
+            InvalidDocumentState,
+            InsufficientStock,
+            POSValidationException,
+            POSStateException,
+        ) as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["post"])
+    def convert_to_invoice(self, request, pk=None):
+        """
+        Manual §4 'Cash Sale' note: "To convert a Cash Sale into an Account
+        Sale, press [Page Down] at the Tender Routine." Requires an
+        existing debtor account to charge the sale to.
+        """
+        cash_sale = self.get_object()
+        debtor_account_number = request.data.get("debtor_account_number")
+
+        if not debtor_account_number:
+            return Response(
+                {"error": "debtor_account_number is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            from apps.debtors.models import Debtor
+
+            debtor = Debtor.objects.get(dno=int(debtor_account_number))
+        except (Debtor.DoesNotExist, ValueError, TypeError):
+            return Response(
+                {"error": f"Debtor account '{debtor_account_number}' not found"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            invoice = CashSaleService.convert_cash_sale_to_invoice(
+                cash_sale, debtor, user=request.user
+            )
+            return Response(
+                {
+                    "status": "success",
+                    "message": f"Cash sale {cash_sale.sale_number} converted to invoice {invoice.invoice_number}",
+                    "invoice": InvoiceDetailSerializer(invoice).data,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+        except (ValueError, InvalidDocumentState, POSValidationException) as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=["get"])
@@ -708,6 +815,40 @@ class QuotationViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSe
         ) as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=True, methods=["post"])
+    def convert_to_cash_sale(self, request, pk=None):
+        """Convert quotation to a cash sale, for customers with no debtor account."""
+        quotation = self.get_object()
+        tenders_data = request.data.get("tenders", [])
+
+        try:
+            cash_sale = QuotationService.convert_quotation_to_cash_sale(
+                quotation,
+                tenders_data=tenders_data,
+                cashier=request.user if request.user.is_authenticated else None,
+            )
+
+            from .serializers import CashSaleDetailSerializer
+
+            serializer = CashSaleDetailSerializer(cash_sale)
+
+            return Response(
+                {
+                    "status": "success",
+                    "message": "Quotation converted to cash sale",
+                    "cash_sale": serializer.data,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+        except (
+            ValueError,
+            InvalidDocumentState,
+            InsufficientStock,
+            POSValidationException,
+            POSStateException,
+        ) as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 class PayoutViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
     """ViewSet for cash payouts."""
@@ -1030,10 +1171,27 @@ class JobCardViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet)
 
     @action(detail=True, methods=["post"])
     def convert_to_invoice(self, request, pk=None):
-        """Convert job card to customer invoice."""
+        """
+        Convert job card to a customer document. Two-way branch matching
+        RepairService.invoice_customer: a debtor with a real account gets
+        a proper Invoice on their ledger; a walk-in with no account gets a
+        Cash Sale that ends in a Tender Routine instead (manual §1
+        "Invoice - Cash Debtors" / §R "5. Charge for the Repair").
+
+        POST data:
+        {
+            "charge_type": "account" | "cash",   # optional; inferred from
+                                                   # debtor fields if omitted
+            "debtor_id": 1,                       # account
+            "debtor_account_number": "123",       # account (alt to debtor_id)
+            "tenders": [{"tender_type": "CASH", "amount": "100.00"}, ...],  # cash only
+            "station_number": 1                   # cash only
+        }
+        """
         job_card = self.get_object()
         debtor_id = request.data.get("debtor_id")
         debtor_account_number = request.data.get("debtor_account_number")
+        charge_type = request.data.get("charge_type")
         debtor = None
 
         # If debtor_id or debtor_account_number provided, look up debtor
@@ -1068,9 +1226,48 @@ class JobCardViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet)
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-        # Try conversion even without debtor (for manual customer entry)
+        # No explicit charge_type given: infer it the way this endpoint has
+        # always behaved — a resolved debtor means "account", nothing
+        # supplied means the customer has no account, i.e. a walk-in.
+        if not charge_type:
+            charge_type = "account" if debtor else "cash"
+
         try:
             from .services import QuotationService
+
+            if charge_type == "cash":
+                cash_sale = QuotationService.convert_job_card_to_cash_sale(
+                    job_card,
+                    tenders_data=request.data.get("tenders", []),
+                    cashier=(
+                        request.user
+                        if request.user and request.user.is_authenticated
+                        else None
+                    ),
+                    station_number=request.data.get("station_number", 1),
+                )
+
+                serializer = CashSaleDetailSerializer(cash_sale)
+
+                return Response(
+                    {
+                        "status": "success",
+                        "message": "Job card converted to cash sale",
+                        "charge_type": "cash",
+                        "cash_sale": serializer.data,
+                    },
+                    status=status.HTTP_201_CREATED,
+                )
+
+            if not debtor:
+                return Response(
+                    {
+                        "error": "Debtor is required for an account conversion. "
+                        "Provide debtor_id/debtor_account_number, or omit them "
+                        "for a walk-in cash sale."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             invoice = QuotationService.convert_job_card_to_invoice(job_card, debtor)
 
@@ -1083,6 +1280,7 @@ class JobCardViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet)
                 {
                     "status": "success",
                     "message": "Job card converted to invoice",
+                    "charge_type": "account",
                     "invoice": serializer.data,
                 },
                 status=status.HTTP_201_CREATED,
@@ -1105,7 +1303,9 @@ class JobCardViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet)
             )
 
 
-class CashControlViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ReadOnlyModelViewSet):
+class CashControlViewSet(
+    ShopFilterMixin, POSPermissionMixin, viewsets.ReadOnlyModelViewSet
+):
     """
     ViewSet for cash control records.
     Read-only as these are generated by the system.
@@ -1183,7 +1383,9 @@ class CashControlViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ReadOnlyM
         return Response(serializer.data)
 
 
-class ReceiptOnAccountViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class ReceiptOnAccountViewSet(
+    ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for receipts on account.
 
@@ -1299,7 +1501,7 @@ class ReceiptOnAccountViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.Mode
         reason = request.data.get("reason", "")
 
         try:
-            ReceiptOnAccountService.cancel_receipt(receipt, reason)
+            ReceiptOnAccountService.cancel_receipt(receipt, reason, user=request.user)
             return Response(
                 {
                     "status": "success",
@@ -1381,37 +1583,84 @@ class CreditNoteViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewS
             # Update stock for each line
             from apps.stock_control.models import StockItem, StockTransaction
 
-            for line in credit_note.lines.all():
-                if line.stock_code:
+            # CreditNote/StockItem are shop-app models routed to the
+            # tenant's own DB alias, never "default" — see the identical
+            # fix/comment on LaybyeService.create_laybye in services.py.
+            alias = db_router.db_for_write(CreditNote) or "default"
+            with transaction.atomic(using=alias):
+                for line in credit_note.lines.all():
+                    if line.stock_code:
+                        try:
+                            stock_item = StockItem.objects.select_for_update().get(
+                                stock_code=line.stock_code
+                            )
+                            stock_item.quantity_on_hand += line.quantity
+                            stock_item.save()
+
+                            # Create stock movement. transaction_number is an
+                            # IntegerField — credit_number is a string, use
+                            # comments instead so this doesn't raise.
+                            StockTransaction.objects.create(
+                                stock_item=stock_item,
+                                transaction_type="RETURN",
+                                transaction_date=credit_note.credit_date,
+                                comments=credit_note.credit_number[:30],
+                                quantity_in=line.quantity,
+                                quantity_balance=stock_item.quantity_on_hand,
+                                unit_price=line.unit_price,
+                                station_number=credit_note.station_number,
+                            )
+                        except StockItem.DoesNotExist:
+                            logger.warning(
+                                f"Stock item {line.stock_code} not found for "
+                                f"credit note {credit_note.credit_number}"
+                            )
+
+                credit_note.is_posted = True
+                credit_note.save()
+
+                CashControlService.record_credit_note(
+                    credit_note.credit_date,
+                    credit_note.cashier,
+                    credit_note.station_number,
+                    credit_note.total_amount,
+                )
+
+                # Account credit notes must reduce what the debtor owes —
+                # previously only stock/CashControl were updated here, so
+                # the customer's balance was never actually credited.
+                # Mirrors ReceiptOnAccountViewSet.post_receipt's lookup
+                # pattern for a bare debtor_account string field.
+                if credit_note.refund_type == "ACCOUNT" and credit_note.debtor_account:
+                    from apps.debtors.models import Debtor
+                    from apps.debtors.services import DebtorService
+
                     try:
-                        stock_item = StockItem.objects.get(stock_code=line.stock_code)
-                        stock_item.quantity_on_hand += line.quantity
-                        stock_item.save()
+                        debtor = Debtor.objects.get(dno=int(credit_note.debtor_account))
+                    except (Debtor.DoesNotExist, ValueError, TypeError):
+                        debtor = None
 
-                        # Create stock movement. transaction_number is an
-                        # IntegerField — credit_number is a string, use
-                        # comments instead so this doesn't raise.
-                        StockTransaction.objects.create(
-                            stock_item=stock_item,
-                            transaction_type="RETURN",
+                    if debtor:
+                        DebtorService.post_debtran(
+                            debtor=debtor,
+                            dtype="CN",
+                            dttot=credit_note.total_amount,
+                            dtsub=credit_note.subtotal,
+                            dtgst=credit_note.vat_amount,
+                            custref=credit_note.credit_number[:10],
                             transaction_date=credit_note.credit_date,
-                            comments=credit_note.credit_number[:30],
-                            quantity_in=line.quantity,
-                            quantity_balance=stock_item.quantity_on_hand,
-                            unit_price=line.unit_price,
-                            station_number=credit_note.station_number,
+                            source_type="CREDIT_NOTE",
+                            source_reference=credit_note.credit_number,
                         )
-                    except StockItem.DoesNotExist:
-                        pass
+                    else:
+                        logger.warning(
+                            f"Credit note {credit_note.credit_number}: debtor "
+                            f"account '{credit_note.debtor_account}' not found "
+                            f"— posting stock/till only"
+                        )
 
-            credit_note.is_posted = True
-            credit_note.save()
-
-            CashControlService.record_credit_note(
-                credit_note.credit_date,
-                credit_note.cashier,
-                credit_note.station_number,
-                credit_note.total_amount,
+            POSAuditLog.log_document_posted(
+                request.user, "CreditNote", credit_note.credit_number
             )
 
             return Response(
@@ -1421,6 +1670,7 @@ class CreditNoteViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewS
                 }
             )
         except Exception as e:
+            logger.exception(f"Failed to post credit note {credit_note.credit_number}")
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=["post"])
@@ -1430,7 +1680,7 @@ class CreditNoteViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewS
         reason = request.data.get("reason", "")
 
         try:
-            CreditNoteService.cancel_credit_note(credit_note, reason)
+            CreditNoteService.cancel_credit_note(credit_note, reason, user=request.user)
             return Response(
                 {
                     "status": "success",
@@ -1491,37 +1741,51 @@ class CashReturnViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewS
             # Update stock for each line
             from apps.stock_control.models import StockItem, StockTransaction
 
-            for line in cash_return.lines.all():
-                if line.stock_code:
-                    try:
-                        stock_item = StockItem.objects.get(stock_code=line.stock_code)
-                        stock_item.quantity_on_hand += line.quantity
-                        stock_item.save()
+            # CashReturn/StockItem are shop-app models routed to the
+            # tenant's own DB alias, never "default" — see the identical
+            # fix/comment on LaybyeService.create_laybye in services.py.
+            alias = db_router.db_for_write(CashReturn) or "default"
+            with transaction.atomic(using=alias):
+                for line in cash_return.lines.all():
+                    if line.stock_code:
+                        try:
+                            stock_item = StockItem.objects.select_for_update().get(
+                                stock_code=line.stock_code
+                            )
+                            stock_item.quantity_on_hand += line.quantity
+                            stock_item.save()
 
-                        # Create stock movement. transaction_number is an
-                        # IntegerField — return_number is a string, use
-                        # comments instead so this doesn't raise.
-                        StockTransaction.objects.create(
-                            stock_item=stock_item,
-                            transaction_type="RETURN",
-                            transaction_date=cash_return.return_date,
-                            comments=cash_return.return_number[:30],
-                            quantity_in=line.quantity,
-                            quantity_balance=stock_item.quantity_on_hand,
-                            unit_price=line.unit_price,
-                            station_number=cash_return.station_number,
-                        )
-                    except StockItem.DoesNotExist:
-                        pass
+                            # Create stock movement. transaction_number is an
+                            # IntegerField — return_number is a string, use
+                            # comments instead so this doesn't raise.
+                            StockTransaction.objects.create(
+                                stock_item=stock_item,
+                                transaction_type="RETURN",
+                                transaction_date=cash_return.return_date,
+                                comments=cash_return.return_number[:30],
+                                quantity_in=line.quantity,
+                                quantity_balance=stock_item.quantity_on_hand,
+                                unit_price=line.unit_price,
+                                station_number=cash_return.station_number,
+                            )
+                        except StockItem.DoesNotExist:
+                            logger.warning(
+                                f"Stock item {line.stock_code} not found for "
+                                f"cash return {cash_return.return_number}"
+                            )
 
-            cash_return.is_posted = True
-            cash_return.save()
+                cash_return.is_posted = True
+                cash_return.save()
 
-            CashControlService.record_cash_return(
-                cash_return.return_date,
-                cash_return.cashier,
-                cash_return.station_number,
-                cash_return.total_amount,
+                CashControlService.record_cash_return(
+                    cash_return.return_date,
+                    cash_return.cashier,
+                    cash_return.station_number,
+                    cash_return.total_amount,
+                )
+
+            POSAuditLog.log_document_posted(
+                request.user, "CashReturn", cash_return.return_number
             )
 
             return Response(
@@ -1531,6 +1795,7 @@ class CashReturnViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewS
                 }
             )
         except Exception as e:
+            logger.exception(f"Failed to post cash return {cash_return.return_number}")
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=["post"])
@@ -1540,7 +1805,7 @@ class CashReturnViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewS
         reason = request.data.get("reason", "")
 
         try:
-            CashReturnService.cancel_cash_return(cash_return, reason)
+            CashReturnService.cancel_cash_return(cash_return, reason, user=request.user)
             return Response(
                 {
                     "status": "success",
@@ -1613,7 +1878,7 @@ class CashAChequeViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelView
         reason = request.data.get("reason", "")
 
         try:
-            CashAChequeService.cancel_cash_a_cheque(cheque, reason)
+            CashAChequeService.cancel_cash_a_cheque(cheque, reason, user=request.user)
             return Response(
                 {
                     "status": "success",
@@ -1643,7 +1908,9 @@ class CashAChequeViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelView
         return Response(serializer.data)
 
 
-class TransactionQueryViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class TransactionQueryViewSet(
+    ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for transaction queries.
 
@@ -1782,6 +2049,7 @@ class TransactionQueryViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.Mode
         for obj in qs:
             results.append(
                 {
+                    "id": obj.pk,
                     "transaction_type": query_type,
                     "number": (
                         getattr(obj, number_field, None)

@@ -189,6 +189,61 @@ export default function StockControlEnquiriesPage() {
               </div>
             </Card>
           </Link>
+
+          <Link href="/dashboard/admin/stock-control/enquiries/contribution">
+            <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer h-full">
+              <TrendingUp className="w-10 h-10 text-indigo-600 mb-3" />
+              <h3 className="font-bold text-lg">Stock Contribution</h3>
+              <p className="text-sm text-gray-600 mt-1">Each item's share of total sales value</p>
+              <div className="mt-4 flex items-center text-indigo-600 text-sm font-medium">
+                Go to enquiry <ArrowRight className="w-4 h-4 ml-1" />
+              </div>
+            </Card>
+          </Link>
+
+          <Link href="/dashboard/admin/stock-control/enquiries/sales-by-department">
+            <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer h-full">
+              <Package className="w-10 h-10 text-teal-600 mb-3" />
+              <h3 className="font-bold text-lg">Sales Departments</h3>
+              <p className="text-sm text-gray-600 mt-1">Sales value and quantity by department</p>
+              <div className="mt-4 flex items-center text-teal-600 text-sm font-medium">
+                Go to enquiry <ArrowRight className="w-4 h-4 ml-1" />
+              </div>
+            </Card>
+          </Link>
+
+          <Link href="/dashboard/admin/stock-control/enquiries/hourly-analysis">
+            <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer h-full">
+              <History className="w-10 h-10 text-cyan-600 mb-3" />
+              <h3 className="font-bold text-lg">Hourly Analysis</h3>
+              <p className="text-sm text-gray-600 mt-1">Sales activity by hour of day</p>
+              <div className="mt-4 flex items-center text-cyan-600 text-sm font-medium">
+                Go to enquiry <ArrowRight className="w-4 h-4 ml-1" />
+              </div>
+            </Card>
+          </Link>
+
+          <Link href="/dashboard/admin/stock-control/enquiries/purchase-history">
+            <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer h-full">
+              <Package className="w-10 h-10 text-emerald-600 mb-3" />
+              <h3 className="font-bold text-lg">Purchase History</h3>
+              <p className="text-sm text-gray-600 mt-1">Incoming stock transactions by supplier/item</p>
+              <div className="mt-4 flex items-center text-emerald-600 text-sm font-medium">
+                Go to enquiry <ArrowRight className="w-4 h-4 ml-1" />
+              </div>
+            </Card>
+          </Link>
+
+          <Link href="/dashboard/admin/stock-control/enquiries/top-sellers">
+            <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer h-full">
+              <TrendingUp className="w-10 h-10 text-rose-600 mb-3" />
+              <h3 className="font-bold text-lg">Top Sellers</h3>
+              <p className="text-sm text-gray-600 mt-1">Best-selling items by quantity</p>
+              <div className="mt-4 flex items-center text-rose-600 text-sm font-medium">
+                Go to enquiry <ArrowRight className="w-4 h-4 ml-1" />
+              </div>
+            </Card>
+          </Link>
         </div>
       </div>
 

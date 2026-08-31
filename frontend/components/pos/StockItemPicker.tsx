@@ -33,27 +33,34 @@ export function StockItemPicker({
   return (
     <SearchCombobox<StockItem>
       queryKeyPrefix="stock-item-lookup"
-      searchFn={(query) => stockControlApi.stockItems.lookup(query)}
+      searchFn={(query, offset) => stockControlApi.stockItems.lookup(query, 20, offset)}
       getId={(item) => item.stock_code}
       getLabel={(item) => item.stock_code}
-      renderOption={(item) => (
-        <div className="flex items-center justify-between">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <Package className="h-4 w-4 text-gray-400 flex-shrink-0" />
-              <span className="font-medium text-gray-900">{item.stock_code}</span>
-              {item.barcode && <span className="text-xs text-gray-400">({item.barcode})</span>}
+      renderOption={(item) => {
+        const qty = Number(item.available_quantity ?? item.quantity_on_hand ?? 0);
+        const outOfStock = qty <= 0 && !item.allow_negative_quantities;
+        return (
+          <div className="flex items-center justify-between">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <Package className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                <span className="font-medium text-gray-900">{item.stock_code}</span>
+                {item.barcode && <span className="text-xs text-gray-400">({item.barcode})</span>}
+              </div>
+              <p className="text-sm text-gray-500 truncate ml-6">{item.description}</p>
             </div>
-            <p className="text-sm text-gray-500 truncate ml-6">{item.description}</p>
-          </div>
-          <div className="text-right ml-4 flex-shrink-0">
-            <div className="font-medium text-green-600">R{Number(item.selling_price_1 || 0).toFixed(2)}</div>
-            <div className="text-xs text-gray-400">
-              Cost: R{Number(item.average_cost || item.cost_price || 0).toFixed(2)}
+            <div className="text-right ml-4 flex-shrink-0">
+              <div className="font-medium text-green-600">R{Number(item.selling_price_1 || 0).toFixed(2)}</div>
+              <div className="text-xs text-gray-400">
+                Cost: R{Number(item.average_cost || item.cost_price || 0).toFixed(2)}
+              </div>
+              <div className={`text-xs font-medium ${outOfStock ? 'text-red-600' : 'text-gray-500'}`}>
+                {qty} on hand{outOfStock ? ' — out of stock' : ''}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      }}
       onSelect={(item) =>
         onSelect({
           stock_code: item.stock_code,

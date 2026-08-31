@@ -580,6 +580,197 @@ class CashBookReportService:
         }
 
     @staticmethod
+    def get_category_tax_analysis(start_date: date, end_date: date) -> Dict:
+        """
+        Category & Tax Analysis enquiry: per-category income/expense totals
+        for a date range, each split into value-excl-VAT and VAT — the
+        breakdown a bookkeeper needs to check category totals against the
+        VAT return for the same period.
+        """
+        if isinstance(start_date, str):
+            start_date = date.fromisoformat(start_date)
+        if isinstance(end_date, str):
+            end_date = date.fromisoformat(end_date)
+
+        transactions = CashBookTransaction.objects.filter(
+            transaction_date__range=[start_date, end_date]
+        )
+
+        income_rows = (
+            transactions.filter(audit_type__in=[1, 2], other_income__isnull=False)
+            .values(
+                "other_income__income_category_id",
+                "other_income__income_category__name",
+                "other_income__income_category__code",
+            )
+            .annotate(
+                value_excl_vat=models.Sum("value_excl_vat"),
+                tax_amount=models.Sum("tax_amount"),
+                total_incl_vat=models.Sum("total_incl_vat"),
+                transaction_count=models.Count("id"),
+            )
+            .order_by("other_income__income_category__code")
+        )
+
+        expense_rows = (
+            transactions.filter(audit_type__in=[3, 4], other_expense__isnull=False)
+            .values(
+                "other_expense__expense_category_id",
+                "other_expense__expense_category__name",
+                "other_expense__expense_category__code",
+            )
+            .annotate(
+                value_excl_vat=models.Sum("value_excl_vat"),
+                tax_amount=models.Sum("tax_amount"),
+                total_incl_vat=models.Sum("total_incl_vat"),
+                transaction_count=models.Count("id"),
+            )
+            .order_by("other_expense__expense_category__code")
+        )
+
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "income": [
+                {
+                    "category_id": row["other_income__income_category_id"],
+                    "category_name": row["other_income__income_category__name"],
+                    "category_code": row["other_income__income_category__code"],
+                    "value_excl_vat": row["value_excl_vat"] or Decimal("0"),
+                    "tax_amount": row["tax_amount"] or Decimal("0"),
+                    "total_incl_vat": row["total_incl_vat"] or Decimal("0"),
+                    "transaction_count": row["transaction_count"],
+                }
+                for row in income_rows
+            ],
+            "expense": [
+                {
+                    "category_id": row["other_expense__expense_category_id"],
+                    "category_name": row["other_expense__expense_category__name"],
+                    "category_code": row["other_expense__expense_category__code"],
+                    "value_excl_vat": row["value_excl_vat"] or Decimal("0"),
+                    "tax_amount": row["tax_amount"] or Decimal("0"),
+                    "total_incl_vat": row["total_incl_vat"] or Decimal("0"),
+                    "transaction_count": row["transaction_count"],
+                }
+                for row in expense_rows
+            ],
+        }
+
+    @staticmethod
+    def get_control_summary(start_date: date, end_date: date) -> Dict:
+        """
+        Control Summary enquiry: the reconciling totals a bookkeeper checks
+        the cash book against at period end — receipts/payments by audit
+        type, VAT totals, unreconciled item counts, and unpresented cheques.
+        """
+        if isinstance(start_date, str):
+            start_date = date.fromisoformat(start_date)
+        if isinstance(end_date, str):
+            end_date = date.fromisoformat(end_date)
+
+        transactions = CashBookTransaction.objects.filter(
+            transaction_date__range=[start_date, end_date]
+        )
+
+        by_audit_type = (
+            transactions.values("audit_type")
+            .annotate(
+                value_excl_vat=models.Sum("value_excl_vat"),
+                tax_amount=models.Sum("tax_amount"),
+                total_incl_vat=models.Sum("total_incl_vat"),
+                transaction_count=models.Count("id"),
+            )
+            .order_by("audit_type")
+        )
+        audit_type_names = {
+            1: "Accounts Receivable Receipts",
+            2: "Sundry Income",
+            3: "Accounts Payable Payments",
+            4: "Expenses",
+        }
+
+        unreconciled_count = transactions.filter(
+            account_type="BANK", is_reconciled=False
+        ).count()
+        unpresented = UnpresentedCheque.get_unpresented_summary(end_date)
+
+        totals = transactions.aggregate(
+            total_value_excl_vat=models.Sum("value_excl_vat"),
+            total_tax=models.Sum("tax_amount"),
+            total_incl_vat=models.Sum("total_incl_vat"),
+        )
+
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "by_audit_type": [
+                {
+                    "audit_type": row["audit_type"],
+                    "audit_type_name": audit_type_names.get(row["audit_type"], "Unknown"),
+                    "value_excl_vat": row["value_excl_vat"] or Decimal("0"),
+                    "tax_amount": row["tax_amount"] or Decimal("0"),
+                    "total_incl_vat": row["total_incl_vat"] or Decimal("0"),
+                    "transaction_count": row["transaction_count"],
+                }
+                for row in by_audit_type
+            ],
+            "total_value_excl_vat": totals["total_value_excl_vat"] or Decimal("0"),
+            "total_tax": totals["total_tax"] or Decimal("0"),
+            "total_incl_vat": totals["total_incl_vat"] or Decimal("0"),
+            "transaction_count": transactions.count(),
+            "unreconciled_bank_transaction_count": unreconciled_count,
+            "unpresented_cheques": unpresented,
+        }
+
+    @staticmethod
+    def get_monthly_category_series(year: int) -> List[Dict]:
+        """
+        Monthly Category Analysis enquiry: real per-month income/expense
+        totals for a year, computed directly from posted transactions
+        (replaces the frontend's former Math.random() placeholder).
+        """
+        from django.db.models.functions import ExtractMonth
+
+        transactions = CashBookTransaction.objects.filter(transaction_date__year=year)
+
+        income_by_month = {
+            row["month"]: row["total"] or Decimal("0")
+            for row in transactions.filter(audit_type__in=[1, 2])
+            .annotate(month=ExtractMonth("transaction_date"))
+            .values("month")
+            .annotate(total=models.Sum("value_excl_vat"))
+        }
+        expense_by_month = {
+            row["month"]: row["total"] or Decimal("0")
+            for row in transactions.filter(audit_type__in=[3, 4])
+            .annotate(month=ExtractMonth("transaction_date"))
+            .values("month")
+            .annotate(total=models.Sum("value_excl_vat"))
+        }
+        count_by_month = {
+            row["month"]: row["count"]
+            for row in transactions.annotate(
+                month=ExtractMonth("transaction_date")
+            )
+            .values("month")
+            .annotate(count=models.Count("id"))
+        }
+
+        return [
+            {
+                "month": m,
+                "year": year,
+                "total_income": income_by_month.get(m, Decimal("0")),
+                "total_expense": expense_by_month.get(m, Decimal("0")),
+                "net_position": income_by_month.get(m, Decimal("0"))
+                - expense_by_month.get(m, Decimal("0")),
+                "transaction_count": count_by_month.get(m, 0),
+            }
+            for m in range(1, 13)
+        ]
+
+    @staticmethod
     def get_category_breakdown(month: int = None) -> Dict:
         """
         Get expense and income by category
