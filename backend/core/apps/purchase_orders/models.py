@@ -89,6 +89,9 @@ class PurchaseOrder(models.Model):
 
     # Notes
     notes = models.TextField(blank=True)
+    cancellation_reason = models.TextField(
+        blank=True, help_text="Reason given when the order was cancelled"
+    )
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
@@ -140,13 +143,15 @@ class PurchaseOrder(models.Model):
 
         self.save()
 
-    def cancel(self):
+    def cancel(self, reason=""):
         """Cancel the purchase order"""
         if self.status == "F":
             raise ValueError("Cannot cancel a fully received order")
 
         self.status = "C"
         self.cancelled_at = timezone.now()
+        if reason:
+            self.cancellation_reason = reason
         self.save()
 
         # Update stock on order quantities
@@ -207,6 +212,15 @@ class PurchaseOrderLine(models.Model):
     # Comments
     comments = models.CharField(max_length=30, blank=True)
 
+    # Expense category for landed-cost allocation (freight, duty, etc.)
+    expense_category = models.ForeignKey(
+        "settings.ExpenseCategory",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="purchase_order_lines",
+    )
+
     # Line totals (ordered)
     total_exclusive = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total_vat = models.DecimalField(max_digits=12, decimal_places=2, default=0)
@@ -257,9 +271,14 @@ class PurchaseOrderLine(models.Model):
         net_price -= self.monetary_discount1
         net_price -= self.monetary_discount2
         net_price -= self.monetary_discount3
-        net_price = net_price * (1 - (self.percent_discount1 / 100))
-        net_price = net_price * (1 - (self.percent_discount2 / 100))
-        net_price = net_price * (1 - (self.percent_discount3 / 100))
+        # Divide by Decimal("100"), not a plain int: percent_discount1/2/3
+        # hold Django's raw int field default (0) until the row round-trips
+        # through the DB, and int / int in Python 3 produces a float — which
+        # would then poison net_price (Decimal * float raises TypeError) on
+        # every freshly-created line that hasn't set an explicit discount.
+        net_price = net_price * (1 - (self.percent_discount1 / Decimal("100")))
+        net_price = net_price * (1 - (self.percent_discount2 / Decimal("100")))
+        net_price = net_price * (1 - (self.percent_discount3 / Decimal("100")))
 
         # Ordered totals
         self.total_exclusive = self.quantity * net_price

@@ -10,8 +10,8 @@ import {
   Building2,
   AlertTriangle,
 } from 'lucide-react';
-import { PurchaseOrder, PurchaseOrderLineItem, PurchaseOrderStatus, OrderLayoutOption } from '@/lib/types/purchaseOrders';
 import { purchaseOrdersApi } from '@/lib/purchaseOrdersApi';
+import { settingsApi, type ExpenseCategory } from '@/lib/settingsApi';
 import { getApiErrorMessage } from '@/lib/api';
 import { CreditorPicker } from '@/components/creditors';
 import { StockItemPicker } from '@/components/pos';
@@ -23,11 +23,38 @@ interface PurchaseOrderWizardProps {
 
 type WizardStep = 'supplier' | 'parameters' | 'line-items' | 'review';
 
-interface FormData extends Partial<Omit<PurchaseOrder, 'status' | 'layout_option'>> {
+// Extraction layout, applies only when extract_stock_items is set — a
+// wizard-only concept, not a persisted PurchaseOrder field.
+type OrderLayoutOption = 'MONTH_TO_DATE_SALES' | 'REORDER_QUANTITY' | 'QUANTITY_TO_ORDER';
+
+interface FormData {
   order_type: 'COST' | 'RETAIL';
   extract_stock_items: boolean;
   layout_option: OrderLayoutOption;
-  status: PurchaseOrderStatus;
+  order_date: string;
+  delivery_date: string;
+  supplier_id: number;
+  supplier_name?: string;
+  supplier_code?: string;
+  reference?: string;
+}
+
+// Working line-item shape used while building the order in this wizard —
+// mapped onto the real PurchaseOrderCreateLineSerializer payload on submit.
+export interface WizardLineItem {
+  line_number: number;
+  stock_code: string;
+  stock_description?: string;
+  quantity: number;
+  current_cost: number;
+  tax_code: string;
+  tax_rate: number;
+  total_cost: number;
+  total_vat: number;
+  comments: string;
+  expense_category?: number | null;
+  quantity_on_hand?: number;
+  sales_mtd_quantity?: number;
 }
 
 export function PurchaseOrderWizard({ onComplete, onCancel }: PurchaseOrderWizardProps) {
@@ -35,16 +62,12 @@ export function PurchaseOrderWizard({ onComplete, onCancel }: PurchaseOrderWizar
   const [formData, setFormData] = useState<FormData>({
     order_type: 'COST',
     extract_stock_items: false,
-    layout_option: 'MONTH_TO_DATE_SALES' as OrderLayoutOption,
-    status: 'DRAFT' as PurchaseOrderStatus,
+    layout_option: 'MONTH_TO_DATE_SALES',
     order_date: new Date().toISOString().split('T')[0],
     delivery_date: '',
     supplier_id: 0,
-    total_amount: 0,
-    total_vat: 0,
-    total_landed_cost: 0,
   });
-  const [lineItems, setLineItems] = useState<PurchaseOrderLineItem[]>([]);
+  const [lineItems, setLineItems] = useState<WizardLineItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -106,6 +129,8 @@ export function PurchaseOrderWizard({ onComplete, onCancel }: PurchaseOrderWizar
               quantity_ordered: item.quantity,
               unit_cost: item.current_cost,
               tax_code: item.tax_code === 'Z' ? 2 : 1,
+              comments: item.comments || '',
+              expense_category: item.expense_category ?? undefined,
             })),
       };
 
@@ -400,10 +425,11 @@ function LineItemsStep({
   setLineItems,
   extractStockItems,
 }: {
-  lineItems: PurchaseOrderLineItem[];
-  setLineItems: (items: PurchaseOrderLineItem[]) => void;
+  lineItems: WizardLineItem[];
+  setLineItems: (items: WizardLineItem[]) => void;
   extractStockItems: boolean;
 }) {
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([]);
   const [newItem, setNewItem] = useState({
     stock_code: '',
     stock_description: '',
@@ -411,13 +437,36 @@ function LineItemsStep({
     current_cost: 0,
     tax_code: 'T',
     tax_rate: 15,
-    last_cost: 0,
-    landed_cost: 0,
     total_cost: 0,
     total_vat: 0,
-    is_ordered: false,
     comments: '',
+    expense_category: undefined as number | undefined,
+    quantity_on_hand: undefined as number | undefined,
+    sales_mtd_quantity: undefined as number | undefined,
   });
+
+  React.useEffect(() => {
+    settingsApi.expenseCategories
+      .list({ category_type: 'CREDITORS' })
+      .then((data: any) => setExpenseCategories(data.results || data))
+      .catch(() => setExpenseCategories([]));
+  }, []);
+
+  const resetNewItem = () =>
+    setNewItem({
+      stock_code: '',
+      stock_description: '',
+      quantity: 1,
+      current_cost: 0,
+      tax_code: 'T',
+      tax_rate: 15,
+      total_cost: 0,
+      total_vat: 0,
+      comments: '',
+      expense_category: undefined,
+      quantity_on_hand: undefined,
+      sales_mtd_quantity: undefined,
+    });
 
   const handleAddItem = () => {
     if (!newItem.stock_code) return;
@@ -430,22 +479,9 @@ function LineItemsStep({
         line_number: lineItems.length + 1,
         total_cost: total,
         total_vat: vat,
-      } as any,
+      },
     ]);
-    setNewItem({
-      stock_code: '',
-      stock_description: '',
-      quantity: 1,
-      current_cost: 0,
-      tax_code: 'T',
-      tax_rate: 15,
-      last_cost: 0,
-      landed_cost: 0,
-      total_cost: 0,
-      total_vat: 0,
-      is_ordered: false,
-      comments: '',
-    });
+    resetNewItem();
   };
 
   return (
@@ -453,61 +489,107 @@ function LineItemsStep({
       <h3 className="text-lg font-semibold text-gray-900">Line Items</h3>
 
       {!extractStockItems && (
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3 p-4 bg-gray-50 rounded-lg">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Stock Code *</label>
-            <StockItemPicker
-              onSelect={(item) =>
-                setNewItem((prev) => ({
-                  ...prev,
-                  stock_code: item.stock_code,
-                  stock_description: item.description,
-                  current_cost: item.cost_price,
-                }))
-              }
-              placeholder={newItem.stock_code || 'Search stock...'}
-            />
+        <div className="p-4 bg-gray-50 rounded-lg space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Stock Code *</label>
+              <StockItemPicker
+                onSelect={(item) =>
+                  setNewItem((prev) => ({
+                    ...prev,
+                    stock_code: item.stock_code,
+                    stock_description: item.description,
+                    current_cost: item.cost_price,
+                    quantity_on_hand: item.quantity_on_hand,
+                    sales_mtd_quantity: item.sales_mtd_quantity,
+                  }))
+                }
+                placeholder={newItem.stock_code || 'Search stock...'}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Quantity</label>
+              <input
+                type="number"
+                value={newItem.quantity}
+                onChange={(e) => setNewItem({ ...newItem, quantity: parseInt(e.target.value) || 1 })}
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                min="1"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Cost</label>
+              <input
+                type="number"
+                value={newItem.current_cost}
+                onChange={(e) => setNewItem({ ...newItem, current_cost: parseFloat(e.target.value) || 0 })}
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                step="0.01"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Tax</label>
+              <select
+                value={newItem.tax_code}
+                onChange={(e) => setNewItem({ ...newItem, tax_code: e.target.value })}
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+              >
+                <option value="T">Standard (15%)</option>
+                <option value="Z">Zero (0%)</option>
+                <option value="E">Exempt</option>
+              </select>
+            </div>
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={handleAddItem}
+                className="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-medium"
+              >
+                Add Item
+              </button>
+            </div>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Quantity</label>
-            <input
-              type="number"
-              value={newItem.quantity}
-              onChange={(e) => setNewItem({ ...newItem, quantity: parseInt(e.target.value) || 1 })}
-              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-              min="1"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Cost</label>
-            <input
-              type="number"
-              value={newItem.current_cost}
-              onChange={(e) => setNewItem({ ...newItem, current_cost: parseFloat(e.target.value) || 0 })}
-              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-              step="0.01"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Tax</label>
-            <select
-              value={newItem.tax_code}
-              onChange={(e) => setNewItem({ ...newItem, tax_code: e.target.value })}
-              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-            >
-              <option value="T">Standard (15%)</option>
-              <option value="Z">Zero (0%)</option>
-              <option value="E">Exempt</option>
-            </select>
-          </div>
-          <div className="flex items-end">
-            <button
-              type="button"
-              onClick={handleAddItem}
-              className="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-medium"
-            >
-              Add Item
-            </button>
+
+          {newItem.stock_code && (newItem.quantity_on_hand !== undefined || newItem.sales_mtd_quantity !== undefined) && (
+            <p className="text-xs text-gray-500">
+              On hand: <span className="font-medium text-gray-700">{newItem.quantity_on_hand ?? 0}</span>
+              {'  ·  '}
+              Sold month-to-date: <span className="font-medium text-gray-700">{newItem.sales_mtd_quantity ?? 0}</span>
+            </p>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Comments</label>
+              <input
+                type="text"
+                value={newItem.comments}
+                onChange={(e) => setNewItem({ ...newItem, comments: e.target.value })}
+                maxLength={30}
+                placeholder="Optional line comment"
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Expense Category</label>
+              <select
+                value={newItem.expense_category ?? ''}
+                onChange={(e) =>
+                  setNewItem({
+                    ...newItem,
+                    expense_category: e.target.value ? parseInt(e.target.value) : undefined,
+                  })
+                }
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+              >
+                <option value="">None (landed cost not allocated)</option>
+                {expenseCategories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       )}
@@ -522,6 +604,7 @@ function LineItemsStep({
                 <th className="text-right px-3 py-2 text-xs font-medium text-gray-600">Qty</th>
                 <th className="text-right px-3 py-2 text-xs font-medium text-gray-600">Cost</th>
                 <th className="text-right px-3 py-2 text-xs font-medium text-gray-600">Total</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-gray-600">Comments</th>
                 <th className="text-center px-3 py-2 text-xs font-medium text-gray-600">Actions</th>
               </tr>
             </thead>
@@ -533,6 +616,7 @@ function LineItemsStep({
                   <td className="px-3 py-2 text-right">{item.quantity}</td>
                   <td className="px-3 py-2 text-right">R {item.current_cost.toFixed(2)}</td>
                   <td className="px-3 py-2 text-right font-medium">R {item.total_cost.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-gray-500">{item.comments}</td>
                   <td className="px-3 py-2 text-center">
                     <button
                       type="button"
@@ -565,7 +649,7 @@ function ReviewStep({
   lineItems,
 }: {
   formData: FormData;
-  lineItems: PurchaseOrderLineItem[];
+  lineItems: WizardLineItem[];
 }) {
   const subtotal = lineItems.reduce((sum, item) => sum + item.total_cost, 0);
   const vat = subtotal * 0.15;

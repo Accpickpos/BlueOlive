@@ -24,3 +24,19 @@ class IsPurchaseOrderStockMover(permissions.BasePermission):
                 name__in=["Cashier", "Accountant", "Admin"]
             ).exists()
         )
+
+
+class IsPurchaseOrderAdmin(permissions.BasePermission):
+    """
+    Required for utilities that bulk-recompute data across every stock item
+    (e.g. resyncing on-order quantities) rather than acting on a single order —
+    gated to Admin only, one tier above IsPurchaseOrderStockMover.
+    """
+
+    def has_permission(self, request, view):
+        if not (request.user and request.user.is_authenticated):
+            return False
+        return (
+            hasattr(request.user, "groups")
+            and request.user.groups.filter(name="Admin").exists()
+        )

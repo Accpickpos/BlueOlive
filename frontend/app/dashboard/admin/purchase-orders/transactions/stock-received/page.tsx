@@ -1,16 +1,20 @@
 'use client';
 
-import React, { Suspense } from 'react';
+import React, { Suspense, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { GoodsReceivedForm } from '@/components/purchase-orders/transactions/GoodsReceivedForm';
+import { OrderPicker } from '@/components/purchase-orders/common/OrderPicker';
+import type { PurchaseOrder } from '@/lib/types/purchaseOrders';
 import { useRouter } from 'next/navigation';
 
 function StockReceivedContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const orderId = searchParams.get('order');
+  const orderParam = searchParams.get('order');
+  const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
+  const orderId = orderParam ? parseInt(orderParam) : selectedOrder?.order_number;
 
   const handleComplete = () => {
     router.push('/dashboard/admin/purchase-orders');
@@ -34,17 +38,21 @@ function StockReceivedContent() {
           Goods Received Note (GRN)
         </h1>
         <p className="text-sm text-gray-500">
-          Record receipt of items from purchase order
+          {orderId ? 'Record receipt of items from purchase order' : 'Select an outstanding order to receive stock against'}
         </p>
       </div>
 
       <div className="p-6">
         <div className="max-w-6xl mx-auto">
-          <GoodsReceivedForm
-            orderId={orderId ? parseInt(orderId) : undefined}
-            onComplete={handleComplete}
-            onCancel={handleCancel}
-          />
+          {!orderId ? (
+            <OrderPicker onSelect={setSelectedOrder} />
+          ) : (
+            <GoodsReceivedForm
+              orderId={orderId}
+              onComplete={handleComplete}
+              onCancel={orderParam ? handleCancel : () => setSelectedOrder(null)}
+            />
+          )}
         </div>
       </div>
     </div>

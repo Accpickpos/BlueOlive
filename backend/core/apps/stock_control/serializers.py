@@ -300,6 +300,7 @@ class StockItemListSerializer(serializers.ModelSerializer):
             "available_quantity",
             "allow_negative_quantities",
             "reorder_quantity",
+            "sales_mtd_quantity",
             "is_active",
             "tax_code",
             "barcode",

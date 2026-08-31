@@ -1,111 +1,154 @@
 /**
  * Purchase Orders Type Definitions
+ *
+ * Mirrors backend/core/apps/purchase_orders/serializers.py — PurchaseOrder's
+ * primary key is order_number (an AutoField), status is the real 4-state
+ * O/P/F/C model (not a fictional multi-stage workflow), and money fields use
+ * the real total_/outstanding_ value naming.
  */
 
 // ============ CORE PURCHASE ORDER TYPES ============
+export type PurchaseOrderStatus = 'O' | 'P' | 'F' | 'C';
+
+export const PURCHASE_ORDER_STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
+  O: 'Outstanding',
+  P: 'Partially Received',
+  F: 'Fully Received',
+  C: 'Cancelled',
+};
+
+export type PricingMethod = 'COST' | 'RETAIL';
+
 export interface PurchaseOrder {
-  id?: number;
-  order_number: string;
-  supplier_id: number;
+  order_number: number;
+  supplier: number;
   supplier_name?: string;
-  supplier_code?: string;
+  supplier_account?: string;
   order_date: string;
+  order_time?: string | null;
   delivery_date: string;
   status: PurchaseOrderStatus;
-  order_type: 'COST' | 'RETAIL';
-  extract_stock_items: boolean;
-  layout_option: OrderLayoutOption;
-  total_amount: number;
-  total_vat: number;
-  total_landed_cost: number;
-  reference?: string;
+  status_display?: string;
+  pricing_method: PricingMethod;
+  pricing_method_display?: string;
+
+  quantity_ordered: number;
+  total_quantity_received: number;
+  total_quantity_outstanding: number;
+
+  total_value_exclusive: number;
+  total_value_vat: number;
+  total_value_inclusive: number;
+
+  outstanding_value_exclusive: number;
+  outstanding_value_vat: number;
+  outstanding_value_inclusive: number;
+
+  is_back_order: boolean;
+  parent_order?: number | null;
+
   notes?: string;
-  created_by?: number;
+  cancellation_reason?: string;
+
   created_at?: string;
   updated_at?: string;
+  cancelled_at?: string | null;
+
+  is_overdue?: boolean;
+  days_until_delivery?: number;
+  completion_percentage?: number;
+
   line_items?: PurchaseOrderLineItem[];
-  expenses?: POExpense[];
 }
-
-export type PurchaseOrderStatus =
-  | 'DRAFT'
-  | 'PENDING_APPROVAL'
-  | 'APPROVED'
-  | 'ISSUED'
-  | 'PARTIALLY_RECEIVED'
-  | 'RECEIVED'
-  | 'CLOSED'
-  | 'CANCELLED';
-
-export type OrderLayoutOption =
-  | 'MONTH_TO_DATE_SALES'
-  | 'REORDER_QUANTITY'
-  | 'QUANTITY_TO_ORDER';
 
 // ============ LINE ITEMS ============
 export interface PurchaseOrderLineItem {
   id?: number;
-  po_id?: number;
-  line_number?: number;
+  purchase_order?: number;
+  line_number: number;
   stock_code: string;
   stock_description?: string;
+  supplier_code?: string;
+
   quantity: number;
-  quantity_on_hand?: number;
-  quantity_sold?: number;
-  last_cost: number;
-  current_cost: number;
-  tax_code: string;
-  tax_rate: number;
-  landed_cost: number;
-  total_cost: number;
-  total_vat: number;
-  is_ordered: boolean;
+  quantity_delivered?: number;
+  free_quantity?: number;
+  quantity_outstanding?: number;
+
+  base_price: number;
+  monetary_discount1?: number;
+  monetary_discount2?: number;
+  monetary_discount3?: number;
+  percent_discount1?: number;
+  percent_discount2?: number;
+  percent_discount3?: number;
+
+  selling_price1?: number;
+  selling_price2?: number;
+  selling_price3?: number;
+
   comments?: string;
+  expense_category?: number | null;
+  expense_category_name?: string;
+
+  total_exclusive?: number;
+  total_vat?: number;
+  total_inclusive?: number;
+  outstanding_exclusive?: number;
+  outstanding_vat?: number;
+  outstanding_inclusive?: number;
+
+  quantity_on_hand?: number;
+  current_cost?: number;
+  quantity_on_hand_at_order?: number;
+  monthly_sales_at_order?: number;
+
+  tax_code: number;
+  is_fully_received?: boolean;
 }
 
-// ============ EXPENSES (Landed Costs) ============
-export interface POExpense {
+// ============ GOODS RECEIVED (PurchaseOrderReceipt) ============
+export interface PurchaseOrderReceipt {
   id?: number;
-  po_id?: number;
-  expense_category: string;
-  description: string;
-  amount: number;
-  is_vat_inclusive: boolean;
-  vat_amount: number;
-}
-
-// ============ GOODS RECEIVED NOTES ============
-export interface GoodsReceivedNote {
-  id?: number;
-  po_id: number;
-  order_number?: string;
+  purchase_order: number;
+  supplier_name?: string;
   receipt_date: string;
-  invoice_date: string;
   invoice_number: string;
-  additional_reference?: string;
-  status: 'DRAFT' | 'POSTED' | 'CANCELLED';
-  total_amount: number;
-  total_vat: number;
-  created_by?: number;
+  creditor_grn?: number | null;
+
+  total_quantity?: number;
+  total_value_exclusive?: number;
+  total_value_vat?: number;
+  total_value_inclusive?: number;
+
+  has_variance?: boolean;
+  variance_notes?: string;
   created_at?: string;
-  line_items?: GRNAccountingLineItem[];
+
+  line_items?: PurchaseOrderReceiptLine[];
 }
 
-export interface GRNAccountingLineItem {
+export interface PurchaseOrderReceiptLine {
   id?: number;
-  grn_id?: number;
-  stock_code: string;
+  receipt?: number;
+  purchase_order_line: number;
+  stock_code?: string;
   stock_description?: string;
-  quantity_ordered: number;
+  ordered_cost?: number;
+
   quantity_received: number;
-  quantity_outstanding: number;
-  unit_cost: number;
-  total_cost: number;
-  variance?: number;
-  is_corrected: boolean;
+  actual_unit_cost: number;
+
+  line_exclusive?: number;
+  line_vat?: number;
+  line_inclusive?: number;
+
+  has_cost_variance?: boolean;
+  cost_variance_amount?: number;
+  created_at?: string;
 }
 
-// ============ ENQUIRY TYPES ============
+// ============ ENQUIRY / REPORT TYPES ============
 export interface OutstandingByDeliveryFilter {
   date_from: string;
   date_to: string;
@@ -113,51 +156,87 @@ export interface OutstandingByDeliveryFilter {
 
 export interface OutstandingByStockFilter {
   stock_code?: string;
-  include_received?: boolean;
+  supplier?: number;
 }
 
-export interface OutstandingOrder {
-  order_number: string;
-  order_date: string;
+export interface StockOnOrderItem {
+  stock_code: string;
+  description: string;
+  quantity_on_hand: number;
+  quantity_on_order: number;
+  reorder_quantity: number;
+  orders: Array<{
+    order_number: number;
+    supplier: string;
+    quantity: number;
+    delivery_date: string;
+  }>;
+}
+
+export interface PreOrderReportItem {
+  stock_code: string;
+  description: string;
   supplier_name: string;
-  delivery_date: string;
-  exclusive_value_due: number;
-  status: PurchaseOrderStatus;
+  quantity_on_hand: number;
+  reorder_quantity: number;
+  monthly_sales_avg: number;
+  suggested_order_qty: number;
+  last_cost: number;
+  estimated_value: number;
 }
 
-// ============ REPORT TYPES ============
-export interface POReportFilters {
-  date_from?: string;
-  date_to?: string;
-  supplier_id?: number;
-  stock_code?: string;
-  include_costs?: boolean;
-  status?: PurchaseOrderStatus;
+export interface DeliveryVarianceItem {
+  order_number: number;
+  supplier_name: string;
+  stock_code: string;
+  description: string;
+  quantity_ordered: number;
+  quantity_received: number;
+  quantity_short: number;
+  ordered_cost: number;
+  actual_cost: number;
+  cost_variance: number;
+  value_variance: number;
 }
-
-export type ReportType =
-  | 'OUTSTANDING_DELIVERY_DATE'
-  | 'OUTSTANDING_STOCK_ITEMS'
-  | 'OUTSTANDING_SUPPLIER'
-  | 'REPRINT_ORDER'
-  | 'BACK_ORDERS'
-  | 'PRE_ORDERS'
-  | 'DELIVERED_ORDERS';
 
 // ============ BACK ORDERS ============
 export interface BackOrder {
   id?: number;
-  po_id: number;
-  original_order_number: string;
-  stock_code: string;
-  supplier_id: number;
+  original_order: number;
+  original_order_number?: number;
+  back_order: number;
+  back_order_number?: number;
   supplier_name?: string;
-  quantity_ordered: number;
-  quantity_received: number;
-  quantity_outstanding: number;
-  status: 'PENDING' | 'PARTIAL' | 'COMPLETE';
-  expected_date?: string;
+  created_date?: string;
+  reason?: string;
+  triggering_receipt?: number | null;
   created_at?: string;
+}
+
+// ============ TEMPLATES ============
+export interface PurchaseOrderTemplate {
+  id?: number;
+  template_name: string;
+  supplier: number;
+  supplier_name?: string;
+  description?: string;
+  default_delivery_days?: number;
+  pricing_method?: PricingMethod;
+  is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
+  line_items?: PurchaseOrderTemplateLine[];
+}
+
+export interface PurchaseOrderTemplateLine {
+  id?: number;
+  template?: number;
+  line_number: number;
+  stock_item: number;
+  stock_code?: string;
+  stock_description?: string;
+  current_cost?: number;
+  default_quantity: number;
 }
 
 // ============ PAGINATION ============
@@ -168,21 +247,12 @@ export interface PaginatedPOResponse<T> {
   results: T[];
 }
 
-export interface POSummary {
-  total_orders: number;
-  pending_orders: number;
-  received_orders: number;
-  total_value_pending: number;
-  total_value_received: number;
-  overdue_orders: number;
-}
-
 // ============ FORM FILTERS ============
 export interface PurchaseOrderFilters {
   status?: PurchaseOrderStatus;
-  supplier_id?: number;
-  date_from?: string;
-  date_to?: string;
+  supplier?: number;
+  order_date?: string;
+  delivery_date?: string;
   search?: string;
   page?: number;
   page_size?: number;

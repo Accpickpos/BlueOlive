@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { Truck, Check, AlertTriangle, FileText } from 'lucide-react';
-import { GoodsReceivedNote, GRNAccountingLineItem } from '@/lib/types/purchaseOrders';
 import { purchaseOrdersApi } from '@/lib/purchaseOrdersApi';
 import { getApiErrorMessage } from '@/lib/api';
 
@@ -20,6 +19,8 @@ export function GoodsReceivedForm({ orderId, onComplete, onCancel }: GoodsReceiv
     invoice_number: '',
     additional_reference: '',
   });
+  const [updateSupplierAccount, setUpdateSupplierAccount] = useState(true);
+  const [createBackOrder, setCreateBackOrder] = useState(false);
   const [lineItems, setLineItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -93,6 +94,8 @@ export function GoodsReceivedForm({ orderId, onComplete, onCancel }: GoodsReceiv
           quantity_received: item.quantity_received,
           actual_unit_cost: item.current_cost,
         })),
+        update_supplier_account: updateSupplierAccount,
+        create_back_order: createBackOrder,
       });
       onComplete();
     } catch (err: any) {
@@ -257,6 +260,28 @@ export function GoodsReceivedForm({ orderId, onComplete, onCancel }: GoodsReceiv
               <span className="font-bold text-lg">R {(subtotal * 1.14).toFixed(2)}</span>
             </div>
           </div>
+        </div>
+
+        {/* Posting options */}
+        <div className="mt-6 flex flex-col sm:flex-row gap-4 sm:gap-8">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={updateSupplierAccount}
+              onChange={(e) => setUpdateSupplierAccount(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+            />
+            <span className="text-sm font-medium text-gray-700">Update supplier account (post GRN to Creditors)</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={createBackOrder}
+              onChange={(e) => setCreateBackOrder(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+            />
+            <span className="text-sm font-medium text-gray-700">Create back order for any short delivery</span>
+          </label>
         </div>
 
         {/* Variance Alert */}

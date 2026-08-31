@@ -35,6 +35,7 @@ export interface StockItem {
   quantity_on_order: number;
   quantity_allocated: number;
   available_quantity?: number;
+  sales_mtd_quantity?: number;
   cost_price: number;
   average_cost: number;
   selling_price_1: number;

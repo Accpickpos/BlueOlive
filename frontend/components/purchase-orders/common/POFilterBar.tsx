@@ -50,14 +50,10 @@ export function POFilterBar({ onSearch, onReset }: POFilterBarProps) {
               className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
             >
               <option value="all">All Status</option>
-              <option value="DRAFT">Draft</option>
-              <option value="PENDING_APPROVAL">Pending Approval</option>
-              <option value="APPROVED">Approved</option>
-              <option value="ISSUED">Issued</option>
-              <option value="PARTIALLY_RECEIVED">Partially Received</option>
-              <option value="RECEIVED">Received</option>
-              <option value="CLOSED">Closed</option>
-              <option value="CANCELLED">Cancelled</option>
+              <option value="O">Outstanding</option>
+              <option value="P">Partially Received</option>
+              <option value="F">Fully Received</option>
+              <option value="C">Cancelled</option>
             </select>
           </div>
 

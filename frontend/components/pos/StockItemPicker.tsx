@@ -13,6 +13,8 @@ interface StockItemPickerProps {
     cost_price: number;
     tax_code: string | number;
     tax_code_detail?: { code: string; rate?: number };
+    quantity_on_hand: number;
+    sales_mtd_quantity: number;
   }) => void;
   label?: string;
   placeholder?: string;
@@ -69,6 +71,8 @@ export function StockItemPicker({
           cost_price: Number(item.average_cost || item.cost_price || 0),
           tax_code: String(item.tax_code),
           tax_code_detail: item.tax_code_detail,
+          quantity_on_hand: Number(item.available_quantity ?? item.quantity_on_hand ?? 0),
+          sales_mtd_quantity: Number(item.sales_mtd_quantity ?? 0),
         })
       }
       label={label}

@@ -1,56 +1,29 @@
 /**
  * Purchase Orders API Client
- * 
- * Handles all purchase order management endpoints:
- * - Purchase orders
- * - Receipts
- * - Back orders
- * - Templates
- * - Reports
- * 
+ *
+ * Mirrors backend/core/apps/purchase_orders/{urls,views}.py — only real
+ * endpoints are exposed here (no invented approve/close/reindex/bulk-update
+ * actions the backend never implements).
+ *
  * Base URL: /api/v1/purchase-orders/
  */
 
 import { api } from './api';
 import { ENDPOINTS } from './api-config';
-import type { PurchaseOrder, BackOrder, PaginatedPOResponse } from './types/purchaseOrders';
-
-export interface Receipt {
-  id?: number;
-  order_id: number;
-  receipt_date: string;
-  quantity_received: number;
-  reference?: string;
-  notes?: string;
-  created_at?: string;
-  [key: string]: any;
-}
-
-export interface POTemplate {
-  id?: number;
-  name: string;
-  description?: string;
-  supplier_id: number;
-  template_items: any[];
-  created_at?: string;
-  [key: string]: any;
-}
-
-export interface POReport {
-  id?: number;
-  name: string;
-  report_type: 'PENDING' | 'OVERDUE' | 'RECEIVED' | 'SUMMARY';
-  generated_date: string;
-  data: any;
-  [key: string]: any;
-}
+import type {
+  BackOrder,
+  DeliveryVarianceItem,
+  PaginatedPOResponse,
+  PreOrderReportItem,
+  PurchaseOrder,
+  PurchaseOrderReceipt,
+  PurchaseOrderTemplate,
+  StockOnOrderItem,
+} from './types/purchaseOrders';
 
 export const purchaseOrdersApi = {
   // ============ ORDERS ============
   orders: {
-    /**
-     * List all purchase orders
-     */
     list: async (filters?: any) => {
       const response = await api.get<PaginatedPOResponse<PurchaseOrder>>(
         ENDPOINTS.PURCHASE_ORDERS.ORDERS,
@@ -59,71 +32,56 @@ export const purchaseOrdersApi = {
       return response.data;
     },
 
-    /**
-     * Get single purchase order
-     */
-    get: async (id: number | string) => {
+    get: async (orderNumber: number | string) => {
       const response = await api.get<PurchaseOrder>(
-        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}${id}/`
+        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}${orderNumber}/`
       );
       return response.data;
     },
 
     /**
-     * Create new purchase order
+     * Create new purchase order. Matches PurchaseOrderCreateSerializer:
+     * either extract_all_items/extract_below_reorder, or manual line_items.
      */
-    create: async (data: Partial<PurchaseOrder>) => {
-      const response = await api.post<PurchaseOrder>(
-        ENDPOINTS.PURCHASE_ORDERS.ORDERS,
-        data
-      );
+    create: async (data: {
+      supplier: number;
+      order_date?: string;
+      delivery_date: string;
+      pricing_method?: 'COST' | 'RETAIL';
+      notes?: string;
+      extract_all_items?: boolean;
+      extract_below_reorder?: boolean;
+      department?: number;
+      line_items?: Array<{
+        stock_item: string;
+        quantity_ordered: number;
+        unit_cost?: number;
+        tax_code?: number;
+        comments?: string;
+        expense_category?: number;
+      }>;
+    }) => {
+      const response = await api.post<PurchaseOrder>(ENDPOINTS.PURCHASE_ORDERS.ORDERS, data);
       return response.data;
     },
 
-    /**
-     * Update purchase order
-     */
-    update: async (id: number | string, data: Partial<PurchaseOrder>) => {
+    update: async (orderNumber: number | string, data: Partial<PurchaseOrder>) => {
       const response = await api.patch<PurchaseOrder>(
-        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}${id}/`,
+        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}${orderNumber}/`,
         data
       );
       return response.data;
     },
 
     /**
-     * Delete purchase order
+     * Cancel purchase order. Matches PurchaseOrderViewSet.cancel_order —
+     * blocks cancelling a fully-received order and reverses on-order
+     * quantities. `reason` is stored on PurchaseOrder.cancellation_reason.
      */
-    delete: async (id: number | string) => {
-      await api.delete(`${ENDPOINTS.PURCHASE_ORDERS.ORDERS}${id}/`);
-    },
-
-    /**
-     * Approve purchase order
-     */
-    approve: async (id: number | string) => {
+    cancel: async (orderNumber: number | string, reason?: string) => {
       const response = await api.post(
-        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}${id}/approve/`
-      );
-      return response.data;
-    },
-
-    /**
-     * Close purchase order
-     */
-    close: async (id: number | string) => {
-      const response = await api.post(
-        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}${id}/close/`
-      );
-      return response.data;
-    },
-
-    /**
-     * Cancel purchase order
-     */
-    cancel: async (id: number | string) => {
-      const response = await api.post(
-        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}${id}/cancel_order/`
+        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}${orderNumber}/cancel_order/`,
+        { reason: reason || '' }
       );
       return response.data;
     },
@@ -133,7 +91,7 @@ export const purchaseOrdersApi = {
      * a back order for any short delivery). Matches the receive_stock action
      * on PurchaseOrderViewSet.
      */
-    receiveStock: async (id: number | string, data: {
+    receiveStock: async (orderNumber: number | string, data: {
       receipt_date?: string;
       invoice_number: string;
       line_items: Array<{
@@ -145,8 +103,40 @@ export const purchaseOrdersApi = {
       create_back_order?: boolean;
     }) => {
       const response = await api.post(
-        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}${id}/receive_stock/`,
+        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}${orderNumber}/receive_stock/`,
         data
+      );
+      return response.data;
+    },
+
+    /**
+     * Outstanding (status O/P) orders. Supports overdue=true and a
+     * delivery_date_from/delivery_date_to range (Enquiries > By Delivery Date).
+     */
+    outstanding: async (params?: {
+      overdue?: boolean;
+      delivery_date_from?: string;
+      delivery_date_to?: string;
+    }) => {
+      const response = await api.get<PurchaseOrder[]>(
+        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}outstanding/`,
+        { params }
+      );
+      return response.data;
+    },
+
+    bySupplier: async (supplier: number | string, status?: string) => {
+      const response = await api.get<PurchaseOrder[]>(
+        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}by_supplier/`,
+        { params: { supplier, status } }
+      );
+      return response.data;
+    },
+
+    deliveryVarianceReport: async (params?: { start_date?: string; end_date?: string }) => {
+      const response = await api.get<DeliveryVarianceItem[]>(
+        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}delivery_variance_report/`,
+        { params }
       );
       return response.data;
     },
@@ -154,62 +144,24 @@ export const purchaseOrdersApi = {
 
   // ============ RECEIPTS ============
   receipts: {
-    /**
-     * List all receipts
-     */
     list: async (filters?: any) => {
-      const response = await api.get<{ results: Receipt[] }>(
+      const response = await api.get<{ results: PurchaseOrderReceipt[] }>(
         ENDPOINTS.PURCHASE_ORDERS.RECEIPTS,
         { params: filters }
       );
       return response.data;
     },
 
-    /**
-     * Get single receipt
-     */
     get: async (id: number | string) => {
-      const response = await api.get<Receipt>(
+      const response = await api.get<PurchaseOrderReceipt>(
         `${ENDPOINTS.PURCHASE_ORDERS.RECEIPTS}${id}/`
       );
       return response.data;
-    },
-
-    /**
-     * Create new receipt for purchase order
-     */
-    create: async (data: Partial<Receipt>) => {
-      const response = await api.post<Receipt>(
-        ENDPOINTS.PURCHASE_ORDERS.RECEIPTS,
-        data
-      );
-      return response.data;
-    },
-
-    /**
-     * Update receipt
-     */
-    update: async (id: number | string, data: Partial<Receipt>) => {
-      const response = await api.patch<Receipt>(
-        `${ENDPOINTS.PURCHASE_ORDERS.RECEIPTS}${id}/`,
-        data
-      );
-      return response.data;
-    },
-
-    /**
-     * Delete receipt
-     */
-    delete: async (id: number | string) => {
-      await api.delete(`${ENDPOINTS.PURCHASE_ORDERS.RECEIPTS}${id}/`);
     },
   },
 
   // ============ BACK ORDERS ============
   backOrders: {
-    /**
-     * List all back orders
-     */
     list: async (filters?: any) => {
       const response = await api.get<{ results: BackOrder[] }>(
         ENDPOINTS.PURCHASE_ORDERS.BACK_ORDERS,
@@ -218,44 +170,9 @@ export const purchaseOrdersApi = {
       return response.data;
     },
 
-    /**
-     * Get single back order
-     */
     get: async (id: number | string) => {
       const response = await api.get<BackOrder>(
         `${ENDPOINTS.PURCHASE_ORDERS.BACK_ORDERS}${id}/`
-      );
-      return response.data;
-    },
-
-    /**
-     * Create new back order
-     */
-    create: async (data: Partial<BackOrder>) => {
-      const response = await api.post<BackOrder>(
-        ENDPOINTS.PURCHASE_ORDERS.BACK_ORDERS,
-        data
-      );
-      return response.data;
-    },
-
-    /**
-     * Update back order
-     */
-    update: async (id: number | string, data: Partial<BackOrder>) => {
-      const response = await api.patch<BackOrder>(
-        `${ENDPOINTS.PURCHASE_ORDERS.BACK_ORDERS}${id}/`,
-        data
-      );
-      return response.data;
-    },
-
-    /**
-     * Close back order
-     */
-    close: async (id: number | string) => {
-      const response = await api.post(
-        `${ENDPOINTS.PURCHASE_ORDERS.BACK_ORDERS}${id}/close/`
       );
       return response.data;
     },
@@ -263,63 +180,45 @@ export const purchaseOrdersApi = {
 
   // ============ TEMPLATES ============
   templates: {
-    /**
-     * List all PO templates
-     */
     list: async (filters?: any) => {
-      const response = await api.get<{ results: POTemplate[] }>(
+      const response = await api.get<{ results: PurchaseOrderTemplate[] }>(
         ENDPOINTS.PURCHASE_ORDERS.TEMPLATES,
         { params: filters }
       );
       return response.data;
     },
 
-    /**
-     * Get single PO template
-     */
     get: async (id: number | string) => {
-      const response = await api.get<POTemplate>(
+      const response = await api.get<PurchaseOrderTemplate>(
         `${ENDPOINTS.PURCHASE_ORDERS.TEMPLATES}${id}/`
       );
       return response.data;
     },
 
-    /**
-     * Create new PO template
-     */
-    create: async (data: Partial<POTemplate>) => {
-      const response = await api.post<POTemplate>(
+    create: async (data: Partial<PurchaseOrderTemplate>) => {
+      const response = await api.post<PurchaseOrderTemplate>(
         ENDPOINTS.PURCHASE_ORDERS.TEMPLATES,
         data
       );
       return response.data;
     },
 
-    /**
-     * Update PO template
-     */
-    update: async (id: number | string, data: Partial<POTemplate>) => {
-      const response = await api.patch<POTemplate>(
+    update: async (id: number | string, data: Partial<PurchaseOrderTemplate>) => {
+      const response = await api.patch<PurchaseOrderTemplate>(
         `${ENDPOINTS.PURCHASE_ORDERS.TEMPLATES}${id}/`,
         data
       );
       return response.data;
     },
 
-    /**
-     * Delete PO template
-     */
     delete: async (id: number | string) => {
       await api.delete(`${ENDPOINTS.PURCHASE_ORDERS.TEMPLATES}${id}/`);
     },
 
-    /**
-     * Create order from template
-     */
-    createOrderFromTemplate: async (templateId: number | string, data: any) => {
+    createOrderFromTemplate: async (templateId: number | string, deliveryDate?: string) => {
       const response = await api.post(
-        `${ENDPOINTS.PURCHASE_ORDERS.TEMPLATES}${templateId}/create_order/`,
-        data
+        `${ENDPOINTS.PURCHASE_ORDERS.TEMPLATES}${templateId}/create_order_from_template/`,
+        { delivery_date: deliveryDate }
       );
       return response.data;
     },
@@ -327,46 +226,18 @@ export const purchaseOrdersApi = {
 
   // ============ REPORTS ============
   reports: {
-    /**
-     * Get pending orders report
-     */
-    getPendingOrders: async (filters?: any) => {
-      const response = await api.get(
-        `${ENDPOINTS.PURCHASE_ORDERS.REPORTS}pending/`,
-        { params: filters }
+    stockOnOrder: async (supplier?: number | string) => {
+      const response = await api.get<StockOnOrderItem[]>(
+        `${ENDPOINTS.PURCHASE_ORDERS.REPORTS}stock_on_order/`,
+        { params: { supplier } }
       );
       return response.data;
     },
 
-    /**
-     * Get overdue orders report
-     */
-    getOverdueOrders: async (filters?: any) => {
-      const response = await api.get(
-        `${ENDPOINTS.PURCHASE_ORDERS.REPORTS}overdue/`,
-        { params: filters }
-      );
-      return response.data;
-    },
-
-    /**
-     * Get received orders report
-     */
-    getReceivedOrders: async (filters?: any) => {
-      const response = await api.get(
-        `${ENDPOINTS.PURCHASE_ORDERS.REPORTS}received/`,
-        { params: filters }
-      );
-      return response.data;
-    },
-
-    /**
-     * Get summary report
-     */
-    getSummary: async (filters?: any) => {
-      const response = await api.get(
-        `${ENDPOINTS.PURCHASE_ORDERS.REPORTS}summary/`,
-        { params: filters }
+    preOrderReport: async (supplier?: number | string) => {
+      const response = await api.get<PreOrderReportItem[]>(
+        `${ENDPOINTS.PURCHASE_ORDERS.REPORTS}pre_order_report/`,
+        { params: { supplier } }
       );
       return response.data;
     },
@@ -375,84 +246,13 @@ export const purchaseOrdersApi = {
   // ============ UTILITIES ============
   utilities: {
     /**
-     * Recalculate all order totals and VAT
+     * Recompute every StockItem.quantity_on_order from actual outstanding PO
+     * lines. Matches resync_po_quantities management command / the
+     * resync_on_order_quantities action (Admin only).
      */
-    recalculateTotals: async () => {
+    resyncOnOrderQuantities: async () => {
       const response = await api.post(
-        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}recalculate_totals/`
-      );
-      return response.data;
-    },
-
-    /**
-     * Validate all orders for data integrity
-     */
-    validateOrders: async () => {
-      const response = await api.post(
-        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}validate/`
-      );
-      return response.data;
-    },
-
-    /**
-     * Find orders stuck in pending status
-     */
-    findStuckOrders: async (days?: number) => {
-      const response = await api.get(
-        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}stuck/`,
-        { params: { days: days || 30 } }
-      );
-      return response.data;
-    },
-
-    /**
-     * Find orphan line items
-     */
-    findOrphanItems: async () => {
-      const response = await api.get(
-        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}orphan_items/`
-      );
-      return response.data;
-    },
-
-    /**
-     * Bulk update order status
-     */
-    bulkUpdateStatus: async (orderIds: (number | string)[], newStatus: string) => {
-      const response = await api.post(
-        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}bulk_update/`,
-        { order_ids: orderIds, new_status: newStatus }
-      );
-      return response.data;
-    },
-
-    /**
-     * Export all orders data
-     */
-    exportOrders: async (format: 'csv' | 'xlsx' = 'xlsx') => {
-      const response = await api.get(
-        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}export/`,
-        { params: { format } }
-      );
-      return response.data;
-    },
-
-    /**
-     * Reindex files and rebuild search indexes
-     */
-    indexFiles: async () => {
-      const response = await api.post(
-        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}reindex/`
-      );
-      return response.data;
-    },
-
-    /**
-     * Reset quantities for all line items
-     */
-    resetQuantities: async () => {
-      const response = await api.post(
-        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}reset_quantities/`
+        `${ENDPOINTS.PURCHASE_ORDERS.ORDERS}resync_on_order_quantities/`
       );
       return response.data;
     },

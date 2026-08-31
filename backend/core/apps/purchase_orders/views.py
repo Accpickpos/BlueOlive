@@ -21,7 +21,8 @@ from .models import (
     PurchaseOrderTemplate,
     PurchaseOrderTemplateLine,
 )
-from .permissions import IsPurchaseOrderStockMover
+from .permissions import IsPurchaseOrderAdmin, IsPurchaseOrderStockMover
+from .services import resync_stock_on_order
 from .serializers import (
     BackOrderSerializer,
     DeliveryVarianceReportSerializer,
@@ -169,6 +170,8 @@ class PurchaseOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                     quantity=line_data["quantity_ordered"],
                     base_price=unit_cost,
                     tax_code=line_data.get("tax_code", 1),
+                    comments=line_data.get("comments", ""),
+                    expense_category_id=line_data.get("expense_category"),
                     quantity_on_hand_at_order=stock_item.quantity_on_hand,
                     monthly_sales_at_order=stock_item.sales_mtd_quantity,
                 )
@@ -235,16 +238,7 @@ class PurchaseOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
                 {"error": "Order already cancelled"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Update stock on order quantities
-        for line in order.line_items.all():
-            stock_item = line.stock_item
-            stock_item.quantity_on_order -= line.quantity_outstanding
-            stock_item.save()
-
-        # Cancel order
-        order.status = "C"
-        order.cancelled_at = timezone.now()
-        order.save()
+        order.cancel(reason=request.data.get("reason", ""))
 
         return Response(
             {
@@ -433,8 +427,31 @@ class PurchaseOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         if request.query_params.get("overdue") == "true":
             orders = orders.filter(delivery_date__lt=timezone.now().date())
 
+        delivery_date_from = request.query_params.get("delivery_date_from")
+        if delivery_date_from:
+            orders = orders.filter(delivery_date__gte=delivery_date_from)
+
+        delivery_date_to = request.query_params.get("delivery_date_to")
+        if delivery_date_to:
+            orders = orders.filter(delivery_date__lte=delivery_date_to)
+
         serializer = PurchaseOrderListSerializer(orders, many=True)
         return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, IsPurchaseOrderAdmin],
+    )
+    def resync_on_order_quantities(self, request):
+        """
+        Utility: recompute every StockItem.quantity_on_order from actual
+        outstanding Purchase Order lines (manual §6, "Reset Purchase Order
+        Quantities"). Same logic as the resync_po_quantities management
+        command, exposed here for admins without shell access.
+        """
+        result = resync_stock_on_order()
+        return Response({"message": "Stock on-order quantities resynced", **result})
 
     @action(detail=False, methods=["get"])
     def by_supplier(self, request):
@@ -507,9 +524,7 @@ class PurchaseOrderReceiptViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet
     """
 
     queryset = (
-        PurchaseOrderReceipt.objects.select_related(
-            "purchase_order", "creditor_transaction"
-        )
+        PurchaseOrderReceipt.objects.select_related("purchase_order", "creditor_grn")
         .prefetch_related("line_items")
         .all()
     )

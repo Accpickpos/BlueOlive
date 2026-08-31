@@ -1,157 +1,35 @@
 'use client';
 
 import React, { useState } from 'react';
-import {
-  RefreshCw,
-  FileText,
-  Download,
-  Upload,
-  Clock,
-  AlertTriangle,
-  CheckCircle,
-  Trash2,
-  ArrowLeft,
-} from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle, Loader } from 'lucide-react';
 import Link from 'next/link';
-
-interface UtilityTask {
-  id: string;
-  name: string;
-  description: string;
-  icon: React.ReactNode;
-  action: string;
-  color: 'blue' | 'yellow' | 'red' | 'green';
-}
-
-const UTILITY_TASKS: UtilityTask[] = [
-  {
-    id: 'recalculate-totals',
-    name: 'Recalculate Order Totals',
-    description: 'Recalculate VAT and totals for all orders based on current items',
-    icon: <RefreshCw className="w-6 h-6" />,
-    action: 'recalculate',
-    color: 'blue',
-  },
-  {
-    id: 'validate-orders',
-    name: 'Validate Orders',
-    description: 'Check for incomplete or invalid order data',
-    icon: <CheckCircle className="w-6 h-6" />,
-    action: 'validate',
-    color: 'green',
-  },
-  {
-    id: 'stuck-orders',
-    name: 'Find Stuck Orders',
-    description: 'Identify orders stuck in pending status for extended periods',
-    icon: <Clock className="w-6 h-6" />,
-    action: 'stuck-orders',
-    color: 'yellow',
-  },
-  {
-    id: 'orphan-items',
-    name: 'Orphan Items Report',
-    description: 'Find line items with missing or invalid supplier references',
-    icon: <AlertTriangle className="w-6 h-6" />,
-    action: 'orphan-items',
-    color: 'red',
-  },
-  {
-    id: 'bulk-update',
-    name: 'Bulk Update Status',
-    description: 'Update status for multiple orders at once',
-    icon: <Upload className="w-6 h-6" />,
-    action: 'bulk-update',
-    color: 'blue',
-  },
-  {
-    id: 'data-export',
-    name: 'Export All Orders',
-    description: 'Export complete order data for backup or analysis',
-    icon: <Download className="w-6 h-6" />,
-    action: 'export',
-    color: 'green',
-  },
-];
+import purchaseOrdersApi from '@/lib/purchaseOrdersApi';
+import { getApiErrorMessage } from '@/lib/api';
 
 export default function UtilitiesPage() {
-  const [selectedTask, setSelectedTask] = useState<string | null>(null);
-  const [executing, setExecuting] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [resetting, setResetting] = useState(false);
+  const [resetResult, setResetResult] = useState<{ items_updated: number; changes: any[] } | null>(null);
+  const [error, setError] = useState('');
 
-  const handleExecuteTask = async (taskId: string) => {
-    setExecuting(true);
-    // Simulated task execution - replace with actual API calls
-    setTimeout(() => {
-      setResult({
-        taskId,
-        status: 'success',
-        timestamp: new Date().toISOString(),
-        details: {
-          'recalculate': {
-            message: 'Recalculation completed',
-            ordersProcessed: 24,
-            timeElapsed: '2.5s',
-          },
-          'validate': {
-            message: 'Validation completed',
-            validOrders: 22,
-            invalidOrders: 2,
-          },
-          'stuck-orders': {
-            message: 'Analysis completed',
-            stuckCount: 3,
-            threshold: '30 days',
-          },
-          'orphan-items': {
-            message: 'Scan completed',
-            orphanCount: 0,
-            damagedReferences: 0,
-          },
-          'bulk-update': {
-            message: 'Update ready to review',
-            selectedOrders: 5,
-            newStatus: 'CONFIRMED',
-          },
-          'export': {
-            message: 'Export file ready',
-            fileName: 'purchase_orders_export.xlsx',
-            fileSize: '2.4 MB',
-          },
-        }[taskId] || {},
-      });
-      setExecuting(false);
-    }, 1500);
-  };
+  const handleResetQuantities = async () => {
+    if (
+      !window.confirm(
+        "This recomputes every stock item's quantity-on-order from actual outstanding purchase orders. Continue?"
+      )
+    ) {
+      return;
+    }
 
-  const getColorClasses = (color: string) => {
-    const colors: Record<string, { bg: string; border: string; text: string; button: string }> = {
-      blue: {
-        bg: 'bg-blue-50',
-        border: 'border-blue-200',
-        text: 'text-blue-700',
-        button: 'bg-blue-600 hover:bg-blue-700',
-      },
-      green: {
-        bg: 'bg-green-50',
-        border: 'border-green-200',
-        text: 'text-green-700',
-        button: 'bg-green-600 hover:bg-green-700',
-      },
-      yellow: {
-        bg: 'bg-yellow-50',
-        border: 'border-yellow-200',
-        text: 'text-yellow-700',
-        button: 'bg-yellow-600 hover:bg-yellow-700',
-      },
-      red: {
-        bg: 'bg-red-50',
-        border: 'border-red-200',
-        text: 'text-red-700',
-        button: 'bg-red-600 hover:bg-red-700',
-      },
-    };
-    return colors[color] || colors.blue;
+    setResetting(true);
+    setError('');
+    try {
+      const result = await purchaseOrdersApi.utilities.resyncOnOrderQuantities();
+      setResetResult(result as any);
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to resync on-order quantities'));
+    } finally {
+      setResetting(false);
+    }
   };
 
   return (
@@ -164,147 +42,106 @@ export default function UtilitiesPage() {
           <ArrowLeft className="w-4 h-4" />
           Back to Purchase Orders
         </Link>
-        <h1 className="text-xl font-bold text-gray-900">
-          Purchase Orders Utilities
+        <h1 className="text-2xl font-bold text-gray-900">
+          Purchase Order Utilities
         </h1>
         <p className="text-sm text-gray-500">
-          Administrative tools and maintenance utilities
+          Maintenance and administrative tools
         </p>
       </div>
 
       <div className="p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Task List */}
-          <div className="lg:col-span-2">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">
-              Available Utilities
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {UTILITY_TASKS.map((task) => {
-                const colors = getColorClasses(task.color);
-                const isSelected = selectedTask === task.id;
-                return (
-                  <button
-                    key={task.id}
-                    onClick={() => setSelectedTask(task.id)}
-                    className={`p-4 rounded-lg border-2 transition text-left ${
-                      isSelected
-                        ? `${colors.bg} border-blue-600`
-                        : `bg-white border-gray-200 hover:border-gray-300`
-                    }`}
-                  >
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${colors.bg} ${colors.text}`}>
-                      {task.icon}
-                    </div>
-                    <h3 className="font-medium text-gray-900 text-sm">
-                      {task.name}
-                    </h3>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {task.description}
-                    </p>
-                  </button>
-                );
-              })}
+        <div className="max-w-4xl mx-auto space-y-6">
+          {error && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0" />
+              <span className="text-red-600">{error}</span>
             </div>
-          </div>
+          )}
 
-          {/* Task Details & Execution */}
-          <div className="lg:col-span-1">
-            {selectedTask ? (
-              <>
-                {(() => {
-                  const task = UTILITY_TASKS.find((t) => t.id === selectedTask);
-                  if (!task) return null;
-                  const colors = getColorClasses(task.color);
+          {/* Reset Purchase Order Quantities Utility */}
+          <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b bg-gray-50">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Reset Purchase Order Quantities
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Resync stock-on-order quantities against actual outstanding purchase orders
+              </p>
+            </div>
 
-                  return (
-                    <div className="bg-white rounded-lg border shadow-sm p-6 sticky top-6">
-                      <div className={`w-12 h-12 rounded-lg flex items-center justify-center mb-4 ${colors.bg} ${colors.text}`}>
-                        {task.icon}
-                      </div>
-                      <h3 className="font-bold text-gray-900 mb-2">
-                        {task.name}
-                      </h3>
-                      <p className="text-sm text-gray-600 mb-6">
-                        {task.description}
-                      </p>
+            <div className="px-6 py-6">
+              <div className="space-y-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h3 className="font-medium text-blue-900 mb-2">
+                    What this does:
+                  </h3>
+                  <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+                    <li>Recomputes each stock item's "quantity on order" from outstanding PO lines</li>
+                    <li>Fixes drift caused by bugs, manual edits, or partial failures</li>
+                    <li>Safe to run at any time — it only corrects quantity_on_order, nothing else</li>
+                    <li>Requires Admin access</li>
+                  </ul>
+                </div>
 
-                      <button
-                        onClick={() => handleExecuteTask(task.id)}
-                        disabled={executing}
-                        className={`w-full flex items-center justify-center gap-2 px-4 py-2 ${colors.button} disabled:opacity-50 text-white rounded-lg font-medium mb-4`}
-                      >
-                        {executing ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            Executing...
-                          </>
-                        ) : (
-                          <>
-                            <RefreshCw className="w-4 h-4" />
-                            Execute
-                          </>
-                        )}
-                      </button>
-
-                      {result && result.taskId === task.id && (
-                        <div className={`p-4 rounded-lg ${colors.bg} border ${colors.border}`}>
-                          <div className="flex items-start gap-2 mb-3">
-                            <CheckCircle className={`w-5 h-5 ${colors.text} flex-shrink-0 mt-0.5`} />
-                            <div>
-                              <p className="font-medium text-gray-900 text-sm">
-                                {result.details.message}
-                              </p>
-                              <p className="text-xs text-gray-500 mt-1">
-                                {new Date(result.timestamp).toLocaleTimeString(
-                                  'en-ZA'
-                                )}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="bg-white rounded p-3 space-y-2">
-                            {Object.entries(result.details).map(
-                              ([key, value]) =>
-                                key !== 'message' && (
-                                  <div
-                                    key={key}
-                                    className="flex justify-between items-center text-xs"
-                                  >
-                                    <span className="text-gray-600 capitalize">
-                                      {key.replace(/_/g, ' ')}
-                                    </span>
-                                    <span className="font-bold text-gray-900">
-                                      {String(value)}
-                                    </span>
-                                  </div>
-                                )
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                        <p className="text-xs text-blue-700">
-                          <strong>Note:</strong> Some utilities may impact
-                          existing data. Always review changes before confirming.
+                {resetResult ? (
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <h4 className="font-medium text-green-900">Resync complete</h4>
+                        <p className="text-sm text-green-700 mt-1">
+                          {resetResult.items_updated} stock item{resetResult.items_updated === 1 ? '' : 's'} corrected
                         </p>
+                        {resetResult.changes?.length > 0 && (
+                          <div className="mt-3 max-h-48 overflow-y-auto border border-green-200 rounded bg-white">
+                            <table className="w-full text-xs">
+                              <thead className="bg-green-100">
+                                <tr>
+                                  <th className="text-left px-2 py-1">Stock Code</th>
+                                  <th className="text-right px-2 py-1">Was</th>
+                                  <th className="text-right px-2 py-1">Now</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {resetResult.changes.map((c: any, i: number) => (
+                                  <tr key={i} className="border-t border-green-100">
+                                    <td className="px-2 py-1">{c.stock_code}</td>
+                                    <td className="px-2 py-1 text-right">{c.previous_quantity_on_order}</td>
+                                    <td className="px-2 py-1 text-right">{c.corrected_quantity_on_order}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  );
-                })()}
-              </>
-            ) : (
-              <div className="bg-white rounded-lg border shadow-sm p-8 text-center sticky top-6">
-                <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500 font-medium">
-                  Select a utility to get started
-                </p>
-                <p className="text-sm text-gray-400 mt-1">
-                  Choose a task from the list to see details and execute
-                </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-600">
+                    Click the button below to resync stock-on-order quantities.
+                  </p>
+                )}
               </div>
-            )}
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={handleResetQuantities}
+                  disabled={resetting}
+                  className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {resetting ? (
+                    <>
+                      <Loader className="w-4 h-4 animate-spin" />
+                      Resyncing...
+                    </>
+                  ) : (
+                    'Resync Quantities'
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
