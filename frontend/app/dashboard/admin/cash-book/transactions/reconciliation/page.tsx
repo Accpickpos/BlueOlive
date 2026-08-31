@@ -7,12 +7,30 @@ import { getApiErrorMessage } from '@/lib/api';
 import { BankReconciliation } from '@/lib/types/cashBook';
 import { ReconciliationStatus, BalanceCard } from '@/components/cash-book';
 
+interface TaggableTransaction {
+  id: number;
+  transaction_number: string;
+  transaction_date: string;
+  description: string;
+  total_incl_vat: string | number;
+  is_receipt: boolean;
+  bank_recon_tag: 'R' | 'P' | 'D' | 'U';
+}
+
 export default function BankReconciliationPage() {
   const [reconciliations, setReconciliations] = useState<BankReconciliation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showForm, setShowForm] = useState(false);
+
+  // Tagging workflow: the reconciliation currently being tagged/completed.
+  const [taggingReconId, setTaggingReconId] = useState<number | null>(null);
+  const [pendingTransactions, setPendingTransactions] = useState<TaggableTransaction[]>([]);
+  const [outstandingPreview, setOutstandingPreview] = useState<{
+    outstanding_deposits: number; outstanding_cheques: number;
+  } | null>(null);
+  const [tagLoading, setTagLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     reconciliation_date: new Date().toISOString().split('T')[0],
@@ -87,6 +105,85 @@ export default function BankReconciliationPage() {
       setError(getApiErrorMessage(err, 'Failed to create reconciliation'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Tagging workflow: open the tag panel for a reconciliation, loading its
+  // account's untagged/pending bank transactions and the live outstanding
+  // preview derived from tags already set (see
+  // ReconciliationService.get_outstanding_summary on the backend).
+  const openTagPanel = async (recon: BankReconciliation) => {
+    setError('');
+    setTaggingReconId(recon.id ?? null);
+    setTagLoading(true);
+    try {
+      const [transRes, preview] = await Promise.all([
+        cashBookApi.transactions.list({
+          account_type: 'BANK',
+          bank_account_number: recon.bank_account_number,
+          is_reconciled: false,
+          ordering: '-transaction_date',
+        }),
+        cashBookApi.reconciliations.outstandingSummary(recon.bank_account_number),
+      ]);
+      setPendingTransactions((transRes.results || []) as unknown as TaggableTransaction[]);
+      setOutstandingPreview(preview);
+    } catch (err: any) {
+      setError(getApiErrorMessage(err, 'Failed to load transactions for tagging'));
+    } finally {
+      setTagLoading(false);
+    }
+  };
+
+  const closeTagPanel = () => {
+    setTaggingReconId(null);
+    setPendingTransactions([]);
+    setOutstandingPreview(null);
+  };
+
+  const handleTag = async (recon: BankReconciliation, transactionId: number, tag: 'R' | 'P' | 'D' | 'U') => {
+    try {
+      await cashBookApi.transactions.tag(transactionId, tag);
+      setPendingTransactions(prev =>
+        prev.map(t => (t.id === transactionId ? { ...t, bank_recon_tag: tag } : t))
+      );
+      const preview = await cashBookApi.reconciliations.outstandingSummary(recon.bank_account_number);
+      setOutstandingPreview(preview);
+    } catch (err: any) {
+      setError(getApiErrorMessage(err, 'Failed to tag transaction'));
+    }
+  };
+
+  const handleComplete = async (recon: BankReconciliation) => {
+    setError('');
+    setSuccess('');
+    setLoading(true);
+    try {
+      // Omit outstanding_deposits/outstanding_cheques — the backend
+      // derives them from tagged ('P') transactions (see
+      // CompleteReconciliationSerializer / BankReconciliationViewSet.complete).
+      await cashBookApi.reconciliations.complete(recon.id!);
+      setSuccess('Reconciliation completed successfully!');
+      closeTagPanel();
+      await fetchData();
+    } catch (err: any) {
+      setError(getApiErrorMessage(err, 'Failed to complete reconciliation'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMonthEnd = async (recon: BankReconciliation) => {
+    setError('');
+    setSuccess('');
+    try {
+      const result = await cashBookApi.reconciliations.monthEnd(recon.id!);
+      setSuccess(
+        `Month End closed. ${result.carried_forward_summary?.pending_transaction_count ?? 0} item(s) carried forward.`
+      );
+      await fetchData();
+    } catch (err: any) {
+      setError(getApiErrorMessage(err, 'Failed to run Month End'));
     }
   };
 
@@ -310,6 +407,112 @@ export default function BankReconciliationPage() {
                     <p className="text-sm text-gray-700">
                       <strong>Notes:</strong> {recon.notes}
                     </p>
+                  </div>
+                )}
+
+                <div className="mt-4 pt-4 border-t border-gray-200 flex gap-3">
+                  {recon.status === 'IN_PROGRESS' && (
+                    <button
+                      onClick={() =>
+                        taggingReconId === recon.id ? closeTagPanel() : openTagPanel(recon)
+                      }
+                      className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-sm font-medium"
+                    >
+                      {taggingReconId === recon.id ? 'Close Tagging' : 'Tag & Complete'}
+                    </button>
+                  )}
+                  {recon.status === 'COMPLETED' && (
+                    <button
+                      onClick={() => handleMonthEnd(recon)}
+                      className="px-3 py-1.5 bg-purple-100 text-purple-700 rounded hover:bg-purple-200 text-sm font-medium"
+                    >
+                      Run Month End
+                    </button>
+                  )}
+                  {recon.status === 'REVIEWED' && (
+                    <span className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded text-sm font-medium">
+                      Closed (Month End complete)
+                    </span>
+                  )}
+                </div>
+
+                {/* Tagging Panel: mark bank transactions as Pending
+                    (outstanding — not yet on the statement) or Reconciled
+                    (matched to the statement). Outstanding totals below are
+                    derived live from those tags, replacing hand-typed
+                    entry. */}
+                {taggingReconId === recon.id && (
+                  <div className="mt-4 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <h4 className="font-semibold text-gray-900 mb-3">
+                      Tag Transactions — {recon.bank_account_number}
+                    </h4>
+
+                    {outstandingPreview && (
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="bg-white rounded p-3 border border-gray-200">
+                          <p className="text-xs text-gray-500 font-semibold">OUTSTANDING DEPOSITS</p>
+                          <p className="text-lg font-bold text-green-700">
+                            R{outstandingPreview.outstanding_deposits.toFixed(2)}
+                          </p>
+                        </div>
+                        <div className="bg-white rounded p-3 border border-gray-200">
+                          <p className="text-xs text-gray-500 font-semibold">OUTSTANDING CHEQUES</p>
+                          <p className="text-lg font-bold text-red-700">
+                            R{outstandingPreview.outstanding_cheques.toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {tagLoading ? (
+                      <p className="text-sm text-gray-500">Loading transactions...</p>
+                    ) : pendingTransactions.length === 0 ? (
+                      <p className="text-sm text-gray-500">No unreconciled bank transactions on this account</p>
+                    ) : (
+                      <div className="overflow-x-auto mb-4">
+                        <table className="min-w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-xs text-gray-500 border-b border-gray-200">
+                              <th className="py-2 pr-4">Date</th>
+                              <th className="py-2 pr-4">Description</th>
+                              <th className="py-2 pr-4 text-right">Amount</th>
+                              <th className="py-2 pr-4">Tag</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pendingTransactions.map((t) => (
+                              <tr key={t.id} className="border-b border-gray-100">
+                                <td className="py-2 pr-4">{new Date(t.transaction_date).toLocaleDateString('en-ZA')}</td>
+                                <td className="py-2 pr-4">{t.description}</td>
+                                <td className={`py-2 pr-4 text-right ${t.is_receipt ? 'text-green-700' : 'text-red-700'}`}>
+                                  {t.is_receipt ? '+' : '-'}R{Number(t.total_incl_vat).toFixed(2)}
+                                </td>
+                                <td className="py-2 pr-4">
+                                  <select
+                                    value={t.bank_recon_tag}
+                                    onChange={(e) => handleTag(recon, t.id, e.target.value as 'R' | 'P' | 'D' | 'U')}
+                                    className="px-2 py-1 border border-gray-300 rounded text-xs"
+                                  >
+                                    <option value="U">Unreconciled</option>
+                                    <option value="P">Pending (outstanding)</option>
+                                    <option value="R">Reconciled</option>
+                                    <option value="D">Disputed</option>
+                                  </select>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => handleComplete(recon)}
+                      disabled={loading}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium text-sm"
+                    >
+                      {loading ? 'Completing...' : 'Complete Reconciliation'}
+                    </button>
                   </div>
                 )}
               </div>

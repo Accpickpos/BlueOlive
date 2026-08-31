@@ -435,6 +435,31 @@ def creditor_payment_post_save(sender, instance, created, **kwargs):
             is_fully_allocated=False,
         )
 
+        _post_payment_to_cash_book(instance)
+
+
+def _post_payment_to_cash_book(payment):
+    """
+    Manual §4.2 "Payment Capture": a creditor payment is documented as
+    "(Updates Debtors and Cash Book)" (the Cash Book module lists it under
+    Creditors' own transaction set). Posted as CASH per spec's basic case —
+    no configured "default bank account" concept exists yet to attribute an
+    electronic payment to a specific account (see Cash Book module TODOs).
+    """
+    from apps.cash_book.business_services import CashBookTransactionService
+
+    CashBookTransactionService.create_transaction(
+        transaction_type="PAYMENT",
+        transaction_date=payment.transaction_date,
+        value_excl_vat=payment.amount_paid,
+        tax_code=2,
+        audit_type=3,
+        reference=payment.transaction_number[:20],
+        description=f"Payment to {payment.creditor.name}"[:200],
+        account_type="CASH",
+        created_by="creditors",
+    )
+
 
 # ============================================================================
 # OPEN ITEM ALLOCATION SIGNALS

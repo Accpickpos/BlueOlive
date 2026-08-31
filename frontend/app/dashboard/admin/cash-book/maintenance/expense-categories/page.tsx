@@ -16,7 +16,7 @@ export default function ExpenseCategoriesPage() {
 
   const [formData, setFormData] = useState<Partial<ExpenseCategory>>({
     name: '',
-    code: '',
+    number: undefined,
     description: '',
     is_active: true,
   });
@@ -44,23 +44,26 @@ export default function ExpenseCategoriesPage() {
     }
   };
 
-  const validateCategoryCode = (code: string): boolean => {
-    // Validate against Chart of Accounts format (e.g., 6000-6999 for expenses)
-    const codeRegex = /^[0-9]{4,}$/;
-    if (!codeRegex.test(code)) {
-      setValidationError('Category code must be numeric (e.g., 6100)');
+  const validateCategoryCode = (numberStr: string): boolean => {
+    // Backend range: ExpenseCategory.number is a PositiveIntegerField,
+    // 1-99999999 (apps/settings/models.py) — free-form, not restricted to
+    // a Chart-of-Accounts band. The manual's own example categories span
+    // ranges a fixed band would reject.
+    const numRegex = /^[0-9]{1,8}$/;
+    if (!numRegex.test(numberStr)) {
+      setValidationError('Category number must be numeric, 1-8 digits (e.g., 6100)');
       return false;
     }
 
-    const codeNum = parseInt(code);
-    if (codeNum < 6000 || codeNum > 6999) {
-      setValidationError('Expense categories must be in range 6000-6999 (Chart of Accounts)');
+    const num = parseInt(numberStr, 10);
+    if (num < 1 || num > 99999999) {
+      setValidationError('Category number must be between 1 and 99999999');
       return false;
     }
 
     // Check for duplicates
-    if (!editingId && categories.some(c => c.code === code)) {
-      setValidationError('This category code already exists');
+    if (!editingId && categories.some(c => c.number === num)) {
+      setValidationError('This category number already exists');
       return false;
     }
 
@@ -72,11 +75,13 @@ export default function ExpenseCategoriesPage() {
     const { name, value, type } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked
+        : name === 'number' ? (value === '' ? undefined : Number(value))
+        : value,
     }));
 
-    // Validate code as user types
-    if (name === 'code') {
+    // Validate number as user types
+    if (name === 'number') {
       validateCategoryCode(value);
     }
   };
@@ -86,12 +91,12 @@ export default function ExpenseCategoriesPage() {
     setError('');
     setSuccess('');
 
-    if (!formData.name?.trim() || !formData.code?.trim()) {
+    if (!formData.name?.trim() || !formData.number) {
       setError('Please fill in all required fields');
       return;
     }
 
-    if (!validateCategoryCode(formData.code)) {
+    if (!validateCategoryCode(String(formData.number))) {
       return;
     }
 
@@ -163,7 +168,7 @@ export default function ExpenseCategoriesPage() {
 
   const filteredCategories = categories.filter(cat =>
     cat.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    cat.code.toLowerCase().includes(searchTerm.toLowerCase())
+    String(cat.number).includes(searchTerm)
   );
 
   return (
@@ -171,7 +176,7 @@ export default function ExpenseCategoriesPage() {
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Expense Categories</h1>
-          <p className="text-gray-600 mt-2">Manage expense category codes (6000-6999 range)</p>
+          <p className="text-gray-600 mt-2">Manage expense category numbers (1-99999999)</p>
         </div>
 
         {/* Messages */}
@@ -200,12 +205,12 @@ export default function ExpenseCategoriesPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Category Code * (6000-6999)
+                    Category Number * (1-99999999)
                   </label>
                   <input
                     type="text"
-                    name="code"
-                    value={formData.code || ''}
+                    name="number"
+                    value={formData.number ?? ''}
                     onChange={handleInputChange}
                     placeholder="e.g., 6100"
                     required
@@ -319,7 +324,7 @@ export default function ExpenseCategoriesPage() {
               <div key={category.id} className="bg-white rounded-lg shadow p-6 border-l-4 border-orange-500 hover:shadow-lg transition">
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    <p className="text-sm text-gray-600 font-mono">{category.code}</p>
+                    <p className="text-sm text-gray-600 font-mono">{category.number}</p>
                     <h3 className="text-lg font-bold text-gray-900">{category.name}</h3>
                   </div>
                   {category.is_active && (

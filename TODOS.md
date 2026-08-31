@@ -1185,3 +1185,44 @@ reasonable — this needed the actual operator workflow decided, not assumed.
 branch (`phase2-module-audit-gas-app`), Debtors module (module 2 of 9).
 
 **Depends on / blocked by:** None.
+
+---
+
+## Cash Book: debtor receipts / creditor payments always post as CASH — no "default bank account" concept exists
+
+**What:** This session wired `DebtorService.post_receipt` and
+`creditors/signals.py`'s `creditor_payment_post_save` to post a matching
+`CashBookTransaction` (audit_type 1/3) — the priority gap the Cash Book
+audit flagged ("Receipts from Debtors and Payments to Creditors never post
+to the Cash Book at all"). Both postings use `account_type="CASH"`
+unconditionally, even when the underlying receipt/payment was clearly
+electronic (e.g. `CreditorPayment.payment_method.code` is `EFT`, not
+`CASH`).
+
+**Why:** `CashBookTransaction.clean()` requires a `bank_account_number`
+whenever `account_type="BANK"`, and no "default/primary bank account" field
+or setting exists anywhere in the codebase (checked `apps/settings`,
+`apps/cash_book`) to supply one automatically. Guessing an account number
+would silently misattribute real money movements to the wrong bank
+account, which is worse than the current, honest "always cash till"
+simplification.
+
+**Pros:** Closes the real, spec-called-out integration gap now, without
+inventing bank-account data that doesn't exist. `CreditorPayment` already
+carries `payment_method` (CASH/CHQ/EFT/...), so once a default account
+setting exists, deriving `account_type`/`bank_account_number` from it is a
+small follow-up, not a redesign.
+
+**Cons:** Every debtor receipt and creditor payment currently shows up in
+the Cash Book's CASH till, not the correct BANK account, whenever payment
+was actually electronic — the till's cash balance will over-state real
+cash-on-hand for any shop that takes EFT/card debtor receipts or pays
+suppliers by EFT.
+
+**Context:** Cash Book module audit follow-up (priority gap fix),
+`phase2-module-audit-gas-app` branch, 2026-08-30.
+
+**Depends on / blocked by:** Needs a "default bank account per tenant/
+payment method" setting designed first (likely on `PaymentMethod` or a new
+Cash Book parameters model) before the account_type derivation can be
+fixed.

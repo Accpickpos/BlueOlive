@@ -12,6 +12,9 @@ router.register(
     r"income-categories", views.IncomeCategoryViewSet, basename="income-category"
 )
 router.register(
+    r"expense-categories", views.ExpenseCategoryViewSet, basename="expense-category"
+)
+router.register(
     r"transactions", views.CashBookTransactionViewSet, basename="transaction"
 )
 router.register(r"other-income", views.OtherIncomeViewSet, basename="other-income")

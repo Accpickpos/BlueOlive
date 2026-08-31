@@ -8,6 +8,7 @@ import { BalanceCard, CategoryBadge } from '@/components/cash-book';
 
 interface MonthData {
   month: string;
+  monthNumber: number;
   year: number;
   totalIncome: number;
   totalExpense: number;
@@ -28,6 +29,7 @@ export default function MonthlyAnalysisPage() {
   const [error, setError] = useState('');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<MonthData | null>(null);
+  const [categoryLoading, setCategoryLoading] = useState(false);
 
   const [summary, setSummary] = useState({
     yearToDateIncome: 0,
@@ -48,48 +50,51 @@ export default function MonthlyAnalysisPage() {
 
   const fetchData = async () => {
     setLoading(true);
+    setError('');
     try {
-      // Fetch category analysis data for the year
-      const categoryRes = await cashBookApi.categoryBalances.list({
-        year: selectedYear,
-      });
+      // Real per-month totals, computed server-side from posted
+      // transactions (CashBookReportService.get_monthly_category_series) —
+      // replaces the former Math.random() placeholder.
+      const series: Array<{
+        month: number;
+        total_income: string | number;
+        total_expense: string | number;
+        transaction_count: number;
+      }> = await cashBookApi.transactions.monthlyCategorySeries(selectedYear);
 
-      // This is a simplified implementation - actual backend should support better aggregation
-      // For now, we'll create mock data structure that would be populated by backend
-
-      const monthlyBreakdown: MonthData[] = [];
-
-      // Initialize months
-      for (let m = 0; m < 12; m++) {
-        monthlyBreakdown.push({
-          month: months[m],
-          year: selectedYear,
-          totalIncome: Math.random() * 50000 + 10000,
-          totalExpense: Math.random() * 30000 + 5000,
-          netPosition: 0,
-          transactionCount: Math.floor(Math.random() * 20) + 5,
-          categoryBreakdown: [],
+      const monthlyBreakdown: MonthData[] = series
+        .sort((a, b) => a.month - b.month)
+        .map((row) => {
+          const totalIncome = Number(row.total_income) || 0;
+          const totalExpense = Number(row.total_expense) || 0;
+          return {
+            month: months[row.month - 1],
+            monthNumber: row.month,
+            year: selectedYear,
+            totalIncome,
+            totalExpense,
+            netPosition: totalIncome - totalExpense,
+            transactionCount: row.transaction_count,
+            // Populated on-demand per month when clicked — see
+            // handleSelectMonth (a whole-year breakdown would misrepresent
+            // itself as this specific month's numbers).
+            categoryBreakdown: [],
+          };
         });
-      }
-
-      // Calculate net position
-      monthlyBreakdown.forEach(m => {
-        m.netPosition = m.totalIncome - m.totalExpense;
-      });
 
       setMonthlyData(monthlyBreakdown);
+      setSelectedMonth(null);
 
-      // Calculate year-to-date summary
       const ytdIncome = monthlyBreakdown.reduce((sum, m) => sum + m.totalIncome, 0);
       const ytdExpense = monthlyBreakdown.reduce((sum, m) => sum + m.totalExpense, 0);
-      const currentMonth = monthlyBreakdown.filter(m => m.totalIncome > 0 || m.totalExpense > 0).length;
+      const activeMonths = monthlyBreakdown.filter(m => m.totalIncome > 0 || m.totalExpense > 0).length;
 
       setSummary({
         yearToDateIncome: ytdIncome,
         yearToDateExpense: ytdExpense,
         yearToDateNet: ytdIncome - ytdExpense,
-        averageMonthlyIncome: currentMonth > 0 ? ytdIncome / currentMonth : 0,
-        averageMonthlyExpense: currentMonth > 0 ? ytdExpense / currentMonth : 0,
+        averageMonthlyIncome: activeMonths > 0 ? ytdIncome / activeMonths : 0,
+        averageMonthlyExpense: activeMonths > 0 ? ytdExpense / activeMonths : 0,
       });
     } catch (err) {
       setError('Failed to load analysis data');
@@ -109,6 +114,46 @@ export default function MonthlyAnalysisPage() {
     if (month.netPosition > 0) return 'Surplus';
     if (month.netPosition < 0) return 'Deficit';
     return 'Break-even';
+  };
+
+  const handleSelectMonth = async (month: MonthData) => {
+    setSelectedMonth(month);
+    if (month.categoryBreakdown.length > 0) return;
+
+    setCategoryLoading(true);
+    try {
+      const lastDay = new Date(month.year, month.monthNumber, 0).getDate();
+      const startDate = `${month.year}-${String(month.monthNumber).padStart(2, '0')}-01`;
+      const endDate = `${month.year}-${String(month.monthNumber).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      const analysis = await cashBookApi.transactions.categoryTaxAnalysis(startDate, endDate);
+
+      const categoryBreakdown = [
+        ...(analysis.income || []).map((c: any) => ({
+          categoryName: c.category_name,
+          categoryCode: String(c.category_code),
+          amount: Number(c.value_excl_vat) || 0,
+          count: c.transaction_count,
+          type: 'INCOME' as const,
+        })),
+        ...(analysis.expense || []).map((c: any) => ({
+          categoryName: c.category_name,
+          categoryCode: String(c.category_code),
+          amount: Number(c.value_excl_vat) || 0,
+          count: c.transaction_count,
+          type: 'EXPENSE' as const,
+        })),
+      ];
+
+      setMonthlyData(prev =>
+        prev.map(m => (m.monthNumber === month.monthNumber ? { ...m, categoryBreakdown } : m))
+      );
+      setSelectedMonth({ ...month, categoryBreakdown });
+    } catch (err) {
+      setError('Failed to load category breakdown');
+      console.error(err);
+    } finally {
+      setCategoryLoading(false);
+    }
   };
 
   const currentYear = new Date().getFullYear();
@@ -183,7 +228,7 @@ export default function MonthlyAnalysisPage() {
               {monthlyData.map((month, idx) => (
                 <div
                   key={idx}
-                  onClick={() => setSelectedMonth(month)}
+                  onClick={() => handleSelectMonth(month)}
                   className={`p-6 rounded-lg border-2 cursor-pointer transition ${getMonthColor(month)}`}
                 >
                   <h3 className="text-lg font-bold text-gray-900 mb-1">
@@ -234,6 +279,9 @@ export default function MonthlyAnalysisPage() {
                   {selectedMonth.month} {selectedMonth.year} - Category Breakdown
                 </h2>
 
+                {categoryLoading ? (
+                  <p className="text-gray-500 text-sm">Loading category breakdown...</p>
+                ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   {/* Income Categories */}
                   <div>
@@ -289,6 +337,7 @@ export default function MonthlyAnalysisPage() {
                     </div>
                   </div>
                 </div>
+                )}
               </div>
             )}
           </div>

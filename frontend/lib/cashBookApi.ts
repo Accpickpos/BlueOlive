@@ -17,7 +17,10 @@ import { ENDPOINTS } from './api-config';
 export interface IncomeCategory {
   id?: number;
   name: string;
-  code: string;
+  // Matches IncomeCategory/ExpenseCategory.number on the backend
+  // (apps/settings/models.py) — a free-form 1-99999999 category number,
+  // not a Chart-of-Accounts-range-restricted "code".
+  number: number;
   description?: string;
   is_active: boolean;
   created_at?: string;
@@ -214,6 +217,62 @@ export const cashBookApi = {
     delete: async (id: number | string) => {
       await api.delete(`${ENDPOINTS.CASH_BOOK.TRANSACTIONS}${id}/`);
     },
+
+    tag: async (id: number | string, bankReconTag: 'R' | 'P' | 'D' | 'U') => {
+      const response = await api.patch(
+        `${ENDPOINTS.CASH_BOOK.TRANSACTIONS}${id}/tag/`,
+        { bank_recon_tag: bankReconTag }
+      );
+      return response.data;
+    },
+
+    bulkTag: async (transactionIds: number[], bankReconTag: 'R' | 'P' | 'D' | 'U') => {
+      const response = await api.post(
+        `${ENDPOINTS.CASH_BOOK.TRANSACTIONS}bulk_tag/`,
+        { transaction_ids: transactionIds, bank_recon_tag: bankReconTag }
+      );
+      return response.data;
+    },
+
+    categoryTaxAnalysis: async (startDate: string, endDate: string) => {
+      const response = await api.get(
+        `${ENDPOINTS.CASH_BOOK.TRANSACTIONS}category_tax_analysis/`,
+        { params: { start_date: startDate, end_date: endDate } }
+      );
+      return response.data;
+    },
+
+    controlSummary: async (startDate: string, endDate: string) => {
+      const response = await api.get(
+        `${ENDPOINTS.CASH_BOOK.TRANSACTIONS}control_summary/`,
+        { params: { start_date: startDate, end_date: endDate } }
+      );
+      return response.data;
+    },
+
+    monthlyCategorySeries: async (year: number) => {
+      const response = await api.get(
+        `${ENDPOINTS.CASH_BOOK.TRANSACTIONS}monthly_category_series/`,
+        { params: { year } }
+      );
+      return response.data;
+    },
+
+    breakdown: async (startDate: string, endDate: string) => {
+      const response = await api.get(
+        `${ENDPOINTS.CASH_BOOK.TRANSACTIONS}breakdown/`,
+        { params: { start_date: startDate, end_date: endDate } }
+      );
+      return response.data;
+    },
+
+    summary: async (startDate: string, endDate: string) => {
+      const response = await api.get(
+        `${ENDPOINTS.CASH_BOOK.TRANSACTIONS}summary/`,
+        { params: { start_date: startDate, end_date: endDate } }
+      );
+      return response.data;
+    },
   },
 
   // ============ OTHER INCOME ============
@@ -388,6 +447,35 @@ export const cashBookApi = {
       );
       return response.data;
     },
+
+    outstandingSummary: async (bankAccountNumber: string) => {
+      const response = await api.get(
+        `${ENDPOINTS.CASH_BOOK.RECONCILIATIONS}outstanding_summary/`,
+        { params: { bank_account_number: bankAccountNumber } }
+      );
+      return response.data;
+    },
+
+    complete: async (id: number | string, data?: {
+      outstanding_deposits?: number;
+      outstanding_cheques?: number;
+      bank_errors?: number;
+      book_errors?: number;
+      notes?: string;
+    }) => {
+      const response = await api.post<BankReconciliation>(
+        `${ENDPOINTS.CASH_BOOK.RECONCILIATIONS}${id}/complete/`,
+        data || {}
+      );
+      return response.data;
+    },
+
+    monthEnd: async (id: number | string) => {
+      const response = await api.post(
+        `${ENDPOINTS.CASH_BOOK.RECONCILIATIONS}${id}/month_end/`
+      );
+      return response.data;
+    },
   },
 
   // ============ CASH FLOATS ============
@@ -477,6 +565,14 @@ export const cashBookApi = {
 
     delete: async (id: number | string) => {
       await api.delete(`${ENDPOINTS.CASH_BOOK.UNPRESENTED_CHEQUES}${id}/`);
+    },
+
+    markPresented: async (id: number | string, presentedDate?: string) => {
+      const response = await api.patch(
+        `${ENDPOINTS.CASH_BOOK.UNPRESENTED_CHEQUES}${id}/mark_presented/`,
+        presentedDate ? { presented_date: presentedDate } : {}
+      );
+      return response.data;
     },
   },
 };

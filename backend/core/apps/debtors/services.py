@@ -327,6 +327,8 @@ class DebtorService:
         debtor.damtlpd = amount
         debtor.save()
 
+        DebtorService._post_receipt_to_cash_book(debtor, trans, amount)
+
         if debtor.acctype == "O" and allocations:
             for alloc in allocations:
                 open_item = Debtopen.objects.select_for_update().get(
@@ -343,6 +345,31 @@ class DebtorService:
                 )
 
         return trans
+
+    @staticmethod
+    def _post_receipt_to_cash_book(debtor, trans, amount):
+        """
+        Manual §1 "2. Receipts on Account" / Cash Book module: a debtor
+        receipt is documented as "(Updates Debtors and Cash Book)" — the
+        till/bank actually received `amount` (the tendered amount, not
+        `post_total`, which may include a non-cash settlement discount).
+        Posted as CASH per spec's basic case; no configured "default bank
+        account" concept exists yet to attribute an electronic receipt to a
+        specific account (see Cash Book module TODOs).
+        """
+        from apps.cash_book.business_services import CashBookTransactionService
+
+        CashBookTransactionService.create_transaction(
+            transaction_type="RECEIPT",
+            transaction_date=trans.transaction_date,
+            value_excl_vat=amount,
+            tax_code=2,
+            audit_type=1,
+            reference=trans.transaction_number[:20],
+            description=f"Receipt from {debtor.dname} ({debtor.dno})"[:200],
+            account_type="CASH",
+            created_by="debtors",
+        )
 
     @staticmethod
     @transaction.atomic

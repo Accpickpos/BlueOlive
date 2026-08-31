@@ -1,13 +1,17 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Download, BarChart3, TrendingUp, PieChart, CalendarDays, FileText } from 'lucide-react';
+import { Download, BarChart3, TrendingUp, PieChart, CalendarDays, FileText, AlertCircle } from 'lucide-react';
+import cashBookApi from '@/lib/cashBookApi';
+import { getApiErrorMessage } from '@/lib/api';
 
 export default function CashBookReportsPage() {
   const [selectedReport, setSelectedReport] = useState<string | null>(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [reportData, setReportData] = useState<any>(null);
 
   const reports = [
     {
@@ -48,21 +52,44 @@ export default function CashBookReportsPage() {
   ];
 
   const handleGenerateReport = async () => {
+    setError('');
     if (!selectedReport) {
-      alert('Please select a report type');
+      setError('Please select a report type');
       return;
     }
     if (!dateFrom || !dateTo) {
-      alert('Please select date range');
+      setError('Please select date range');
       return;
     }
 
     setLoading(true);
-    // Simulate report generation
-    setTimeout(() => {
+    setReportData(null);
+    try {
+      let data: any;
+      switch (selectedReport) {
+        case 'transaction-summary':
+          data = await cashBookApi.transactions.list({
+            transaction_date__gte: dateFrom,
+            transaction_date__lte: dateTo,
+          });
+          break;
+        case 'income-analysis':
+        case 'expense-analysis':
+          data = await cashBookApi.transactions.categoryTaxAnalysis(dateFrom, dateTo);
+          break;
+        case 'bank-reconciliation':
+          data = await cashBookApi.transactions.controlSummary(dateFrom, dateTo);
+          break;
+        case 'cash-flow':
+          data = await cashBookApi.transactions.breakdown(dateFrom, dateTo);
+          break;
+      }
+      setReportData(data);
+    } catch (err: any) {
+      setError(getApiErrorMessage(err, 'Failed to generate report'));
+    } finally {
       setLoading(false);
-      alert(`Generated ${selectedReport} report from ${dateFrom} to ${dateTo}`);
-    }, 2000);
+    }
   };
 
   return (
@@ -144,16 +171,33 @@ export default function CashBookReportsPage() {
             ))}
           </div>
 
+          {error && (
+            <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <p className="text-red-800">{error}</p>
+            </div>
+          )}
+
           {/* Report Preview */}
           {selectedReport && (
             <div className="mt-6 bg-white rounded-lg border shadow-sm p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                {reports.find((r) => r.id === selectedReport)?.title} Preview
+                {reports.find((r) => r.id === selectedReport)?.title} Results
               </h3>
-              <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
-                <p className="text-gray-600 mb-2">Report preview will be displayed here</p>
-                <p className="text-sm text-gray-500">Select date range and click "Generate Report" to download</p>
-              </div>
+              {loading ? (
+                <div className="text-center py-8 text-gray-500">Generating report...</div>
+              ) : !reportData ? (
+                <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
+                  <p className="text-gray-600 mb-2">No report generated yet</p>
+                  <p className="text-sm text-gray-500">Select date range and click "Generate Report"</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-xs text-gray-800 whitespace-pre-wrap">
+                    {JSON.stringify(reportData, null, 2)}
+                  </pre>
+                </div>
+              )}
             </div>
           )}
         </div>

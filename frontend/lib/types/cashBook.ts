@@ -7,7 +7,9 @@
 export interface IncomeCategory {
   id?: number;
   name: string;
-  code: string;
+  // Matches IncomeCategory.number on the backend (apps/settings/models.py)
+  // — a free-form 1-99999999 category number, not a range-restricted "code".
+  number: number;
   description?: string;
   is_active: boolean;
   created_at?: string;
@@ -18,7 +20,8 @@ export interface IncomeCategory {
 export interface ExpenseCategory {
   id?: number;
   name: string;
-  code: string;
+  // Matches ExpenseCategory.number on the backend (apps/settings/models.py).
+  number: number;
   description?: string;
   is_active: boolean;
   created_at?: string;
