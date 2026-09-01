@@ -9,34 +9,25 @@ PurchaseOrder.cancel()) rather than derived, so it can drift from reality
 after bugs, manual DB edits, or partial failures. This command recomputes
 it from scratch as the sum of quantity_outstanding across all non-cancelled
 PO lines for each stock item, matching the legacy utility's purpose.
+
+The recompute logic lives in services.resync_stock_on_order() so it can also
+be run from the API (PurchaseOrderViewSet.resync_on_order_quantities), which
+relies on the request's tenant-scoped DB routing instead of self.db_alias.
 """
 
-from apps.purchase_orders.models import PurchaseOrderLine
+from apps.purchase_orders.services import resync_stock_on_order
 from apps.settings.legacy_import_command import TenantAwareLegacyImportCommand
-from apps.stock_control.models import StockItem
-from django.db.models import Sum
 
 
 class Command(TenantAwareLegacyImportCommand):
     help = "Resync StockItem.quantity_on_order against actual outstanding Purchase Order lines"
 
     def run(self, **options):
-        outstanding_by_item = dict(
-            PurchaseOrderLine.objects.using(self.db_alias)
-            .exclude(purchase_order__status="C")
-            .exclude(stock_item__isnull=True)
-            .values("stock_item")
-            .annotate(total_outstanding=Sum("quantity_outstanding"))
-            .values_list("stock_item", "total_outstanding")
-        )
-
-        stock_items = StockItem.objects.using(self.db_alias).all()
-        for stock_item in stock_items:
-            correct_qty = outstanding_by_item.get(stock_item.pk) or 0
-            if stock_item.quantity_on_order != correct_qty:
-                self.stdout.write(
-                    f"  {stock_item.stock_code}: {stock_item.quantity_on_order} -> {correct_qty}"
-                )
-                stock_item.quantity_on_order = correct_qty
-                stock_item.save(update_fields=["quantity_on_order"])
-                self.updated += 1
+        result = resync_stock_on_order(db_alias=self.db_alias)
+        for change in result["changes"]:
+            self.stdout.write(
+                f"  {change['stock_code']}: "
+                f"{change['previous_quantity_on_order']} -> "
+                f"{change['corrected_quantity_on_order']}"
+            )
+        self.updated += result["items_updated"]

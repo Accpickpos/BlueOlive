@@ -1,22 +1,27 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import { ArrowLeft, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import purchaseOrdersApi from '@/lib/purchaseOrdersApi';
+import { getApiErrorMessage } from '@/lib/api';
+import { OrderPicker } from '@/components/purchase-orders/common/OrderPicker';
+import type { PurchaseOrder } from '@/lib/types/purchaseOrders';
 
-export default function CancelOrderPage() {
+function CancelOrderContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const orderId = searchParams.get('order');
+  const orderParam = searchParams.get('order');
+  const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
+  const orderId = orderParam || (selectedOrder ? String(selectedOrder.order_number) : null);
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleCancel = async () => {
     if (!orderId) {
-      setError('Order ID is required');
+      setError('Order number is required');
       return;
     }
 
@@ -27,11 +32,7 @@ export default function CancelOrderPage() {
       await purchaseOrdersApi.orders.cancel(orderId, reason);
       router.push('/dashboard/admin/purchase-orders');
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to cancel order'
-      );
+      setError(getApiErrorMessage(err, 'Failed to cancel order'));
     } finally {
       setLoading(false);
     }
@@ -49,13 +50,30 @@ export default function CancelOrderPage() {
         </Link>
         <h1 className="text-2xl font-bold text-gray-900">Cancel Purchase Order</h1>
         <p className="text-sm text-gray-500">
-          Permanently cancel this purchase order
+          {orderId ? 'Cancel this purchase order' : 'Select an outstanding order to cancel'}
         </p>
       </div>
 
       <div className="p-6">
         <div className="max-w-2xl mx-auto">
+          {!orderId ? (
+            <OrderPicker onSelect={setSelectedOrder} />
+          ) : (
           <div className="bg-white rounded-lg shadow-lg">
+            <div className="border-b px-6 py-3 bg-gray-50 flex items-center justify-between">
+              <span className="text-sm text-gray-600">
+                Order <span className="font-semibold text-gray-900">PO {orderId}</span>
+                {selectedOrder && <> — {selectedOrder.supplier_name}</>}
+              </span>
+              {!orderParam && (
+                <button
+                  onClick={() => setSelectedOrder(null)}
+                  className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  Change order
+                </button>
+              )}
+            </div>
             {/* Warning Box */}
             <div className="border-b px-6 py-4 bg-red-50">
               <div className="flex items-start gap-3">
@@ -65,8 +83,8 @@ export default function CancelOrderPage() {
                     This action cannot be undone
                   </h3>
                   <p className="text-sm text-red-700 mt-1">
-                    Cancelling a purchase order will permanently delete all associated
-                    data. Please provide a reason for the cancellation.
+                    Cancelling a fully-received order is not possible. Outstanding stock
+                    on order will be reversed. Please provide a reason for the cancellation.
                   </p>
                 </div>
               </div>
@@ -98,10 +116,10 @@ export default function CancelOrderPage() {
                   What happens next?
                 </h4>
                 <ul className="text-sm text-gray-600 space-y-1 list-disc list-inside">
-                  <li>Order status will be set to CANCELLED</li>
-                  <li>No GRN receipts can be created</li>
-                  <li>All line items will be marked as cancelled</li>
-                  <li>You can view cancelled orders in reports</li>
+                  <li>Order status will be set to Cancelled</li>
+                  <li>Outstanding quantity on order will be reversed on all stock items</li>
+                  <li>No further stock can be received against this order</li>
+                  <li>Fully-received orders cannot be cancelled</li>
                 </ul>
               </div>
             </div>
@@ -123,8 +141,23 @@ export default function CancelOrderPage() {
               </button>
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+export default function CancelOrderPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-gray-500">Loading...</div>
+        </div>
+      }
+    >
+      <CancelOrderContent />
+    </Suspense>
   );
 }

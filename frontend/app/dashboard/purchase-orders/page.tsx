@@ -11,14 +11,13 @@ import {
   Package,
   Truck,
   BarChart3,
+  X,
 } from 'lucide-react';
 
 // Import components directly
 import { OrderStatusBadge } from '@/components/purchase-orders/common/OrderStatusBadge';
 import { OrderSummaryCard } from '@/components/purchase-orders/common/OrderSummaryCard';
 import { PurchaseOrderWizard } from '@/components/purchase-orders/transactions/PurchaseOrderWizard';
-import { OutstandingByDelivery } from '@/components/purchase-orders/enquiries/OutstandingByDelivery';
-
 import purchaseOrdersApi from '@/lib/purchaseOrdersApi';
 import type { PurchaseOrder } from '@/lib/types/purchaseOrders';
 
@@ -64,10 +63,8 @@ export default function PurchaseOrdersPage() {
   // Calculate summary statistics
   const summaryStats = {
     totalOrders: totalCount,
-    pendingOrders: orders.filter((o) =>
-      ['DRAFT', 'PENDING_APPROVAL', 'ISSUED'].includes(o.status)
-    ).length,
-    totalValue: orders.reduce((sum, o) => sum + (o.total_amount || 0), 0),
+    pendingOrders: orders.filter((o) => ['O', 'P'].includes(o.status)).length,
+    totalValue: orders.reduce((sum, o) => sum + (Number(o.total_value_inclusive) || 0), 0),
   };
 
   return (
@@ -145,14 +142,10 @@ export default function PurchaseOrdersPage() {
                 className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">All Status</option>
-                <option value="DRAFT">Draft</option>
-                <option value="PENDING_APPROVAL">Pending Approval</option>
-                <option value="APPROVED">Approved</option>
-                <option value="ISSUED">Issued</option>
-                <option value="PARTIALLY_RECEIVED">Partially Received</option>
-                <option value="RECEIVED">Received</option>
-                <option value="CLOSED">Closed</option>
-                <option value="CANCELLED">Cancelled</option>
+                <option value="O">Outstanding</option>
+                <option value="P">Partially Received</option>
+                <option value="F">Fully Received</option>
+                <option value="C">Cancelled</option>
               </select>
               <button
                 type="submit"
@@ -233,7 +226,7 @@ export default function PurchaseOrdersPage() {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {orders.map((order) => (
-                  <tr key={order.id} className="hover:bg-gray-50">
+                  <tr key={order.order_number} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm font-medium text-blue-600">
                       {order.order_number}
                     </td>
@@ -241,14 +234,14 @@ export default function PurchaseOrdersPage() {
                       {new Date(order.order_date).toLocaleDateString('en-ZA')}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900">
-                      {order.supplier_name || order.supplier_id}
+                      {order.supplier_name || order.supplier}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {new Date(order.delivery_date).toLocaleDateString('en-ZA')}
                     </td>
                     <td className="px-4 py-3 text-sm text-right font-medium">
                       R{' '}
-                      {(order.total_amount || 0).toLocaleString('en-ZA', {
+                      {(Number(order.total_value_inclusive) || 0).toLocaleString('en-ZA', {
                         minimumFractionDigits: 2,
                       })}
                     </td>
@@ -269,13 +262,22 @@ export default function PurchaseOrdersPage() {
                         >
                           <Printer className="w-4 h-4" />
                         </button>
-                        {order.status === 'ISSUED' && (
+                        {['O', 'P'].includes(order.status) && (
                           <a
-                            href={`/dashboard/purchase-orders/transactions/stock-received?order=${order.id}`}
+                            href={`/dashboard/purchase-orders/transactions/stock-received?order=${order.order_number}`}
                             className="p-1.5 text-green-600 hover:text-green-700 hover:bg-green-100 rounded"
                             title="Receive Stock"
                           >
                             <Truck className="w-4 h-4" />
+                          </a>
+                        )}
+                        {['O', 'P'].includes(order.status) && (
+                          <a
+                            href={`/dashboard/purchase-orders/transactions/cancel-order?order=${order.order_number}`}
+                            className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-100 rounded"
+                            title="Cancel Order"
+                          >
+                            <X className="w-4 h-4" />
                           </a>
                         )}
                       </div>

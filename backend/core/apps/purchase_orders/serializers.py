@@ -24,6 +24,9 @@ class PurchaseOrderLineSerializer(serializers.ModelSerializer):
     supplier_code = serializers.CharField(
         source="stock_item.supplier_code", read_only=True
     )
+    expense_category_name = serializers.CharField(
+        source="expense_category.name", read_only=True, default=""
+    )
 
     # Calculated fields
     quantity_on_hand = serializers.DecimalField(
@@ -75,6 +78,7 @@ class PurchaseOrderListSerializer(serializers.ModelSerializer):
             "status_display",
             "quantity_ordered",
             "total_quantity_outstanding",
+            "total_value_inclusive",
             "outstanding_value_inclusive",
             "is_overdue",
             "is_back_order",
@@ -119,6 +123,7 @@ class PurchaseOrderDetailSerializer(serializers.ModelSerializer):
             "outstanding_value_vat",
             "outstanding_value_inclusive",
             "cancelled_at",
+            "cancellation_reason",
             "created_at",
             "updated_at",
             # Set at creation only — supplier/pricing method drive every line's
@@ -157,6 +162,10 @@ class PurchaseOrderCreateLineSerializer(serializers.Serializer):
         max_digits=10, decimal_places=2, required=False, allow_null=True
     )
     tax_code = serializers.IntegerField(default=1)
+    comments = serializers.CharField(
+        max_length=30, required=False, allow_blank=True, default=""
+    )
+    expense_category = serializers.IntegerField(required=False, allow_null=True)
 
 
 class PurchaseOrderCreateSerializer(serializers.Serializer):
