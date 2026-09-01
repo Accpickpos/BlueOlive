@@ -1,6 +1,6 @@
 from decimal import Decimal, InvalidOperation
 
-from apps.common.mixins import LookupActionMixin
+from apps.common.mixins import LookupActionMixin, ModuleFunctionPermissionMixin
 from apps.shop_filter_mixin import ShopFilterMixin
 from django.db import transaction
 from django.db.models import Case, Count, DecimalField, F, Q, Sum, When
@@ -69,7 +69,9 @@ from .services import StockTransactionService
 # ─────────────────────────────────────────────
 
 
-class StockItemViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class StockItemViewSet(
+    ModuleFunctionPermissionMixin, LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     CRUD for stock items with filtering, search, and helper actions.
 
@@ -84,6 +86,12 @@ class StockItemViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
       GET  /stock-items/lookup/?search=&limit= — thin typeahead for line-item pickers
     """
 
+    access_module = "stock_control"
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+    }
     queryset = StockItem.objects.select_related(
         "department", "supplier", "tax_code", "last_supplier"
     ).prefetch_related("special_deals", "future_prices")
@@ -446,7 +454,13 @@ class StockItemViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
 # ─────────────────────────────────────────────
 
 
-class SpecialDealViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class SpecialDealViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+    access_module = "stock_control"
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+    }
     queryset = SpecialDeal.objects.select_related("stock_item")
     serializer_class = SpecialDealSerializer
     permission_classes = [IsAuthenticated]
@@ -572,7 +586,13 @@ class SpecialDealViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ─────────────────────────────────────────────
 
 
-class FuturePricingViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class FuturePricingViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+    access_module = "stock_control"
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+    }
     queryset = FuturePricing.objects.select_related("stock_item")
     serializer_class = FuturePricingSerializer
     permission_classes = [IsAuthenticated]
@@ -602,7 +622,13 @@ class FuturePricingViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ─────────────────────────────────────────────
 
 
-class ShrinkWrapViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class ShrinkWrapViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+    access_module = "stock_control"
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+    }
     queryset = ShrinkWrap.objects.select_related("shrink_pack_code", "bulk_pack_code")
     serializer_class = ShrinkWrapSerializer
     permission_classes = [IsAuthenticated]
@@ -615,7 +641,13 @@ class ShrinkWrapViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ─────────────────────────────────────────────
 
 
-class PackBundleViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class PackBundleViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+    access_module = "stock_control"
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+    }
     queryset = PackBundle.objects.prefetch_related("ingredients__ingredient_stock")
     serializer_class = PackBundleSerializer
     permission_classes = [IsAuthenticated]
@@ -627,7 +659,13 @@ class PackBundleViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         return Response({"total_cost": total})
 
 
-class PackBundleIngredientViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class PackBundleIngredientViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+    access_module = "stock_control"
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+    }
     queryset = PackBundleIngredient.objects.select_related("ingredient_stock")
     serializer_class = PackBundleIngredientSerializer
     permission_classes = [IsAuthenticated]
@@ -640,7 +678,7 @@ class PackBundleIngredientViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ─────────────────────────────────────────────
 
 
-class StockTransactionViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class StockTransactionViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     CRUD for stock transactions.
 
@@ -652,6 +690,7 @@ class StockTransactionViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     IsStockMover, matching every other stock-moving action in this app.
     """
 
+    access_module = "stock_control"
     queryset = StockTransaction.objects.select_related(
         "stock_item", "department", "tax_code", "debtor", "supplier"
     )
@@ -839,9 +878,10 @@ class StockTransactionViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ─────────────────────────────────────────────
 
 
-class StockMovementLedgerViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class StockMovementLedgerViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """Read-only ledger — entries are created by the system during transactions."""
 
+    access_module = "stock_control"
     queryset = StockMovementLedger.objects.select_related("stock_item")
     serializer_class = StockMovementLedgerSerializer
     permission_classes = [IsAuthenticated]
@@ -856,7 +896,7 @@ class StockMovementLedgerViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet)
 # ─────────────────────────────────────────────
 
 
-class StockTakeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class StockTakeViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     Manage stock take sessions.
 
@@ -866,6 +906,10 @@ class StockTakeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
       GET  /stock-takes/{pk}/variance-report/   — items with non-zero variance
     """
 
+    access_module = "stock_control"
+    # update_stock moves real stock quantity — a transaction, not the
+    # MAINTENANCE the fallback would otherwise assign (no keyword match).
+    action_function_types = {"update_stock": "TRANSACTIONS"}
     queryset = StockTake.objects.prefetch_related("items__stock_item")
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
@@ -1007,7 +1051,9 @@ class StockTakeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         return Response(StockTakeItemSerializer(items, many=True).data)
 
 
-class StockTakeItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class StockTakeItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+    access_module = "stock_control"
+    action_function_types = {"count": "TRANSACTIONS"}
     queryset = StockTakeItem.objects.select_related("stock_take", "stock_item")
     serializer_class = StockTakeItemSerializer
     permission_classes = [IsAuthenticated]
@@ -1042,7 +1088,13 @@ class StockTakeItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ─────────────────────────────────────────────
 
 
-class ContractPricingViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class ContractPricingViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+    access_module = "stock_control"
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+    }
     queryset = ContractPricing.objects.select_related(
         "debtor", "stock_item", "department", "supplier"
     )
@@ -1097,7 +1149,13 @@ class ContractPricingViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ─────────────────────────────────────────────
 
 
-class OneTouchLookupKeyViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class OneTouchLookupKeyViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+    access_module = "stock_control"
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+    }
     queryset = OneTouchLookupKey.objects.select_related("stock_item")
     serializer_class = OneTouchLookupKeySerializer
     permission_classes = [IsAuthenticated]
@@ -1110,7 +1168,8 @@ class OneTouchLookupKeyViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ─────────────────────────────────────────────
 
 
-class StockMonthlyStatisticViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class StockMonthlyStatisticViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+    access_module = "stock_control"
     queryset = StockMonthlyStatistic.objects.select_related("stock_item")
     serializer_class = StockMonthlyStatisticSerializer
     permission_classes = [IsAuthenticated]
@@ -1261,7 +1320,7 @@ class StockMonthlyStatisticViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ─────────────────────────────────────────────
 
 
-class BranchViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class BranchViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     Manage branches/locations.
 
@@ -1269,6 +1328,12 @@ class BranchViewSet(ShopFilterMixin, viewsets.ModelViewSet):
       GET /branches/{pk}/stock/     — all stock levels at this branch
     """
 
+    access_module = "stock_control"
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+    }
     queryset = Branch.objects.all()
     serializer_class = BranchSerializer
     permission_classes = [IsAuthenticated]
@@ -1305,7 +1370,8 @@ class BranchViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ─────────────────────────────────────────────
 
 
-class BranchStockViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class BranchStockViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+    access_module = "stock_control"
     queryset = BranchStock.objects.select_related("branch", "stock_item")
     serializer_class = BranchStockSerializer
     permission_classes = [IsAuthenticated]
@@ -1331,7 +1397,7 @@ class BranchStockViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ─────────────────────────────────────────────
 
 
-class GroupOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class GroupOrderViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     Manage group orders.
 
@@ -1339,6 +1405,7 @@ class GroupOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
       POST /group-orders/{pk}/recalculate-total/
     """
 
+    access_module = "stock_control"
     queryset = GroupOrder.objects.select_related("branch").prefetch_related(
         "items__stock_item"
     )
@@ -1362,7 +1429,8 @@ class GroupOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         )
 
 
-class GroupOrderItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class GroupOrderItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+    access_module = "stock_control"
     queryset = GroupOrderItem.objects.select_related("group_order", "stock_item")
     serializer_class = GroupOrderItemSerializer
     permission_classes = [IsAuthenticated]
@@ -1375,7 +1443,7 @@ class GroupOrderItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ─────────────────────────────────────────────
 
 
-class BranchTransferViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class BranchTransferViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     Manage inter-branch transfers (IBT).
 
@@ -1386,6 +1454,11 @@ class BranchTransferViewSet(ShopFilterMixin, viewsets.ModelViewSet):
       POST /branch-transfers/{pk}/cancel/
     """
 
+    access_module = "stock_control"
+    # "dispatch" doesn't match the post/receive/approve keyword heuristic —
+    # same TRANSACTIONS tier as its approve/receive siblings, not the
+    # MAINTENANCE the fallback would otherwise assign.
+    action_function_types = {"dispatch": "TRANSACTIONS"}
     queryset = BranchTransfer.objects.select_related(
         "from_branch",
         "to_branch",
@@ -1569,7 +1642,8 @@ class BranchTransferViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         )
 
 
-class BranchTransferItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class BranchTransferItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+    access_module = "stock_control"
     queryset = BranchTransferItem.objects.select_related("transfer", "stock_item")
     serializer_class = BranchTransferItemSerializer
     permission_classes = [IsAuthenticated]
@@ -1582,7 +1656,8 @@ class BranchTransferItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ─────────────────────────────────────────────
 
 
-class BranchTransferInvoiceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class BranchTransferInvoiceViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+    access_module = "stock_control"
     queryset = BranchTransferInvoice.objects.select_related("transfer")
     serializer_class = BranchTransferInvoiceSerializer
     permission_classes = [IsAuthenticated]

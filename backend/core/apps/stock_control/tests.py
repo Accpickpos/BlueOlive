@@ -35,13 +35,13 @@ class StockItemModelTest(TestCase):
     def setUpTestData(cls):
         """Set up test data"""
         cls.tax_code = TaxCode.objects.create(
-            tax_code="14A", description="Standard VAT", tax_percent=Decimal("14.00")
+            code=1, description="Standard VAT", rate=Decimal("14.00")
         )
 
         cls.department = SalesDepartment.objects.create(number=1, name="Groceries")
 
         cls.supplier = Creditor.objects.create(
-            account_number="SUP001", name="Test Supplier", contact_person="John Doe"
+            supplier_number="1001", name="Test Supplier", contact_person="John Doe"
         )
 
     def setUp(self):
@@ -179,7 +179,7 @@ class StockTransactionModelTest(TestCase):
             stock_item=self.stock_item,
             quantity_in=Decimal("20.00"),
             unit_cost=Decimal("100.00"),
-            reference="PO-001",
+            comments="PO-001",
         )
 
         self.assertEqual(transaction.transaction_type, "INCOMING")
@@ -194,7 +194,7 @@ class StockTransactionModelTest(TestCase):
             quantity_out=Decimal("5.00"),
             unit_cost=Decimal("100.00"),
             unit_price=Decimal("150.00"),
-            reference="INV-001",
+            comments="INV-001",
         )
 
         self.assertEqual(transaction.transaction_type, "SALE")

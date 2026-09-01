@@ -58,7 +58,7 @@ class PriceValidationService:
             "markup_percent_1": stock_item.markup_1,  # Fixed: was markup_percent_1
             "markup_percent_2": stock_item.markup_2,  # Fixed: was markup_percent_2
             "markup_percent_3": stock_item.markup_3,  # Fixed: was markup_percent_3
-            "cost_price": stock_item.cost_price,
+            "cost_price": stock_item.effective_cost,
             "maximum_discount": stock_item.maximum_discount_percent,
             "stock_item": stock_item,
         }

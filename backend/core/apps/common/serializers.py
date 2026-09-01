@@ -15,6 +15,8 @@ Usage:
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
+from .models import AccessGrant
+
 User = get_user_model()
 
 
@@ -247,6 +249,24 @@ class ChoicesMixin:
         return data
 
 
+class AccessGrantSerializer(serializers.ModelSerializer):
+    """Serializer for a single role x module x function_type grant."""
+
+    class Meta:
+        model = AccessGrant
+        fields = ["id", "role", "module", "function_type", "is_allowed", "updated_at"]
+        read_only_fields = ["id", "updated_at"]
+
+
+class AccessGrantBulkUpdateSerializer(serializers.Serializer):
+    """One cell change: (role, module, function_type) -> is_allowed."""
+
+    role = serializers.ChoiceField(choices=AccessGrant.ROLE_CHOICES)
+    module = serializers.ChoiceField(choices=AccessGrant.MODULE_CHOICES)
+    function_type = serializers.ChoiceField(choices=AccessGrant.FUNCTION_TYPE_CHOICES)
+    is_allowed = serializers.BooleanField()
+
+
 # Re-export commonly used serializers
 __all__ = [
     "AuditFieldsMixin",
@@ -257,4 +277,6 @@ __all__ = [
     "NestedSerializerMixin",
     "SummaryFieldsMixin",
     "ChoicesMixin",
+    "AccessGrantSerializer",
+    "AccessGrantBulkUpdateSerializer",
 ]

@@ -10,6 +10,7 @@ LOCATION: accpick_project/settings/views.py
 from datetime import datetime
 from io import StringIO
 
+from apps.common.mixins import ModuleFunctionPermissionMixin
 from apps.shop_filter_mixin import ShopFilterMixin
 from django.conf import settings
 from django.core.mail import send_mail
@@ -70,12 +71,21 @@ from .serializers import (
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-class BaseSettingsViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class BaseSettingsViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     Base ViewSet with common functionality for all settings models
     Handles audit trail (created_by, updated_by)
     """
 
+    access_module = "settings"
+    # Every settings model here is reference/master data (manual's
+    # "Maintenance" tier) — deactivate/activate already match the
+    # MAINTENANCE keyword heuristic on their own.
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+    }
     permission_classes = [IsAuthenticated]
     filter_backends = [
         DjangoFilterBackend,
@@ -515,6 +525,18 @@ class CostingCategoryViewSet(BaseSettingsViewSet):
         serializer = CostingCategoryListSerializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=["post"])
+    def set_default(self, request, pk=None):
+        """
+        Set this category as the single active system-wide costing/pricing
+        method (manual §8.1) — clears is_default on every other category.
+        """
+        category = self.get_object()
+        category.is_default = True
+        category.save()
+        serializer = self.get_serializer(category)
+        return Response(serializer.data)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # PAYMENT METHOD VIEWSET
@@ -585,7 +607,7 @@ class CreditTermsViewSet(BaseSettingsViewSet):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-class SystemConfigurationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class SystemConfigurationViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for System Configuration (Singleton)
 
@@ -593,6 +615,12 @@ class SystemConfigurationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     Update: PUT/PATCH /api/settings/system-config/
     """
 
+    access_module = "settings"
+    action_function_types = {
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+        "advance_period": "MAINTENANCE",
+    }
     queryset = SystemConfiguration.objects.all()
     serializer_class = SystemConfigurationSerializer
     permission_classes = [IsAuthenticated]
@@ -966,13 +994,86 @@ class SystemConfigurationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             }
         )
 
+    @action(detail=False, methods=["get"])
+    def consolidated_expenditure(self, request):
+        """
+        Manual §8.5: Creditors Expense + Cash Book Expense combined by
+        category, for a month or Year-to-Date.
+
+        GET /api/settings/system-config/consolidated_expenditure/?period=YYYY-MM&ytd=true
+        """
+        period = request.query_params.get("period")
+        if not period:
+            return Response(
+                {"error": "period (YYYY-MM) is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        ytd = request.query_params.get("ytd", "false").lower() == "true"
+
+        from .report_services import get_consolidated_expenditure
+
+        try:
+            return Response(get_consolidated_expenditure(period, ytd))
+        except (ValueError, TypeError):
+            return Response(
+                {"error": "Invalid period format. Use YYYY-MM"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    @action(detail=False, methods=["get"])
+    def tax_control_report(self, request):
+        """
+        Manual §8.2: VAT reconciled across Debtors, Creditors, Cash Book and
+        POS for a date range, reconciled against each module's own total.
+
+        GET /api/settings/system-config/tax_control_report/?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+        """
+        start_date = request.query_params.get("start_date")
+        end_date = request.query_params.get("end_date")
+        if not start_date or not end_date:
+            return Response(
+                {"error": "start_date and end_date (YYYY-MM-DD) are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from .report_services import get_tax_control_report
+
+        return Response(get_tax_control_report(start_date, end_date))
+
+    @action(detail=False, methods=["get"])
+    def data_integrity_report(self, request):
+        """
+        Manual §8.8: Debtor/Creditor balance reconciliation and Stock
+        quantity reconciliation (read-only detection, not auto-fix).
+
+        GET /api/settings/system-config/data_integrity_report/?checks=debtors,creditors,stock
+        """
+        checks_param = request.query_params.get("checks", "debtors,creditors,stock")
+        checks = {c.strip() for c in checks_param.split(",") if c.strip()}
+
+        from .data_integrity_services import (
+            check_creditor_balances,
+            check_debtor_balances,
+            check_stock_quantities,
+        )
+
+        result = {}
+        if "debtors" in checks:
+            result["debtors"] = check_debtor_balances()
+        if "creditors" in checks:
+            result["creditors"] = check_creditor_balances()
+        if "stock" in checks:
+            result["stock"] = check_stock_quantities()
+
+        return Response(result)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # MONTHLY STATISTICS VIEWSETS (READ-ONLY)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-class DepartmentMonthlyStatsViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class DepartmentMonthlyStatsViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     Read-only ViewSet for Department Monthly Statistics
 
@@ -980,6 +1081,7 @@ class DepartmentMonthlyStatsViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewS
     Retrieve: GET /api/settings/department-stats/{id}/
     """
 
+    access_module = "settings"
     queryset = DepartmentMonthlyStats.objects.all()
     serializer_class = DepartmentMonthlyStatsSerializer
     permission_classes = [IsAuthenticated]
@@ -1004,7 +1106,7 @@ class DepartmentMonthlyStatsViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewS
         return Response(serializer.data)
 
 
-class SalesAreaMonthlyStatsViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class SalesAreaMonthlyStatsViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     Read-only ViewSet for Sales Area Monthly Statistics
 
@@ -1012,6 +1114,7 @@ class SalesAreaMonthlyStatsViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSe
     Retrieve: GET /api/settings/sales-area-stats/{id}/
     """
 
+    access_module = "settings"
     queryset = SalesAreaMonthlyStats.objects.all()
     serializer_class = SalesAreaMonthlyStatsSerializer
     permission_classes = [IsAuthenticated]
@@ -1042,7 +1145,7 @@ class SalesAreaMonthlyStatsViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSe
         return Response(serializer.data)
 
 
-class DayEndReportViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class DayEndReportViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     Read-only ViewSet for persisted Day End Reports (manual §8.6
     "Printing a Previous Day End Report").
@@ -1051,6 +1154,7 @@ class DayEndReportViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     Retrieve (reprint): GET /api/settings/day-end-reports/{id}/
     """
 
+    access_module = "settings"
     queryset = DayEndReport.objects.all()
     serializer_class = DayEndReportSerializer
     permission_classes = [IsAuthenticated]
@@ -1059,7 +1163,7 @@ class DayEndReportViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     ordering = ["-process_date"]
 
 
-class APIKeyViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class APIKeyViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing API keys.
 
@@ -1077,6 +1181,13 @@ class APIKeyViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     - validate: Test an API key
     """
 
+    access_module = "settings"
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+        "revoke": "MAINTENANCE",
+    }
     queryset = APIKey.objects.all()
     permission_classes = [IsAuthenticated]
     filter_backends = [

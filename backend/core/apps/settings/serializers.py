@@ -543,6 +543,7 @@ class CostingCategorySerializer(serializers.ModelSerializer):
             "pricing_method_display",
             "methods_display",
             "description",
+            "is_default",
             "is_active",
             "deactivated_at",
             "deactivated_by",
@@ -584,6 +585,7 @@ class CostingCategoryListSerializer(serializers.ModelSerializer):
             "costing_method_display",
             "pricing_method",
             "pricing_method_display",
+            "is_default",
             "is_active",
         ]
 

@@ -5,6 +5,7 @@ Handles all cash/bank transaction API endpoints with proper error handling and p
 
 from decimal import Decimal
 
+from apps.common.mixins import ModuleFunctionPermissionMixin
 from apps.common.permissions import BaseModelPermission
 from apps.common.permissions import CanReconcile as CommonCanReconcile
 from apps.shop_filter_mixin import ShopFilterMixin
@@ -84,9 +85,11 @@ from .services import (
 )
 
 
-class IncomeCategoryViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class IncomeCategoryViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Income Categories"""
 
+    access_module = "cash_book"
+    action_function_types = {"create": "MAINTENANCE", "update": "MAINTENANCE", "partial_update": "MAINTENANCE"}
     queryset = IncomeCategory.objects.all()
     serializer_class = IncomeCategorySerializer
     permission_classes = [IsAuthenticated, CanViewTransactions]
@@ -100,7 +103,7 @@ class IncomeCategoryViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     ordering = ["number"]
 
 
-class ExpenseCategoryViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class ExpenseCategoryViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     API endpoint for Expense Categories. Previously unregistered — the
     frontend's cashBookApi.expenseCategories client and
@@ -110,6 +113,8 @@ class ExpenseCategoryViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     every request.
     """
 
+    access_module = "cash_book"
+    action_function_types = {"create": "MAINTENANCE", "update": "MAINTENANCE", "partial_update": "MAINTENANCE"}
     queryset = ExpenseCategory.objects.all()
     serializer_class = ExpenseCategorySerializer
     permission_classes = [IsAuthenticated, CanViewTransactions]
@@ -123,12 +128,13 @@ class ExpenseCategoryViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     ordering = ["number"]
 
 
-class CashBookTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class CashBookTransactionViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     API endpoint for viewing cash book transactions
     Read-only - transactions created through specific endpoints
     """
 
+    access_module = "cash_book"
     permission_classes = [IsAuthenticated, CanViewTransactions]
     filter_backends = [
         DjangoFilterBackend,
@@ -320,9 +326,10 @@ class CashBookTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet)
         return Response(CashBookReportService.get_monthly_category_series(year))
 
 
-class OtherIncomeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class OtherIncomeViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Other Income transactions"""
 
+    access_module = "cash_book"
     serializer_class = OtherIncomeSerializer
     permission_classes = [
         IsAuthenticated,
@@ -405,9 +412,10 @@ class OtherIncomeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             )
 
 
-class OtherExpenseViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class OtherExpenseViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Other Expense transactions"""
 
+    access_module = "cash_book"
     serializer_class = OtherExpenseSerializer
     permission_classes = [
         IsAuthenticated,
@@ -485,9 +493,10 @@ class OtherExpenseViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             )
 
 
-class BankDepositViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class BankDepositViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Bank Deposits"""
 
+    access_module = "cash_book"
     serializer_class = BankDepositSerializer
     permission_classes = [
         IsAuthenticated,
@@ -549,9 +558,10 @@ class BankDepositViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             )
 
 
-class CashWithdrawalViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class CashWithdrawalViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Cash Withdrawals"""
 
+    access_module = "cash_book"
     serializer_class = CashWithdrawalSerializer
     permission_classes = [
         IsAuthenticated,
@@ -605,9 +615,10 @@ class CashWithdrawalViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class BankTransferViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class BankTransferViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Bank Transfers"""
 
+    access_module = "cash_book"
     serializer_class = BankTransferSerializer
     permission_classes = [
         IsAuthenticated,
@@ -654,9 +665,10 @@ class BankTransferViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class BankChargeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class BankChargeViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Bank Charges"""
 
+    access_module = "cash_book"
     serializer_class = BankChargeSerializer
     permission_classes = [
         IsAuthenticated,
@@ -701,9 +713,10 @@ class BankChargeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class InterestReceivedViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class InterestReceivedViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Interest Received"""
 
+    access_module = "cash_book"
     serializer_class = InterestReceivedSerializer
     permission_classes = [
         IsAuthenticated,
@@ -750,8 +763,10 @@ class InterestReceivedViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class BankReconciliationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class BankReconciliationViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Bank Reconciliations"""
+
+    access_module = "cash_book"
 
     permission_classes = [IsAuthenticated, CanReconcile]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
@@ -928,18 +943,21 @@ class BankReconciliationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         )
 
 
-class CashFloatViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class CashFloatViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for Cash Float management"""
 
+    access_module = "cash_book"
     queryset = CashFloat.objects.all()
     serializer_class = CashFloatSerializer
     permission_classes = [IsAuthenticated, CanCreateTransactions]
     ordering = ["-float_date"]
 
 
-class ExpenseCategoryBalanceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class ExpenseCategoryBalanceViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for expense category balances (per spec CBEXP)"""
 
+    access_module = "cash_book"
+    action_function_types = {"close_month": "TRANSACTIONS", "recalculate_mtd": "TRANSACTIONS"}
     queryset = ExpenseCategoryBalance.objects.select_related("expense_category")
     serializer_class = ExpenseCategoryBalanceSerializer
     permission_classes = [IsAuthenticated, CanViewTransactions]
@@ -999,9 +1017,11 @@ class ExpenseCategoryBalanceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class IncomeCategoryBalanceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class IncomeCategoryBalanceViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for income category balances (per spec CBINC)"""
 
+    access_module = "cash_book"
+    action_function_types = {"close_month": "TRANSACTIONS", "recalculate_mtd": "TRANSACTIONS"}
     queryset = IncomeCategoryBalance.objects.select_related("income_category")
     serializer_class = IncomeCategoryBalanceSerializer
     permission_classes = [IsAuthenticated, CanViewTransactions]
@@ -1061,8 +1081,10 @@ class IncomeCategoryBalanceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class UnpresentedChequeViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class UnpresentedChequeViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """API endpoint for unpresented cheques (per spec CBCHEQ)"""
+
+    access_module = "cash_book"
 
     queryset = UnpresentedCheque.objects.all()
     serializer_class = UnpresentedChequeSerializer

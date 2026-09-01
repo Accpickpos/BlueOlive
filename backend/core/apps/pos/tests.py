@@ -6,11 +6,13 @@ Comprehensive test suite for POS models, services, and views.
 from datetime import date
 from decimal import Decimal
 
-from apps.settings.models import SalesArea
-from apps.stock_control.models import StockCategory, StockItem
-from django.contrib.auth.models import User
+from apps.settings.models import SalesArea, SalesDepartment
+from apps.stock_control.models import StockItem
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase, TransactionTestCase
+
+User = get_user_model()
 
 from .calculation_service import CalculationService
 from .exceptions import InsufficientStock, InvalidDocumentState, POSValidationException
@@ -27,7 +29,7 @@ from .models import (
     JobCardLine,
     Laybye,
     LaybyeLine,
-    LaybyelPayment,
+    LaybyePayment,
     Payout,
     Quotation,
     QuotationLine,
@@ -136,13 +138,14 @@ class CashSaleModelTestCase(TestCase):
 
     def setUp(self):
         """Set up test data."""
+        # is_superuser=True bypasses ShopUser.save()'s tenant-context guard,
+        # which isn't set up in this single-DB test run (DISABLE_TENANT_ROUTER=1).
         self.user = User.objects.create_user(
             username="cashier1",
             password="testpass123",  # nosec B105 B106 - test fixture password
+            is_superuser=True,
         )
-        self.sales_area = SalesArea.objects.create(
-            number=1, name="Main", description="Main sales area"
-        )
+        self.sales_area = SalesArea.objects.create(number=1, name="Main")
 
     def test_create_cash_sale(self):
         """Test creating a cash sale."""
@@ -177,9 +180,7 @@ class LaybyeModelTestCase(TestCase):
 
     def setUp(self):
         """Set up test data."""
-        self.sales_area = SalesArea.objects.create(
-            number=1, name="Main", description="Main sales area"
-        )
+        self.sales_area = SalesArea.objects.create(number=1, name="Main")
 
     def test_create_laybye(self):
         """Test creating a laybye."""
@@ -204,9 +205,7 @@ class LaybyeServiceTestCase(TransactionTestCase):
 
     def setUp(self):
         """Set up test data."""
-        self.sales_area = SalesArea.objects.create(
-            number=1, name="Main", description="Main sales area"
-        )
+        self.sales_area = SalesArea.objects.create(number=1, name="Main")
 
     def test_make_payment_on_laybye(self):
         """Test making a payment on laybye."""
@@ -223,7 +222,9 @@ class LaybyeServiceTestCase(TransactionTestCase):
             sales_area=self.sales_area,
         )
 
-        payment = LaybyeService.make_payment(laybye, Decimal("300.00"), self.sales_area)
+        payment, _invoice = LaybyeService.make_payment(
+            laybye, Decimal("300.00"), self.sales_area
+        )
 
         laybye.refresh_from_db()
 
@@ -300,24 +301,23 @@ class CashSaleServiceTestCase(TransactionTestCase):
 
     def setUp(self):
         """Set up test data."""
+        # is_superuser=True bypasses ShopUser.save()'s tenant-context guard,
+        # which isn't set up in this single-DB test run (DISABLE_TENANT_ROUTER=1).
         self.user = User.objects.create_user(
             username="cashier1",
             password="testpass123",  # nosec B105 B106 - test fixture password
+            is_superuser=True,
         )
-        self.sales_area = SalesArea.objects.create(
-            number=1, name="Main", description="Main sales area"
-        )
+        self.sales_area = SalesArea.objects.create(number=1, name="Main")
 
         # Create stock item
-        category = StockCategory.objects.create(code="1", description="General Items")
+        department = SalesDepartment.objects.create(number=1, name="General Items")
         self.stock_item = StockItem.objects.create(
             stock_code="SKU001",
             description="Test Item",
-            category=category,
-            unit_of_measure="UNIT",
+            department=department,
             quantity_on_hand=Decimal("100"),
-            reorder_level=Decimal("10"),
-            maximum_stock=Decimal("500"),
+            reorder_quantity=Decimal("10"),
         )
 
     def test_post_cash_sale_updates_stock(self):
