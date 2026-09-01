@@ -6,6 +6,7 @@ API viewsets for general ledger operations.
 from datetime import date
 from decimal import Decimal
 
+from apps.common.mixins import ModuleFunctionPermissionMixin
 from apps.shop_filter_mixin import ShopFilterMixin
 from django.db import transaction
 from django.db.models import Avg, Count, F, Max, Min, Q, Sum
@@ -61,7 +62,7 @@ from .serializers import (
 from .services import GLPostingService
 
 
-class GLMastViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class GLMastViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing General Ledger Master accounts.
 
@@ -72,6 +73,14 @@ class GLMastViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     - account_history: Get historical balances for an account
     """
 
+    access_module = "general_ledger"
+    # Chart-of-accounts master data (manual's "Maintenance" tier), not a
+    # posted transaction.
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+    }
     queryset = GLMast.objects.all()
     permission_classes = [IsAuthenticated]
     filter_backends = [
@@ -261,7 +270,7 @@ class GLMastViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         )
 
 
-class GLTranViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class GLTranViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing GL Transactions (Journal Entries).
 
@@ -273,6 +282,7 @@ class GLTranViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     - daily_summary: Get transaction summary for a specific date
     """
 
+    access_module = "general_ledger"
     queryset = GLTran.objects.all()
     permission_classes = [IsAuthenticated]
     filter_backends = [
@@ -531,7 +541,7 @@ class GLTranViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         )
 
 
-class GLStJnlViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class GLStJnlViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing GL Standing Journals.
 
@@ -542,6 +552,15 @@ class GLStJnlViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     - by_period: Get standing journals by start period
     """
 
+    access_module = "general_ledger"
+    # A standing journal is a recurring-posting template (setup), distinct
+    # from post_due (the actual per-period posting event, already correctly
+    # classified as TRANSACTIONS by the "post" keyword heuristic).
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+    }
     queryset = GLStJnl.objects.all()
     permission_classes = [IsAuthenticated]
     filter_backends = [
@@ -829,7 +848,7 @@ class GLStJnlViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class GLSpreadViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class GLSpreadViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing GL Spread Sheets.
 
@@ -839,6 +858,13 @@ class GLSpreadViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     - variance_analysis: Get variance between actuals and budgets
     """
 
+    access_module = "general_ledger"
+    # Budget-figure setup per account, not a posted transaction.
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+    }
     queryset = GLSpread.objects.all()
     permission_classes = [IsAuthenticated]
     filter_backends = [
@@ -1000,7 +1026,7 @@ class GLSpreadViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         return Response(results)
 
 
-class GLBatchViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class GLBatchViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for GL Batch staging entries — manual/human-captured journal
     lines awaiting review, grouped by batchno. This is the spec's staging
@@ -1012,6 +1038,7 @@ class GLBatchViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     - post: server-revalidated transfer of a balanced batchno into GLTran
     """
 
+    access_module = "general_ledger"
     queryset = GLBatch.objects.all()
     permission_classes = [IsAuthenticated]
     filter_backends = [
@@ -1166,13 +1193,19 @@ class GLBatchViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         )
 
 
-class GLRepViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class GLRepViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for GL Report Format rows (Maintenance only — defines the layout
     Income Statement/Balance Sheet reports are built from; does not itself
     compute anything, see general_ledger/reports.py for that).
     """
 
+    access_module = "general_ledger"
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+    }
     queryset = GLRep.objects.all()
     permission_classes = [IsAuthenticated]
     filter_backends = [
@@ -1226,7 +1259,7 @@ class _SingletonViewSetMixin:
         raise ValidationError(f"{self.singleton_model.__name__} cannot be deleted.")
 
 
-class GLParamViewSet(_SingletonViewSetMixin, viewsets.ModelViewSet):
+class GLParamViewSet(ModuleFunctionPermissionMixin, _SingletonViewSetMixin, viewsets.ModelViewSet):
     """
     ViewSet for the GL Parameters singleton (current period/year, next batch
     number, retained earnings account). No create/delete — there is exactly
@@ -1234,6 +1267,17 @@ class GLParamViewSet(_SingletonViewSetMixin, viewsets.ModelViewSet):
     read-only system status enquiry.
     """
 
+    access_module = "general_ledger"
+    # Editing the parameter singleton is configuration; period_end/year_end
+    # already fall back to MAINTENANCE correctly on their own (POST, no
+    # keyword match) — listed here anyway for clarity since they're the
+    # highest-risk actions in this ViewSet.
+    action_function_types = {
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+        "period_end": "MAINTENANCE",
+        "year_end": "MAINTENANCE",
+    }
     singleton_model = GLParam
     queryset = GLParam.objects.all()
     serializer_class = GLParamSerializer
@@ -1466,7 +1510,9 @@ class GLParamViewSet(_SingletonViewSetMixin, viewsets.ModelViewSet):
         )
 
 
-class GLIntegrationSettingsViewSet(_SingletonViewSetMixin, viewsets.ModelViewSet):
+class GLIntegrationSettingsViewSet(
+    ModuleFunctionPermissionMixin, _SingletonViewSetMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for the GL Integration Settings singleton — control-account
     mapping used by the Integration Transfer pipeline (see
@@ -1474,6 +1520,8 @@ class GLIntegrationSettingsViewSet(_SingletonViewSetMixin, viewsets.ModelViewSet
     row.
     """
 
+    access_module = "general_ledger"
+    action_function_types = {"update": "MAINTENANCE", "partial_update": "MAINTENANCE"}
     singleton_model = GLIntegrationSettings
     queryset = GLIntegrationSettings.objects.all()
     serializer_class = GLIntegrationSettingsSerializer

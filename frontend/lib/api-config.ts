@@ -331,6 +331,12 @@ export const ENDPOINTS = {
     DETAIL: (id: string | number) => `${API_V1_BASE}/gas/${id}/`,
   },
 
+  // ===== COMMON =====
+  COMMON: {
+    ACCESS_GRANTS: `${API_V1_BASE}/common/access-grants/`,
+    ACCESS_GRANTS_BULK_UPDATE: `${API_V1_BASE}/common/access-grants/bulk_update/`,
+  },
+
   // ===== SETTINGS =====
   SETTINGS: {
     DEPARTMENTS: `${API_V1_BASE}/settings/departments/`,
@@ -345,6 +351,23 @@ export const ENDPOINTS = {
     DEPARTMENT_STATS: `${API_V1_BASE}/settings/department-stats/`,
     SALES_AREA_STATS: `${API_V1_BASE}/settings/sales-area-stats/`,
     IMPORT: `${API_V1_BASE}/settings/import/`,
+
+    // Period End (Day End / Month End / Year End)
+    PERIOD_END_STATUS: `${API_V1_BASE}/settings/system-config/period_end_status/`,
+    RUN_DAY_END: `${API_V1_BASE}/settings/system-config/run_day_end/`,
+    RUN_MONTH_END: `${API_V1_BASE}/settings/system-config/run_month_end/`,
+    RUN_YEAR_END: `${API_V1_BASE}/settings/system-config/run_year_end/`,
+    DAY_END_REPORTS: `${API_V1_BASE}/settings/day-end-reports/`,
+    DAY_END_REPORT_DETAIL: (id: number) => `${API_V1_BASE}/settings/day-end-reports/${id}/`,
+
+    // Consolidated Expenditure report
+    CONSOLIDATED_EXPENDITURE: `${API_V1_BASE}/settings/system-config/consolidated_expenditure/`,
+
+    // Data Integrity report
+    DATA_INTEGRITY_REPORT: `${API_V1_BASE}/settings/system-config/data_integrity_report/`,
+
+    // Tax Control / VAT-201 report
+    TAX_CONTROL_REPORT: `${API_V1_BASE}/settings/system-config/tax_control_report/`,
   },
 
   // ===== MESSAGING =====

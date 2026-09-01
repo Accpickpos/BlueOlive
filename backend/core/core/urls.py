@@ -16,6 +16,7 @@ Including another URLconf
 """
 
 from apps.cash_book.urls import router as cash_book_router
+from apps.common.urls import urlpatterns as common_urls
 from apps.creditors.urls import urlpatterns as creditors_urls
 
 # Import routers from business apps
@@ -68,6 +69,7 @@ v1_api_patterns = [
     # Subscription Plans (platform-level)
     path("subscription/", include(subscription_router.urls)),
     # Business Applications
+    path("common/", include(common_urls)),
     path("debtors/", include(debtors_router.urls)),
     path("creditors/", include(creditors_urls)),
     path("cash-book/", include(cash_book_router.urls)),
@@ -111,6 +113,7 @@ urlpatterns = [
     path(
         "api/users/auth/", include("shop_users.urls")
     ),  # Auth endpoints for backward compatibility
+    path("api/common/", include(common_urls)),
     path("api/debtors/", include(debtors_router.urls)),
     path("api/creditors/", include(creditors_urls)),
     path("api/cash-book/", include(cash_book_router.urls)),

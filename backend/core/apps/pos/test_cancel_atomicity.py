@@ -1,9 +1,8 @@
 """
 Targeted regression tests for the atomic/locked stock reversal + audit
 logging added to the POS cancel_* services (see services.py cancel_*
-functions and tenancy/audit.py POSAuditLog). apps/pos/tests.py currently
-fails to collect (pre-existing, unrelated StockCategory import drift), so
-these live in their own module rather than depending on that file.
+functions and tenancy/audit.py POSAuditLog). Kept in their own module
+rather than folded into tests.py to keep the atomicity suite isolated.
 """
 
 from datetime import date

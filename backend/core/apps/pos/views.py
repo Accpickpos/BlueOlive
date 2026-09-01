@@ -7,6 +7,7 @@ import logging
 from datetime import date
 from decimal import Decimal
 
+from apps.common.mixins import ModuleFunctionPermissionMixin
 from apps.shop_filter_mixin import ShopFilterMixin
 from django.core.exceptions import ValidationError
 from django.db import router as db_router
@@ -96,7 +97,7 @@ from .services import (
 logger = logging.getLogger(__name__)
 
 
-class CashSaleViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class CashSaleViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
     """
     ViewSet for cash sales.
 
@@ -106,6 +107,17 @@ class CashSaleViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet
     - cancel_sale: Cancel a cash sale
     """
 
+    access_module = "pos"
+    # apply_subtotal_discount / apply_set_price / check_prices don't match
+    # any keyword — the first two are TRANSACTIONS-tier edits on a live
+    # document (same tier as create/update), not the MAINTENANCE fallback;
+    # check_prices is a read-only price lookup posted as a POST body,
+    # not a mutation, so it's ENQUIRY despite the method.
+    action_function_types = {
+        "apply_subtotal_discount": "TRANSACTIONS",
+        "apply_set_price": "TRANSACTIONS",
+        "check_prices": "ENQUIRY",
+    }
     queryset = CashSale.objects.all()
     permission_classes = [IsAuthenticated]
     lookup_field = "pk"  # Default lookup by primary key
@@ -422,7 +434,7 @@ class CashSaleViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class LaybyeViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class LaybyeViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
     """
     ViewSet for laybyes.
 
@@ -433,6 +445,10 @@ class LaybyeViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
     - check_expired: Find expired laybyes
     """
 
+    access_module = "pos"
+    # check_expired is a read-only lookup posted as a POST body, not a
+    # mutation.
+    action_function_types = {"check_expired": "ENQUIRY"}
     queryset = Laybye.objects.all()
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
@@ -685,7 +701,7 @@ class LaybyeViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class QuotationViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class QuotationViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
     """
     ViewSet for quotations.
 
@@ -695,6 +711,7 @@ class QuotationViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSe
     - convert_to_job: Convert to job card
     """
 
+    access_module = "pos"
     queryset = Quotation.objects.all()
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
@@ -850,9 +867,10 @@ class QuotationViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSe
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class PayoutViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class PayoutViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
     """ViewSet for cash payouts."""
 
+    access_module = "pos"
     queryset = Payout.objects.all()
     serializer_class = PayoutSerializer
     permission_classes = [IsAuthenticated]
@@ -870,7 +888,7 @@ class PayoutViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
         )
 
 
-class RepairViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class RepairViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
     """
     ViewSet for repair vouchers.
 
@@ -881,6 +899,11 @@ class RepairViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
     - invoice_customer: Invoice customer for repair
     """
 
+    access_module = "pos"
+    # "invoice_customer" doesn't match the post/issue/receive/pay keyword
+    # heuristic — it's the same TRANSACTIONS tier as its issue/receive
+    # siblings, not the MAINTENANCE the fallback would otherwise assign.
+    action_function_types = {"invoice_customer": "TRANSACTIONS"}
     queryset = Repair.objects.all()
     serializer_class = RepairSerializer
     permission_classes = [IsAuthenticated]
@@ -1017,9 +1040,15 @@ class RepairViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class JobCardViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class JobCardViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
     """ViewSet for job cards."""
 
+    access_module = "pos"
+    action_function_types = {
+        "add_line_items": "TRANSACTIONS",
+        "apply_subtotal_discount": "TRANSACTIONS",
+        "apply_set_price": "TRANSACTIONS",
+    }
     queryset = JobCard.objects.all()
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
@@ -1304,13 +1333,14 @@ class JobCardViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet)
 
 
 class CashControlViewSet(
-    ShopFilterMixin, POSPermissionMixin, viewsets.ReadOnlyModelViewSet
+    ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ReadOnlyModelViewSet
 ):
     """
     ViewSet for cash control records.
     Read-only as these are generated by the system.
     """
 
+    access_module = "pos"
     queryset = CashControl.objects.all()
     serializer_class = CashControlSerializer
     permission_classes = [IsAuthenticated]
@@ -1384,7 +1414,7 @@ class CashControlViewSet(
 
 
 class ReceiptOnAccountViewSet(
-    ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet
+    ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet
 ):
     """
     ViewSet for receipts on account.
@@ -1394,6 +1424,7 @@ class ReceiptOnAccountViewSet(
     - post_receipt: Post receipt to debtor account
     """
 
+    access_module = "pos"
     queryset = ReceiptOnAccount.objects.all()
     serializer_class = ReceiptOnAccountSerializer
     permission_classes = [IsAuthenticated]
@@ -1531,7 +1562,7 @@ class ReceiptOnAccountViewSet(
         return Response({"date": receipt_date, "total_receipts": total["total"] or 0})
 
 
-class CreditNoteViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class CreditNoteViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
     """
     ViewSet for credit notes.
 
@@ -1540,6 +1571,7 @@ class CreditNoteViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewS
     - post_credit: Post credit note
     """
 
+    access_module = "pos"
     queryset = CreditNote.objects.all()
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
@@ -1697,7 +1729,7 @@ class CreditNoteViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewS
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class CashReturnViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class CashReturnViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
     """
     ViewSet for cash returns.
 
@@ -1706,6 +1738,7 @@ class CashReturnViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewS
     - post_return: Post cash return
     """
 
+    access_module = "pos"
     queryset = CashReturn.objects.all()
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
@@ -1822,7 +1855,7 @@ class CashReturnViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewS
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class CashAChequeViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class CashAChequeViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
     """
     ViewSet for cash a cheque transactions.
 
@@ -1831,6 +1864,10 @@ class CashAChequeViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelView
     - process: Mark cheque as processed
     """
 
+    access_module = "pos"
+    # "process" doesn't match any keyword — encashing a cheque is a
+    # transaction, not the MAINTENANCE the fallback would assign.
+    action_function_types = {"process": "TRANSACTIONS"}
     queryset = CashACheque.objects.all()
     serializer_class = CashAChequeSerializer
     permission_classes = [IsAuthenticated]
@@ -1909,7 +1946,7 @@ class CashAChequeViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelView
 
 
 class TransactionQueryViewSet(
-    ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet
+    ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet
 ):
     """
     ViewSet for transaction queries.
@@ -1920,6 +1957,9 @@ class TransactionQueryViewSet(
     - resolve: Resolve a query
     """
 
+    access_module = "pos"
+    # search is a read-only lookup posted as a POST body, not a mutation.
+    action_function_types = {"search": "ENQUIRY"}
     queryset = TransactionQuery.objects.all()
     serializer_class = TransactionQuerySerializer
     permission_classes = [IsAuthenticated]
@@ -2122,7 +2162,7 @@ class TransactionQueryViewSet(
             )
 
 
-class InvoiceViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class InvoiceViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
     """
     ViewSet for customer invoices.
 
@@ -2134,6 +2174,15 @@ class InvoiceViewSet(ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet)
     - apply-payment: Apply payment to invoice
     """
 
+    access_module = "pos"
+    # apply_subtotal_discount / apply_set_price / tender don't match any
+    # keyword — all are TRANSACTIONS-tier edits on a live document, not the
+    # MAINTENANCE the fallback would otherwise assign.
+    action_function_types = {
+        "apply_subtotal_discount": "TRANSACTIONS",
+        "apply_set_price": "TRANSACTIONS",
+        "tender": "TRANSACTIONS",
+    }
     queryset = Invoice.objects.all()
     permission_classes = [IsAuthenticated]
     lookup_field = "pk"  # Default lookup by primary key

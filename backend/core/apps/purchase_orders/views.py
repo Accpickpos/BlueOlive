@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from apps.creditors.models import Creditor, GoodsReceivedNote, GRNLineItem
 from apps.settings.models import TaxCode
+from apps.common.mixins import ModuleFunctionPermissionMixin
 from apps.shop_filter_mixin import ShopFilterMixin
 from apps.stock_control.models import StockItem, StockTransaction
 from django.db.models import Count, F, Prefetch, Q, Sum
@@ -52,7 +53,7 @@ def _tax_code_id(numeric_code):
     return tax_code.id if tax_code else None
 
 
-class PurchaseOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class PurchaseOrderViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for Purchase Order management
 
@@ -64,6 +65,7 @@ class PurchaseOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     destroy: Delete purchase order
     """
 
+    access_module = "purchase_orders"
     queryset = (
         PurchaseOrder.objects.select_related("supplier")
         .prefetch_related("line_items")
@@ -516,13 +518,14 @@ class PurchaseOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class PurchaseOrderReceiptViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class PurchaseOrderReceiptViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for Goods Received Notes (Read-only)
 
     Receipts are created through the purchase order receive_stock action
     """
 
+    access_module = "purchase_orders"
     queryset = (
         PurchaseOrderReceipt.objects.select_related("purchase_order", "creditor_grn")
         .prefetch_related("line_items")
@@ -536,13 +539,14 @@ class PurchaseOrderReceiptViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet
     ordering = ["-receipt_date"]
 
 
-class BackOrderViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class BackOrderViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for Back Orders (Read-only)
 
     Back orders are created automatically from delivery variances
     """
 
+    access_module = "purchase_orders"
     queryset = BackOrder.objects.select_related("original_order", "back_order").all()
     serializer_class = BackOrderSerializer
     permission_classes = [IsAuthenticated]
@@ -551,7 +555,7 @@ class BackOrderViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     ordering = ["-created_date"]
 
 
-class PurchaseOrderTemplateViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class PurchaseOrderTemplateViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for Purchase Order Templates
 
@@ -563,6 +567,16 @@ class PurchaseOrderTemplateViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     destroy: Delete template
     """
 
+    access_module = "purchase_orders"
+    # A template is reusable setup data (manual's "Maintenance" tier);
+    # create_order_from_template is the actual TRANSACTIONS-tier action
+    # (creates a real PO) and doesn't match any keyword on its own.
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+        "create_order_from_template": "TRANSACTIONS",
+    }
     queryset = (
         PurchaseOrderTemplate.objects.select_related("supplier")
         .prefetch_related("line_items")
@@ -641,9 +655,10 @@ class PurchaseOrderTemplateViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         )
 
 
-class PurchaseOrderReportViewSet(viewsets.ViewSet):
+class PurchaseOrderReportViewSet(ModuleFunctionPermissionMixin, viewsets.ViewSet):
     """ViewSet for purchase order reports"""
 
+    access_module = "purchase_orders"
     permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=["get"])

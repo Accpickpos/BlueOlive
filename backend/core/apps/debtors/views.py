@@ -8,7 +8,7 @@ import logging
 from datetime import date, timedelta
 from decimal import Decimal
 
-from apps.common.mixins import LookupActionMixin
+from apps.common.mixins import LookupActionMixin, ModuleFunctionPermissionMixin
 from apps.common.permissions import BaseModelPermission, CanPostTransaction
 from apps.pos.models import CashSale, CreditNote, Invoice, JobCard
 from apps.purchase_orders.models import PurchaseOrder
@@ -50,11 +50,21 @@ from .services import DebtorService
 logger = logging.getLogger(__name__)
 
 
-class DebtorViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class DebtorViewSet(
+    ModuleFunctionPermissionMixin, LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for managing debtors (customers) - DMAST table.
     """
 
+    access_module = "debtors"
+    # Debtor is master-file data (manual's "Maintenance" tier), not a
+    # posted transaction.
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+    }
     queryset = Debtor.objects.all()
     lookup_field = "dno"
     lookup_serializer_class = DebtorLookupSerializer
@@ -611,11 +621,12 @@ class DebtorViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet):
             )
 
 
-class DebtorTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class DebtorTransactionViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for debtor transactions (DEBTRAN).
     """
 
+    access_module = "debtors"
     queryset = DebtorTransaction.objects.all()
     serializer_class = DebtorTransactionSerializer
     permission_classes = [IsAuthenticated]
@@ -923,11 +934,12 @@ class DebtorTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
             )
 
 
-class DebteopenViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class DebteopenViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for open item transactions (DEBTOPEN).
     """
 
+    access_module = "debtors"
     queryset = Debtopen.objects.all()
     serializer_class = DebteopenSerializer
     permission_classes = [IsAuthenticated]
@@ -1107,11 +1119,18 @@ class DebteopenViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             )
 
 
-class DpdcViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class DpdcViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for post-dated cheques (DPDC).
     """
 
+    access_module = "debtors"
+    # "process" (mark received) and "cancel" (mark dishonoured) are cheque
+    # lifecycle transactions, not the MAINTENANCE the fallback would assign
+    # "process" (no keyword match) or the ambiguous match "cancel" gets
+    # from the MAINTENANCE keyword list (meant for cancelling documents,
+    # not this cheque-status transition).
+    action_function_types = {"process": "TRANSACTIONS", "cancel": "TRANSACTIONS"}
     queryset = Dpdc.objects.all()
     serializer_class = DpdcSerializer
     permission_classes = [IsAuthenticated]
@@ -1226,11 +1245,12 @@ class DpdcViewSet(ShopFilterMixin, viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class DebtorAuditViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class DebtorAuditViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for debtor audit records (DEBTORAUD).
     """
 
+    access_module = "debtors"
     queryset = DebtorAudit.objects.all()
     serializer_class = DebtorAuditSerializer
     permission_classes = [IsAuthenticated]
@@ -1245,11 +1265,17 @@ class DebtorAuditViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
         return super().get_queryset().select_related("dno")
 
 
-class DareaViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class DareaViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     ViewSet for sales area/salesman data (DAREA).
     """
 
+    access_module = "debtors"
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+    }
     queryset = Darea.objects.all()
     serializer_class = DareaSerializer
     permission_classes = [IsAuthenticated]
@@ -1257,11 +1283,12 @@ class DareaViewSet(ShopFilterMixin, viewsets.ModelViewSet):
     ordering = ["darea"]
 
 
-class DocumentSearchViewSet(viewsets.ViewSet):
+class DocumentSearchViewSet(ModuleFunctionPermissionMixin, viewsets.ViewSet):
     """
     Unified document search endpoint for Stockfinder API integration.
     """
 
+    access_module = "debtors"
     permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=["get"], url_path="search")

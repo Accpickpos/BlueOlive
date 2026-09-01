@@ -554,16 +554,21 @@ class CashBookReportService:
         ).aggregate(total=models.Sum("value_excl_vat"))["total"] or Decimal("0")
 
         # Get VAT summary
+        # NOTE: audit_type=4 (Expenses) previously fell through both branches
+        # and was silently excluded from the VAT summary entirely — found
+        # during the Utilities module VAT-201 audit. Expenses are the other
+        # genuine input-VAT-bearing Cash Book event (alongside audit_type=3
+        # Accounts Payable Payments), so they belong in the input bucket.
         vat_summary = transactions.aggregate(
             total_input_vat=models.Sum(
                 models.Case(
-                    models.When(audit_type__in=[1, 3], then="tax_amount"),
+                    models.When(audit_type__in=[3, 4], then="tax_amount"),
                     default=Decimal("0"),
                 )
             ),
             total_output_vat=models.Sum(
                 models.Case(
-                    models.When(audit_type__in=[2], then="tax_amount"),
+                    models.When(audit_type__in=[1, 2], then="tax_amount"),
                     default=Decimal("0"),
                 )
             ),

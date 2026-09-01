@@ -232,8 +232,14 @@ class Creditor(TimeStampedModel, ActiveModel):
             return self.credit_terms.days
         return self.payment_terms_days
 
-    def recalculate_aged_balances(self):
-        """Recalculate aging buckets from open items. Call after posting or at period close."""
+    def recalculate_aged_balances(self, persist=True):
+        """
+        Recalculate aging buckets from open items. Call after posting or at
+        period close. persist=False mutates the in-memory bucket fields only
+        (no DB write) — used by the Data Integrity report to compare the
+        stored balance against a freshly-recomputed one without altering
+        the stored data.
+        """
         today = timezone.now().date()
         for attr in (
             "balance_current",
@@ -284,7 +290,8 @@ class Creditor(TimeStampedModel, ActiveModel):
             else:
                 self.balance_180_days += item.balance_due
 
-        self.save()
+        if persist:
+            self.save()
 
 
 # ============================================================================

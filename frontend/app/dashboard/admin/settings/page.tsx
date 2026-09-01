@@ -1,10 +1,11 @@
 // app/dashboard/admin/settings/page.tsx
 "use client";
 import { useState, useEffect } from "react";
-import { Settings, Plus, Trash2, Edit2, Loader, Zap, Upload, Download, Check, X } from "lucide-react";
+import { Settings, Plus, Trash2, Edit2, Loader, Zap, Upload, Download, Check, X, Clock, FileBarChart, ShieldCheck, Receipt, ArrowRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { api, getApiErrorMessage } from "@/lib/api";
 import UsersListPanel from "@/components/UsersListPanel";
+import Link from "next/link";
 
 // Available fields for import mapping by model type
 const IMPORT_FIELD_MAPPINGS = {
@@ -31,6 +32,7 @@ interface User { id: number; number: number; name: string; user_username?: strin
 interface IncomeCategory { id: number; number: number; name: string; is_active: boolean; }
 interface ExpenseCategory { id: number; number: number; name: string; category_type: string; is_active: boolean; }
 interface TaxCode { id: number; code: number; description: string; rate: number; is_default: boolean; is_active: boolean; }
+interface CostingCategory { id: number; name: string; costing_method: 'A' | 'L'; pricing_method: 'I' | 'E'; description?: string; is_default: boolean; is_active: boolean; }
 interface PaymentMethod { id: number; code: string; name: string; requires_reference: boolean; is_electronic: boolean; is_active: boolean; }
 interface CreditTerms { id: number; days: number; description: string; is_active: boolean; }
 interface SystemConfig {
@@ -40,7 +42,7 @@ interface SystemConfig {
   currency_symbol: string; decimal_places: number;
 }
 
-type TabType = 'departments' | 'users' | 'income' | 'expense' | 'tax' | 'payment' | 'credit' | 'system' | 'seeding';
+type TabType = 'departments' | 'users' | 'income' | 'expense' | 'tax' | 'costing' | 'payment' | 'credit' | 'system' | 'seeding';
 
 interface Shop { id: number; name: string; }
 interface FileAnalysis { import_id: string; file_type: string; headers: string[]; total_rows: number; sample_data: any[]; suggested_mappings: { [key: string]: string }; }
@@ -74,6 +76,11 @@ export default function AdminSettingsPage() {
   const [newTax, setNewTax] = useState({ code: '', description: '', rate: '' });
   const [editingTaxId, setEditingTaxId] = useState<number | null>(null);
   const [editingTax, setEditingTax] = useState<TaxCode | null>(null);
+
+  const [costingCategories, setCostingCategories] = useState<CostingCategory[]>([]);
+  const [newCosting, setNewCosting] = useState({ name: '', costing_method: 'A', pricing_method: 'E', description: '' });
+  const [editingCostingId, setEditingCostingId] = useState<number | null>(null);
+  const [editingCosting, setEditingCosting] = useState<CostingCategory | null>(null);
 
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [newPayment, setNewPayment] = useState({ code: '', name: '', is_electronic: false });
@@ -154,6 +161,15 @@ export default function AdminSettingsPage() {
             setTaxCodes(taxRes.data.results || taxRes.data);
           } catch (error: any) {
             if (error.response?.status === 500) { setError('Settings database not initialized. Please create a shop first.'); setTaxCodes([]); }
+            else throw error;
+          }
+          break;
+        case 'costing':
+          try {
+            const costingRes = await api.get('/api/settings/costing-categories/');
+            setCostingCategories(costingRes.data.results || costingRes.data);
+          } catch (error: any) {
+            if (error.response?.status === 500) { setError('Settings database not initialized. Please create a shop first.'); setCostingCategories([]); }
             else throw error;
           }
           break;
@@ -360,6 +376,59 @@ export default function AdminSettingsPage() {
     finally { setLoading(false); }
   };
 
+  const addCostingCategory = async () => {
+    if (!newCosting.name) { setError('Please fill in the name'); return; }
+    try {
+      setLoading(true);
+      await api.post('/api/settings/costing-categories/', { name: newCosting.name, costing_method: newCosting.costing_method, pricing_method: newCosting.pricing_method, description: newCosting.description, is_active: true });
+      setSuccessMessage('Costing category added successfully!');
+      setNewCosting({ name: '', costing_method: 'A', pricing_method: 'E', description: '' });
+      setError(null);
+      setTimeout(() => setSuccessMessage(null), 3000);
+      loadData();
+    } catch (error: any) { setError(error.response?.data?.detail || 'Failed to add costing category'); }
+    finally { setLoading(false); }
+  };
+
+  const deleteCostingCategory = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this costing category?')) return;
+    try {
+      setLoading(true);
+      await api.delete(`/api/settings/costing-categories/${id}/`);
+      setSuccessMessage('Costing category deleted successfully!');
+      setError(null);
+      setTimeout(() => setSuccessMessage(null), 3000);
+      loadData();
+    } catch (error: any) { setError(error.response?.data?.detail || 'Failed to delete costing category'); }
+    finally { setLoading(false); }
+  };
+
+  const updateCostingCategory = async (id: number, data: any) => {
+    try {
+      setLoading(true);
+      await api.put(`/api/settings/costing-categories/${id}/`, data);
+      setSuccessMessage('Costing category updated successfully!');
+      setEditingCostingId(null);
+      setEditingCosting(null);
+      setError(null);
+      setTimeout(() => setSuccessMessage(null), 3000);
+      loadData();
+    } catch (error: any) { setError(error.response?.data?.detail || 'Failed to update costing category'); }
+    finally { setLoading(false); }
+  };
+
+  const setDefaultCostingCategory = async (id: number) => {
+    try {
+      setLoading(true);
+      await api.post(`/api/settings/costing-categories/${id}/set_default/`);
+      setSuccessMessage('Default costing method updated!');
+      setError(null);
+      setTimeout(() => setSuccessMessage(null), 3000);
+      loadData();
+    } catch (error: any) { setError(error.response?.data?.detail || 'Failed to set default costing category'); }
+    finally { setLoading(false); }
+  };
+
   const addPaymentMethod = async () => {
     if (!newPayment.code || !newPayment.name) { setError('Please fill in all fields'); return; }
     if (!shopId) { setError('No shop selected. Please ensure a shop has been created.'); return; }
@@ -563,7 +632,7 @@ export default function AdminSettingsPage() {
       </div>
 
       <div className="flex gap-2 border-b overflow-x-auto">
-        {(['departments', 'users', 'income', 'expense', 'tax', 'payment', 'credit', 'system', 'seeding'] as TabType[]).map((tab) => (
+        {(['departments', 'users', 'income', 'expense', 'tax', 'costing', 'payment', 'credit', 'system', 'seeding'] as TabType[]).map((tab) => (
           <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 font-medium whitespace-nowrap ${activeTab === tab ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}>
             {tab.replace('-', ' ').toUpperCase()}
           </button>
@@ -768,6 +837,84 @@ export default function AdminSettingsPage() {
             </div>
           )}
 
+          {activeTab === 'costing' && (
+            <div className="space-y-4">
+              {error && <Card className="border-red-200 bg-red-50"><CardContent className="p-6"><p className="text-red-800">{error}</p></CardContent></Card>}
+              {successMessage && <Card className="border-green-200 bg-green-50"><CardContent className="p-6"><p className="text-green-800">{successMessage}</p></CardContent></Card>}
+              <Card className="border-blue-200 bg-blue-50">
+                <CardContent className="p-4">
+                  <p className="text-sm text-blue-800">
+                    Only one costing category can be the active system-wide method at a time (manual §8.1). Mark one as
+                    Default below — that category&apos;s Costing Method (Average/Last Cost) drives Gross Profit calculations
+                    across POS and Stock Control.
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-6 space-y-4">
+                  <h2 className="text-lg font-semibold">Add Costing Category</h2>
+                  <div className="grid grid-cols-2 gap-4">
+                    <input type="text" placeholder="Name" value={newCosting.name} onChange={(e) => setNewCosting({ ...newCosting, name: e.target.value })} className="border p-2 rounded-lg" />
+                    <input type="text" placeholder="Description (optional)" value={newCosting.description} onChange={(e) => setNewCosting({ ...newCosting, description: e.target.value })} className="border p-2 rounded-lg" />
+                    <select value={newCosting.costing_method} onChange={(e) => setNewCosting({ ...newCosting, costing_method: e.target.value })} className="border p-2 rounded-lg">
+                      <option value="A">Average Cost</option>
+                      <option value="L">Last Cost</option>
+                    </select>
+                    <select value={newCosting.pricing_method} onChange={(e) => setNewCosting({ ...newCosting, pricing_method: e.target.value })} className="border p-2 rounded-lg">
+                      <option value="I">Inclusive of VAT</option>
+                      <option value="E">Exclusive of VAT</option>
+                    </select>
+                  </div>
+                  <button onClick={addCostingCategory} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"><Plus className="h-4 w-4" /> Add Costing Category</button>
+                </CardContent>
+              </Card>
+              <div className="space-y-2">
+                {costingCategories.map((cat) => (
+                  <Card key={cat.id}>
+                    <CardContent className="p-4">
+                      {editingCostingId === cat.id && editingCosting ? (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <input type="text" value={editingCosting.name} onChange={(e) => setEditingCosting({ ...editingCosting, name: e.target.value })} className="border p-2 rounded-lg" />
+                            <input type="text" value={editingCosting.description || ''} onChange={(e) => setEditingCosting({ ...editingCosting, description: e.target.value })} className="border p-2 rounded-lg" />
+                            <select value={editingCosting.costing_method} onChange={(e) => setEditingCosting({ ...editingCosting, costing_method: e.target.value as 'A' | 'L' })} className="border p-2 rounded-lg">
+                              <option value="A">Average Cost</option>
+                              <option value="L">Last Cost</option>
+                            </select>
+                            <select value={editingCosting.pricing_method} onChange={(e) => setEditingCosting({ ...editingCosting, pricing_method: e.target.value as 'I' | 'E' })} className="border p-2 rounded-lg">
+                              <option value="I">Inclusive of VAT</option>
+                              <option value="E">Exclusive of VAT</option>
+                            </select>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => updateCostingCategory(cat.id, editingCosting)} className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm">Save</button>
+                            <button onClick={() => { setEditingCostingId(null); setEditingCosting(null); }} className="px-3 py-1 bg-gray-400 text-white rounded hover:bg-gray-500 text-sm">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p className="font-semibold">{cat.name} {cat.is_default && <span className="text-xs font-normal text-blue-700">(Default)</span>}</p>
+                            <p className="text-sm text-gray-600">
+                              {cat.costing_method === 'A' ? 'Average Cost' : 'Last Cost'} · {cat.pricing_method === 'I' ? 'Inclusive of VAT' : 'Exclusive of VAT'}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            {!cat.is_default && (
+                              <button onClick={() => setDefaultCostingCategory(cat.id)} className="px-3 py-1 text-sm text-blue-700 border border-blue-300 rounded hover:bg-blue-50">Set as Default</button>
+                            )}
+                            <button onClick={() => { setEditingCostingId(cat.id); setEditingCosting(cat); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded"><Edit2 className="h-4 w-4" /></button>
+                            <button onClick={() => deleteCostingCategory(cat.id)} className="p-2 text-red-600 hover:bg-red-50 rounded"><Trash2 className="h-4 w-4" /></button>
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
           {activeTab === 'payment' && (
             <div className="space-y-4">
               {error && <Card className="border-red-200 bg-red-50"><CardContent className="p-6"><p className="text-red-800">{error}</p></CardContent></Card>}
@@ -912,6 +1059,34 @@ export default function AdminSettingsPage() {
                       {editingConfig && (
                         <button onClick={saveSystemConfig} className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Save Configuration</button>
                       )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardContent className="p-6 space-y-3">
+                      <h2 className="text-lg font-semibold mb-2">Period End &amp; Reports</h2>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <Link href="/dashboard/admin/settings/period-end" className="flex items-center justify-between gap-2 px-4 py-3 border rounded-lg hover:bg-gray-50 transition">
+                          <span className="flex items-center gap-2"><Clock className="h-4 w-4 text-blue-600" />Day End / Month End / Year End</span>
+                          <ArrowRight className="h-4 w-4 text-gray-400" />
+                        </Link>
+                        <Link href="/dashboard/admin/settings/reports/consolidated-expenditure" className="flex items-center justify-between gap-2 px-4 py-3 border rounded-lg hover:bg-gray-50 transition">
+                          <span className="flex items-center gap-2"><Receipt className="h-4 w-4 text-emerald-600" />Consolidated Expenditure</span>
+                          <ArrowRight className="h-4 w-4 text-gray-400" />
+                        </Link>
+                        <Link href="/dashboard/admin/settings/reports/data-integrity" className="flex items-center justify-between gap-2 px-4 py-3 border rounded-lg hover:bg-gray-50 transition">
+                          <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-amber-600" />Data Integrity Report</span>
+                          <ArrowRight className="h-4 w-4 text-gray-400" />
+                        </Link>
+                        <Link href="/dashboard/admin/settings/reports/tax-control" className="flex items-center justify-between gap-2 px-4 py-3 border rounded-lg hover:bg-gray-50 transition">
+                          <span className="flex items-center gap-2"><FileBarChart className="h-4 w-4 text-purple-600" />Tax Control / VAT-201</span>
+                          <ArrowRight className="h-4 w-4 text-gray-400" />
+                        </Link>
+                        <Link href="/dashboard/admin/settings/permissions" className="flex items-center justify-between gap-2 px-4 py-3 border rounded-lg hover:bg-gray-50 transition">
+                          <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-indigo-600" />Access Grants (Permissions)</span>
+                          <ArrowRight className="h-4 w-4 text-gray-400" />
+                        </Link>
+                      </div>
                     </CardContent>
                   </Card>
 
