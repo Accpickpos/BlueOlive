@@ -15,6 +15,8 @@ from django.contrib.auth import get_user_model
 from rest_framework import permissions
 from rest_framework.permissions import BasePermission
 
+from .models import AccessGrant
+
 User = get_user_model()
 
 
@@ -247,6 +249,43 @@ class CanViewFinancialReports(BasePermission):
 
         user_role = getattr(request.user, "role", None)
         return user_role in ["admin", "manager", "accountant"]
+
+
+class HasModuleFunctionAccess(BasePermission):
+    """
+    Role x Module x Function permission check (manual §8.1 Password
+    Maintenance foundation — see apps.common.models.AccessGrant).
+
+    NOT YET WIRED INTO ANY VIEWSET. Landed standalone so the AccessGrant
+    matrix and its admin UI can be built and reviewed before any app's
+    existing permission_classes are touched — each app adopts this
+    incrementally in a later pass, verified against that app's own tests.
+
+    Usage (once adopted):
+        permission_classes = [IsAuthenticated,
+                               HasModuleFunctionAccess("creditors", "MAINTENANCE")]
+    """
+
+    def __init__(self, module, function_type):
+        self.module = module
+        self.function_type = function_type
+
+    def __call__(self):
+        # DRF instantiates permission_classes with no args; this class is
+        # meant to be instantiated directly (module/function_type bound at
+        # class-definition or view-definition time), so calling an already-
+        # constructed instance just returns itself.
+        return self
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        role = getattr(request.user, "role", None)
+        if not role:
+            return False
+
+        return AccessGrant.is_role_allowed(role, self.module, self.function_type)
 
 
 # Role constants for consistency across apps

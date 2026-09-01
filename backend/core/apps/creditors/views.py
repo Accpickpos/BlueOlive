@@ -1,5 +1,5 @@
 # backend/core/apps/creditors/views.py
-from apps.common.mixins import LookupActionMixin
+from apps.common.mixins import LookupActionMixin, ModuleFunctionPermissionMixin
 from apps.shop_filter_mixin import ShopFilterMixin
 from django.db.models import Q
 from django.utils import timezone
@@ -74,7 +74,9 @@ from .serializers import (
 # ============================================================================
 
 
-class CreditorViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class CreditorViewSet(
+    ModuleFunctionPermissionMixin, LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     CRUD for Creditor master accounts.
 
@@ -95,6 +97,16 @@ class CreditorViewSet(LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet)
       GET  /creditors/lookup/?search=&limit=   — thin typeahead for supplier pickers
     """
 
+    access_module = "creditors"
+    # Creditor is master-file data (manual's "Maintenance" tier), not a
+    # posted transaction — unlike the typed transaction ViewSets below
+    # (Invoice/Payment/CreditNote/GRN/Journal), where the mixin's default
+    # create/update -> TRANSACTIONS is correct.
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+    }
     queryset = Creditor.objects.select_related("credit_terms", "sales_area")
     permission_classes = [IsAuthenticated]
     filter_backends = [
@@ -271,7 +283,7 @@ def _resolve_rfc_stock(rfc, new_status):
 # ============================================================================
 
 
-class GoodsReceivedNoteViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class GoodsReceivedNoteViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     GRN list / detail / create.
 
@@ -286,6 +298,7 @@ class GoodsReceivedNoteViewSet(ShopFilterMixin, viewsets.ModelViewSet):
       POST /grns/{id}/post/                  — mark as posted
     """
 
+    access_module = "creditors"
     queryset = GoodsReceivedNote.objects.select_related("creditor").prefetch_related(
         "line_items"
     )
@@ -365,9 +378,10 @@ class GoodsReceivedNoteViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         return Response(GoodsReceivedNoteSerializer(grn).data)
 
 
-class GRNLineItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class GRNLineItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """Line items nested under a GRN — /grns/{grn_pk}/lines/"""
 
+    access_module = "creditors"
     serializer_class = GRNLineItemSerializer
     permission_classes = [IsAuthenticated]
 
@@ -391,7 +405,7 @@ class GRNLineItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ============================================================================
 
 
-class CreditorInvoiceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class CreditorInvoiceViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     Expense invoices (electricity, rent, etc.).
 
@@ -399,6 +413,7 @@ class CreditorInvoiceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
       POST /invoices/{id}/post/
     """
 
+    access_module = "creditors"
     queryset = CreditorInvoice.objects.select_related("creditor").prefetch_related(
         "line_items"
     )
@@ -456,9 +471,10 @@ class CreditorInvoiceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         return Response(CreditorInvoiceSerializer(invoice).data)
 
 
-class CreditorInvoiceLineItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class CreditorInvoiceLineItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """Nested line items — /invoices/{invoice_pk}/lines/"""
 
+    access_module = "creditors"
     serializer_class = CreditorInvoiceLineItemSerializer
     permission_classes = [IsAuthenticated]
 
@@ -484,7 +500,7 @@ class CreditorInvoiceLineItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ============================================================================
 
 
-class CreditorCreditNoteViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class CreditorCreditNoteViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     Credit notes from suppliers.
 
@@ -492,6 +508,7 @@ class CreditorCreditNoteViewSet(ShopFilterMixin, viewsets.ModelViewSet):
       POST /credit_notes/{id}/post/
     """
 
+    access_module = "creditors"
     queryset = CreditorCreditNote.objects.select_related("creditor").prefetch_related(
         "line_items"
     )
@@ -549,9 +566,10 @@ class CreditorCreditNoteViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         return Response(CreditorCreditNoteSerializer(cn).data)
 
 
-class CreditorCreditNoteLineItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class CreditorCreditNoteLineItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """Nested line items — /credit_notes/{cn_pk}/lines/"""
 
+    access_module = "creditors"
     serializer_class = CreditorCreditNoteLineItemSerializer
     permission_classes = [IsAuthenticated]
 
@@ -577,7 +595,7 @@ class CreditorCreditNoteLineItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ============================================================================
 
 
-class CreditorPaymentViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class CreditorPaymentViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     Payments made to suppliers.
 
@@ -586,6 +604,7 @@ class CreditorPaymentViewSet(ShopFilterMixin, viewsets.ModelViewSet):
       POST /payments/{id}/allocate/   — allocate to open items
     """
 
+    access_module = "creditors"
     queryset = CreditorPayment.objects.select_related("creditor", "payment_method")
     permission_classes = [IsAuthenticated]
     filter_backends = [
@@ -663,7 +682,7 @@ class CreditorPaymentViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ============================================================================
 
 
-class CreditorJournalViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class CreditorJournalViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     Debit/credit journal adjustments.
 
@@ -671,6 +690,7 @@ class CreditorJournalViewSet(ShopFilterMixin, viewsets.ModelViewSet):
       POST /journals/{id}/post/
     """
 
+    access_module = "creditors"
     queryset = CreditorJournal.objects.select_related("creditor")
     permission_classes = [IsAuthenticated]
     filter_backends = [
@@ -724,12 +744,13 @@ class CreditorJournalViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ============================================================================
 
 
-class SupplierLedgerEntryViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class SupplierLedgerEntryViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     Read-only view of raw suptran ledger entries.
     These are imported from the DBF — not created through the API.
     """
 
+    access_module = "creditors"
     queryset = SupplierLedgerEntry.objects.select_related("creditor")
     serializer_class = SupplierLedgerEntrySerializer
     permission_classes = [IsAuthenticated]
@@ -749,7 +770,7 @@ class SupplierLedgerEntryViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet)
 # ============================================================================
 
 
-class CreditorOpenItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class CreditorOpenItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     Open items (supopen).
 
@@ -761,6 +782,7 @@ class CreditorOpenItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
       GET  /open_items/by_creditor/?creditor={id}
     """
 
+    access_module = "creditors"
     queryset = CreditorOpenItem.objects.select_related("creditor")
     serializer_class = CreditorOpenItemSerializer
     permission_classes = [IsAuthenticated]
@@ -808,12 +830,13 @@ class CreditorOpenItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class OpenItemAllocationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class OpenItemAllocationViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     Payment allocations against open items.
     Typically created via /payments/{id}/allocate/ but also accessible directly.
     """
 
+    access_module = "creditors"
     queryset = OpenItemAllocation.objects.select_related("payment", "open_item")
     serializer_class = OpenItemAllocationSerializer
     permission_classes = [IsAuthenticated]
@@ -826,11 +849,12 @@ class OpenItemAllocationViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ============================================================================
 
 
-class OpenItemAuditViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class OpenItemAuditViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     Audit trail of open item changes — system-written, read-only via API.
     """
 
+    access_module = "creditors"
     queryset = OpenItemAudit.objects.select_related("creditor")
     serializer_class = OpenItemAuditSerializer
     permission_classes = [IsAuthenticated]
@@ -845,7 +869,7 @@ class OpenItemAuditViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
 # ============================================================================
 
 
-class RFCViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class RFCViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     Returns for credit (supcrmas + supcrtrn).
 
@@ -854,6 +878,11 @@ class RFCViewSet(ShopFilterMixin, viewsets.ModelViewSet):
       PATCH /rfcs/{id}/update_status/
     """
 
+    access_module = "creditors"
+    # update_status triggers real stock movement (see _resolve_rfc_stock) —
+    # a transaction, not the MAINTENANCE the name-heuristic fallback would
+    # otherwise assign it (no keyword match, PATCH is not a safe method).
+    action_function_types = {"update_status": "TRANSACTIONS"}
     queryset = RFC.objects.select_related("creditor").prefetch_related("line_items")
     permission_classes = [IsAuthenticated]
     filter_backends = [
@@ -918,9 +947,10 @@ class RFCViewSet(ShopFilterMixin, viewsets.ModelViewSet):
         return Response(RFCSerializer(rfc).data)
 
 
-class RFCLineItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class RFCLineItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """Nested line items — /rfcs/{rfc_pk}/lines/"""
 
+    access_module = "creditors"
     serializer_class = RFCLineItemSerializer
     permission_classes = [IsAuthenticated]
 
@@ -945,7 +975,7 @@ class RFCLineItemViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 
 
 class ExpenseCategoryMonthlyBalanceViewSet(
-    ShopFilterMixin, viewsets.ReadOnlyModelViewSet
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet
 ):
     """
     Expense category monthly totals (supexp). System-accumulated — read-only.
@@ -955,6 +985,7 @@ class ExpenseCategoryMonthlyBalanceViewSet(
       GET /expense_monthly/?category={id}&year={year}
     """
 
+    access_module = "creditors"
     queryset = ExpenseCategoryMonthlyBalance.objects.select_related("expense_category")
     serializer_class = ExpenseCategoryMonthlyBalanceSerializer
     permission_classes = [IsAuthenticated]
@@ -969,7 +1000,7 @@ class ExpenseCategoryMonthlyBalanceViewSet(
 # ============================================================================
 
 
-class ExpenseCategoryTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class ExpenseCategoryTransactionViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     Individual expense postings (supexpt). Read-only — written by posting engine.
 
@@ -978,6 +1009,7 @@ class ExpenseCategoryTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelV
       GET /expense_transactions/by_category/?category={id}
     """
 
+    access_module = "creditors"
     queryset = ExpenseCategoryTransaction.objects.select_related(
         "expense_category", "creditor"
     )
@@ -1017,7 +1049,7 @@ class ExpenseCategoryTransactionViewSet(ShopFilterMixin, viewsets.ReadOnlyModelV
 # ============================================================================
 
 
-class SupplierPaymentOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class SupplierPaymentOrderViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     Scheduled outgoing payment orders (suppo).
 
@@ -1026,6 +1058,12 @@ class SupplierPaymentOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
       POST /payment_orders/{id}/process/    — mark as processed (payment run)
     """
 
+    access_module = "creditors"
+    # "process" (mark a payment order as paid by the payment run) doesn't
+    # match the post/pay/approve keyword heuristic, so it would otherwise
+    # fall back to MAINTENANCE (POST, no keyword match) — it's the same
+    # tier as post_payment elsewhere in this app, so make it explicit.
+    action_function_types = {"process": "TRANSACTIONS"}
     queryset = SupplierPaymentOrder.objects.select_related("creditor")
     serializer_class = SupplierPaymentOrderSerializer
     permission_classes = [IsAuthenticated]
@@ -1068,9 +1106,10 @@ class SupplierPaymentOrderViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ============================================================================
 
 
-class CreditorTransactionLineViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class CreditorTransactionLineViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """Generic transaction lines (ContentType polymorphic)."""
 
+    access_module = "creditors"
     queryset = CreditorTransactionLine.objects.all()
     serializer_class = CreditorTransactionLineSerializer
     permission_classes = [IsAuthenticated]
@@ -1083,7 +1122,7 @@ class CreditorTransactionLineViewSet(ShopFilterMixin, viewsets.ModelViewSet):
 # ============================================================================
 
 
-class OutstandingBalanceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
+class OutstandingBalanceViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     API endpoint for managing supplier outstanding balances.
 
@@ -1100,6 +1139,12 @@ class OutstandingBalanceViewSet(ShopFilterMixin, viewsets.ModelViewSet):
       ?as_at_date={date} - Filter by as_at_date
     """
 
+    access_module = "creditors"
+    action_function_types = {
+        "create": "MAINTENANCE",
+        "update": "MAINTENANCE",
+        "partial_update": "MAINTENANCE",
+    }
     queryset = OutstandingBalance.objects.select_related("creditor").all()
     permission_classes = [IsAuthenticated]
     filter_backends = [

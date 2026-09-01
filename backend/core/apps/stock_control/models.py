@@ -316,11 +316,27 @@ class StockItem(models.Model):
             update_fields=["selling_price_1", "selling_price_2", "selling_price_3"]
         )
 
+    @property
+    def effective_cost(self):
+        """
+        The cost value Gross Profit calculations should use, honoring the
+        system-wide Costing Method (manual §8.1: A=Average Cost, L=Last
+        Cost — apps.settings.models.CostingCategory, previously orphaned
+        and unwired). Falls back to cost_price (Last Cost) when no costing
+        category is configured as default, matching prior hardcoded
+        behavior.
+        """
+        from apps.settings.models import CostingCategory
+
+        if CostingCategory.get_active().uses_average_cost:
+            return self.average_cost
+        return self.cost_price
+
     def calculate_gross_profit(self, price_level=1):
         """Calculate gross profit percentage"""
         selling_price = getattr(self, f"selling_price_{price_level}")
         if selling_price > 0:
-            return ((selling_price - self.cost_price) / selling_price) * 100
+            return ((selling_price - self.effective_cost) / selling_price) * 100
         return 0
 
     def update_average_cost(self, new_quantity, new_cost):
@@ -544,7 +560,7 @@ class PackBundle(models.Model):
     def calculate_total_cost(self):
         """Calculate total cost from ingredients"""
         total = sum(
-            ingredient.quantity * ingredient.ingredient_stock.cost_price
+            ingredient.quantity * ingredient.ingredient_stock.effective_cost
             for ingredient in self.ingredients.all()
         )
         self.total_cost = total

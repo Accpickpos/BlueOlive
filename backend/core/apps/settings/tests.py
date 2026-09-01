@@ -34,9 +34,12 @@ class SalesDepartmentModelTest(TestCase):
     """Test SalesDepartment model"""
 
     def setUp(self):
+        # is_superuser=True bypasses ShopUser.save()'s tenant-context guard,
+        # which isn't set up in this single-DB test run (DISABLE_TENANT_ROUTER=1).
         self.user = User.objects.create_user(
             username="testuser",
             password="testpass123",  # nosec B105 B106 - test fixture password
+            is_superuser=True,
         )
 
     def test_create_department(self):
@@ -72,9 +75,12 @@ class SalesAreaModelTest(TestCase):
     """Test SalesArea model"""
 
     def setUp(self):
+        # is_superuser=True bypasses ShopUser.save()'s tenant-context guard,
+        # which isn't set up in this single-DB test run (DISABLE_TENANT_ROUTER=1).
         self.user = User.objects.create_user(
             username="testuser",
             password="testpass123",  # nosec B105 B106 - test fixture password
+            is_superuser=True,
         )
 
     def test_create_sales_area(self):
@@ -108,26 +114,29 @@ class TaxCodeModelTest(TestCase):
     """Test TaxCode model"""
 
     def setUp(self):
+        # is_superuser=True bypasses ShopUser.save()'s tenant-context guard,
+        # which isn't set up in this single-DB test run (DISABLE_TENANT_ROUTER=1).
         self.user = User.objects.create_user(
             username="testuser",
             password="testpass123",  # nosec B105 B106 - test fixture password
+            is_superuser=True,
         )
 
     def test_create_tax_code(self):
         """Test creating a tax code"""
         tax = TaxCode.objects.create(
-            code="V15",
+            code=1,
             description="Standard VAT 15%",
             rate=Decimal("15.00"),
             created_by=self.user,
         )
-        self.assertEqual(tax.code, "V15")
+        self.assertEqual(tax.code, 1)
         self.assertEqual(tax.rate, Decimal("15.00"))
 
     def test_default_tax_code(self):
         """Test setting default tax code"""
         tax = TaxCode.objects.create(
-            code="V0",
+            code=2,
             description="Zero Rated",
             rate=Decimal("0.00"),
             is_default=True,
@@ -140,9 +149,12 @@ class PaymentMethodModelTest(TestCase):
     """Test PaymentMethod model"""
 
     def setUp(self):
+        # is_superuser=True bypasses ShopUser.save()'s tenant-context guard,
+        # which isn't set up in this single-DB test run (DISABLE_TENANT_ROUTER=1).
         self.user = User.objects.create_user(
             username="testuser",
             password="testpass123",  # nosec B105 B106 - test fixture password
+            is_superuser=True,
         )
 
     def test_create_payment_method(self):
@@ -175,9 +187,12 @@ class CreditTermsModelTest(TestCase):
     """Test CreditTerms model"""
 
     def setUp(self):
+        # is_superuser=True bypasses ShopUser.save()'s tenant-context guard,
+        # which isn't set up in this single-DB test run (DISABLE_TENANT_ROUTER=1).
         self.user = User.objects.create_user(
             username="testuser",
             password="testpass123",  # nosec B105 B106 - test fixture password
+            is_superuser=True,
         )
 
     def test_create_credit_terms(self):
@@ -221,9 +236,16 @@ class SalesDepartmentAPITest(APITestCase):
     """Test SalesDepartment API endpoints"""
 
     def setUp(self):
+        # is_superuser=True bypasses ShopUser.save()'s tenant-context guard,
+        # which isn't set up in this single-DB test run (DISABLE_TENANT_ROUTER=1).
+        # role="ADMIN" grants full access under the AccessGrant module x
+        # function_type matrix (apps.common.models.AccessGrant) that
+        # ModuleFunctionPermissionMixin now enforces on these ViewSets.
         self.user = User.objects.create_user(
             username="testuser",
             password="testpass123",  # nosec B105 B106 - test fixture password
+            is_superuser=True,
+            role="ADMIN",
         )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
@@ -298,9 +320,16 @@ class SalesAreaAPITest(APITestCase):
     """Test SalesArea API endpoints"""
 
     def setUp(self):
+        # is_superuser=True bypasses ShopUser.save()'s tenant-context guard,
+        # which isn't set up in this single-DB test run (DISABLE_TENANT_ROUTER=1).
+        # role="ADMIN" grants full access under the AccessGrant module x
+        # function_type matrix (apps.common.models.AccessGrant) that
+        # ModuleFunctionPermissionMixin now enforces on these ViewSets.
         self.user = User.objects.create_user(
             username="testuser",
             password="testpass123",  # nosec B105 B106 - test fixture password
+            is_superuser=True,
+            role="ADMIN",
         )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
@@ -324,9 +353,16 @@ class TaxCodeAPITest(APITestCase):
     """Test TaxCode API endpoints"""
 
     def setUp(self):
+        # is_superuser=True bypasses ShopUser.save()'s tenant-context guard,
+        # which isn't set up in this single-DB test run (DISABLE_TENANT_ROUTER=1).
+        # role="ADMIN" grants full access under the AccessGrant module x
+        # function_type matrix (apps.common.models.AccessGrant) that
+        # ModuleFunctionPermissionMixin now enforces on these ViewSets.
         self.user = User.objects.create_user(
             username="testuser",
             password="testpass123",  # nosec B105 B106 - test fixture password
+            is_superuser=True,
+            role="ADMIN",
         )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
@@ -334,7 +370,7 @@ class TaxCodeAPITest(APITestCase):
     def test_default_tax_code(self):
         """Test getting default tax code"""
         TaxCode.objects.create(
-            code="V15",
+            code=1,
             description="Standard VAT",
             rate=Decimal("15.00"),
             is_default=True,
@@ -343,25 +379,25 @@ class TaxCodeAPITest(APITestCase):
 
         response = self.client.get("/api/v1/settings/tax-codes/default/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["code"], "V15")
+        self.assertEqual(response.data["code"], 1)
 
     def test_set_default_tax_code(self):
         """Test setting a tax code as default"""
         tax1 = TaxCode.objects.create(
-            code="V15",
+            code=1,
             description="Standard VAT",
             rate=Decimal("15.00"),
             is_default=True,
             created_by=self.user,
         )
         tax2 = TaxCode.objects.create(
-            code="V0",
+            code=2,
             description="Zero Rated",
             rate=Decimal("0.00"),
             created_by=self.user,
         )
 
-        # Set V0 as default
+        # Set code 2 as default
         response = self.client.post(
             f"/api/v1/settings/tax-codes/{tax2.id}/set_default/"
         )
@@ -377,9 +413,16 @@ class PaymentMethodAPITest(APITestCase):
     """Test PaymentMethod API endpoints"""
 
     def setUp(self):
+        # is_superuser=True bypasses ShopUser.save()'s tenant-context guard,
+        # which isn't set up in this single-DB test run (DISABLE_TENANT_ROUTER=1).
+        # role="ADMIN" grants full access under the AccessGrant module x
+        # function_type matrix (apps.common.models.AccessGrant) that
+        # ModuleFunctionPermissionMixin now enforces on these ViewSets.
         self.user = User.objects.create_user(
             username="testuser",
             password="testpass123",  # nosec B105 B106 - test fixture password
+            is_superuser=True,
+            role="ADMIN",
         )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
@@ -395,7 +438,7 @@ class PaymentMethodAPITest(APITestCase):
 
         response = self.client.get("/api/v1/settings/payment-methods/electronic/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data["results"]), 1)
+        self.assertEqual(len(response.data), 1)
 
     def test_cash_based_methods(self):
         """Test filtering cash-based payment methods"""
@@ -405,16 +448,23 @@ class PaymentMethodAPITest(APITestCase):
 
         response = self.client.get("/api/v1/settings/payment-methods/cash_based/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data["results"]), 1)
+        self.assertEqual(len(response.data), 1)
 
 
 class SystemConfigurationAPITest(APITestCase):
     """Test SystemConfiguration API endpoints"""
 
     def setUp(self):
+        # is_superuser=True bypasses ShopUser.save()'s tenant-context guard,
+        # which isn't set up in this single-DB test run (DISABLE_TENANT_ROUTER=1).
+        # role="ADMIN" grants full access under the AccessGrant module x
+        # function_type matrix (apps.common.models.AccessGrant) that
+        # ModuleFunctionPermissionMixin now enforces on these ViewSets.
         self.user = User.objects.create_user(
             username="testuser",
             password="testpass123",  # nosec B105 B106 - test fixture password
+            is_superuser=True,
+            role="ADMIN",
         )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
@@ -426,12 +476,18 @@ class SystemConfigurationAPITest(APITestCase):
 
     def test_update_configuration(self):
         """Test updating system configuration"""
+        # Real caller (frontend/app/dashboard/admin/settings/page.tsx) PUTs
+        # to the detail route with the singleton's id, not the base list URL
+        # — the base URL only routes to list/create via the DRF router.
+        config = SystemConfiguration.load()
         data = {
             "shop_name": "Test Shop",
             "shop_email": "test@shop.com",
             "currency_symbol": "R",
         }
-        response = self.client.patch("/api/v1/settings/system-config/", data)
+        response = self.client.patch(
+            f"/api/v1/settings/system-config/{config.pk}/", data
+        )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_cannot_create_second_config(self):
@@ -443,7 +499,8 @@ class SystemConfigurationAPITest(APITestCase):
 
     def test_cannot_delete_config(self):
         """Test that configuration cannot be deleted"""
-        response = self.client.delete("/api/v1/settings/system-config/")
+        config = SystemConfiguration.load()
+        response = self.client.delete(f"/api/v1/settings/system-config/{config.pk}/")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_advance_period(self):

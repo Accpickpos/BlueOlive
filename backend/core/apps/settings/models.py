@@ -740,6 +740,14 @@ class CostingCategory(TimeStampedModel, ActiveModel):
     description = models.TextField(
         blank=True, null=True, help_text="Optional description of this costing category"
     )
+    is_default = models.BooleanField(
+        default=False,
+        help_text=(
+            "The single active system-wide costing/pricing method (manual "
+            "§8.1 System Parameters treats this as one global setting, not "
+            "per-category, despite the full CRUD table)."
+        ),
+    )
 
     class Meta:
         db_table = "costing_categories"
@@ -811,7 +819,25 @@ class CostingCategory(TimeStampedModel, ActiveModel):
     def save(self, *args, **kwargs):
         """Override save to ensure clean is called"""
         self.full_clean()
+        if self.is_default:
+            CostingCategory.objects.filter(is_default=True).exclude(pk=self.pk).update(
+                is_default=False
+            )
         super().save(*args, **kwargs)
+
+    @classmethod
+    def get_active(cls):
+        """
+        The single system-wide costing/pricing method. Falls back to Last
+        Cost / Exclusive of VAT — NOT this class's own field defaults
+        ("A"/"E") — when no row has been marked default yet, to preserve
+        the behavior every GP calculation in the app hardcoded before this
+        was wired up (StockItem.cost_price, i.e. Last Cost).
+        """
+        default = cls.objects.filter(is_default=True, is_active=True).first()
+        if default:
+            return default
+        return cls(costing_method="L", pricing_method="E")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
