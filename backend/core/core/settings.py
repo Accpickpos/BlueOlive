@@ -31,6 +31,13 @@ load_dotenv(BASE_DIR / ".env")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
+# CI deliberately runs with DEBUG=False to catch prod-like config bugs, but
+# that also flips on SECURE_SSL_REDIRECT below - which then 301s every
+# plain-HTTP test-client request before it reaches the view. Detect the test
+# runner so transport-security settings that are meaningless for a test
+# client don't get in the way of testing actual behavior.
+TESTING = "pytest" in sys.modules or (len(sys.argv) > 1 and sys.argv[1] == "test")
+
 # SECURITY WARNING: keep the secret key used in production secret!
 # Fail closed: a missing SECRET_KEY in production must not silently fall back
 # to a well-known placeholder value. Only DEBUG (local dev) gets the fallback,
@@ -199,7 +206,7 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_HSTS_SECONDS = 0 if DEBUG else 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 SECURE_HSTS_PRELOAD = not DEBUG
-SECURE_SSL_REDIRECT = not DEBUG
+SECURE_SSL_REDIRECT = not DEBUG and not TESTING
 
 # Content-Security-Policy — the actual user-facing app is the separate
 # Next.js frontend (which has its own nonce-based CSP in

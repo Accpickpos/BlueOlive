@@ -36,13 +36,17 @@ class RentalServiceTestCase(TransactionTestCase):
     def setUp(self):
         self.user = ShopUser.objects.create_user(
             username="cashier1",
+            email="cashier1@test.local",
             password="testpass123",  # nosec B105 B106 - test fixture password
+            tenant_id=1,
         )
         Group.objects.get_or_create(name="Cashier")[0].user_set.add(self.user)
 
         self.accountant = ShopUser.objects.create_user(
             username="accountant1",
+            email="accountant1@test.local",
             password="testpass123",  # nosec B105 B106 - test fixture password
+            tenant_id=1,
         )
         Group.objects.get_or_create(name="Accountant")[0].user_set.add(self.accountant)
 

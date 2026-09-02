@@ -113,13 +113,14 @@ jobs:
           CACHE_BACKEND: locmem
           DISABLE_TENANT_ROUTER: '1'
         run: |
+          cd backend/core
           pytest --cov=. --cov-report=xml --cov-report=term-missing --tb=short -v --ignore=migrations
 
       - name: Upload coverage to Codecov
         if: success()
         uses: codecov/codecov-action@v4
         with:
-          file: ./coverage.xml
+          file: ./backend/core/coverage.xml
           flags: unittests
           name: blueolive-backend
 

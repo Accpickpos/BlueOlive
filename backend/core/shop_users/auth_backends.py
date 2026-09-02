@@ -215,15 +215,23 @@ class ShopUserBackend(BaseBackend):
 
                 with conn.cursor() as cur:
                     cur.execute("SET search_path TO public")
+                    # tenant_id filter is load-bearing, not defensive: under
+                    # a shared-database deployment (e.g. this project's
+                    # DISABLE_TENANT_ROUTER single-DB mode), every tenant's
+                    # db_alias can resolve to the exact same physical
+                    # shop_users_shopuser table. Without this filter, a
+                    # username match here would authenticate the user
+                    # against ANY tenant regardless of which one they
+                    # actually belong to.
                     cur.execute(
                         """
                         SELECT id, username, password, email, first_name, last_name,
                                is_active, is_staff, is_superuser, date_joined,
                                tenant_id, shop_ids, role, phone
                         FROM shop_users_shopuser
-                        WHERE username = %s
+                        WHERE username = %s AND tenant_id = %s
                     """,
-                        [username],
+                        [username, tenant.id],
                     )
                     row = cur.fetchone()
                     if row:
