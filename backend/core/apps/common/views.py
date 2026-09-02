@@ -42,7 +42,9 @@ class AccessGrantViewSet(viewsets.ReadOnlyModelViewSet):
         missing = []
         for cell in serializer.validated_data:
             count = AccessGrant.objects.filter(
-                role=cell["role"], module=cell["module"], function_type=cell["function_type"]
+                role=cell["role"],
+                module=cell["module"],
+                function_type=cell["function_type"],
             ).update(is_allowed=cell["is_allowed"])
             if count:
                 updated += count

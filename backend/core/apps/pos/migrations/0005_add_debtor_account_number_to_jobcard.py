@@ -6,13 +6,13 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('pos', '0004_tender_pos_tender_tender__688f9a_idx_and_more'),
+        ("pos", "0004_tender_pos_tender_tender__688f9a_idx_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='jobcard',
-            name='debtor_account_number',
+            model_name="jobcard",
+            name="debtor_account_number",
             field=models.CharField(blank=True, db_index=True, max_length=20),
         ),
     ]

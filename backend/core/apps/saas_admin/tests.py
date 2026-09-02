@@ -498,7 +498,10 @@ class PlatformAdminAccessControlTestCase(APITestCase):
         self.client.force_authenticate(user=self.tenant_staff)
         response = self.client.post(
             "/api/v1/saas-admin/users/reset-password/",
-            {"user_id": self.target_user.id, "new_password": "hacked-password-123"},
+            {
+                "user_id": self.target_user.id,
+                "new_password": "hacked-password-123",
+            },  # nosec B105
         )
         self.assertIn(
             response.status_code,
@@ -519,7 +522,10 @@ class PlatformAdminAccessControlTestCase(APITestCase):
         self.client.force_authenticate(user=self.superuser)
         response = self.client.post(
             "/api/v1/saas-admin/users/reset-password/",
-            {"user_id": self.target_user.id, "new_password": "new-password-456"},
+            {
+                "user_id": self.target_user.id,
+                "new_password": "new-password-456",
+            },  # nosec B105
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.target_user.refresh_from_db()

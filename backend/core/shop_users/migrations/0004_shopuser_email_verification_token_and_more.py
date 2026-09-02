@@ -6,23 +6,35 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('shop_users', '0003_shopuser_shop_ids'),
+        ("shop_users", "0003_shopuser_shop_ids"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='shopuser',
-            name='email_verification_token',
-            field=models.CharField(blank=True, help_text='Token used for email verification (self-generated, not stored from token)', max_length=255, null=True),
+            model_name="shopuser",
+            name="email_verification_token",
+            field=models.CharField(
+                blank=True,
+                help_text="Token used for email verification (self-generated, not stored from token)",
+                max_length=255,
+                null=True,
+            ),
         ),
         migrations.AddField(
-            model_name='shopuser',
-            name='email_verification_token_created',
-            field=models.DateTimeField(blank=True, help_text='When the email verification token was created', null=True),
+            model_name="shopuser",
+            name="email_verification_token_created",
+            field=models.DateTimeField(
+                blank=True,
+                help_text="When the email verification token was created",
+                null=True,
+            ),
         ),
         migrations.AddField(
-            model_name='shopuser',
-            name='is_email_verified',
-            field=models.BooleanField(default=False, help_text='Whether the user has verified their email address'),
+            model_name="shopuser",
+            name="is_email_verified",
+            field=models.BooleanField(
+                default=False,
+                help_text="Whether the user has verified their email address",
+            ),
         ),
     ]

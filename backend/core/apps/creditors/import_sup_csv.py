@@ -4,11 +4,6 @@ import logging
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
-# Hard cap on uploaded CSV size — these views read the whole file into
-# memory (no streaming), so an unbounded upload is a memory-exhaustion
-# risk on top of being a plain nuisance.
-MAX_CSV_UPLOAD_SIZE = 20 * 1024 * 1024  # 20MB
-
 from django.db import connections, transaction
 from django.db.models import Sum
 from rest_framework import status
@@ -34,6 +29,11 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Hard cap on uploaded CSV size — these views read the whole file into
+# memory (no streaming), so an unbounded upload is a memory-exhaustion
+# risk on top of being a plain nuisance.
+MAX_CSV_UPLOAD_SIZE = 20 * 1024 * 1024  # 20MB
 
 # ============================================================================
 # Column maps: CSV header (uppercase) → field name / semantic tag
@@ -493,9 +493,9 @@ def list_tenants_and_shops(request):
     if not requester_tenant_id:
         return Response([])
 
-    tenants = Tenant.objects.filter(
-        id=requester_tenant_id, is_active=True
-    ).order_by("name")
+    tenants = Tenant.objects.filter(id=requester_tenant_id, is_active=True).order_by(
+        "name"
+    )
     return Response(
         [
             {

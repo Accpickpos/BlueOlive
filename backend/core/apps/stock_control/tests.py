@@ -12,8 +12,6 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-User = get_user_model()
-
 from .models import (
     ContractPricing,
     FuturePricing,
@@ -26,6 +24,8 @@ from .models import (
     StockTakeItem,
     StockTransaction,
 )
+
+User = get_user_model()
 
 
 class StockItemModelTest(TestCase):
@@ -412,14 +412,14 @@ class StockTransactionServiceEndpointTest(APITestCase):
         self.mover = User.objects.create_user(
             username="mover",
             email="mover@example.com",
-            password="x",
+            password="x",  # nosec B106
             is_superuser=True,
         )
         self.mover.groups.add(Group.objects.create(name="Cashier"))
         self.plain_user = User.objects.create_user(
             username="plain",
             email="plain@example.com",
-            password="x",
+            password="x",  # nosec B106
             is_superuser=True,
         )
 
@@ -470,7 +470,7 @@ class StockTakeUpdateStockModeTest(APITestCase):
         self.mover = User.objects.create_user(
             username="mover2",
             email="mover2@example.com",
-            password="x",
+            password="x",  # nosec B106
             is_superuser=True,
         )
         self.mover.groups.add(Group.objects.create(name="Cashier"))
@@ -500,9 +500,7 @@ class StockTakeUpdateStockModeTest(APITestCase):
         )
 
     def _update_stock(self, take, **body):
-        return self.client.post(
-            reverse("stocktake-update-stock", args=[take.id]), body
-        )
+        return self.client.post(reverse("stocktake-update-stock", args=[take.id]), body)
 
     def test_overwrite_mode_is_the_default_and_matches_prior_behavior(self):
         take = self._make_take()
@@ -547,9 +545,7 @@ class StockTakeUpdateStockModeTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_additive_and_after_trading_together_rejected(self):
-        take = self._make_take(
-            is_after_trading=True, trading_start_date=timezone.now()
-        )
+        take = self._make_take(is_after_trading=True, trading_start_date=timezone.now())
         self._make_item(take, Decimal("48"))
         response = self._update_stock(take, mode="additive")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -604,7 +600,7 @@ class SpecialDealBulkDepartmentTest(APITestCase):
         self.mover = User.objects.create_user(
             username="mover3",
             email="mover3@example.com",
-            password="x",
+            password="x",  # nosec B106
             is_superuser=True,
         )
         self.mover.groups.add(Group.objects.create(name="Cashier"))
@@ -665,8 +661,12 @@ class SpecialDealBulkDepartmentTest(APITestCase):
         self.assertEqual(deal1.special_selling_price_3, Decimal("108.00"))  # 120 - 10%
 
         # Inactive item and items in other departments are excluded.
-        self.assertFalse(SpecialDeal.objects.filter(stock_item=self.inactive_item).exists())
-        self.assertFalse(SpecialDeal.objects.filter(stock_item=self.other_dept_item).exists())
+        self.assertFalse(
+            SpecialDeal.objects.filter(stock_item=self.inactive_item).exists()
+        )
+        self.assertFalse(
+            SpecialDeal.objects.filter(stock_item=self.other_dept_item).exists()
+        )
 
     def test_flat_rand_increase(self):
         response = self.client.post(
@@ -712,7 +712,7 @@ class UsedInBundlesTest(APITestCase):
         self.mover = User.objects.create_user(
             username="mover4",
             email="mover4@example.com",
-            password="x",
+            password="x",  # nosec B106
             is_superuser=True,
         )
         self.client.force_authenticate(self.mover)
@@ -779,7 +779,7 @@ class EnquiryAggregationTest(APITestCase):
         self.mover = User.objects.create_user(
             username="mover5",
             email="mover5@example.com",
-            password="x",
+            password="x",  # nosec B106
             is_superuser=True,
         )
         self.client.force_authenticate(self.mover)
@@ -887,7 +887,9 @@ class EnquiryAggregationTest(APITestCase):
         # item_a sold quantity 10 (higher than item_b's 2), so ranks first
         # despite item_b having the higher value.
         self.assertEqual(response.data[0]["stock_item_id"], self.item_a.pk)
-        self.assertEqual(Decimal(str(response.data[0]["total_quantity"])), Decimal("10"))
+        self.assertEqual(
+            Decimal(str(response.data[0]["total_quantity"])), Decimal("10")
+        )
 
     def test_stock_item_transactions_debtor_filter(self):
         response = self.client.get(
@@ -929,9 +931,7 @@ class EnquiryAggregationTest(APITestCase):
             transaction_date=timezone.now().date(),
             quantity_out=Decimal("5"),
         )
-        response = self.client.get(
-            reverse("stocktransaction-received-returned-report")
-        )
+        response = self.client.get(reverse("stocktransaction-received-returned-report"))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data.get("results", response.data)
         types = {r["transaction_type"] for r in results}
@@ -953,7 +953,7 @@ class StockItemReportTest(APITestCase):
         self.mover = User.objects.create_user(
             username="mover6",
             email="mover6@example.com",
-            password="x",
+            password="x",  # nosec B106
             is_superuser=True,
         )
         self.client.force_authenticate(self.mover)
@@ -1002,9 +1002,7 @@ class StockItemReportTest(APITestCase):
         # RPT001: -2 * 10.00 = -20.00; RPT002: 100 * 20.00 = 2000.00
         self.assertEqual(Decimal(str(by_code["RPT001"]["value"])), Decimal("-20.00"))
         self.assertEqual(Decimal(str(by_code["RPT002"]["value"])), Decimal("2000.00"))
-        self.assertEqual(
-            Decimal(str(response.data["total_value"])), Decimal("1980.00")
-        )
+        self.assertEqual(Decimal(str(response.data["total_value"])), Decimal("1980.00"))
 
     def test_valuation_report_average_cost_basis(self):
         response = self.client.get(
@@ -1017,14 +1015,18 @@ class StockItemReportTest(APITestCase):
         self.assertEqual(Decimal(str(by_code["RPT002"]["value"])), Decimal("2200.00"))
 
     def test_low_stock_level_filter(self):
-        response = self.client.get(reverse("stockitem-low-stock"), {"level": "critical"})
+        response = self.client.get(
+            reverse("stockitem-low-stock"), {"level": "critical"}
+        )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data.get("results", response.data)
         codes = {r["stock_code"] for r in results}
         self.assertEqual(codes, {"RPT001"})  # negative QOH -> critical
 
     def test_low_stock_search_filter(self):
-        response = self.client.get(reverse("stockitem-low-stock"), {"search": "Critical"})
+        response = self.client.get(
+            reverse("stockitem-low-stock"), {"search": "Critical"}
+        )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data.get("results", response.data)
         self.assertEqual(len(results), 1)
@@ -1046,7 +1048,7 @@ class MonthlyStatisticReportTest(APITestCase):
         self.mover = User.objects.create_user(
             username="mover7",
             email="mover7@example.com",
-            password="x",
+            password="x",  # nosec B106
             is_superuser=True,
         )
         self.client.force_authenticate(self.mover)
@@ -1058,18 +1060,26 @@ class MonthlyStatisticReportTest(APITestCase):
             stock_code="MS002", description="Slow Mover", department=self.dept_b
         )
         self.item_c = StockItem.objects.create(
-            stock_code="MS003", description="Slow Mover Two Months", department=self.dept_b
+            stock_code="MS003",
+            description="Slow Mover Two Months",
+            department=self.dept_b,
         )
 
         # item_a: strong sales across 2 months.
         StockMonthlyStatistic.objects.create(
-            stock_item=self.item_a, year=2026, month=1,
-            quantity_sold=Decimal("100"), value_sold=Decimal("1000.00"),
+            stock_item=self.item_a,
+            year=2026,
+            month=1,
+            quantity_sold=Decimal("100"),
+            value_sold=Decimal("1000.00"),
             profit_value=Decimal("400.00"),
         )
         StockMonthlyStatistic.objects.create(
-            stock_item=self.item_a, year=2026, month=2,
-            quantity_sold=Decimal("120"), value_sold=Decimal("1200.00"),
+            stock_item=self.item_a,
+            year=2026,
+            month=2,
+            quantity_sold=Decimal("120"),
+            value_sold=Decimal("1200.00"),
             profit_value=Decimal("480.00"),
         )
         # item_c: consistently slow across 2 months — the regression case
@@ -1077,19 +1087,28 @@ class MonthlyStatisticReportTest(APITestCase):
         # the aggregation, which would incorrectly split this into 2 rows
         # of "1 month, avg 2" instead of 1 row of "2 months, avg 2").
         StockMonthlyStatistic.objects.create(
-            stock_item=self.item_c, year=2026, month=1,
-            quantity_sold=Decimal("2"), value_sold=Decimal("40.00"),
+            stock_item=self.item_c,
+            year=2026,
+            month=1,
+            quantity_sold=Decimal("2"),
+            value_sold=Decimal("40.00"),
             profit_value=Decimal("10.00"),
         )
         StockMonthlyStatistic.objects.create(
-            stock_item=self.item_c, year=2026, month=2,
-            quantity_sold=Decimal("2"), value_sold=Decimal("40.00"),
+            stock_item=self.item_c,
+            year=2026,
+            month=2,
+            quantity_sold=Decimal("2"),
+            value_sold=Decimal("40.00"),
             profit_value=Decimal("10.00"),
         )
         # item_b: barely sells, only 1 month of data in the year.
         StockMonthlyStatistic.objects.create(
-            stock_item=self.item_b, year=2026, month=1,
-            quantity_sold=Decimal("2"), value_sold=Decimal("40.00"),
+            stock_item=self.item_b,
+            year=2026,
+            month=1,
+            quantity_sold=Decimal("2"),
+            value_sold=Decimal("40.00"),
             profit_value=Decimal("10.00"),
         )
 
@@ -1135,7 +1154,11 @@ class MonthlyStatisticReportTest(APITestCase):
         # Meta.ordering leaking year/month into the aggregation, which
         # would otherwise produce two separate rows for this one item).
         self.assertIn(self.item_c.pk, by_item)
-        self.assertEqual(len([r for r in response.data if r["stock_item_id"] == self.item_c.pk]), 1)
-        self.assertEqual(Decimal(str(by_item[self.item_c.pk]["total_quantity"])), Decimal("4"))
+        self.assertEqual(
+            len([r for r in response.data if r["stock_item_id"] == self.item_c.pk]), 1
+        )
+        self.assertEqual(
+            Decimal(str(by_item[self.item_c.pk]["total_quantity"])), Decimal("4")
+        )
         self.assertEqual(by_item[self.item_c.pk]["months_with_data"], 2)
         self.assertEqual(by_item[self.item_c.pk]["avg_monthly_sales"], 2.0)

@@ -69,9 +69,7 @@ class PlatformOwnerJWTAuthentication(BaseAuthentication):
 
         user_id = validated_token.get("user_id")
         try:
-            user = ShopUser.objects.using("default").get(
-                id=user_id, is_superuser=True
-            )
+            user = ShopUser.objects.using("default").get(id=user_id, is_superuser=True)
         except ShopUser.DoesNotExist:
             raise AuthenticationFailed("Platform owner account not found")
 

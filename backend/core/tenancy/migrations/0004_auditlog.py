@@ -8,7 +8,7 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tenancy', '0003_shop_is_active'),
+        ("tenancy", "0003_shop_is_active"),
     ]
 
     operations = [

@@ -6,13 +6,22 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tenancy', '0009_shop_address_shop_code_shop_phone'),
+        ("tenancy", "0009_shop_address_shop_code_shop_phone"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='shop',
-            name='setup_status',
-            field=models.CharField(choices=[('pending', 'Pending Setup'), ('ready', 'Ready for Use'), ('failed', 'Setup Failed')], default='pending', help_text='Status of shop schema setup', max_length=20),
+            model_name="shop",
+            name="setup_status",
+            field=models.CharField(
+                choices=[
+                    ("pending", "Pending Setup"),
+                    ("ready", "Ready for Use"),
+                    ("failed", "Setup Failed"),
+                ],
+                default="pending",
+                help_text="Status of shop schema setup",
+                max_length=20,
+            ),
         ),
     ]

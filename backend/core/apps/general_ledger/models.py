@@ -309,7 +309,9 @@ class GLIntegrationLog(TimeStampedModel):
     source_app = models.CharField(max_length=20, choices=SOURCE_APP_CHOICES)
     source_model = models.CharField(max_length=50)
     source_pk = models.BigIntegerField()
-    gl_batchno = models.BigIntegerField(help_text="GLTran.batchno this record posted to")
+    gl_batchno = models.BigIntegerField(
+        help_text="GLTran.batchno this record posted to"
+    )
     transferred_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

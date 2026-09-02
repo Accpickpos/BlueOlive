@@ -6,13 +6,13 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tenancy', '0010_shop_setup_status'),
+        ("tenancy", "0010_shop_setup_status"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='tenant',
-            name='db_host',
-            field=models.CharField(default='postgres', max_length=200),
+            model_name="tenant",
+            name="db_host",
+            field=models.CharField(default="postgres", max_length=200),
         ),
     ]

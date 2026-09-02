@@ -8,13 +8,20 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('shop_users', '0006_alter_shopuser_role'),
+        ("shop_users", "0006_alter_shopuser_role"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='shopuser',
-            name='created_by',
-            field=models.ForeignKey(blank=True, help_text='User who created this account', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_users', to=settings.AUTH_USER_MODEL),
+            model_name="shopuser",
+            name="created_by",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="User who created this account",
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="created_users",
+                to=settings.AUTH_USER_MODEL,
+            ),
         ),
     ]

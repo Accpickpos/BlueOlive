@@ -6,13 +6,21 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('shop_users', '0004_shopuser_email_verification_token_and_more'),
+        ("shop_users", "0004_shopuser_email_verification_token_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='shopuser',
-            name='role',
-            field=models.CharField(choices=[('ADMIN', 'Admin - Full tenant access'), ('MANAGER', 'Manager - Can manage shop users'), ('USER', 'User - Basic access')], default='USER', max_length=20),
+            model_name="shopuser",
+            name="role",
+            field=models.CharField(
+                choices=[
+                    ("ADMIN", "Admin - Full tenant access"),
+                    ("MANAGER", "Manager - Can manage shop users"),
+                    ("USER", "User - Basic access"),
+                ],
+                default="USER",
+                max_length=20,
+            ),
         ),
     ]

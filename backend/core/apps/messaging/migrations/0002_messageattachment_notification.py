@@ -9,40 +9,85 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('messaging', '0001_initial'),
+        ("messaging", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='MessageAttachment',
+            name="MessageAttachment",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('file', models.FileField(upload_to=apps.messaging.models.message_attachment_path)),
-                ('filename', models.CharField(max_length=255)),
-                ('content_type', models.CharField(max_length=100)),
-                ('file_size', models.IntegerField(default=0)),
-                ('uploaded_at', models.DateTimeField(auto_now_add=True)),
-                ('message', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='attachments', to='messaging.message')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "file",
+                    models.FileField(
+                        upload_to=apps.messaging.models.message_attachment_path
+                    ),
+                ),
+                ("filename", models.CharField(max_length=255)),
+                ("content_type", models.CharField(max_length=100)),
+                ("file_size", models.IntegerField(default=0)),
+                ("uploaded_at", models.DateTimeField(auto_now_add=True)),
+                (
+                    "message",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="attachments",
+                        to="messaging.message",
+                    ),
+                ),
             ],
             options={
-                'ordering': ['uploaded_at'],
+                "ordering": ["uploaded_at"],
             },
         ),
         migrations.CreateModel(
-            name='Notification',
+            name="Notification",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('notification_type', models.CharField(choices=[('new_message', 'New Message'), ('message_mention', 'Message Mention'), ('conversation_invite', 'Conversation Invite')], max_length=50)),
-                ('title', models.CharField(max_length=255)),
-                ('message', models.TextField()),
-                ('link', models.CharField(blank=True, max_length=500, null=True)),
-                ('is_read', models.BooleanField(default=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='notifications', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "notification_type",
+                    models.CharField(
+                        choices=[
+                            ("new_message", "New Message"),
+                            ("message_mention", "Message Mention"),
+                            ("conversation_invite", "Conversation Invite"),
+                        ],
+                        max_length=50,
+                    ),
+                ),
+                ("title", models.CharField(max_length=255)),
+                ("message", models.TextField()),
+                ("link", models.CharField(blank=True, max_length=500, null=True)),
+                ("is_read", models.BooleanField(default=False)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="notifications",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'ordering': ['-created_at'],
+                "ordering": ["-created_at"],
             },
         ),
     ]

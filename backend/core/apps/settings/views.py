@@ -71,7 +71,9 @@ from .serializers import (
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-class BaseSettingsViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class BaseSettingsViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     Base ViewSet with common functionality for all settings models
     Handles audit trail (created_by, updated_by)
@@ -607,7 +609,9 @@ class CreditTermsViewSet(BaseSettingsViewSet):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-class SystemConfigurationViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class SystemConfigurationViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for System Configuration (Singleton)
 
@@ -1073,7 +1077,9 @@ class SystemConfigurationViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin,
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-class DepartmentMonthlyStatsViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class DepartmentMonthlyStatsViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet
+):
     """
     Read-only ViewSet for Department Monthly Statistics
 
@@ -1106,7 +1112,9 @@ class DepartmentMonthlyStatsViewSet(ModuleFunctionPermissionMixin, ShopFilterMix
         return Response(serializer.data)
 
 
-class SalesAreaMonthlyStatsViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class SalesAreaMonthlyStatsViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet
+):
     """
     Read-only ViewSet for Sales Area Monthly Statistics
 
@@ -1145,7 +1153,9 @@ class SalesAreaMonthlyStatsViewSet(ModuleFunctionPermissionMixin, ShopFilterMixi
         return Response(serializer.data)
 
 
-class DayEndReportViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class DayEndReportViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet
+):
     """
     Read-only ViewSet for persisted Day End Reports (manual §8.6
     "Printing a Previous Day End Report").
@@ -1163,7 +1173,9 @@ class DayEndReportViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewse
     ordering = ["-process_date"]
 
 
-class APIKeyViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class APIKeyViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for managing API keys.
 

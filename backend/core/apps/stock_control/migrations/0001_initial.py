@@ -12,529 +12,1585 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('creditors', '0001_initial'),
-        ('debtors', '0001_initial'),
-        ('settings', '0001_initial'),
+        ("creditors", "0001_initial"),
+        ("debtors", "0001_initial"),
+        ("settings", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='StockItem',
+            name="StockItem",
             fields=[
-                ('stock_code', models.CharField(max_length=13, primary_key=True, serialize=False, unique=True)),
-                ('description', models.CharField(max_length=255)),
-                ('supplier_code', models.CharField(blank=True, help_text="Supplier's stock code", max_length=50, null=True)),
-                ('cost_price', models.DecimalField(decimal_places=2, default=0, max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
-                ('average_cost', models.DecimalField(decimal_places=2, default=0, max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
-                ('selling_price_1', models.DecimalField(decimal_places=4, default=0, help_text='SPRICE - Selling Price 1', max_digits=12, validators=[django.core.validators.MinValueValidator(0)])),
-                ('selling_price_2', models.DecimalField(decimal_places=4, default=0, help_text='SPRICE1 - Selling Price 2', max_digits=12, validators=[django.core.validators.MinValueValidator(0)])),
-                ('selling_price_3', models.DecimalField(decimal_places=4, default=0, help_text='SPRICE2 - Selling Price 3', max_digits=12, validators=[django.core.validators.MinValueValidator(0)])),
-                ('markup_1', models.DecimalField(decimal_places=2, default=0, max_digits=5)),
-                ('markup_2', models.DecimalField(decimal_places=2, default=0, max_digits=5)),
-                ('markup_3', models.DecimalField(decimal_places=2, default=0, max_digits=5)),
-                ('quantity_on_hand', models.DecimalField(decimal_places=4, default=0, help_text='QOH - Current stock quantity', max_digits=14)),
-                ('quantity_allocated', models.DecimalField(decimal_places=4, default=0, help_text='QTYBYSTOCK - Quantity allocated to batches/lots', max_digits=14)),
-                ('quantity_sale_order', models.DecimalField(decimal_places=2, default=0, help_text='QTYSORD - Quantity reserved in sales orders', max_digits=10)),
-                ('quantity_counted', models.DecimalField(decimal_places=2, default=0, help_text='Used during stock take', max_digits=10)),
-                ('reorder_quantity', models.DecimalField(decimal_places=2, default=0, max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
-                ('quantity_on_order', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('default_selling_quantity', models.DecimalField(decimal_places=2, default=1, max_digits=10)),
-                ('allow_negative_quantities', models.BooleanField(default=True)),
-                ('maximum_discount_percent', models.DecimalField(decimal_places=2, default=0, max_digits=5, validators=[django.core.validators.MinValueValidator(0), django.core.validators.MaxValueValidator(100)])),
-                ('sales_mtd_quantity', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('sales_mtd_value', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('sales_ytd_quantity', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('sales_ytd_value', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('gross_profit_mtd', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('gross_profit_ytd', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('purchased_mtd_quantity', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('purchased_ytd_quantity', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('balance_bfwd_quantity', models.DecimalField(decimal_places=4, default=0, max_digits=14)),
-                ('balance_bfwd_value', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('closing_stock_balance', models.DecimalField(decimal_places=0, default=0, max_digits=12)),
-                ('date_last_purchased', models.DateField(blank=True, null=True)),
-                ('date_last_sold', models.DateField(blank=True, null=True)),
-                ('bin_number', models.CharField(blank=True, max_length=50, null=True)),
-                ('weight', models.DecimalField(blank=True, decimal_places=2, default=0, help_text='Weight of item', max_digits=8, null=True)),
-                ('stock_count_flag', models.CharField(blank=True, help_text='Stock count flag', max_length=1, null=True)),
-                ('is_active', models.BooleanField(default=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('created_by', models.CharField(blank=True, max_length=255, null=True)),
-                ('updated_by', models.CharField(blank=True, max_length=255, null=True)),
-                ('department', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='stock_items', to='settings.salesdepartment')),
-                ('last_supplier', models.ForeignKey(blank=True, help_text='Last supplier used for this item', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='last_supplied_items', to='creditors.creditor')),
-                ('supplier', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='stock_items', to='creditors.creditor')),
-                ('tax_code', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='stock_items', to='settings.taxcode')),
+                (
+                    "stock_code",
+                    models.CharField(
+                        max_length=13, primary_key=True, serialize=False, unique=True
+                    ),
+                ),
+                ("description", models.CharField(max_length=255)),
+                (
+                    "supplier_code",
+                    models.CharField(
+                        blank=True,
+                        help_text="Supplier's stock code",
+                        max_length=50,
+                        null=True,
+                    ),
+                ),
+                (
+                    "cost_price",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "average_cost",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "selling_price_1",
+                    models.DecimalField(
+                        decimal_places=4,
+                        default=0,
+                        help_text="SPRICE - Selling Price 1",
+                        max_digits=12,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "selling_price_2",
+                    models.DecimalField(
+                        decimal_places=4,
+                        default=0,
+                        help_text="SPRICE1 - Selling Price 2",
+                        max_digits=12,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "selling_price_3",
+                    models.DecimalField(
+                        decimal_places=4,
+                        default=0,
+                        help_text="SPRICE2 - Selling Price 3",
+                        max_digits=12,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "markup_1",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=5),
+                ),
+                (
+                    "markup_2",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=5),
+                ),
+                (
+                    "markup_3",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=5),
+                ),
+                (
+                    "quantity_on_hand",
+                    models.DecimalField(
+                        decimal_places=4,
+                        default=0,
+                        help_text="QOH - Current stock quantity",
+                        max_digits=14,
+                    ),
+                ),
+                (
+                    "quantity_allocated",
+                    models.DecimalField(
+                        decimal_places=4,
+                        default=0,
+                        help_text="QTYBYSTOCK - Quantity allocated to batches/lots",
+                        max_digits=14,
+                    ),
+                ),
+                (
+                    "quantity_sale_order",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="QTYSORD - Quantity reserved in sales orders",
+                        max_digits=10,
+                    ),
+                ),
+                (
+                    "quantity_counted",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Used during stock take",
+                        max_digits=10,
+                    ),
+                ),
+                (
+                    "reorder_quantity",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "quantity_on_order",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "default_selling_quantity",
+                    models.DecimalField(decimal_places=2, default=1, max_digits=10),
+                ),
+                ("allow_negative_quantities", models.BooleanField(default=True)),
+                (
+                    "maximum_discount_percent",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        max_digits=5,
+                        validators=[
+                            django.core.validators.MinValueValidator(0),
+                            django.core.validators.MaxValueValidator(100),
+                        ],
+                    ),
+                ),
+                (
+                    "sales_mtd_quantity",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "sales_mtd_value",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "sales_ytd_quantity",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "sales_ytd_value",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "gross_profit_mtd",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "gross_profit_ytd",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "purchased_mtd_quantity",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "purchased_ytd_quantity",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "balance_bfwd_quantity",
+                    models.DecimalField(decimal_places=4, default=0, max_digits=14),
+                ),
+                (
+                    "balance_bfwd_value",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "closing_stock_balance",
+                    models.DecimalField(decimal_places=0, default=0, max_digits=12),
+                ),
+                ("date_last_purchased", models.DateField(blank=True, null=True)),
+                ("date_last_sold", models.DateField(blank=True, null=True)),
+                ("bin_number", models.CharField(blank=True, max_length=50, null=True)),
+                (
+                    "weight",
+                    models.DecimalField(
+                        blank=True,
+                        decimal_places=2,
+                        default=0,
+                        help_text="Weight of item",
+                        max_digits=8,
+                        null=True,
+                    ),
+                ),
+                (
+                    "stock_count_flag",
+                    models.CharField(
+                        blank=True,
+                        help_text="Stock count flag",
+                        max_length=1,
+                        null=True,
+                    ),
+                ),
+                ("is_active", models.BooleanField(default=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("created_by", models.CharField(blank=True, max_length=255, null=True)),
+                ("updated_by", models.CharField(blank=True, max_length=255, null=True)),
+                (
+                    "department",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="stock_items",
+                        to="settings.salesdepartment",
+                    ),
+                ),
+                (
+                    "last_supplier",
+                    models.ForeignKey(
+                        blank=True,
+                        help_text="Last supplier used for this item",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="last_supplied_items",
+                        to="creditors.creditor",
+                    ),
+                ),
+                (
+                    "supplier",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="stock_items",
+                        to="creditors.creditor",
+                    ),
+                ),
+                (
+                    "tax_code",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="stock_items",
+                        to="settings.taxcode",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'stock_items',
-                'ordering': ['stock_code'],
+                "db_table": "stock_items",
+                "ordering": ["stock_code"],
             },
         ),
         migrations.CreateModel(
-            name='StockTake',
+            name="StockTake",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('stock_take_date', models.DateField(default=django.utils.timezone.now)),
-                ('status', models.CharField(choices=[('IN_PROGRESS', 'In Progress'), ('COMPLETED', 'Completed'), ('UPDATED', 'Updated')], default='IN_PROGRESS', max_length=20)),
-                ('description', models.TextField(blank=True, null=True)),
-                ('reset_negatives_to_zero', models.BooleanField(default=False)),
-                ('set_uncounted_to_zero', models.BooleanField(default=False)),
-                ('is_after_trading', models.BooleanField(default=False)),
-                ('trading_start_date', models.DateTimeField(blank=True, null=True)),
-                ('created_by', models.CharField(blank=True, max_length=100, null=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('completed_at', models.DateTimeField(blank=True, null=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "stock_take_date",
+                    models.DateField(default=django.utils.timezone.now),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("IN_PROGRESS", "In Progress"),
+                            ("COMPLETED", "Completed"),
+                            ("UPDATED", "Updated"),
+                        ],
+                        default="IN_PROGRESS",
+                        max_length=20,
+                    ),
+                ),
+                ("description", models.TextField(blank=True, null=True)),
+                ("reset_negatives_to_zero", models.BooleanField(default=False)),
+                ("set_uncounted_to_zero", models.BooleanField(default=False)),
+                ("is_after_trading", models.BooleanField(default=False)),
+                ("trading_start_date", models.DateTimeField(blank=True, null=True)),
+                ("created_by", models.CharField(blank=True, max_length=100, null=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("completed_at", models.DateTimeField(blank=True, null=True)),
             ],
             options={
-                'db_table': 'stock_takes',
-                'ordering': ['-stock_take_date'],
+                "db_table": "stock_takes",
+                "ordering": ["-stock_take_date"],
             },
         ),
         migrations.CreateModel(
-            name='Branch',
+            name="Branch",
             fields=[
-                ('branch_code', models.CharField(help_text='e.g., BR001, WH01', max_length=10, primary_key=True, serialize=False, unique=True)),
-                ('branch_name', models.CharField(max_length=100)),
-                ('branch_type', models.CharField(choices=[('RETAIL', 'Retail Store'), ('WAREHOUSE', 'Warehouse'), ('HQ', 'Headquarters')], max_length=20)),
-                ('address', models.TextField(blank=True, null=True)),
-                ('contact_phone', models.CharField(blank=True, max_length=20, null=True)),
-                ('is_active', models.BooleanField(default=True, help_text='Whether branch is operational')),
-                ('is_default', models.BooleanField(default=False, help_text='Default branch for the tenant')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('created_by', models.CharField(blank=True, max_length=255, null=True)),
-                ('updated_by', models.CharField(blank=True, max_length=255, null=True)),
+                (
+                    "branch_code",
+                    models.CharField(
+                        help_text="e.g., BR001, WH01",
+                        max_length=10,
+                        primary_key=True,
+                        serialize=False,
+                        unique=True,
+                    ),
+                ),
+                ("branch_name", models.CharField(max_length=100)),
+                (
+                    "branch_type",
+                    models.CharField(
+                        choices=[
+                            ("RETAIL", "Retail Store"),
+                            ("WAREHOUSE", "Warehouse"),
+                            ("HQ", "Headquarters"),
+                        ],
+                        max_length=20,
+                    ),
+                ),
+                ("address", models.TextField(blank=True, null=True)),
+                (
+                    "contact_phone",
+                    models.CharField(blank=True, max_length=20, null=True),
+                ),
+                (
+                    "is_active",
+                    models.BooleanField(
+                        default=True, help_text="Whether branch is operational"
+                    ),
+                ),
+                (
+                    "is_default",
+                    models.BooleanField(
+                        default=False, help_text="Default branch for the tenant"
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("created_by", models.CharField(blank=True, max_length=255, null=True)),
+                ("updated_by", models.CharField(blank=True, max_length=255, null=True)),
             ],
             options={
-                'db_table': 'branches',
-                'ordering': ['branch_code'],
-                'indexes': [models.Index(fields=['is_active'], name='branches_is_acti_830392_idx'), models.Index(fields=['is_default'], name='branches_is_defa_1998a0_idx'), models.Index(fields=['branch_type'], name='branches_branch__e2680d_idx')],
+                "db_table": "branches",
+                "ordering": ["branch_code"],
+                "indexes": [
+                    models.Index(
+                        fields=["is_active"], name="branches_is_acti_830392_idx"
+                    ),
+                    models.Index(
+                        fields=["is_default"], name="branches_is_defa_1998a0_idx"
+                    ),
+                    models.Index(
+                        fields=["branch_type"], name="branches_branch__e2680d_idx"
+                    ),
+                ],
             },
         ),
         migrations.CreateModel(
-            name='BranchTransfer',
+            name="BranchTransfer",
             fields=[
-                ('id', models.BigAutoField(primary_key=True, serialize=False)),
-                ('transfer_number', models.CharField(help_text='e.g., IBT-2024-0001', max_length=20, unique=True)),
-                ('status', models.CharField(choices=[('DRAFT', 'Draft'), ('PENDING', 'Pending Approval'), ('APPROVED', 'Approved'), ('DISPATCHED', 'Dispatched'), ('IN_TRANSIT', 'In Transit'), ('RECEIVED', 'Received'), ('COMPLETED', 'Completed'), ('CANCELLED', 'Cancelled')], default='DRAFT', max_length=20)),
-                ('transfer_type', models.CharField(choices=[('STANDARD', 'Standard Transfer'), ('URGENT', 'Urgent Transfer'), ('RETURN', 'Return Transfer')], default='STANDARD', max_length=20)),
-                ('requested_date', models.DateTimeField(default=django.utils.timezone.now)),
-                ('approved_date', models.DateTimeField(blank=True, null=True)),
-                ('dispatched_date', models.DateTimeField(blank=True, null=True)),
-                ('received_date', models.DateTimeField(blank=True, null=True)),
-                ('notes', models.TextField(blank=True, null=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('approved_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='transfers_approved', to=settings.AUTH_USER_MODEL)),
-                ('dispatched_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='transfers_dispatched', to=settings.AUTH_USER_MODEL)),
-                ('from_branch', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='transfers_out', to='stock_control.branch')),
-                ('received_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='transfers_received', to=settings.AUTH_USER_MODEL)),
-                ('requested_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='transfers_requested', to=settings.AUTH_USER_MODEL)),
-                ('to_branch', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='transfers_in', to='stock_control.branch')),
+                ("id", models.BigAutoField(primary_key=True, serialize=False)),
+                (
+                    "transfer_number",
+                    models.CharField(
+                        help_text="e.g., IBT-2024-0001", max_length=20, unique=True
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("DRAFT", "Draft"),
+                            ("PENDING", "Pending Approval"),
+                            ("APPROVED", "Approved"),
+                            ("DISPATCHED", "Dispatched"),
+                            ("IN_TRANSIT", "In Transit"),
+                            ("RECEIVED", "Received"),
+                            ("COMPLETED", "Completed"),
+                            ("CANCELLED", "Cancelled"),
+                        ],
+                        default="DRAFT",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "transfer_type",
+                    models.CharField(
+                        choices=[
+                            ("STANDARD", "Standard Transfer"),
+                            ("URGENT", "Urgent Transfer"),
+                            ("RETURN", "Return Transfer"),
+                        ],
+                        default="STANDARD",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "requested_date",
+                    models.DateTimeField(default=django.utils.timezone.now),
+                ),
+                ("approved_date", models.DateTimeField(blank=True, null=True)),
+                ("dispatched_date", models.DateTimeField(blank=True, null=True)),
+                ("received_date", models.DateTimeField(blank=True, null=True)),
+                ("notes", models.TextField(blank=True, null=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "approved_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="transfers_approved",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "dispatched_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="transfers_dispatched",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "from_branch",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="transfers_out",
+                        to="stock_control.branch",
+                    ),
+                ),
+                (
+                    "received_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="transfers_received",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "requested_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="transfers_requested",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "to_branch",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="transfers_in",
+                        to="stock_control.branch",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'branch_transfers',
-                'ordering': ['-requested_date', '-transfer_number'],
+                "db_table": "branch_transfers",
+                "ordering": ["-requested_date", "-transfer_number"],
             },
         ),
         migrations.CreateModel(
-            name='BranchTransferInvoice',
+            name="BranchTransferInvoice",
             fields=[
-                ('id', models.BigAutoField(primary_key=True, serialize=False)),
-                ('invoice_number', models.CharField(help_text='e.g., IBI-2024-0001', max_length=20, unique=True)),
-                ('invoice_date', models.DateField(default=django.utils.timezone.now)),
-                ('status', models.CharField(choices=[('DRAFT', 'Draft'), ('ISSUED', 'Issued'), ('PAID', 'Paid'), ('CANCELLED', 'Cancelled')], default='DRAFT', max_length=20)),
-                ('subtotal', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('vat_amount', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('total_amount', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('transfer', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='invoice', to='stock_control.branchtransfer')),
+                ("id", models.BigAutoField(primary_key=True, serialize=False)),
+                (
+                    "invoice_number",
+                    models.CharField(
+                        help_text="e.g., IBI-2024-0001", max_length=20, unique=True
+                    ),
+                ),
+                ("invoice_date", models.DateField(default=django.utils.timezone.now)),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("DRAFT", "Draft"),
+                            ("ISSUED", "Issued"),
+                            ("PAID", "Paid"),
+                            ("CANCELLED", "Cancelled"),
+                        ],
+                        default="DRAFT",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "subtotal",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "vat_amount",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "total_amount",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "transfer",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="invoice",
+                        to="stock_control.branchtransfer",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'branch_transfer_invoices',
-                'ordering': ['-invoice_date', '-invoice_number'],
+                "db_table": "branch_transfer_invoices",
+                "ordering": ["-invoice_date", "-invoice_number"],
             },
         ),
         migrations.CreateModel(
-            name='GroupOrder',
+            name="GroupOrder",
             fields=[
-                ('id', models.BigAutoField(primary_key=True, serialize=False)),
-                ('group_order_number', models.CharField(help_text='e.g., GRP-2024-0001', max_length=20, unique=True)),
-                ('order_date', models.DateField(default=django.utils.timezone.now)),
-                ('status', models.CharField(choices=[('DRAFT', 'Draft'), ('ACTIVE', 'Active'), ('COMPLETED', 'Completed'), ('CANCELLED', 'Cancelled')], default='DRAFT', max_length=20)),
-                ('notes', models.TextField(blank=True, null=True)),
-                ('total_amount', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('branch', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='group_orders', to='stock_control.branch')),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_group_orders', to=settings.AUTH_USER_MODEL)),
+                ("id", models.BigAutoField(primary_key=True, serialize=False)),
+                (
+                    "group_order_number",
+                    models.CharField(
+                        help_text="e.g., GRP-2024-0001", max_length=20, unique=True
+                    ),
+                ),
+                ("order_date", models.DateField(default=django.utils.timezone.now)),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("DRAFT", "Draft"),
+                            ("ACTIVE", "Active"),
+                            ("COMPLETED", "Completed"),
+                            ("CANCELLED", "Cancelled"),
+                        ],
+                        default="DRAFT",
+                        max_length=20,
+                    ),
+                ),
+                ("notes", models.TextField(blank=True, null=True)),
+                (
+                    "total_amount",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "branch",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="group_orders",
+                        to="stock_control.branch",
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_group_orders",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'db_table': 'group_orders',
-                'ordering': ['-order_date', '-group_order_number'],
+                "db_table": "group_orders",
+                "ordering": ["-order_date", "-group_order_number"],
             },
         ),
         migrations.CreateModel(
-            name='PackBundle',
+            name="PackBundle",
             fields=[
-                ('stock_item', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, primary_key=True, related_name='pack_bundle', serialize=False, to='stock_control.stockitem')),
-                ('total_cost', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
+                (
+                    "stock_item",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        primary_key=True,
+                        related_name="pack_bundle",
+                        serialize=False,
+                        to="stock_control.stockitem",
+                    ),
+                ),
+                (
+                    "total_cost",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
             ],
             options={
-                'db_table': 'pack_bundles',
+                "db_table": "pack_bundles",
             },
         ),
         migrations.CreateModel(
-            name='OneTouchLookupKey',
+            name="OneTouchLookupKey",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('key_character', models.CharField(help_text='Single uppercase letter', max_length=1, unique=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('stock_item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='lookup_keys', to='stock_control.stockitem')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "key_character",
+                    models.CharField(
+                        help_text="Single uppercase letter", max_length=1, unique=True
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "stock_item",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="lookup_keys",
+                        to="stock_control.stockitem",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'one_touch_lookup_keys',
+                "db_table": "one_touch_lookup_keys",
             },
         ),
         migrations.CreateModel(
-            name='GroupOrderItem',
+            name="GroupOrderItem",
             fields=[
-                ('id', models.BigAutoField(primary_key=True, serialize=False)),
-                ('quantity', models.DecimalField(decimal_places=2, max_digits=10)),
-                ('unit_price', models.DecimalField(decimal_places=4, max_digits=12)),
-                ('line_total', models.DecimalField(decimal_places=2, max_digits=12)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('group_order', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='items', to='stock_control.grouporder')),
-                ('stock_item', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='group_order_items', to='stock_control.stockitem')),
+                ("id", models.BigAutoField(primary_key=True, serialize=False)),
+                ("quantity", models.DecimalField(decimal_places=2, max_digits=10)),
+                ("unit_price", models.DecimalField(decimal_places=4, max_digits=12)),
+                ("line_total", models.DecimalField(decimal_places=2, max_digits=12)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "group_order",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="items",
+                        to="stock_control.grouporder",
+                    ),
+                ),
+                (
+                    "stock_item",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="group_order_items",
+                        to="stock_control.stockitem",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'group_order_items',
-                'ordering': ['stock_item'],
+                "db_table": "group_order_items",
+                "ordering": ["stock_item"],
             },
         ),
         migrations.CreateModel(
-            name='FuturePricing',
+            name="FuturePricing",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('future_cost_price', models.DecimalField(decimal_places=2, max_digits=12, validators=[django.core.validators.MinValueValidator(0)])),
-                ('future_selling_price_1', models.DecimalField(decimal_places=4, default=0, help_text='NEWPR - New price 1', max_digits=12)),
-                ('future_selling_price_2', models.DecimalField(decimal_places=4, default=0, help_text='NEWPR1 - New price 2', max_digits=12)),
-                ('future_selling_price_3', models.DecimalField(decimal_places=4, default=0, help_text='NEWPR2 - New price 3', max_digits=12)),
-                ('future_markup_1', models.DecimalField(decimal_places=2, default=0, max_digits=5)),
-                ('future_markup_2', models.DecimalField(decimal_places=2, default=0, max_digits=5)),
-                ('future_markup_3', models.DecimalField(decimal_places=2, default=0, max_digits=5)),
-                ('effective_date', models.DateField(help_text='NEWPRDATE - New price effective date')),
-                ('is_applied', models.BooleanField(default=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('stock_item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='future_prices', to='stock_control.stockitem')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "future_cost_price",
+                    models.DecimalField(
+                        decimal_places=2,
+                        max_digits=12,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "future_selling_price_1",
+                    models.DecimalField(
+                        decimal_places=4,
+                        default=0,
+                        help_text="NEWPR - New price 1",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "future_selling_price_2",
+                    models.DecimalField(
+                        decimal_places=4,
+                        default=0,
+                        help_text="NEWPR1 - New price 2",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "future_selling_price_3",
+                    models.DecimalField(
+                        decimal_places=4,
+                        default=0,
+                        help_text="NEWPR2 - New price 3",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "future_markup_1",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=5),
+                ),
+                (
+                    "future_markup_2",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=5),
+                ),
+                (
+                    "future_markup_3",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=5),
+                ),
+                (
+                    "effective_date",
+                    models.DateField(help_text="NEWPRDATE - New price effective date"),
+                ),
+                ("is_applied", models.BooleanField(default=False)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "stock_item",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="future_prices",
+                        to="stock_control.stockitem",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'future_pricing',
-                'ordering': ['effective_date'],
+                "db_table": "future_pricing",
+                "ordering": ["effective_date"],
             },
         ),
         migrations.CreateModel(
-            name='ContractPricing',
+            name="ContractPricing",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('pricing_method', models.CharField(choices=[('ACTUAL', 'Actual Price'), ('COST_MARKUP', 'Cost + Markup%')], max_length=20)),
-                ('contract_price', models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True)),
-                ('markup_percent', models.DecimalField(blank=True, decimal_places=2, max_digits=5, null=True)),
-                ('discount_percent', models.DecimalField(decimal_places=2, default=0, max_digits=5)),
-                ('last_selling_price', models.DecimalField(decimal_places=2, default=0, help_text='LSELL - Last transaction selling price', max_digits=12)),
-                ('last_updated_date', models.DateField(blank=True, help_text='LUPDATE - Last update date for contract', null=True)),
-                ('is_fixed_pricing', models.BooleanField(default=False, help_text='FIXEDPRICE - Prevent POS from changing price')),
-                ('is_active', models.BooleanField(default=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('debtor', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='contract_prices', to='debtors.debtor')),
-                ('department', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='contract_prices', to='settings.salesdepartment')),
-                ('supplier', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='contract_prices', to='creditors.creditor')),
-                ('stock_item', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='contract_prices', to='stock_control.stockitem')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "pricing_method",
+                    models.CharField(
+                        choices=[
+                            ("ACTUAL", "Actual Price"),
+                            ("COST_MARKUP", "Cost + Markup%"),
+                        ],
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "contract_price",
+                    models.DecimalField(
+                        blank=True, decimal_places=2, max_digits=10, null=True
+                    ),
+                ),
+                (
+                    "markup_percent",
+                    models.DecimalField(
+                        blank=True, decimal_places=2, max_digits=5, null=True
+                    ),
+                ),
+                (
+                    "discount_percent",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=5),
+                ),
+                (
+                    "last_selling_price",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="LSELL - Last transaction selling price",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "last_updated_date",
+                    models.DateField(
+                        blank=True,
+                        help_text="LUPDATE - Last update date for contract",
+                        null=True,
+                    ),
+                ),
+                (
+                    "is_fixed_pricing",
+                    models.BooleanField(
+                        default=False,
+                        help_text="FIXEDPRICE - Prevent POS from changing price",
+                    ),
+                ),
+                ("is_active", models.BooleanField(default=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "debtor",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="contract_prices",
+                        to="debtors.debtor",
+                    ),
+                ),
+                (
+                    "department",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="contract_prices",
+                        to="settings.salesdepartment",
+                    ),
+                ),
+                (
+                    "supplier",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="contract_prices",
+                        to="creditors.creditor",
+                    ),
+                ),
+                (
+                    "stock_item",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="contract_prices",
+                        to="stock_control.stockitem",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'contract_pricing',
+                "db_table": "contract_pricing",
             },
         ),
         migrations.CreateModel(
-            name='BranchTransferItem',
+            name="BranchTransferItem",
             fields=[
-                ('id', models.BigAutoField(primary_key=True, serialize=False)),
-                ('quantity_requested', models.DecimalField(decimal_places=2, max_digits=10)),
-                ('quantity_dispatched', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('quantity_received', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('variance', models.DecimalField(decimal_places=2, default=0, help_text='Calculated on receive', max_digits=10)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('transfer', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='items', to='stock_control.branchtransfer')),
-                ('stock_item', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='transfer_items', to='stock_control.stockitem')),
+                ("id", models.BigAutoField(primary_key=True, serialize=False)),
+                (
+                    "quantity_requested",
+                    models.DecimalField(decimal_places=2, max_digits=10),
+                ),
+                (
+                    "quantity_dispatched",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "quantity_received",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "variance",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Calculated on receive",
+                        max_digits=10,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "transfer",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="items",
+                        to="stock_control.branchtransfer",
+                    ),
+                ),
+                (
+                    "stock_item",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="transfer_items",
+                        to="stock_control.stockitem",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'branch_transfer_items',
-                'ordering': ['stock_item'],
+                "db_table": "branch_transfer_items",
+                "ordering": ["stock_item"],
             },
         ),
         migrations.CreateModel(
-            name='BranchStock',
+            name="BranchStock",
             fields=[
-                ('id', models.BigAutoField(primary_key=True, serialize=False)),
-                ('quantity', models.DecimalField(decimal_places=4, default=0, help_text='Current quantity at branch', max_digits=14)),
-                ('quantity_allocated', models.DecimalField(decimal_places=4, default=0, help_text='Reserved for transfers/orders', max_digits=14)),
-                ('reorder_level', models.DecimalField(decimal_places=2, default=0, help_text='Per-branch reorder level', max_digits=10)),
-                ('reorder_quantity', models.DecimalField(decimal_places=2, default=0, help_text='Per-branch reorder quantity', max_digits=10)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('branch', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='branch_stocks', to='stock_control.branch')),
-                ('stock_item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='branch_stocks', to='stock_control.stockitem')),
+                ("id", models.BigAutoField(primary_key=True, serialize=False)),
+                (
+                    "quantity",
+                    models.DecimalField(
+                        decimal_places=4,
+                        default=0,
+                        help_text="Current quantity at branch",
+                        max_digits=14,
+                    ),
+                ),
+                (
+                    "quantity_allocated",
+                    models.DecimalField(
+                        decimal_places=4,
+                        default=0,
+                        help_text="Reserved for transfers/orders",
+                        max_digits=14,
+                    ),
+                ),
+                (
+                    "reorder_level",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Per-branch reorder level",
+                        max_digits=10,
+                    ),
+                ),
+                (
+                    "reorder_quantity",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Per-branch reorder quantity",
+                        max_digits=10,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "branch",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="branch_stocks",
+                        to="stock_control.branch",
+                    ),
+                ),
+                (
+                    "stock_item",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="branch_stocks",
+                        to="stock_control.stockitem",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'branch_stocks',
-                'ordering': ['branch', 'stock_item'],
+                "db_table": "branch_stocks",
+                "ordering": ["branch", "stock_item"],
             },
         ),
         migrations.CreateModel(
-            name='PackBundleIngredient',
+            name="PackBundleIngredient",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('quantity', models.DecimalField(decimal_places=4, help_text='Quantity of ingredient in bundle', max_digits=12, validators=[django.core.validators.MinValueValidator(0.0001)])),
-                ('cost_at_creation', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('ingredient_stock', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='used_in_bundles', to='stock_control.stockitem')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "quantity",
+                    models.DecimalField(
+                        decimal_places=4,
+                        help_text="Quantity of ingredient in bundle",
+                        max_digits=12,
+                        validators=[django.core.validators.MinValueValidator(0.0001)],
+                    ),
+                ),
+                (
+                    "cost_at_creation",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "ingredient_stock",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="used_in_bundles",
+                        to="stock_control.stockitem",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'pack_bundle_ingredients',
+                "db_table": "pack_bundle_ingredients",
             },
         ),
         migrations.CreateModel(
-            name='ShrinkWrap',
+            name="ShrinkWrap",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('invoice_bulk_value', models.DecimalField(decimal_places=3, default=1.0, help_text='SINBULK - Quantity/value in bulk', max_digits=12, validators=[django.core.validators.MinValueValidator(0.001)])),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('bulk_pack_code', models.ForeignKey(help_text='BCODE - Bulk/main item code', on_delete=django.db.models.deletion.CASCADE, related_name='shrink_bulks', to='stock_control.stockitem')),
-                ('shrink_pack_code', models.ForeignKey(help_text='SCODE - Individual/shrink item code', on_delete=django.db.models.deletion.CASCADE, related_name='shrink_items', to='stock_control.stockitem')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "invoice_bulk_value",
+                    models.DecimalField(
+                        decimal_places=3,
+                        default=1.0,
+                        help_text="SINBULK - Quantity/value in bulk",
+                        max_digits=12,
+                        validators=[django.core.validators.MinValueValidator(0.001)],
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "bulk_pack_code",
+                    models.ForeignKey(
+                        help_text="BCODE - Bulk/main item code",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="shrink_bulks",
+                        to="stock_control.stockitem",
+                    ),
+                ),
+                (
+                    "shrink_pack_code",
+                    models.ForeignKey(
+                        help_text="SCODE - Individual/shrink item code",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="shrink_items",
+                        to="stock_control.stockitem",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'shrink_wraps',
+                "db_table": "shrink_wraps",
             },
         ),
         migrations.CreateModel(
-            name='SpecialDeal',
+            name="SpecialDeal",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('special_cost_price', models.DecimalField(decimal_places=2, max_digits=12, validators=[django.core.validators.MinValueValidator(0)])),
-                ('special_selling_price_1', models.DecimalField(decimal_places=4, default=0, help_text='SPPRICE1', max_digits=12)),
-                ('special_selling_price_2', models.DecimalField(decimal_places=4, default=0, help_text='SPPRICE2', max_digits=12)),
-                ('special_selling_price_3', models.DecimalField(decimal_places=4, default=0, help_text='SPPRICE3', max_digits=12)),
-                ('special_markup_1', models.DecimalField(decimal_places=2, default=0, max_digits=5)),
-                ('special_markup_2', models.DecimalField(decimal_places=2, default=0, max_digits=5)),
-                ('special_markup_3', models.DecimalField(decimal_places=2, default=0, max_digits=5)),
-                ('start_date', models.DateField(help_text='SPECSTDATE - Special start date')),
-                ('end_date', models.DateField(help_text='SPECENDATE - Special end date')),
-                ('is_active', models.BooleanField(default=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('stock_item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='special_deals', to='stock_control.stockitem')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "special_cost_price",
+                    models.DecimalField(
+                        decimal_places=2,
+                        max_digits=12,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "special_selling_price_1",
+                    models.DecimalField(
+                        decimal_places=4, default=0, help_text="SPPRICE1", max_digits=12
+                    ),
+                ),
+                (
+                    "special_selling_price_2",
+                    models.DecimalField(
+                        decimal_places=4, default=0, help_text="SPPRICE2", max_digits=12
+                    ),
+                ),
+                (
+                    "special_selling_price_3",
+                    models.DecimalField(
+                        decimal_places=4, default=0, help_text="SPPRICE3", max_digits=12
+                    ),
+                ),
+                (
+                    "special_markup_1",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=5),
+                ),
+                (
+                    "special_markup_2",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=5),
+                ),
+                (
+                    "special_markup_3",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=5),
+                ),
+                (
+                    "start_date",
+                    models.DateField(help_text="SPECSTDATE - Special start date"),
+                ),
+                (
+                    "end_date",
+                    models.DateField(help_text="SPECENDATE - Special end date"),
+                ),
+                ("is_active", models.BooleanField(default=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "stock_item",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="special_deals",
+                        to="stock_control.stockitem",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'special_deals',
-                'ordering': ['-start_date'],
+                "db_table": "special_deals",
+                "ordering": ["-start_date"],
             },
         ),
         migrations.CreateModel(
-            name='StockMonthlyStatistic',
+            name="StockMonthlyStatistic",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('year', models.IntegerField()),
-                ('month', models.IntegerField(validators=[django.core.validators.MinValueValidator(1), django.core.validators.MaxValueValidator(12)])),
-                ('quantity_sold', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('value_sold', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('profit_value', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('profit_percent', models.DecimalField(decimal_places=2, default=0, max_digits=5)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('stock_item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='monthly_stats', to='stock_control.stockitem')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("year", models.IntegerField()),
+                (
+                    "month",
+                    models.IntegerField(
+                        validators=[
+                            django.core.validators.MinValueValidator(1),
+                            django.core.validators.MaxValueValidator(12),
+                        ]
+                    ),
+                ),
+                (
+                    "quantity_sold",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "value_sold",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "profit_value",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "profit_percent",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=5),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "stock_item",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="monthly_stats",
+                        to="stock_control.stockitem",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'stock_monthly_statistics',
-                'ordering': ['-year', '-month'],
+                "db_table": "stock_monthly_statistics",
+                "ordering": ["-year", "-month"],
             },
         ),
         migrations.CreateModel(
-            name='StockTakeItem',
+            name="StockTakeItem",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('quantity_on_hand', models.DecimalField(decimal_places=2, help_text='System quantity before count', max_digits=10)),
-                ('quantity_counted', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('variance_quantity', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('variance_value', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('cost_price_at_count', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('is_counted', models.BooleanField(default=False)),
-                ('count_date', models.DateTimeField(blank=True, null=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('stock_item', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='stock_take_items', to='stock_control.stockitem')),
-                ('stock_take', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='items', to='stock_control.stocktake')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "quantity_on_hand",
+                    models.DecimalField(
+                        decimal_places=2,
+                        help_text="System quantity before count",
+                        max_digits=10,
+                    ),
+                ),
+                (
+                    "quantity_counted",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "variance_quantity",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "variance_value",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "cost_price_at_count",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                ("is_counted", models.BooleanField(default=False)),
+                ("count_date", models.DateTimeField(blank=True, null=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "stock_item",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="stock_take_items",
+                        to="stock_control.stockitem",
+                    ),
+                ),
+                (
+                    "stock_take",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="items",
+                        to="stock_control.stocktake",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'stock_take_items',
+                "db_table": "stock_take_items",
             },
         ),
         migrations.CreateModel(
-            name='StockTransaction',
+            name="StockTransaction",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('transaction_type', models.CharField(choices=[('INCOMING', 'Incoming Stock'), ('RETURN', 'Stock Return'), ('SALE', 'Sale'), ('SALE_RETURN', 'Sale Return'), ('ADJUSTMENT', 'Stock Adjustment'), ('STOCK_TAKE', 'Stock Take'), ('MANUFACTURE', 'Manufactured from Bundle'), ('BUNDLE_USE', 'Used in Bundle'), ('BULK_ISSUE', 'Issued from Bulk'), ('LAYBYE_IN', 'Laybye Issue'), ('LAYBYE_OUT', 'Laybye Return'), ('JOB_IN', 'Job Card Issue'), ('JOB_OUT', 'Job Card Return'), ('RFC_IN', 'RFC Issue'), ('RFC_OUT', 'RFC Return')], max_length=20)),
-                ('transaction_date', models.DateField(default=django.utils.timezone.now)),
-                ('transaction_time', models.TimeField(blank=True, help_text='Time of transaction (HH:MM)', null=True)),
-                ('transaction_number', models.CharField(blank=True, max_length=50, null=True)),
-                ('quantity_in', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('quantity_out', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('quantity_balance', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('discount', models.DecimalField(decimal_places=2, default=0, help_text='Discount applied', max_digits=7)),
-                ('unit_cost', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('unit_price', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('value', models.DecimalField(decimal_places=4, default=0, help_text='Transaction value', max_digits=14)),
-                ('reference', models.CharField(blank=True, max_length=255, null=True)),
-                ('station_number', models.IntegerField(blank=True, help_text='Station/POS terminal number', null=True)),
-                ('comments', models.CharField(blank=True, help_text='Transaction comments', max_length=255, null=True)),
-                ('created_by', models.CharField(blank=True, max_length=255, null=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('debtor', models.ForeignKey(blank=True, help_text='Debtor account if applicable', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='stock_transactions', to='debtors.debtor')),
-                ('department', models.ForeignKey(blank=True, help_text='Department involved in transaction', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='stock_transactions', to='settings.salesdepartment')),
-                ('stock_item', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='transactions', to='stock_control.stockitem')),
-                ('supplier', models.ForeignKey(blank=True, help_text='Supplier account if applicable', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='stock_transactions', to='creditors.creditor')),
-                ('tax_code', models.ForeignKey(blank=True, help_text='Tax code for transaction', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='stock_transactions', to='settings.taxcode')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "transaction_type",
+                    models.CharField(
+                        choices=[
+                            ("INCOMING", "Incoming Stock"),
+                            ("RETURN", "Stock Return"),
+                            ("SALE", "Sale"),
+                            ("SALE_RETURN", "Sale Return"),
+                            ("ADJUSTMENT", "Stock Adjustment"),
+                            ("STOCK_TAKE", "Stock Take"),
+                            ("MANUFACTURE", "Manufactured from Bundle"),
+                            ("BUNDLE_USE", "Used in Bundle"),
+                            ("BULK_ISSUE", "Issued from Bulk"),
+                            ("LAYBYE_IN", "Laybye Issue"),
+                            ("LAYBYE_OUT", "Laybye Return"),
+                            ("JOB_IN", "Job Card Issue"),
+                            ("JOB_OUT", "Job Card Return"),
+                            ("RFC_IN", "RFC Issue"),
+                            ("RFC_OUT", "RFC Return"),
+                        ],
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "transaction_date",
+                    models.DateField(default=django.utils.timezone.now),
+                ),
+                (
+                    "transaction_time",
+                    models.TimeField(
+                        blank=True, help_text="Time of transaction (HH:MM)", null=True
+                    ),
+                ),
+                (
+                    "transaction_number",
+                    models.CharField(blank=True, max_length=50, null=True),
+                ),
+                (
+                    "quantity_in",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "quantity_out",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "quantity_balance",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "discount",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Discount applied",
+                        max_digits=7,
+                    ),
+                ),
+                (
+                    "unit_cost",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "unit_price",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "value",
+                    models.DecimalField(
+                        decimal_places=4,
+                        default=0,
+                        help_text="Transaction value",
+                        max_digits=14,
+                    ),
+                ),
+                ("reference", models.CharField(blank=True, max_length=255, null=True)),
+                (
+                    "station_number",
+                    models.IntegerField(
+                        blank=True, help_text="Station/POS terminal number", null=True
+                    ),
+                ),
+                (
+                    "comments",
+                    models.CharField(
+                        blank=True,
+                        help_text="Transaction comments",
+                        max_length=255,
+                        null=True,
+                    ),
+                ),
+                ("created_by", models.CharField(blank=True, max_length=255, null=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "debtor",
+                    models.ForeignKey(
+                        blank=True,
+                        help_text="Debtor account if applicable",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="stock_transactions",
+                        to="debtors.debtor",
+                    ),
+                ),
+                (
+                    "department",
+                    models.ForeignKey(
+                        blank=True,
+                        help_text="Department involved in transaction",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="stock_transactions",
+                        to="settings.salesdepartment",
+                    ),
+                ),
+                (
+                    "stock_item",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="transactions",
+                        to="stock_control.stockitem",
+                    ),
+                ),
+                (
+                    "supplier",
+                    models.ForeignKey(
+                        blank=True,
+                        help_text="Supplier account if applicable",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="stock_transactions",
+                        to="creditors.creditor",
+                    ),
+                ),
+                (
+                    "tax_code",
+                    models.ForeignKey(
+                        blank=True,
+                        help_text="Tax code for transaction",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="stock_transactions",
+                        to="settings.taxcode",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'stock_transactions',
-                'ordering': ['-transaction_date', '-id'],
+                "db_table": "stock_transactions",
+                "ordering": ["-transaction_date", "-id"],
             },
         ),
         migrations.AddIndex(
-            model_name='branchtransfer',
-            index=models.Index(fields=['status', 'from_branch'], name='branch_tran_status_ebcbba_idx'),
+            model_name="branchtransfer",
+            index=models.Index(
+                fields=["status", "from_branch"], name="branch_tran_status_ebcbba_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='branchtransfer',
-            index=models.Index(fields=['status', 'to_branch'], name='branch_tran_status_7083dc_idx'),
+            model_name="branchtransfer",
+            index=models.Index(
+                fields=["status", "to_branch"], name="branch_tran_status_7083dc_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='branchtransfer',
-            index=models.Index(fields=['requested_date'], name='branch_tran_request_d1bc38_idx'),
+            model_name="branchtransfer",
+            index=models.Index(
+                fields=["requested_date"], name="branch_tran_request_d1bc38_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='branchtransfer',
-            index=models.Index(fields=['transfer_type'], name='branch_tran_transfe_1d1c8f_idx'),
+            model_name="branchtransfer",
+            index=models.Index(
+                fields=["transfer_type"], name="branch_tran_transfe_1d1c8f_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='branchtransferinvoice',
-            index=models.Index(fields=['status'], name='branch_tran_status_6dd7ac_idx'),
+            model_name="branchtransferinvoice",
+            index=models.Index(fields=["status"], name="branch_tran_status_6dd7ac_idx"),
         ),
         migrations.AddIndex(
-            model_name='branchtransferinvoice',
-            index=models.Index(fields=['invoice_date'], name='branch_tran_invoice_4f619b_idx'),
+            model_name="branchtransferinvoice",
+            index=models.Index(
+                fields=["invoice_date"], name="branch_tran_invoice_4f619b_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='grouporder',
-            index=models.Index(fields=['status', 'branch'], name='group_order_status_22f4bc_idx'),
+            model_name="grouporder",
+            index=models.Index(
+                fields=["status", "branch"], name="group_order_status_22f4bc_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='grouporder',
-            index=models.Index(fields=['order_date'], name='group_order_order_d_9e06ef_idx'),
+            model_name="grouporder",
+            index=models.Index(
+                fields=["order_date"], name="group_order_order_d_9e06ef_idx"
+            ),
         ),
         migrations.AddField(
-            model_name='packbundleingredient',
-            name='pack_bundle',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='ingredients', to='stock_control.packbundle'),
+            model_name="packbundleingredient",
+            name="pack_bundle",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="ingredients",
+                to="stock_control.packbundle",
+            ),
         ),
         migrations.AddIndex(
-            model_name='stockitem',
-            index=models.Index(fields=['description'], name='stock_items_descrip_56037c_idx'),
+            model_name="stockitem",
+            index=models.Index(
+                fields=["description"], name="stock_items_descrip_56037c_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='stockitem',
-            index=models.Index(fields=['supplier', 'supplier_code'], name='stock_items_supplie_96c2ac_idx'),
+            model_name="stockitem",
+            index=models.Index(
+                fields=["supplier", "supplier_code"],
+                name="stock_items_supplie_96c2ac_idx",
+            ),
         ),
         migrations.AddIndex(
-            model_name='stockitem',
-            index=models.Index(fields=['department'], name='stock_items_departm_0dd271_idx'),
+            model_name="stockitem",
+            index=models.Index(
+                fields=["department"], name="stock_items_departm_0dd271_idx"
+            ),
         ),
         migrations.AlterUniqueTogether(
-            name='grouporderitem',
-            unique_together={('group_order', 'stock_item')},
+            name="grouporderitem",
+            unique_together={("group_order", "stock_item")},
         ),
         migrations.AddIndex(
-            model_name='contractpricing',
-            index=models.Index(fields=['debtor', 'stock_item'], name='contract_pr_debtor__2085eb_idx'),
+            model_name="contractpricing",
+            index=models.Index(
+                fields=["debtor", "stock_item"], name="contract_pr_debtor__2085eb_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='contractpricing',
-            index=models.Index(fields=['debtor', 'department'], name='contract_pr_debtor__84b5d2_idx'),
+            model_name="contractpricing",
+            index=models.Index(
+                fields=["debtor", "department"], name="contract_pr_debtor__84b5d2_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='contractpricing',
-            index=models.Index(fields=['debtor', 'supplier'], name='contract_pr_debtor__63cf2b_idx'),
+            model_name="contractpricing",
+            index=models.Index(
+                fields=["debtor", "supplier"], name="contract_pr_debtor__63cf2b_idx"
+            ),
         ),
         migrations.AlterUniqueTogether(
-            name='branchtransferitem',
-            unique_together={('transfer', 'stock_item')},
+            name="branchtransferitem",
+            unique_together={("transfer", "stock_item")},
         ),
         migrations.AddIndex(
-            model_name='branchstock',
-            index=models.Index(fields=['branch', 'quantity'], name='branch_stoc_branch__e85cdf_idx'),
+            model_name="branchstock",
+            index=models.Index(
+                fields=["branch", "quantity"], name="branch_stoc_branch__e85cdf_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='branchstock',
-            index=models.Index(fields=['stock_item', 'branch'], name='branch_stoc_stock_i_b2f7fd_idx'),
+            model_name="branchstock",
+            index=models.Index(
+                fields=["stock_item", "branch"], name="branch_stoc_stock_i_b2f7fd_idx"
+            ),
         ),
         migrations.AlterUniqueTogether(
-            name='branchstock',
-            unique_together={('branch', 'stock_item')},
+            name="branchstock",
+            unique_together={("branch", "stock_item")},
         ),
         migrations.AlterUniqueTogether(
-            name='shrinkwrap',
-            unique_together={('bulk_pack_code', 'shrink_pack_code')},
+            name="shrinkwrap",
+            unique_together={("bulk_pack_code", "shrink_pack_code")},
         ),
         migrations.AlterUniqueTogether(
-            name='stockmonthlystatistic',
-            unique_together={('stock_item', 'year', 'month')},
+            name="stockmonthlystatistic",
+            unique_together={("stock_item", "year", "month")},
         ),
         migrations.AddIndex(
-            model_name='stocktakeitem',
-            index=models.Index(fields=['stock_take', 'is_counted'], name='stock_take__stock_t_9da901_idx'),
+            model_name="stocktakeitem",
+            index=models.Index(
+                fields=["stock_take", "is_counted"],
+                name="stock_take__stock_t_9da901_idx",
+            ),
         ),
         migrations.AlterUniqueTogether(
-            name='stocktakeitem',
-            unique_together={('stock_take', 'stock_item')},
+            name="stocktakeitem",
+            unique_together={("stock_take", "stock_item")},
         ),
         migrations.AddIndex(
-            model_name='stocktransaction',
-            index=models.Index(fields=['stock_item', 'transaction_date'], name='stock_trans_stock_i_7a40d2_idx'),
+            model_name="stocktransaction",
+            index=models.Index(
+                fields=["stock_item", "transaction_date"],
+                name="stock_trans_stock_i_7a40d2_idx",
+            ),
         ),
         migrations.AddIndex(
-            model_name='stocktransaction',
-            index=models.Index(fields=['transaction_type'], name='stock_trans_transac_b2b788_idx'),
+            model_name="stocktransaction",
+            index=models.Index(
+                fields=["transaction_type"], name="stock_trans_transac_b2b788_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='stocktransaction',
-            index=models.Index(fields=['transaction_date'], name='stock_trans_transac_9087d2_idx'),
+            model_name="stocktransaction",
+            index=models.Index(
+                fields=["transaction_date"], name="stock_trans_transac_9087d2_idx"
+            ),
         ),
         migrations.AlterUniqueTogether(
-            name='packbundleingredient',
-            unique_together={('pack_bundle', 'ingredient_stock')},
+            name="packbundleingredient",
+            unique_together={("pack_bundle", "ingredient_stock")},
         ),
     ]

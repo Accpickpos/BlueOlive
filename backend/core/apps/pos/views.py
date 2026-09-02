@@ -97,7 +97,12 @@ from .services import (
 logger = logging.getLogger(__name__)
 
 
-class CashSaleViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class CashSaleViewSet(
+    ModuleFunctionPermissionMixin,
+    ShopFilterMixin,
+    POSPermissionMixin,
+    viewsets.ModelViewSet,
+):
     """
     ViewSet for cash sales.
 
@@ -434,7 +439,12 @@ class CashSaleViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermiss
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class LaybyeViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class LaybyeViewSet(
+    ModuleFunctionPermissionMixin,
+    ShopFilterMixin,
+    POSPermissionMixin,
+    viewsets.ModelViewSet,
+):
     """
     ViewSet for laybyes.
 
@@ -701,7 +711,12 @@ class LaybyeViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissio
         return Response(serializer.data)
 
 
-class QuotationViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class QuotationViewSet(
+    ModuleFunctionPermissionMixin,
+    ShopFilterMixin,
+    POSPermissionMixin,
+    viewsets.ModelViewSet,
+):
     """
     ViewSet for quotations.
 
@@ -867,7 +882,12 @@ class QuotationViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermis
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class PayoutViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class PayoutViewSet(
+    ModuleFunctionPermissionMixin,
+    ShopFilterMixin,
+    POSPermissionMixin,
+    viewsets.ModelViewSet,
+):
     """ViewSet for cash payouts."""
 
     access_module = "pos"
@@ -888,7 +908,12 @@ class PayoutViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissio
         )
 
 
-class RepairViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class RepairViewSet(
+    ModuleFunctionPermissionMixin,
+    ShopFilterMixin,
+    POSPermissionMixin,
+    viewsets.ModelViewSet,
+):
     """
     ViewSet for repair vouchers.
 
@@ -1040,7 +1065,12 @@ class RepairViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissio
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class JobCardViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class JobCardViewSet(
+    ModuleFunctionPermissionMixin,
+    ShopFilterMixin,
+    POSPermissionMixin,
+    viewsets.ModelViewSet,
+):
     """ViewSet for job cards."""
 
     access_module = "pos"
@@ -1333,7 +1363,10 @@ class JobCardViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissi
 
 
 class CashControlViewSet(
-    ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ReadOnlyModelViewSet
+    ModuleFunctionPermissionMixin,
+    ShopFilterMixin,
+    POSPermissionMixin,
+    viewsets.ReadOnlyModelViewSet,
 ):
     """
     ViewSet for cash control records.
@@ -1414,7 +1447,10 @@ class CashControlViewSet(
 
 
 class ReceiptOnAccountViewSet(
-    ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet
+    ModuleFunctionPermissionMixin,
+    ShopFilterMixin,
+    POSPermissionMixin,
+    viewsets.ModelViewSet,
 ):
     """
     ViewSet for receipts on account.
@@ -1562,7 +1598,12 @@ class ReceiptOnAccountViewSet(
         return Response({"date": receipt_date, "total_receipts": total["total"] or 0})
 
 
-class CreditNoteViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class CreditNoteViewSet(
+    ModuleFunctionPermissionMixin,
+    ShopFilterMixin,
+    POSPermissionMixin,
+    viewsets.ModelViewSet,
+):
     """
     ViewSet for credit notes.
 
@@ -1729,7 +1770,12 @@ class CreditNoteViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermi
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class CashReturnViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class CashReturnViewSet(
+    ModuleFunctionPermissionMixin,
+    ShopFilterMixin,
+    POSPermissionMixin,
+    viewsets.ModelViewSet,
+):
     """
     ViewSet for cash returns.
 
@@ -1855,7 +1901,12 @@ class CashReturnViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermi
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class CashAChequeViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class CashAChequeViewSet(
+    ModuleFunctionPermissionMixin,
+    ShopFilterMixin,
+    POSPermissionMixin,
+    viewsets.ModelViewSet,
+):
     """
     ViewSet for cash a cheque transactions.
 
@@ -1946,7 +1997,10 @@ class CashAChequeViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPerm
 
 
 class TransactionQueryViewSet(
-    ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet
+    ModuleFunctionPermissionMixin,
+    ShopFilterMixin,
+    POSPermissionMixin,
+    viewsets.ModelViewSet,
 ):
     """
     ViewSet for transaction queries.
@@ -2162,7 +2216,12 @@ class TransactionQueryViewSet(
             )
 
 
-class InvoiceViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, POSPermissionMixin, viewsets.ModelViewSet):
+class InvoiceViewSet(
+    ModuleFunctionPermissionMixin,
+    ShopFilterMixin,
+    POSPermissionMixin,
+    viewsets.ModelViewSet,
+):
     """
     ViewSet for customer invoices.
 

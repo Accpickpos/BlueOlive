@@ -7,19 +7,27 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('purchase_orders', '0002_initial'),
-        ('settings', '0007_expensecategory_gl_accno_incomecategory_gl_accno'),
+        ("purchase_orders", "0002_initial"),
+        ("settings", "0007_expensecategory_gl_accno_incomecategory_gl_accno"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='purchaseorder',
-            name='cancellation_reason',
-            field=models.TextField(blank=True, help_text='Reason given when the order was cancelled'),
+            model_name="purchaseorder",
+            name="cancellation_reason",
+            field=models.TextField(
+                blank=True, help_text="Reason given when the order was cancelled"
+            ),
         ),
         migrations.AddField(
-            model_name='purchaseorderline',
-            name='expense_category',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='purchase_order_lines', to='settings.expensecategory'),
+            model_name="purchaseorderline",
+            name="expense_category",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="purchase_order_lines",
+                to="settings.expensecategory",
+            ),
         ),
     ]

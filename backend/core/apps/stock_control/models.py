@@ -963,10 +963,14 @@ class ContractPricing(models.Model):
         null=True, blank=True, help_text="LUPDATE - Last update date for contract"
     )
     valid_from = models.DateField(
-        null=True, blank=True, help_text="Contract price valid from (unbounded if blank)"
+        null=True,
+        blank=True,
+        help_text="Contract price valid from (unbounded if blank)",
     )
     valid_until = models.DateField(
-        null=True, blank=True, help_text="Contract price valid until (unbounded if blank)"
+        null=True,
+        blank=True,
+        help_text="Contract price valid until (unbounded if blank)",
     )
     is_fixed_pricing = models.BooleanField(
         default=False, help_text="FIXEDPRICE - Prevent POS from changing price"

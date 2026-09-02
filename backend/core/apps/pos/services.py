@@ -1525,11 +1525,6 @@ class QuotationService:
         )
 
         for job_line in job_card.lines.all():
-            line_cost = (
-                (job_line.quantity * job_line.cost_price)
-                if job_line.cost_price
-                else Decimal("0.00")
-            )
             CashSaleLine.objects.create(
                 cash_sale=cash_sale,
                 line_number=job_line.line_number,

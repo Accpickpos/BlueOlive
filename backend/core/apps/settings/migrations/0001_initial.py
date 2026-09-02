@@ -11,364 +11,1431 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('tenancy', '0010_shop_setup_status'),
+        ("tenancy", "0010_shop_setup_status"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='SalesArea',
+            name="SalesArea",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_active', models.BooleanField(default=True, help_text='Active records are available for use')),
-                ('deactivated_at', models.DateTimeField(blank=True, editable=False, null=True)),
-                ('number', models.PositiveIntegerField(help_text='Sales area number (1-99)', unique=True, validators=[django.core.validators.MinValueValidator(1), django.core.validators.MaxValueValidator(99)])),
-                ('name', models.CharField(help_text='Salesman name or area name', max_length=100)),
-                ('commission_rate', models.DecimalField(decimal_places=2, default=0, help_text='Commission rate percentage', max_digits=5, validators=[django.core.validators.MinValueValidator(0), django.core.validators.MaxValueValidator(100)])),
-                ('sales_mtd', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Sales value Month-to-Date', max_digits=15)),
-                ('sales_ytd', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Sales value Year-to-Date', max_digits=15)),
-                ('profit_mtd', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Gross profit Month-to-Date', max_digits=15)),
-                ('profit_ytd', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Gross profit Year-to-Date', max_digits=15)),
-                ('commission_mtd', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Commission earned Month-to-Date', max_digits=15)),
-                ('commission_ytd', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Commission earned Year-to-Date', max_digits=15)),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('deactivated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_deactivated', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "is_active",
+                    models.BooleanField(
+                        default=True, help_text="Active records are available for use"
+                    ),
+                ),
+                (
+                    "deactivated_at",
+                    models.DateTimeField(blank=True, editable=False, null=True),
+                ),
+                (
+                    "number",
+                    models.PositiveIntegerField(
+                        help_text="Sales area number (1-99)",
+                        unique=True,
+                        validators=[
+                            django.core.validators.MinValueValidator(1),
+                            django.core.validators.MaxValueValidator(99),
+                        ],
+                    ),
+                ),
+                (
+                    "name",
+                    models.CharField(
+                        help_text="Salesman name or area name", max_length=100
+                    ),
+                ),
+                (
+                    "commission_rate",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Commission rate percentage",
+                        max_digits=5,
+                        validators=[
+                            django.core.validators.MinValueValidator(0),
+                            django.core.validators.MaxValueValidator(100),
+                        ],
+                    ),
+                ),
+                (
+                    "sales_mtd",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="Sales value Month-to-Date",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "sales_ytd",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="Sales value Year-to-Date",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "profit_mtd",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="Gross profit Month-to-Date",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "profit_ytd",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="Gross profit Year-to-Date",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "commission_mtd",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="Commission earned Month-to-Date",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "commission_ytd",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="Commission earned Year-to-Date",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "deactivated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_deactivated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Sales Area',
-                'verbose_name_plural': 'Sales Areas',
-                'db_table': 'sales_areas',
-                'ordering': ['number'],
+                "verbose_name": "Sales Area",
+                "verbose_name_plural": "Sales Areas",
+                "db_table": "sales_areas",
+                "ordering": ["number"],
             },
         ),
         migrations.CreateModel(
-            name='SalesAreaMonthlyStats',
+            name="SalesAreaMonthlyStats",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('year', models.PositiveIntegerField()),
-                ('month', models.PositiveIntegerField(validators=[django.core.validators.MinValueValidator(1), django.core.validators.MaxValueValidator(12)])),
-                ('sales_value', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('profit_value', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('profit_percent', models.DecimalField(decimal_places=2, default=0, max_digits=5)),
-                ('commission_earned', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('sales_area', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='monthly_stats', to='settings.salesarea')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("year", models.PositiveIntegerField()),
+                (
+                    "month",
+                    models.PositiveIntegerField(
+                        validators=[
+                            django.core.validators.MinValueValidator(1),
+                            django.core.validators.MaxValueValidator(12),
+                        ]
+                    ),
+                ),
+                (
+                    "sales_value",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "profit_value",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "profit_percent",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=5),
+                ),
+                (
+                    "commission_earned",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                (
+                    "sales_area",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="monthly_stats",
+                        to="settings.salesarea",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Sales Area Monthly Statistics',
-                'verbose_name_plural': 'Sales Area Monthly Statistics',
-                'db_table': 'sales_area_monthly_stats',
-                'ordering': ['-year', '-month', 'sales_area'],
+                "verbose_name": "Sales Area Monthly Statistics",
+                "verbose_name_plural": "Sales Area Monthly Statistics",
+                "db_table": "sales_area_monthly_stats",
+                "ordering": ["-year", "-month", "sales_area"],
             },
         ),
         migrations.CreateModel(
-            name='SalesDepartment',
+            name="SalesDepartment",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_active', models.BooleanField(default=True, help_text='Active records are available for use')),
-                ('deactivated_at', models.DateTimeField(blank=True, editable=False, null=True)),
-                ('number', models.PositiveIntegerField(help_text='Department number (1-999)', unique=True, validators=[django.core.validators.MinValueValidator(1), django.core.validators.MaxValueValidator(999)])),
-                ('name', models.CharField(help_text='Department name', max_length=100, unique=True)),
-                ('sales_mtd', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Sales value Month-to-Date', max_digits=15)),
-                ('sales_ytd', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Sales value Year-to-Date', max_digits=15)),
-                ('profit_mtd', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Gross profit Month-to-Date', max_digits=15)),
-                ('profit_ytd', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Gross profit Year-to-Date', max_digits=15)),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('deactivated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_deactivated', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "is_active",
+                    models.BooleanField(
+                        default=True, help_text="Active records are available for use"
+                    ),
+                ),
+                (
+                    "deactivated_at",
+                    models.DateTimeField(blank=True, editable=False, null=True),
+                ),
+                (
+                    "number",
+                    models.PositiveIntegerField(
+                        help_text="Department number (1-999)",
+                        unique=True,
+                        validators=[
+                            django.core.validators.MinValueValidator(1),
+                            django.core.validators.MaxValueValidator(999),
+                        ],
+                    ),
+                ),
+                (
+                    "name",
+                    models.CharField(
+                        help_text="Department name", max_length=100, unique=True
+                    ),
+                ),
+                (
+                    "sales_mtd",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="Sales value Month-to-Date",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "sales_ytd",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="Sales value Year-to-Date",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "profit_mtd",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="Gross profit Month-to-Date",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "profit_ytd",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="Gross profit Year-to-Date",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "deactivated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_deactivated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Sales Department',
-                'verbose_name_plural': 'Sales Departments',
-                'db_table': 'sales_departments',
-                'ordering': ['number'],
+                "verbose_name": "Sales Department",
+                "verbose_name_plural": "Sales Departments",
+                "db_table": "sales_departments",
+                "ordering": ["number"],
             },
         ),
         migrations.CreateModel(
-            name='DepartmentMonthlyStats',
+            name="DepartmentMonthlyStats",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('year', models.PositiveIntegerField()),
-                ('month', models.PositiveIntegerField(validators=[django.core.validators.MinValueValidator(1), django.core.validators.MaxValueValidator(12)])),
-                ('sales_value', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('profit_value', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('profit_percent', models.DecimalField(decimal_places=2, default=0, max_digits=5)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('department', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='monthly_stats', to='settings.salesdepartment')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("year", models.PositiveIntegerField()),
+                (
+                    "month",
+                    models.PositiveIntegerField(
+                        validators=[
+                            django.core.validators.MinValueValidator(1),
+                            django.core.validators.MaxValueValidator(12),
+                        ]
+                    ),
+                ),
+                (
+                    "sales_value",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "profit_value",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "profit_percent",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=5),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                (
+                    "department",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="monthly_stats",
+                        to="settings.salesdepartment",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Department Monthly Statistics',
-                'verbose_name_plural': 'Department Monthly Statistics',
-                'db_table': 'department_monthly_stats',
-                'ordering': ['-year', '-month', 'department'],
+                "verbose_name": "Department Monthly Statistics",
+                "verbose_name_plural": "Department Monthly Statistics",
+                "db_table": "department_monthly_stats",
+                "ordering": ["-year", "-month", "department"],
             },
         ),
         migrations.CreateModel(
-            name='TaxCode',
+            name="TaxCode",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_active', models.BooleanField(default=True, help_text='Active records are available for use')),
-                ('deactivated_at', models.DateTimeField(blank=True, editable=False, null=True)),
-                ('code', models.PositiveIntegerField(help_text='Tax code number (1=14%, 2=0%, etc.)', unique=True, validators=[django.core.validators.MinValueValidator(1)])),
-                ('description', models.CharField(help_text="Tax description (e.g., '14% VAT', '0% Zero-rated')", max_length=100)),
-                ('rate', models.DecimalField(decimal_places=2, help_text='Tax rate percentage', max_digits=5, validators=[django.core.validators.MinValueValidator(0), django.core.validators.MaxValueValidator(100)])),
-                ('is_default', models.BooleanField(default=False, help_text='Default tax code for new items')),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('deactivated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_deactivated', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "is_active",
+                    models.BooleanField(
+                        default=True, help_text="Active records are available for use"
+                    ),
+                ),
+                (
+                    "deactivated_at",
+                    models.DateTimeField(blank=True, editable=False, null=True),
+                ),
+                (
+                    "code",
+                    models.PositiveIntegerField(
+                        help_text="Tax code number (1=14%, 2=0%, etc.)",
+                        unique=True,
+                        validators=[django.core.validators.MinValueValidator(1)],
+                    ),
+                ),
+                (
+                    "description",
+                    models.CharField(
+                        help_text="Tax description (e.g., '14% VAT', '0% Zero-rated')",
+                        max_length=100,
+                    ),
+                ),
+                (
+                    "rate",
+                    models.DecimalField(
+                        decimal_places=2,
+                        help_text="Tax rate percentage",
+                        max_digits=5,
+                        validators=[
+                            django.core.validators.MinValueValidator(0),
+                            django.core.validators.MaxValueValidator(100),
+                        ],
+                    ),
+                ),
+                (
+                    "is_default",
+                    models.BooleanField(
+                        default=False, help_text="Default tax code for new items"
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "deactivated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_deactivated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Tax Code',
-                'verbose_name_plural': 'Tax Codes',
-                'db_table': 'tax_codes',
-                'ordering': ['code'],
+                "verbose_name": "Tax Code",
+                "verbose_name_plural": "Tax Codes",
+                "db_table": "tax_codes",
+                "ordering": ["code"],
             },
         ),
         migrations.CreateModel(
-            name='SystemConfiguration',
+            name="SystemConfiguration",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('shop_name', models.CharField(blank=True, help_text='Shop/Company name', max_length=200)),
-                ('shop_address', models.TextField(blank=True, help_text='Shop address')),
-                ('shop_phone', models.CharField(blank=True, max_length=20)),
-                ('shop_email', models.EmailField(blank=True, max_length=254)),
-                ('shop_vat_number', models.CharField(blank=True, help_text='VAT registration number', max_length=50)),
-                ('shop_registration_number', models.CharField(blank=True, help_text='Company registration number', max_length=50)),
-                ('ageing_periods', models.JSONField(default=list, help_text='Ageing periods in days [30, 60, 90, 120, 150, 180]')),
-                ('current_financial_year', models.PositiveIntegerField(default=2024, help_text='Current financial year (e.g., 2024)')),
-                ('current_period', models.PositiveIntegerField(default=1, help_text='Current accounting period (1-12)', validators=[django.core.validators.MinValueValidator(1), django.core.validators.MaxValueValidator(12)])),
-                ('enable_negative_stock', models.BooleanField(default=False, help_text='Allow stock to go negative')),
-                ('auto_post_transactions', models.BooleanField(default=False, help_text='Automatically post transactions')),
-                ('charge_interest_on_overdue', models.BooleanField(default=False, help_text='Charge interest on overdue debtor accounts')),
-                ('default_interest_rate', models.DecimalField(decimal_places=2, default=0, help_text='Default interest rate percentage', max_digits=5, validators=[django.core.validators.MinValueValidator(0), django.core.validators.MaxValueValidator(100)])),
-                ('date_format', models.CharField(default='YYYY-MM-DD', help_text='Date display format', max_length=20)),
-                ('currency_symbol', models.CharField(default='R', help_text='Currency symbol (e.g., R, $, €)', max_length=5)),
-                ('decimal_places', models.PositiveIntegerField(default=2, help_text='Number of decimal places for currency', validators=[django.core.validators.MinValueValidator(0), django.core.validators.MaxValueValidator(4)])),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
-                ('default_tax_code', models.ForeignKey(blank=True, help_text='Default tax code for new items', null=True, on_delete=django.db.models.deletion.PROTECT, related_name='system_configs', to='settings.taxcode')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "shop_name",
+                    models.CharField(
+                        blank=True, help_text="Shop/Company name", max_length=200
+                    ),
+                ),
+                (
+                    "shop_address",
+                    models.TextField(blank=True, help_text="Shop address"),
+                ),
+                ("shop_phone", models.CharField(blank=True, max_length=20)),
+                ("shop_email", models.EmailField(blank=True, max_length=254)),
+                (
+                    "shop_vat_number",
+                    models.CharField(
+                        blank=True, help_text="VAT registration number", max_length=50
+                    ),
+                ),
+                (
+                    "shop_registration_number",
+                    models.CharField(
+                        blank=True,
+                        help_text="Company registration number",
+                        max_length=50,
+                    ),
+                ),
+                (
+                    "ageing_periods",
+                    models.JSONField(
+                        default=list,
+                        help_text="Ageing periods in days [30, 60, 90, 120, 150, 180]",
+                    ),
+                ),
+                (
+                    "current_financial_year",
+                    models.PositiveIntegerField(
+                        default=2024, help_text="Current financial year (e.g., 2024)"
+                    ),
+                ),
+                (
+                    "current_period",
+                    models.PositiveIntegerField(
+                        default=1,
+                        help_text="Current accounting period (1-12)",
+                        validators=[
+                            django.core.validators.MinValueValidator(1),
+                            django.core.validators.MaxValueValidator(12),
+                        ],
+                    ),
+                ),
+                (
+                    "enable_negative_stock",
+                    models.BooleanField(
+                        default=False, help_text="Allow stock to go negative"
+                    ),
+                ),
+                (
+                    "auto_post_transactions",
+                    models.BooleanField(
+                        default=False, help_text="Automatically post transactions"
+                    ),
+                ),
+                (
+                    "charge_interest_on_overdue",
+                    models.BooleanField(
+                        default=False,
+                        help_text="Charge interest on overdue debtor accounts",
+                    ),
+                ),
+                (
+                    "default_interest_rate",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Default interest rate percentage",
+                        max_digits=5,
+                        validators=[
+                            django.core.validators.MinValueValidator(0),
+                            django.core.validators.MaxValueValidator(100),
+                        ],
+                    ),
+                ),
+                (
+                    "date_format",
+                    models.CharField(
+                        default="YYYY-MM-DD",
+                        help_text="Date display format",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "currency_symbol",
+                    models.CharField(
+                        default="R",
+                        help_text="Currency symbol (e.g., R, $, €)",
+                        max_length=5,
+                    ),
+                ),
+                (
+                    "decimal_places",
+                    models.PositiveIntegerField(
+                        default=2,
+                        help_text="Number of decimal places for currency",
+                        validators=[
+                            django.core.validators.MinValueValidator(0),
+                            django.core.validators.MaxValueValidator(4),
+                        ],
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "default_tax_code",
+                    models.ForeignKey(
+                        blank=True,
+                        help_text="Default tax code for new items",
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="system_configs",
+                        to="settings.taxcode",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'System Configuration',
-                'verbose_name_plural': 'System Configuration',
-                'db_table': 'system_configuration',
+                "verbose_name": "System Configuration",
+                "verbose_name_plural": "System Configuration",
+                "db_table": "system_configuration",
             },
         ),
         migrations.CreateModel(
-            name='APIKey',
+            name="APIKey",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('name', models.CharField(help_text="Descriptive name for this API key (e.g., 'Stockfinder Integration')", max_length=255)),
-                ('key', models.CharField(db_index=True, help_text='Secret API key', max_length=40, unique=True)),
-                ('external_service', models.CharField(help_text="Name of external service using this key (e.g., 'Stockfinder')", max_length=100)),
-                ('description', models.TextField(blank=True, help_text='Description of the API key usage')),
-                ('allowed_endpoints', models.JSONField(blank=True, default=list, help_text='List of allowed endpoints (empty = all endpoints)')),
-                ('allowed_methods', models.JSONField(blank=True, default=list, help_text="Allowed HTTP methods (e.g., ['GET', 'POST'])")),
-                ('rate_limit_requests', models.PositiveIntegerField(default=1000, help_text='Number of requests allowed per hour')),
-                ('rate_limit_window', models.PositiveIntegerField(default=3600, help_text='Time window in seconds for rate limiting')),
-                ('status', models.CharField(choices=[('ACTIVE', 'Active'), ('INACTIVE', 'Inactive'), ('REVOKED', 'Revoked')], default='ACTIVE', max_length=20)),
-                ('last_used', models.DateTimeField(blank=True, help_text='Last time this API key was used', null=True)),
-                ('last_ip', models.GenericIPAddressField(blank=True, help_text='Last IP address that used this key', null=True)),
-                ('expires_at', models.DateTimeField(blank=True, help_text='API key expiration date (null = no expiration)', null=True)),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('tenant', models.ForeignKey(blank=True, db_constraint=False, help_text='Tenant this API key belongs to', null=True, on_delete=django.db.models.deletion.CASCADE, related_name='api_keys', to='tenancy.tenant')),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "name",
+                    models.CharField(
+                        help_text="Descriptive name for this API key (e.g., 'Stockfinder Integration')",
+                        max_length=255,
+                    ),
+                ),
+                (
+                    "key",
+                    models.CharField(
+                        db_index=True,
+                        help_text="Secret API key",
+                        max_length=40,
+                        unique=True,
+                    ),
+                ),
+                (
+                    "external_service",
+                    models.CharField(
+                        help_text="Name of external service using this key (e.g., 'Stockfinder')",
+                        max_length=100,
+                    ),
+                ),
+                (
+                    "description",
+                    models.TextField(
+                        blank=True, help_text="Description of the API key usage"
+                    ),
+                ),
+                (
+                    "allowed_endpoints",
+                    models.JSONField(
+                        blank=True,
+                        default=list,
+                        help_text="List of allowed endpoints (empty = all endpoints)",
+                    ),
+                ),
+                (
+                    "allowed_methods",
+                    models.JSONField(
+                        blank=True,
+                        default=list,
+                        help_text="Allowed HTTP methods (e.g., ['GET', 'POST'])",
+                    ),
+                ),
+                (
+                    "rate_limit_requests",
+                    models.PositiveIntegerField(
+                        default=1000, help_text="Number of requests allowed per hour"
+                    ),
+                ),
+                (
+                    "rate_limit_window",
+                    models.PositiveIntegerField(
+                        default=3600,
+                        help_text="Time window in seconds for rate limiting",
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("ACTIVE", "Active"),
+                            ("INACTIVE", "Inactive"),
+                            ("REVOKED", "Revoked"),
+                        ],
+                        default="ACTIVE",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "last_used",
+                    models.DateTimeField(
+                        blank=True,
+                        help_text="Last time this API key was used",
+                        null=True,
+                    ),
+                ),
+                (
+                    "last_ip",
+                    models.GenericIPAddressField(
+                        blank=True,
+                        help_text="Last IP address that used this key",
+                        null=True,
+                    ),
+                ),
+                (
+                    "expires_at",
+                    models.DateTimeField(
+                        blank=True,
+                        help_text="API key expiration date (null = no expiration)",
+                        null=True,
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "tenant",
+                    models.ForeignKey(
+                        blank=True,
+                        db_constraint=False,
+                        help_text="Tenant this API key belongs to",
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="api_keys",
+                        to="tenancy.tenant",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'API Key',
-                'verbose_name_plural': 'API Keys',
-                'ordering': ['-created_at'],
-                'indexes': [models.Index(fields=['key', 'status'], name='settings_ap_key_85f09f_idx'), models.Index(fields=['external_service'], name='settings_ap_externa_1c5236_idx'), models.Index(fields=['created_at'], name='settings_ap_created_4c2ec4_idx'), models.Index(fields=['tenant', 'status'], name='settings_ap_tenant__9ba903_idx')],
+                "verbose_name": "API Key",
+                "verbose_name_plural": "API Keys",
+                "ordering": ["-created_at"],
+                "indexes": [
+                    models.Index(
+                        fields=["key", "status"], name="settings_ap_key_85f09f_idx"
+                    ),
+                    models.Index(
+                        fields=["external_service"],
+                        name="settings_ap_externa_1c5236_idx",
+                    ),
+                    models.Index(
+                        fields=["created_at"], name="settings_ap_created_4c2ec4_idx"
+                    ),
+                    models.Index(
+                        fields=["tenant", "status"],
+                        name="settings_ap_tenant__9ba903_idx",
+                    ),
+                ],
             },
         ),
         migrations.CreateModel(
-            name='CostingCategory',
+            name="CostingCategory",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_active', models.BooleanField(default=True, help_text='Active records are available for use')),
-                ('deactivated_at', models.DateTimeField(blank=True, editable=False, null=True)),
-                ('name', models.CharField(help_text='Descriptive name for the costing category', max_length=100, unique=True)),
-                ('costing_method', models.CharField(choices=[('A', 'Average Cost'), ('L', 'Last Cost')], default='A', help_text='Method for calculating stock cost and gross profit', max_length=1)),
-                ('pricing_method', models.CharField(choices=[('I', 'Inclusive of VAT'), ('E', 'Exclusive of VAT')], default='E', help_text='VAT pricing method for goods and services', max_length=1)),
-                ('description', models.TextField(blank=True, help_text='Optional description of this costing category', null=True)),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('deactivated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_deactivated', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "is_active",
+                    models.BooleanField(
+                        default=True, help_text="Active records are available for use"
+                    ),
+                ),
+                (
+                    "deactivated_at",
+                    models.DateTimeField(blank=True, editable=False, null=True),
+                ),
+                (
+                    "name",
+                    models.CharField(
+                        help_text="Descriptive name for the costing category",
+                        max_length=100,
+                        unique=True,
+                    ),
+                ),
+                (
+                    "costing_method",
+                    models.CharField(
+                        choices=[("A", "Average Cost"), ("L", "Last Cost")],
+                        default="A",
+                        help_text="Method for calculating stock cost and gross profit",
+                        max_length=1,
+                    ),
+                ),
+                (
+                    "pricing_method",
+                    models.CharField(
+                        choices=[("I", "Inclusive of VAT"), ("E", "Exclusive of VAT")],
+                        default="E",
+                        help_text="VAT pricing method for goods and services",
+                        max_length=1,
+                    ),
+                ),
+                (
+                    "description",
+                    models.TextField(
+                        blank=True,
+                        help_text="Optional description of this costing category",
+                        null=True,
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "deactivated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_deactivated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Costing Category',
-                'verbose_name_plural': 'Costing Categories',
-                'db_table': 'costing_categories',
-                'ordering': ['name'],
-                'indexes': [models.Index(fields=['costing_method'], name='costing_cat_costing_373b5f_idx'), models.Index(fields=['pricing_method'], name='costing_cat_pricing_d791c5_idx'), models.Index(fields=['costing_method', 'pricing_method'], name='costing_cat_costing_c592e8_idx'), models.Index(fields=['is_active'], name='costing_cat_is_acti_1b4d38_idx')],
+                "verbose_name": "Costing Category",
+                "verbose_name_plural": "Costing Categories",
+                "db_table": "costing_categories",
+                "ordering": ["name"],
+                "indexes": [
+                    models.Index(
+                        fields=["costing_method"], name="costing_cat_costing_373b5f_idx"
+                    ),
+                    models.Index(
+                        fields=["pricing_method"], name="costing_cat_pricing_d791c5_idx"
+                    ),
+                    models.Index(
+                        fields=["costing_method", "pricing_method"],
+                        name="costing_cat_costing_c592e8_idx",
+                    ),
+                    models.Index(
+                        fields=["is_active"], name="costing_cat_is_acti_1b4d38_idx"
+                    ),
+                ],
             },
         ),
         migrations.CreateModel(
-            name='CreditTerms',
+            name="CreditTerms",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_active', models.BooleanField(default=True, help_text='Active records are available for use')),
-                ('deactivated_at', models.DateTimeField(blank=True, editable=False, null=True)),
-                ('days', models.PositiveIntegerField(help_text='Number of days credit (0 = Cash On Delivery)', unique=True, validators=[django.core.validators.MinValueValidator(0), django.core.validators.MaxValueValidator(999)])),
-                ('description', models.CharField(help_text="Description (e.g., 'COD', '30 Days', '60 Days')", max_length=100)),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('deactivated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_deactivated', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "is_active",
+                    models.BooleanField(
+                        default=True, help_text="Active records are available for use"
+                    ),
+                ),
+                (
+                    "deactivated_at",
+                    models.DateTimeField(blank=True, editable=False, null=True),
+                ),
+                (
+                    "days",
+                    models.PositiveIntegerField(
+                        help_text="Number of days credit (0 = Cash On Delivery)",
+                        unique=True,
+                        validators=[
+                            django.core.validators.MinValueValidator(0),
+                            django.core.validators.MaxValueValidator(999),
+                        ],
+                    ),
+                ),
+                (
+                    "description",
+                    models.CharField(
+                        help_text="Description (e.g., 'COD', '30 Days', '60 Days')",
+                        max_length=100,
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "deactivated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_deactivated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Credit Terms',
-                'verbose_name_plural': 'Credit Terms',
-                'db_table': 'credit_terms',
-                'ordering': ['days'],
-                'indexes': [models.Index(fields=['days'], name='credit_term_days_402cb9_idx'), models.Index(fields=['is_active'], name='credit_term_is_acti_48b4a3_idx')],
+                "verbose_name": "Credit Terms",
+                "verbose_name_plural": "Credit Terms",
+                "db_table": "credit_terms",
+                "ordering": ["days"],
+                "indexes": [
+                    models.Index(fields=["days"], name="credit_term_days_402cb9_idx"),
+                    models.Index(
+                        fields=["is_active"], name="credit_term_is_acti_48b4a3_idx"
+                    ),
+                ],
             },
         ),
         migrations.CreateModel(
-            name='ExpenseCategory',
+            name="ExpenseCategory",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_active', models.BooleanField(default=True, help_text='Active records are available for use')),
-                ('deactivated_at', models.DateTimeField(blank=True, editable=False, null=True)),
-                ('number', models.PositiveIntegerField(help_text='Expense category number (1-8 digits)', unique=True, validators=[django.core.validators.MinValueValidator(1), django.core.validators.MaxValueValidator(99999999)])),
-                ('name', models.CharField(help_text='Expense category name', max_length=100, unique=True)),
-                ('category_type', models.CharField(choices=[('BOTH', 'Both Cash Book & Creditors'), ('CASHBOOK', 'Cash Book Only'), ('CREDITORS', 'Creditors Only')], default='BOTH', help_text='Where this category can be used', max_length=10)),
-                ('total_mtd', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Total expenses Month-to-Date', max_digits=15)),
-                ('total_ytd', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Total expenses Year-to-Date', max_digits=15)),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('deactivated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_deactivated', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "is_active",
+                    models.BooleanField(
+                        default=True, help_text="Active records are available for use"
+                    ),
+                ),
+                (
+                    "deactivated_at",
+                    models.DateTimeField(blank=True, editable=False, null=True),
+                ),
+                (
+                    "number",
+                    models.PositiveIntegerField(
+                        help_text="Expense category number (1-8 digits)",
+                        unique=True,
+                        validators=[
+                            django.core.validators.MinValueValidator(1),
+                            django.core.validators.MaxValueValidator(99999999),
+                        ],
+                    ),
+                ),
+                (
+                    "name",
+                    models.CharField(
+                        help_text="Expense category name", max_length=100, unique=True
+                    ),
+                ),
+                (
+                    "category_type",
+                    models.CharField(
+                        choices=[
+                            ("BOTH", "Both Cash Book & Creditors"),
+                            ("CASHBOOK", "Cash Book Only"),
+                            ("CREDITORS", "Creditors Only"),
+                        ],
+                        default="BOTH",
+                        help_text="Where this category can be used",
+                        max_length=10,
+                    ),
+                ),
+                (
+                    "total_mtd",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="Total expenses Month-to-Date",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "total_ytd",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="Total expenses Year-to-Date",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "deactivated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_deactivated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Expense Category',
-                'verbose_name_plural': 'Expense Categories',
-                'db_table': 'expense_categories',
-                'ordering': ['number'],
-                'indexes': [models.Index(fields=['number'], name='expense_cat_number_a1c805_idx'), models.Index(fields=['name'], name='expense_cat_name_510d25_idx'), models.Index(fields=['category_type'], name='expense_cat_categor_466692_idx'), models.Index(fields=['is_active'], name='expense_cat_is_acti_421191_idx')],
+                "verbose_name": "Expense Category",
+                "verbose_name_plural": "Expense Categories",
+                "db_table": "expense_categories",
+                "ordering": ["number"],
+                "indexes": [
+                    models.Index(
+                        fields=["number"], name="expense_cat_number_a1c805_idx"
+                    ),
+                    models.Index(fields=["name"], name="expense_cat_name_510d25_idx"),
+                    models.Index(
+                        fields=["category_type"], name="expense_cat_categor_466692_idx"
+                    ),
+                    models.Index(
+                        fields=["is_active"], name="expense_cat_is_acti_421191_idx"
+                    ),
+                ],
             },
         ),
         migrations.CreateModel(
-            name='IncomeCategory',
+            name="IncomeCategory",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_active', models.BooleanField(default=True, help_text='Active records are available for use')),
-                ('deactivated_at', models.DateTimeField(blank=True, editable=False, null=True)),
-                ('number', models.PositiveIntegerField(help_text='Income category number (1-8 digits)', unique=True, validators=[django.core.validators.MinValueValidator(1), django.core.validators.MaxValueValidator(99999999)])),
-                ('name', models.CharField(help_text='Income category name', max_length=100, unique=True)),
-                ('total_mtd', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Total income Month-to-Date', max_digits=15)),
-                ('total_ytd', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Total income Year-to-Date', max_digits=15)),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('deactivated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_deactivated', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "is_active",
+                    models.BooleanField(
+                        default=True, help_text="Active records are available for use"
+                    ),
+                ),
+                (
+                    "deactivated_at",
+                    models.DateTimeField(blank=True, editable=False, null=True),
+                ),
+                (
+                    "number",
+                    models.PositiveIntegerField(
+                        help_text="Income category number (1-8 digits)",
+                        unique=True,
+                        validators=[
+                            django.core.validators.MinValueValidator(1),
+                            django.core.validators.MaxValueValidator(99999999),
+                        ],
+                    ),
+                ),
+                (
+                    "name",
+                    models.CharField(
+                        help_text="Income category name", max_length=100, unique=True
+                    ),
+                ),
+                (
+                    "total_mtd",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="Total income Month-to-Date",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "total_ytd",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="Total income Year-to-Date",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "deactivated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_deactivated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Income Category',
-                'verbose_name_plural': 'Income Categories',
-                'db_table': 'income_categories',
-                'ordering': ['number'],
-                'indexes': [models.Index(fields=['number'], name='income_cate_number_382536_idx'), models.Index(fields=['name'], name='income_cate_name_5f5d72_idx'), models.Index(fields=['is_active'], name='income_cate_is_acti_4ca438_idx')],
+                "verbose_name": "Income Category",
+                "verbose_name_plural": "Income Categories",
+                "db_table": "income_categories",
+                "ordering": ["number"],
+                "indexes": [
+                    models.Index(
+                        fields=["number"], name="income_cate_number_382536_idx"
+                    ),
+                    models.Index(fields=["name"], name="income_cate_name_5f5d72_idx"),
+                    models.Index(
+                        fields=["is_active"], name="income_cate_is_acti_4ca438_idx"
+                    ),
+                ],
             },
         ),
         migrations.CreateModel(
-            name='PaymentMethod',
+            name="PaymentMethod",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_active', models.BooleanField(default=True, help_text='Active records are available for use')),
-                ('deactivated_at', models.DateTimeField(blank=True, editable=False, null=True)),
-                ('code', models.CharField(help_text='Payment method code (e.g., CASH, CHQ, EFT)', max_length=10, unique=True)),
-                ('name', models.CharField(help_text='Payment method name', max_length=100)),
-                ('requires_reference', models.BooleanField(default=False, help_text='Requires reference number (e.g., cheque number)')),
-                ('is_electronic', models.BooleanField(default=False, help_text='Electronic payment (EFT, card, etc.)')),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('deactivated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_deactivated', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "is_active",
+                    models.BooleanField(
+                        default=True, help_text="Active records are available for use"
+                    ),
+                ),
+                (
+                    "deactivated_at",
+                    models.DateTimeField(blank=True, editable=False, null=True),
+                ),
+                (
+                    "code",
+                    models.CharField(
+                        help_text="Payment method code (e.g., CASH, CHQ, EFT)",
+                        max_length=10,
+                        unique=True,
+                    ),
+                ),
+                (
+                    "name",
+                    models.CharField(help_text="Payment method name", max_length=100),
+                ),
+                (
+                    "requires_reference",
+                    models.BooleanField(
+                        default=False,
+                        help_text="Requires reference number (e.g., cheque number)",
+                    ),
+                ),
+                (
+                    "is_electronic",
+                    models.BooleanField(
+                        default=False, help_text="Electronic payment (EFT, card, etc.)"
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "deactivated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_deactivated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Payment Method',
-                'verbose_name_plural': 'Payment Methods',
-                'db_table': 'payment_methods',
-                'ordering': ['code'],
-                'indexes': [models.Index(fields=['code'], name='payment_met_code_b70caa_idx'), models.Index(fields=['is_active'], name='payment_met_is_acti_395fa6_idx')],
+                "verbose_name": "Payment Method",
+                "verbose_name_plural": "Payment Methods",
+                "db_table": "payment_methods",
+                "ordering": ["code"],
+                "indexes": [
+                    models.Index(fields=["code"], name="payment_met_code_b70caa_idx"),
+                    models.Index(
+                        fields=["is_active"], name="payment_met_is_acti_395fa6_idx"
+                    ),
+                ],
             },
         ),
         migrations.AddIndex(
-            model_name='salesarea',
-            index=models.Index(fields=['number'], name='sales_areas_number_5911bb_idx'),
+            model_name="salesarea",
+            index=models.Index(fields=["number"], name="sales_areas_number_5911bb_idx"),
         ),
         migrations.AddIndex(
-            model_name='salesarea',
-            index=models.Index(fields=['name'], name='sales_areas_name_4e3f45_idx'),
+            model_name="salesarea",
+            index=models.Index(fields=["name"], name="sales_areas_name_4e3f45_idx"),
         ),
         migrations.AddIndex(
-            model_name='salesarea',
-            index=models.Index(fields=['is_active'], name='sales_areas_is_acti_b95a86_idx'),
+            model_name="salesarea",
+            index=models.Index(
+                fields=["is_active"], name="sales_areas_is_acti_b95a86_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='salesareamonthlystats',
-            index=models.Index(fields=['year', 'month'], name='sales_area__year_eda770_idx'),
+            model_name="salesareamonthlystats",
+            index=models.Index(
+                fields=["year", "month"], name="sales_area__year_eda770_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='salesareamonthlystats',
-            index=models.Index(fields=['sales_area'], name='sales_area__sales_a_06583b_idx'),
+            model_name="salesareamonthlystats",
+            index=models.Index(
+                fields=["sales_area"], name="sales_area__sales_a_06583b_idx"
+            ),
         ),
         migrations.AlterUniqueTogether(
-            name='salesareamonthlystats',
-            unique_together={('sales_area', 'year', 'month')},
+            name="salesareamonthlystats",
+            unique_together={("sales_area", "year", "month")},
         ),
         migrations.AddIndex(
-            model_name='salesdepartment',
-            index=models.Index(fields=['number'], name='sales_depar_number_11d158_idx'),
+            model_name="salesdepartment",
+            index=models.Index(fields=["number"], name="sales_depar_number_11d158_idx"),
         ),
         migrations.AddIndex(
-            model_name='salesdepartment',
-            index=models.Index(fields=['name'], name='sales_depar_name_aa8a1e_idx'),
+            model_name="salesdepartment",
+            index=models.Index(fields=["name"], name="sales_depar_name_aa8a1e_idx"),
         ),
         migrations.AddIndex(
-            model_name='salesdepartment',
-            index=models.Index(fields=['is_active'], name='sales_depar_is_acti_bb666e_idx'),
+            model_name="salesdepartment",
+            index=models.Index(
+                fields=["is_active"], name="sales_depar_is_acti_bb666e_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='departmentmonthlystats',
-            index=models.Index(fields=['year', 'month'], name='department__year_a90a91_idx'),
+            model_name="departmentmonthlystats",
+            index=models.Index(
+                fields=["year", "month"], name="department__year_a90a91_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='departmentmonthlystats',
-            index=models.Index(fields=['department'], name='department__departm_c2aa75_idx'),
+            model_name="departmentmonthlystats",
+            index=models.Index(
+                fields=["department"], name="department__departm_c2aa75_idx"
+            ),
         ),
         migrations.AlterUniqueTogether(
-            name='departmentmonthlystats',
-            unique_together={('department', 'year', 'month')},
+            name="departmentmonthlystats",
+            unique_together={("department", "year", "month")},
         ),
         migrations.AddIndex(
-            model_name='taxcode',
-            index=models.Index(fields=['code'], name='tax_codes_code_54b398_idx'),
+            model_name="taxcode",
+            index=models.Index(fields=["code"], name="tax_codes_code_54b398_idx"),
         ),
         migrations.AddIndex(
-            model_name='taxcode',
-            index=models.Index(fields=['is_default'], name='tax_codes_is_defa_c40ed5_idx'),
+            model_name="taxcode",
+            index=models.Index(
+                fields=["is_default"], name="tax_codes_is_defa_c40ed5_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='taxcode',
-            index=models.Index(fields=['is_active'], name='tax_codes_is_acti_c440bb_idx'),
+            model_name="taxcode",
+            index=models.Index(
+                fields=["is_active"], name="tax_codes_is_acti_c440bb_idx"
+            ),
         ),
     ]

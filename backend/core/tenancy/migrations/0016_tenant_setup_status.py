@@ -6,13 +6,23 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tenancy', '0015_add_payment_fields'),
+        ("tenancy", "0015_add_payment_fields"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='tenant',
-            name='setup_status',
-            field=models.CharField(choices=[('pending', 'Pending Setup'), ('db_ready', 'Database Ready'), ('ready', 'Ready for Use'), ('failed', 'Setup Failed')], default='pending', help_text='Status of tenant database/signup provisioning', max_length=20),
+            model_name="tenant",
+            name="setup_status",
+            field=models.CharField(
+                choices=[
+                    ("pending", "Pending Setup"),
+                    ("db_ready", "Database Ready"),
+                    ("ready", "Ready for Use"),
+                    ("failed", "Setup Failed"),
+                ],
+                default="pending",
+                help_text="Status of tenant database/signup provisioning",
+                max_length=20,
+            ),
         ),
     ]

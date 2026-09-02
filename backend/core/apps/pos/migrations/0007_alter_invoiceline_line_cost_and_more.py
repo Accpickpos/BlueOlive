@@ -8,28 +8,44 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('pos', '0006_alter_invoice_sales_area'),
+        ("pos", "0006_alter_invoice_sales_area"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='invoiceline',
-            name='line_cost',
-            field=models.DecimalField(decimal_places=2, default=Decimal('0.00'), help_text='Total Cost (quantity × cost_price)', max_digits=15),
+            model_name="invoiceline",
+            name="line_cost",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=Decimal("0.00"),
+                help_text="Total Cost (quantity × cost_price)",
+                max_digits=15,
+            ),
         ),
         migrations.AlterField(
-            model_name='invoiceline',
-            name='line_profit',
-            field=models.DecimalField(decimal_places=2, default=Decimal('0.00'), help_text='Line Profit (line_total - line_cost)', max_digits=15),
+            model_name="invoiceline",
+            name="line_profit",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=Decimal("0.00"),
+                help_text="Line Profit (line_total - line_cost)",
+                max_digits=15,
+            ),
         ),
         migrations.AlterField(
-            model_name='invoiceline',
-            name='line_total',
-            field=models.DecimalField(decimal_places=2, help_text='Line Total (excl. VAT, after discount)', max_digits=15),
+            model_name="invoiceline",
+            name="line_total",
+            field=models.DecimalField(
+                decimal_places=2,
+                help_text="Line Total (excl. VAT, after discount)",
+                max_digits=15,
+            ),
         ),
         migrations.AlterField(
-            model_name='invoiceline',
-            name='vat_amount',
-            field=models.DecimalField(decimal_places=2, help_text='VAT Amount for this line', max_digits=15),
+            model_name="invoiceline",
+            name="vat_amount",
+            field=models.DecimalField(
+                decimal_places=2, help_text="VAT Amount for this line", max_digits=15
+            ),
         ),
     ]

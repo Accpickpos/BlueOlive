@@ -23,17 +23,17 @@ def noop_reverse(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tenancy', '0017_shop_email'),
+        ("tenancy", "0017_shop_email"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='tenant',
-            name='enabled_addons',
+            model_name="tenant",
+            name="enabled_addons",
             field=models.JSONField(
                 blank=True,
                 default=list,
-                help_text='Subset of settings.OPTIONAL_ADDON_APPS enabled for this tenant',
+                help_text="Subset of settings.OPTIONAL_ADDON_APPS enabled for this tenant",
             ),
         ),
         migrations.RunPython(backfill_enabled_addons, noop_reverse),

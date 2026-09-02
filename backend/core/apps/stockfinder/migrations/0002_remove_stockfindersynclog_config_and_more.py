@@ -6,52 +6,52 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('stockfinder', '0001_initial'),
+        ("stockfinder", "0001_initial"),
     ]
 
     operations = [
         migrations.RemoveField(
-            model_name='stockfindersynclog',
-            name='config',
+            model_name="stockfindersynclog",
+            name="config",
         ),
         migrations.RemoveField(
-            model_name='stockfinderstockitem',
-            name='created_by',
+            model_name="stockfinderstockitem",
+            name="created_by",
         ),
         migrations.RemoveField(
-            model_name='stockfinderstockitem',
-            name='local_stock_item',
+            model_name="stockfinderstockitem",
+            name="local_stock_item",
         ),
         migrations.RemoveField(
-            model_name='stockfinderstockitem',
-            name='updated_by',
+            model_name="stockfinderstockitem",
+            name="updated_by",
         ),
         migrations.RemoveField(
-            model_name='stockfindersynclog',
-            name='created_by',
+            model_name="stockfindersynclog",
+            name="created_by",
         ),
         migrations.RemoveField(
-            model_name='stockfindersynclog',
-            name='updated_by',
+            model_name="stockfindersynclog",
+            name="updated_by",
         ),
         migrations.RemoveField(
-            model_name='stockfinderwebhookevent',
-            name='created_by',
+            model_name="stockfinderwebhookevent",
+            name="created_by",
         ),
         migrations.RemoveField(
-            model_name='stockfinderwebhookevent',
-            name='updated_by',
+            model_name="stockfinderwebhookevent",
+            name="updated_by",
         ),
         migrations.DeleteModel(
-            name='StockFinderConfig',
+            name="StockFinderConfig",
         ),
         migrations.DeleteModel(
-            name='StockFinderStockItem',
+            name="StockFinderStockItem",
         ),
         migrations.DeleteModel(
-            name='StockFinderSyncLog',
+            name="StockFinderSyncLog",
         ),
         migrations.DeleteModel(
-            name='StockFinderWebhookEvent',
+            name="StockFinderWebhookEvent",
         ),
     ]

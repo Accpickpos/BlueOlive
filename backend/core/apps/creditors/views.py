@@ -75,7 +75,10 @@ from .serializers import (
 
 
 class CreditorViewSet(
-    ModuleFunctionPermissionMixin, LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
+    ModuleFunctionPermissionMixin,
+    LookupActionMixin,
+    ShopFilterMixin,
+    viewsets.ModelViewSet,
 ):
     """
     CRUD for Creditor master accounts.
@@ -283,7 +286,9 @@ def _resolve_rfc_stock(rfc, new_status):
 # ============================================================================
 
 
-class GoodsReceivedNoteViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class GoodsReceivedNoteViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     GRN list / detail / create.
 
@@ -378,7 +383,9 @@ class GoodsReceivedNoteViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, v
         return Response(GoodsReceivedNoteSerializer(grn).data)
 
 
-class GRNLineItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class GRNLineItemViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """Line items nested under a GRN — /grns/{grn_pk}/lines/"""
 
     access_module = "creditors"
@@ -405,7 +412,9 @@ class GRNLineItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewset
 # ============================================================================
 
 
-class CreditorInvoiceViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class CreditorInvoiceViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     Expense invoices (electricity, rent, etc.).
 
@@ -471,7 +480,9 @@ class CreditorInvoiceViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, vie
         return Response(CreditorInvoiceSerializer(invoice).data)
 
 
-class CreditorInvoiceLineItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class CreditorInvoiceLineItemViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """Nested line items — /invoices/{invoice_pk}/lines/"""
 
     access_module = "creditors"
@@ -500,7 +511,9 @@ class CreditorInvoiceLineItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMi
 # ============================================================================
 
 
-class CreditorCreditNoteViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class CreditorCreditNoteViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     Credit notes from suppliers.
 
@@ -566,7 +579,9 @@ class CreditorCreditNoteViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, 
         return Response(CreditorCreditNoteSerializer(cn).data)
 
 
-class CreditorCreditNoteLineItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class CreditorCreditNoteLineItemViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """Nested line items — /credit_notes/{cn_pk}/lines/"""
 
     access_module = "creditors"
@@ -595,7 +610,9 @@ class CreditorCreditNoteLineItemViewSet(ModuleFunctionPermissionMixin, ShopFilte
 # ============================================================================
 
 
-class CreditorPaymentViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class CreditorPaymentViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     Payments made to suppliers.
 
@@ -682,7 +699,9 @@ class CreditorPaymentViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, vie
 # ============================================================================
 
 
-class CreditorJournalViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class CreditorJournalViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     Debit/credit journal adjustments.
 
@@ -744,7 +763,9 @@ class CreditorJournalViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, vie
 # ============================================================================
 
 
-class SupplierLedgerEntryViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class SupplierLedgerEntryViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet
+):
     """
     Read-only view of raw suptran ledger entries.
     These are imported from the DBF — not created through the API.
@@ -770,7 +791,9 @@ class SupplierLedgerEntryViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin,
 # ============================================================================
 
 
-class CreditorOpenItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class CreditorOpenItemViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     Open items (supopen).
 
@@ -830,7 +853,9 @@ class CreditorOpenItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, vi
         return Response(serializer.data)
 
 
-class OpenItemAllocationViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class OpenItemAllocationViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     Payment allocations against open items.
     Typically created via /payments/{id}/allocate/ but also accessible directly.
@@ -849,7 +874,9 @@ class OpenItemAllocationViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, 
 # ============================================================================
 
 
-class OpenItemAuditViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class OpenItemAuditViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet
+):
     """
     Audit trail of open item changes — system-written, read-only via API.
     """
@@ -947,7 +974,9 @@ class RFCViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelV
         return Response(RFCSerializer(rfc).data)
 
 
-class RFCLineItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class RFCLineItemViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """Nested line items — /rfcs/{rfc_pk}/lines/"""
 
     access_module = "creditors"
@@ -1000,7 +1029,9 @@ class ExpenseCategoryMonthlyBalanceViewSet(
 # ============================================================================
 
 
-class ExpenseCategoryTransactionViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class ExpenseCategoryTransactionViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet
+):
     """
     Individual expense postings (supexpt). Read-only — written by posting engine.
 
@@ -1049,7 +1080,9 @@ class ExpenseCategoryTransactionViewSet(ModuleFunctionPermissionMixin, ShopFilte
 # ============================================================================
 
 
-class SupplierPaymentOrderViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class SupplierPaymentOrderViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     Scheduled outgoing payment orders (suppo).
 
@@ -1106,7 +1139,9 @@ class SupplierPaymentOrderViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin
 # ============================================================================
 
 
-class CreditorTransactionLineViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class CreditorTransactionLineViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """Generic transaction lines (ContentType polymorphic)."""
 
     access_module = "creditors"
@@ -1122,7 +1157,9 @@ class CreditorTransactionLineViewSet(ModuleFunctionPermissionMixin, ShopFilterMi
 # ============================================================================
 
 
-class OutstandingBalanceViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class OutstandingBalanceViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     API endpoint for managing supplier outstanding balances.
 

@@ -9,19 +9,26 @@ does not exist". The AddField was moved here (ahead of the ALTER COLUMN
 statements, which now live in 0008) so the column exists before it's
 altered.
 """
+
 from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('debtors', '0006_alter_debtor_dtel2'),
+        ("debtors", "0006_alter_debtor_dtel2"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='debtor',
-            name='tel2',
-            field=models.CharField(blank=True, db_column='tel2', default='', help_text='Legacy duplicate of dtel2 (TEL2)', max_length=20),
+            model_name="debtor",
+            name="tel2",
+            field=models.CharField(
+                blank=True,
+                db_column="tel2",
+                default="",
+                help_text="Legacy duplicate of dtel2 (TEL2)",
+                max_length=20,
+            ),
         ),
     ]

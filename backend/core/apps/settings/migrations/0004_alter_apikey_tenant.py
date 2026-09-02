@@ -7,14 +7,22 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('settings', '0003_merge_20260222_1416'),
-        ('tenancy', '0010_shop_setup_status'),
+        ("settings", "0003_merge_20260222_1416"),
+        ("tenancy", "0010_shop_setup_status"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='apikey',
-            name='tenant',
-            field=models.ForeignKey(blank=True, db_constraint=False, help_text='Tenant this API key belongs to', null=True, on_delete=django.db.models.deletion.CASCADE, related_name='api_keys', to='tenancy.tenant'),
+            model_name="apikey",
+            name="tenant",
+            field=models.ForeignKey(
+                blank=True,
+                db_constraint=False,
+                help_text="Tenant this API key belongs to",
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="api_keys",
+                to="tenancy.tenant",
+            ),
         ),
     ]

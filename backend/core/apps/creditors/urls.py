@@ -6,11 +6,11 @@ from rest_framework_nested import routers as nested_routers
 from .reports_enquiries import (
     account_details_report,
     age_analysis_report,
+    expenditure_totals_enquiry,
     expense_categories_list,
     expense_category_details_enquiry,
     expense_category_totals_enquiry,
     expense_tax_report,
-    expenditure_totals_enquiry,
     individual_account_enquiry,
     monthly_expense_details_enquiry,
     payouts_report,
@@ -112,23 +112,73 @@ rfc_router.register(r"lines", RFCLineItemViewSet, basename="rfc-line")
 # ============================================================================
 
 reports_urls = [
-    path("reports/account_details/", account_details_report, name="creditors-report-account-details"),
-    path("reports/age_analysis/", age_analysis_report, name="creditors-report-age-analysis"),
-    path("reports/remittance_advices/", remittance_advices_report, name="creditors-report-remittance"),
-    path("reports/transactions/", transactions_report, name="creditors-report-transactions"),
-    path("reports/expense_tax/", expense_tax_report, name="creditors-report-expense-tax"),
+    path(
+        "reports/account_details/",
+        account_details_report,
+        name="creditors-report-account-details",
+    ),
+    path(
+        "reports/age_analysis/",
+        age_analysis_report,
+        name="creditors-report-age-analysis",
+    ),
+    path(
+        "reports/remittance_advices/",
+        remittance_advices_report,
+        name="creditors-report-remittance",
+    ),
+    path(
+        "reports/transactions/",
+        transactions_report,
+        name="creditors-report-transactions",
+    ),
+    path(
+        "reports/expense_tax/", expense_tax_report, name="creditors-report-expense-tax"
+    ),
     path("reports/payouts/", payouts_report, name="creditors-report-payouts"),
 ]
 
 enquiries_urls = [
-    path("enquiries/transaction_scroll/", transaction_scroll_enquiry, name="creditors-enquiry-transaction-scroll"),
-    path("enquiries/expenditure_totals/", expenditure_totals_enquiry, name="creditors-enquiry-expenditure-totals"),
-    path("enquiries/expense_category_totals/", expense_category_totals_enquiry, name="creditors-enquiry-expense-category-totals"),
-    path("enquiries/expense_category_details/", expense_category_details_enquiry, name="creditors-enquiry-expense-category-details"),
-    path("enquiries/monthly_expense_details/", monthly_expense_details_enquiry, name="creditors-enquiry-monthly-expense-details"),
-    path("enquiries/purchase_history/", purchase_history_enquiry, name="creditors-enquiry-purchase-history"),
-    path("enquiries/individual_account/", individual_account_enquiry, name="creditors-enquiry-individual-account"),
-    path("expense-categories/", expense_categories_list, name="creditors-expense-categories"),
+    path(
+        "enquiries/transaction_scroll/",
+        transaction_scroll_enquiry,
+        name="creditors-enquiry-transaction-scroll",
+    ),
+    path(
+        "enquiries/expenditure_totals/",
+        expenditure_totals_enquiry,
+        name="creditors-enquiry-expenditure-totals",
+    ),
+    path(
+        "enquiries/expense_category_totals/",
+        expense_category_totals_enquiry,
+        name="creditors-enquiry-expense-category-totals",
+    ),
+    path(
+        "enquiries/expense_category_details/",
+        expense_category_details_enquiry,
+        name="creditors-enquiry-expense-category-details",
+    ),
+    path(
+        "enquiries/monthly_expense_details/",
+        monthly_expense_details_enquiry,
+        name="creditors-enquiry-monthly-expense-details",
+    ),
+    path(
+        "enquiries/purchase_history/",
+        purchase_history_enquiry,
+        name="creditors-enquiry-purchase-history",
+    ),
+    path(
+        "enquiries/individual_account/",
+        individual_account_enquiry,
+        name="creditors-enquiry-individual-account",
+    ),
+    path(
+        "expense-categories/",
+        expense_categories_list,
+        name="creditors-expense-categories",
+    ),
 ]
 
 urlpatterns = [

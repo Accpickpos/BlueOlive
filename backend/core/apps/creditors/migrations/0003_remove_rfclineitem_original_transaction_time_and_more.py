@@ -9,832 +9,1523 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('creditors', '0002_initial'),
-        ('settings', '0001_initial'),
-        ('stock_control', '0001_initial'),
+        ("creditors", "0002_initial"),
+        ("settings", "0001_initial"),
+        ("stock_control", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.RemoveField(
-            model_name='rfclineitem',
-            name='original_transaction_time',
+            model_name="rfclineitem",
+            name="original_transaction_time",
         ),
         migrations.AddField(
-            model_name='expensecategorymonthlybalance',
-            name='expense_category_name',
-            field=models.CharField(blank=True, help_text='EXPCATNAME C(20) — denormalised name from supexp.dbf', max_length=20),
+            model_name="expensecategorymonthlybalance",
+            name="expense_category_name",
+            field=models.CharField(
+                blank=True,
+                help_text="EXPCATNAME C(20) — denormalised name from supexp.dbf",
+                max_length=20,
+            ),
         ),
         migrations.AddField(
-            model_name='rfclineitem',
-            name='line_value',
-            field=models.DecimalField(decimal_places=2, default=0, help_text='VAL N(12,2)', max_digits=12),
+            model_name="rfclineitem",
+            name="line_value",
+            field=models.DecimalField(
+                decimal_places=2, default=0, help_text="VAL N(12,2)", max_digits=12
+            ),
         ),
         migrations.AddField(
-            model_name='rfclineitem',
-            name='rfc_line_time',
-            field=models.CharField(blank=True, help_text='TIME C(5) — stored as HH:MM string from supcrtrn', max_length=5),
+            model_name="rfclineitem",
+            name="rfc_line_time",
+            field=models.CharField(
+                blank=True,
+                help_text="TIME C(5) — stored as HH:MM string from supcrtrn",
+                max_length=5,
+            ),
         ),
         migrations.AlterField(
-            model_name='creditor',
-            name='account_category',
-            field=models.CharField(blank=True, choices=[('BBF', 'Balance Brought Forward'), ('OI', 'Open Item'), ('', 'Not Set')], default='BBF', help_text='ACCTYPE C(1). Legacy may be blank — treated as BBF.', max_length=4),
+            model_name="creditor",
+            name="account_category",
+            field=models.CharField(
+                blank=True,
+                choices=[
+                    ("BBF", "Balance Brought Forward"),
+                    ("OI", "Open Item"),
+                    ("", "Not Set"),
+                ],
+                default="BBF",
+                help_text="ACCTYPE C(1). Legacy may be blank — treated as BBF.",
+                max_length=4,
+            ),
         ),
         migrations.AlterField(
-            model_name='creditor',
-            name='account_number',
-            field=models.CharField(blank=True, help_text='BANKACC — C(15)', max_length=15),
+            model_name="creditor",
+            name="account_number",
+            field=models.CharField(
+                blank=True, help_text="BANKACC — C(15)", max_length=15
+            ),
         ),
         migrations.AlterField(
-            model_name='creditor',
-            name='bank_name',
-            field=models.CharField(blank=True, help_text='BANK — C(10)', max_length=10),
+            model_name="creditor",
+            name="bank_name",
+            field=models.CharField(blank=True, help_text="BANK — C(10)", max_length=10),
         ),
         migrations.AlterField(
-            model_name='creditor',
-            name='branch_code',
-            field=models.CharField(blank=True, help_text='BANKCODE — C(10)', max_length=10),
+            model_name="creditor",
+            name="branch_code",
+            field=models.CharField(
+                blank=True, help_text="BANKCODE — C(10)", max_length=10
+            ),
         ),
         migrations.AlterField(
-            model_name='creditor',
-            name='contact_person',
-            field=models.CharField(blank=True, help_text='SUPCONT — C(20)', max_length=20),
+            model_name="creditor",
+            name="contact_person",
+            field=models.CharField(
+                blank=True, help_text="SUPCONT — C(20)", max_length=20
+            ),
         ),
         migrations.AlterField(
-            model_name='creditor',
-            name='email',
-            field=models.EmailField(blank=True, help_text='EMAIL — C(60)', max_length=60),
+            model_name="creditor",
+            name="email",
+            field=models.EmailField(
+                blank=True, help_text="EMAIL — C(60)", max_length=60
+            ),
         ),
         migrations.AlterField(
-            model_name='creditor',
-            name='fax',
-            field=models.CharField(blank=True, help_text='SUPFAX — C(15)', max_length=15),
+            model_name="creditor",
+            name="fax",
+            field=models.CharField(
+                blank=True, help_text="SUPFAX — C(15)", max_length=15
+            ),
         ),
         migrations.AlterField(
-            model_name='creditor',
-            name='name',
-            field=models.CharField(help_text='SUPNAME', max_length=30),
+            model_name="creditor",
+            name="name",
+            field=models.CharField(help_text="SUPNAME", max_length=30),
         ),
         migrations.AlterField(
-            model_name='creditor',
-            name='our_account_number',
-            field=models.CharField(blank=True, help_text='SUPOURACC — C(15)', max_length=15),
+            model_name="creditor",
+            name="our_account_number",
+            field=models.CharField(
+                blank=True, help_text="SUPOURACC — C(15)", max_length=15
+            ),
         ),
         migrations.AlterField(
-            model_name='creditor',
-            name='physical_address_line1',
-            field=models.CharField(blank=True, help_text='SUPADD1 — C(25)', max_length=25),
+            model_name="creditor",
+            name="physical_address_line1",
+            field=models.CharField(
+                blank=True, help_text="SUPADD1 — C(25)", max_length=25
+            ),
         ),
         migrations.AlterField(
-            model_name='creditor',
-            name='physical_address_line2',
-            field=models.CharField(blank=True, help_text='SUPADD2 — C(25)', max_length=25),
+            model_name="creditor",
+            name="physical_address_line2",
+            field=models.CharField(
+                blank=True, help_text="SUPADD2 — C(25)", max_length=25
+            ),
         ),
         migrations.AlterField(
-            model_name='creditor',
-            name='physical_address_line3',
-            field=models.CharField(blank=True, help_text='SUPADD3 — C(25)', max_length=25),
+            model_name="creditor",
+            name="physical_address_line3",
+            field=models.CharField(
+                blank=True, help_text="SUPADD3 — C(25)", max_length=25
+            ),
         ),
         migrations.AlterField(
-            model_name='creditor',
-            name='postal_address_line1',
-            field=models.CharField(blank=True, help_text='SUPPADD1 — C(20)', max_length=20),
+            model_name="creditor",
+            name="postal_address_line1",
+            field=models.CharField(
+                blank=True, help_text="SUPPADD1 — C(20)", max_length=20
+            ),
         ),
         migrations.AlterField(
-            model_name='creditor',
-            name='postal_address_line2',
-            field=models.CharField(blank=True, help_text='SUPPADD2 — C(20)', max_length=20),
+            model_name="creditor",
+            name="postal_address_line2",
+            field=models.CharField(
+                blank=True, help_text="SUPPADD2 — C(20)", max_length=20
+            ),
         ),
         migrations.AlterField(
-            model_name='creditor',
-            name='postal_address_line3',
-            field=models.CharField(blank=True, help_text='SUPPADD3 — C(20)', max_length=20),
+            model_name="creditor",
+            name="postal_address_line3",
+            field=models.CharField(
+                blank=True, help_text="SUPPADD3 — C(20)", max_length=20
+            ),
         ),
         migrations.AlterField(
-            model_name='creditor',
-            name='supplier_number',
-            field=models.CharField(help_text='SUPNO — N(4) in DBF', max_length=4, unique=True),
+            model_name="creditor",
+            name="supplier_number",
+            field=models.CharField(
+                help_text="SUPNO — N(4) in DBF", max_length=4, unique=True
+            ),
         ),
         migrations.AlterField(
-            model_name='creditor',
-            name='telephone',
-            field=models.CharField(blank=True, help_text='SUPTEL — C(15)', max_length=15),
+            model_name="creditor",
+            name="telephone",
+            field=models.CharField(
+                blank=True, help_text="SUPTEL — C(15)", max_length=15
+            ),
         ),
         migrations.AlterField(
-            model_name='creditorcreditnote',
-            name='additional_reference',
-            field=models.CharField(blank=True, help_text='Django-only, no DBF source', max_length=200),
-        ),
-        migrations.AlterField(
-            model_name='creditorcreditnote',
-            name='age_120',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorcreditnote',
-            name='age_150',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorcreditnote',
-            name='age_180',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorcreditnote',
-            name='age_30',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorcreditnote',
-            name='age_60',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorcreditnote',
-            name='age_90',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorcreditnote',
-            name='age_current',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorcreditnote',
-            name='created_by_user',
-            field=models.CharField(blank=True, editable=False, help_text='USER C(20) — set from logged-in user', max_length=20),
-        ),
-        migrations.AlterField(
-            model_name='creditorcreditnote',
-            name='due_date',
-            field=models.DateField(blank=True, editable=False, help_text='SDUEDATE — auto-set from creditor terms', null=True),
-        ),
-        migrations.AlterField(
-            model_name='creditorcreditnote',
-            name='grn_number',
-            field=models.PositiveIntegerField(blank=True, editable=False, help_text='GRNNO N(6) — set by GRN process', null=True),
-        ),
-        migrations.AlterField(
-            model_name='creditorcreditnote',
-            name='station',
-            field=models.CharField(blank=True, editable=False, help_text='STATION C(2) — set from session', max_length=2),
-        ),
-        migrations.AlterField(
-            model_name='creditorcreditnote',
-            name='total_amount',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='STTOT — rolled up from line items', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorcreditnote',
-            name='transaction_date',
-            field=models.DateField(help_text='STDATE'),
-        ),
-        migrations.AlterField(
-            model_name='creditorcreditnote',
-            name='transaction_number',
-            field=models.CharField(editable=False, help_text='STRANO C(10) — auto-generated', max_length=10, unique=True),
-        ),
-        migrations.AlterField(
-            model_name='creditorcreditnote',
-            name='transaction_reference',
-            field=models.CharField(blank=True, help_text='STREF C(20)', max_length=20),
-        ),
-        migrations.AlterField(
-            model_name='creditorcreditnote',
-            name='transaction_type',
-            field=models.CharField(choices=[('GR', 'Goods Received Note'), ('IN', 'Expense Invoice'), ('CN', 'Credit Note'), ('PY', 'Payment'), ('DJ', 'Debit Journal'), ('CJ', 'Credit Journal')], editable=False, help_text='STYPE C(2) — set by save()', max_length=2),
-        ),
-        migrations.AlterField(
-            model_name='creditorinvoice',
-            name='additional_reference',
-            field=models.CharField(blank=True, help_text='Django-only, no DBF source', max_length=200),
-        ),
-        migrations.AlterField(
-            model_name='creditorinvoice',
-            name='age_120',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorinvoice',
-            name='age_150',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorinvoice',
-            name='age_180',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorinvoice',
-            name='age_30',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorinvoice',
-            name='age_60',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorinvoice',
-            name='age_90',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorinvoice',
-            name='age_current',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorinvoice',
-            name='created_by_user',
-            field=models.CharField(blank=True, editable=False, help_text='USER C(20) — set from logged-in user', max_length=20),
-        ),
-        migrations.AlterField(
-            model_name='creditorinvoice',
-            name='due_date',
-            field=models.DateField(blank=True, editable=False, help_text='SDUEDATE — auto-set from creditor terms', null=True),
-        ),
-        migrations.AlterField(
-            model_name='creditorinvoice',
-            name='grn_number',
-            field=models.PositiveIntegerField(blank=True, editable=False, help_text='GRNNO N(6) — set by GRN process', null=True),
-        ),
-        migrations.AlterField(
-            model_name='creditorinvoice',
-            name='station',
-            field=models.CharField(blank=True, editable=False, help_text='STATION C(2) — set from session', max_length=2),
-        ),
-        migrations.AlterField(
-            model_name='creditorinvoice',
-            name='total_amount',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='STTOT — rolled up from line items', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorinvoice',
-            name='transaction_date',
-            field=models.DateField(help_text='STDATE'),
-        ),
-        migrations.AlterField(
-            model_name='creditorinvoice',
-            name='transaction_number',
-            field=models.CharField(editable=False, help_text='STRANO C(10) — auto-generated', max_length=10, unique=True),
-        ),
-        migrations.AlterField(
-            model_name='creditorinvoice',
-            name='transaction_reference',
-            field=models.CharField(blank=True, help_text='STREF C(20)', max_length=20),
-        ),
-        migrations.AlterField(
-            model_name='creditorinvoice',
-            name='transaction_type',
-            field=models.CharField(choices=[('GR', 'Goods Received Note'), ('IN', 'Expense Invoice'), ('CN', 'Credit Note'), ('PY', 'Payment'), ('DJ', 'Debit Journal'), ('CJ', 'Credit Journal')], editable=False, help_text='STYPE C(2) — set by save()', max_length=2),
-        ),
-        migrations.AlterField(
-            model_name='creditorjournal',
-            name='additional_reference',
-            field=models.CharField(blank=True, help_text='Django-only, no DBF source', max_length=200),
-        ),
-        migrations.AlterField(
-            model_name='creditorjournal',
-            name='age_120',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorjournal',
-            name='age_150',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorjournal',
-            name='age_180',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorjournal',
-            name='age_30',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorjournal',
-            name='age_60',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorjournal',
-            name='age_90',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorjournal',
-            name='age_current',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorjournal',
-            name='created_by_user',
-            field=models.CharField(blank=True, editable=False, help_text='USER C(20) — set from logged-in user', max_length=20),
-        ),
-        migrations.AlterField(
-            model_name='creditorjournal',
-            name='due_date',
-            field=models.DateField(blank=True, editable=False, help_text='SDUEDATE — auto-set from creditor terms', null=True),
-        ),
-        migrations.AlterField(
-            model_name='creditorjournal',
-            name='grn_number',
-            field=models.PositiveIntegerField(blank=True, editable=False, help_text='GRNNO N(6) — set by GRN process', null=True),
-        ),
-        migrations.AlterField(
-            model_name='creditorjournal',
-            name='journal_type',
-            field=models.CharField(choices=[('DJ', 'Debit Journal'), ('CJ', 'Credit Journal')], max_length=2),
-        ),
-        migrations.AlterField(
-            model_name='creditorjournal',
-            name='station',
-            field=models.CharField(blank=True, editable=False, help_text='STATION C(2) — set from session', max_length=2),
-        ),
-        migrations.AlterField(
-            model_name='creditorjournal',
-            name='total_amount',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='STTOT — rolled up from line items', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorjournal',
-            name='transaction_date',
-            field=models.DateField(help_text='STDATE'),
-        ),
-        migrations.AlterField(
-            model_name='creditorjournal',
-            name='transaction_number',
-            field=models.CharField(editable=False, help_text='STRANO C(10) — auto-generated', max_length=10, unique=True),
-        ),
-        migrations.AlterField(
-            model_name='creditorjournal',
-            name='transaction_reference',
-            field=models.CharField(blank=True, help_text='STREF C(20)', max_length=20),
-        ),
-        migrations.AlterField(
-            model_name='creditorjournal',
-            name='transaction_type',
-            field=models.CharField(choices=[('GR', 'Goods Received Note'), ('IN', 'Expense Invoice'), ('CN', 'Credit Note'), ('PY', 'Payment'), ('DJ', 'Debit Journal'), ('CJ', 'Credit Journal')], editable=False, help_text='STYPE C(2) — set by save()', max_length=2),
-        ),
-        migrations.AlterField(
-            model_name='creditoropenitem',
-            name='age_period',
-            field=models.PositiveSmallIntegerField(default=0, editable=False, help_text='Ageing period bucket — set by ageing run'),
-        ),
-        migrations.AlterField(
-            model_name='creditoropenitem',
-            name='ageing_flag',
-            field=models.CharField(blank=True, editable=False, help_text='AGEFLAG C(1) — set by ageing run', max_length=1),
-        ),
-        migrations.AlterField(
-            model_name='creditoropenitem',
-            name='balance_due',
-            field=models.DecimalField(decimal_places=2, editable=False, help_text='BALANCEDUE N(14,2) — reduced by each payment allocation', max_digits=14),
-        ),
-        migrations.AlterField(
-            model_name='creditoropenitem',
-            name='is_fully_allocated',
-            field=models.BooleanField(default=False, editable=False, help_text='Set True when balance_due reaches zero'),
-        ),
-        migrations.AlterField(
-            model_name='creditoropenitem',
-            name='original_amount',
-            field=models.DecimalField(decimal_places=2, editable=False, help_text='TOTAL N(14,2) — copied from transaction on creation', max_digits=14),
-        ),
-        migrations.AlterField(
-            model_name='creditoropenitem',
-            name='transaction_number',
-            field=models.CharField(help_text='TRANO C(10)', max_length=10),
-        ),
-        migrations.AlterField(
-            model_name='creditoropenitem',
-            name='transaction_type',
-            field=models.CharField(help_text='TYPE C(2)', max_length=2),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='additional_reference',
-            field=models.CharField(blank=True, help_text='Django-only, no DBF source', max_length=200),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='age_120',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='age_150',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='age_180',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='age_30',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='age_60',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='age_90',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='age_current',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='created_by_user',
-            field=models.CharField(blank=True, editable=False, help_text='USER C(20) — set from logged-in user', max_length=20),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='due_date',
-            field=models.DateField(blank=True, editable=False, help_text='SDUEDATE — auto-set from creditor terms', null=True),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='grn_number',
-            field=models.PositiveIntegerField(blank=True, editable=False, help_text='GRNNO N(6) — set by GRN process', null=True),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='settlement_discount_amount',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='amount_due - amount_paid', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='settlement_discount_percent',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='(discount / amount_due) * 100', max_digits=5),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='station',
-            field=models.CharField(blank=True, editable=False, help_text='STATION C(2) — set from session', max_length=2),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='total_amount',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='STTOT — rolled up from line items', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='transaction_date',
-            field=models.DateField(help_text='STDATE'),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='transaction_number',
-            field=models.CharField(editable=False, help_text='STRANO C(10) — auto-generated', max_length=10, unique=True),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='transaction_reference',
-            field=models.CharField(blank=True, help_text='STREF C(20)', max_length=20),
-        ),
-        migrations.AlterField(
-            model_name='creditorpayment',
-            name='transaction_type',
-            field=models.CharField(choices=[('GR', 'Goods Received Note'), ('IN', 'Expense Invoice'), ('CN', 'Credit Note'), ('PY', 'Payment'), ('DJ', 'Debit Journal'), ('CJ', 'Credit Journal')], editable=False, help_text='STYPE C(2) — set by save()', max_length=2),
-        ),
-        migrations.AlterField(
-            model_name='expensecategorymonthlybalance',
-            name='exp_month_1',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='EXP1  Jan', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='expensecategorymonthlybalance',
-            name='exp_month_10',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='EXP10 Oct', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='expensecategorymonthlybalance',
-            name='exp_month_11',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='EXP11 Nov', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='expensecategorymonthlybalance',
-            name='exp_month_12',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='EXP12 Dec', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='expensecategorymonthlybalance',
-            name='exp_month_2',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='EXP2  Feb', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='expensecategorymonthlybalance',
-            name='exp_month_3',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='EXP3  Mar', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='expensecategorymonthlybalance',
-            name='exp_month_4',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='EXP4  Apr', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='expensecategorymonthlybalance',
-            name='exp_month_5',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='EXP5  May', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='expensecategorymonthlybalance',
-            name='exp_month_6',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='EXP6  Jun', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='expensecategorymonthlybalance',
-            name='exp_month_7',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='EXP7  Jul', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='expensecategorymonthlybalance',
-            name='exp_month_8',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='EXP8  Aug', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='expensecategorymonthlybalance',
-            name='exp_month_9',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='EXP9  Sep', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='expensecategorymonthlybalance',
-            name='expense_category',
-            field=models.ForeignKey(help_text='EXPCAT N(8)', on_delete=django.db.models.deletion.CASCADE, related_name='monthly_balances', to='settings.expensecategory'),
-        ),
-        migrations.AlterField(
-            model_name='expensecategorymonthlybalance',
-            name='expense_mtd',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='EXPMTD — month-to-date total, reset at period close', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='expensecategorymonthlybalance',
-            name='input_vat_mtd',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='EXPINVAT — input VAT MTD', max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='expensecategorymonthlybalance',
-            name='year',
-            field=models.PositiveIntegerField(help_text='Financial year — Django-only, no DBF source'),
-        ),
-        migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='additional_reference',
-            field=models.CharField(blank=True, help_text='Django-only, no DBF source', max_length=200),
-        ),
-        migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='age_120',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='age_150',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='age_180',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='age_30',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='age_60',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='age_90',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='age_current',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15),
-        ),
-        migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='created_by_user',
-            field=models.CharField(blank=True, editable=False, help_text='USER C(20) — set from logged-in user', max_length=20),
-        ),
+            model_name="creditorcreditnote",
+            name="additional_reference",
+            field=models.CharField(
+                blank=True, help_text="Django-only, no DBF source", max_length=200
+            ),
+        ),
         migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='due_date',
-            field=models.DateField(blank=True, editable=False, help_text='SDUEDATE — auto-set from creditor terms', null=True),
+            model_name="creditorcreditnote",
+            name="age_120",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
         ),
         migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='grn_number',
-            field=models.PositiveIntegerField(blank=True, editable=False, help_text='GRNNO N(6) — set by GRN process', null=True),
+            model_name="creditorcreditnote",
+            name="age_150",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
         ),
         migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='station',
-            field=models.CharField(blank=True, editable=False, help_text='STATION C(2) — set from session', max_length=2),
+            model_name="creditorcreditnote",
+            name="age_180",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
         ),
         migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='subtotal',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='STSUB — sum of line subtotals', max_digits=15),
+            model_name="creditorcreditnote",
+            name="age_30",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
         ),
         migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='total_amount',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='STTOT — rolled up from line items', max_digits=15),
+            model_name="creditorcreditnote",
+            name="age_60",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorcreditnote",
+            name="age_90",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorcreditnote",
+            name="age_current",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorcreditnote",
+            name="created_by_user",
+            field=models.CharField(
+                blank=True,
+                editable=False,
+                help_text="USER C(20) — set from logged-in user",
+                max_length=20,
+            ),
         ),
         migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='total_quantity',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Sum of quantity_received across all lines', max_digits=15),
+            model_name="creditorcreditnote",
+            name="due_date",
+            field=models.DateField(
+                blank=True,
+                editable=False,
+                help_text="SDUEDATE — auto-set from creditor terms",
+                null=True,
+            ),
         ),
         migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='total_vat',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='STGST — sum of line VAT amounts', max_digits=15),
+            model_name="creditorcreditnote",
+            name="grn_number",
+            field=models.PositiveIntegerField(
+                blank=True,
+                editable=False,
+                help_text="GRNNO N(6) — set by GRN process",
+                null=True,
+            ),
         ),
         migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='transaction_date',
-            field=models.DateField(help_text='STDATE'),
+            model_name="creditorcreditnote",
+            name="station",
+            field=models.CharField(
+                blank=True,
+                editable=False,
+                help_text="STATION C(2) — set from session",
+                max_length=2,
+            ),
         ),
         migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='transaction_number',
-            field=models.CharField(editable=False, help_text='STRANO C(10) — auto-generated', max_length=10, unique=True),
+            model_name="creditorcreditnote",
+            name="total_amount",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="STTOT — rolled up from line items",
+                max_digits=15,
+            ),
         ),
         migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='transaction_reference',
-            field=models.CharField(blank=True, help_text='STREF C(20)', max_length=20),
+            model_name="creditorcreditnote",
+            name="transaction_date",
+            field=models.DateField(help_text="STDATE"),
         ),
         migrations.AlterField(
-            model_name='goodsreceivednote',
-            name='transaction_type',
-            field=models.CharField(choices=[('GR', 'Goods Received Note'), ('IN', 'Expense Invoice'), ('CN', 'Credit Note'), ('PY', 'Payment'), ('DJ', 'Debit Journal'), ('CJ', 'Credit Journal')], editable=False, help_text='STYPE C(2) — set by save()', max_length=2),
+            model_name="creditorcreditnote",
+            name="transaction_number",
+            field=models.CharField(
+                editable=False,
+                help_text="STRANO C(10) — auto-generated",
+                max_length=10,
+                unique=True,
+            ),
         ),
         migrations.AlterField(
-            model_name='openitemaudit',
-            name='amount',
-            field=models.DecimalField(decimal_places=2, editable=False, help_text='AMOUNT N(14,2)', max_digits=14),
+            model_name="creditorcreditnote",
+            name="transaction_reference",
+            field=models.CharField(blank=True, help_text="STREF C(20)", max_length=20),
+        ),
+        migrations.AlterField(
+            model_name="creditorcreditnote",
+            name="transaction_type",
+            field=models.CharField(
+                choices=[
+                    ("GR", "Goods Received Note"),
+                    ("IN", "Expense Invoice"),
+                    ("CN", "Credit Note"),
+                    ("PY", "Payment"),
+                    ("DJ", "Debit Journal"),
+                    ("CJ", "Credit Journal"),
+                ],
+                editable=False,
+                help_text="STYPE C(2) — set by save()",
+                max_length=2,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorinvoice",
+            name="additional_reference",
+            field=models.CharField(
+                blank=True, help_text="Django-only, no DBF source", max_length=200
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorinvoice",
+            name="age_120",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
         ),
+        migrations.AlterField(
+            model_name="creditorinvoice",
+            name="age_150",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorinvoice",
+            name="age_180",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
         migrations.AlterField(
-            model_name='openitemaudit',
-            name='audit_notes',
+            model_name="creditorinvoice",
+            name="age_30",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorinvoice",
+            name="age_60",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorinvoice",
+            name="age_90",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorinvoice",
+            name="age_current",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorinvoice",
+            name="created_by_user",
+            field=models.CharField(
+                blank=True,
+                editable=False,
+                help_text="USER C(20) — set from logged-in user",
+                max_length=20,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorinvoice",
+            name="due_date",
+            field=models.DateField(
+                blank=True,
+                editable=False,
+                help_text="SDUEDATE — auto-set from creditor terms",
+                null=True,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorinvoice",
+            name="grn_number",
+            field=models.PositiveIntegerField(
+                blank=True,
+                editable=False,
+                help_text="GRNNO N(6) — set by GRN process",
+                null=True,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorinvoice",
+            name="station",
+            field=models.CharField(
+                blank=True,
+                editable=False,
+                help_text="STATION C(2) — set from session",
+                max_length=2,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorinvoice",
+            name="total_amount",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="STTOT — rolled up from line items",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorinvoice",
+            name="transaction_date",
+            field=models.DateField(help_text="STDATE"),
+        ),
+        migrations.AlterField(
+            model_name="creditorinvoice",
+            name="transaction_number",
+            field=models.CharField(
+                editable=False,
+                help_text="STRANO C(10) — auto-generated",
+                max_length=10,
+                unique=True,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorinvoice",
+            name="transaction_reference",
+            field=models.CharField(blank=True, help_text="STREF C(20)", max_length=20),
+        ),
+        migrations.AlterField(
+            model_name="creditorinvoice",
+            name="transaction_type",
+            field=models.CharField(
+                choices=[
+                    ("GR", "Goods Received Note"),
+                    ("IN", "Expense Invoice"),
+                    ("CN", "Credit Note"),
+                    ("PY", "Payment"),
+                    ("DJ", "Debit Journal"),
+                    ("CJ", "Credit Journal"),
+                ],
+                editable=False,
+                help_text="STYPE C(2) — set by save()",
+                max_length=2,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorjournal",
+            name="additional_reference",
+            field=models.CharField(
+                blank=True, help_text="Django-only, no DBF source", max_length=200
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorjournal",
+            name="age_120",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorjournal",
+            name="age_150",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorjournal",
+            name="age_180",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorjournal",
+            name="age_30",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorjournal",
+            name="age_60",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorjournal",
+            name="age_90",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorjournal",
+            name="age_current",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorjournal",
+            name="created_by_user",
+            field=models.CharField(
+                blank=True,
+                editable=False,
+                help_text="USER C(20) — set from logged-in user",
+                max_length=20,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorjournal",
+            name="due_date",
+            field=models.DateField(
+                blank=True,
+                editable=False,
+                help_text="SDUEDATE — auto-set from creditor terms",
+                null=True,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorjournal",
+            name="grn_number",
+            field=models.PositiveIntegerField(
+                blank=True,
+                editable=False,
+                help_text="GRNNO N(6) — set by GRN process",
+                null=True,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorjournal",
+            name="journal_type",
+            field=models.CharField(
+                choices=[("DJ", "Debit Journal"), ("CJ", "Credit Journal")],
+                max_length=2,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorjournal",
+            name="station",
+            field=models.CharField(
+                blank=True,
+                editable=False,
+                help_text="STATION C(2) — set from session",
+                max_length=2,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorjournal",
+            name="total_amount",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="STTOT — rolled up from line items",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorjournal",
+            name="transaction_date",
+            field=models.DateField(help_text="STDATE"),
+        ),
+        migrations.AlterField(
+            model_name="creditorjournal",
+            name="transaction_number",
+            field=models.CharField(
+                editable=False,
+                help_text="STRANO C(10) — auto-generated",
+                max_length=10,
+                unique=True,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorjournal",
+            name="transaction_reference",
+            field=models.CharField(blank=True, help_text="STREF C(20)", max_length=20),
+        ),
+        migrations.AlterField(
+            model_name="creditorjournal",
+            name="transaction_type",
+            field=models.CharField(
+                choices=[
+                    ("GR", "Goods Received Note"),
+                    ("IN", "Expense Invoice"),
+                    ("CN", "Credit Note"),
+                    ("PY", "Payment"),
+                    ("DJ", "Debit Journal"),
+                    ("CJ", "Credit Journal"),
+                ],
+                editable=False,
+                help_text="STYPE C(2) — set by save()",
+                max_length=2,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditoropenitem",
+            name="age_period",
+            field=models.PositiveSmallIntegerField(
+                default=0,
+                editable=False,
+                help_text="Ageing period bucket — set by ageing run",
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditoropenitem",
+            name="ageing_flag",
+            field=models.CharField(
+                blank=True,
+                editable=False,
+                help_text="AGEFLAG C(1) — set by ageing run",
+                max_length=1,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditoropenitem",
+            name="balance_due",
+            field=models.DecimalField(
+                decimal_places=2,
+                editable=False,
+                help_text="BALANCEDUE N(14,2) — reduced by each payment allocation",
+                max_digits=14,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditoropenitem",
+            name="is_fully_allocated",
+            field=models.BooleanField(
+                default=False,
+                editable=False,
+                help_text="Set True when balance_due reaches zero",
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditoropenitem",
+            name="original_amount",
+            field=models.DecimalField(
+                decimal_places=2,
+                editable=False,
+                help_text="TOTAL N(14,2) — copied from transaction on creation",
+                max_digits=14,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditoropenitem",
+            name="transaction_number",
+            field=models.CharField(help_text="TRANO C(10)", max_length=10),
+        ),
+        migrations.AlterField(
+            model_name="creditoropenitem",
+            name="transaction_type",
+            field=models.CharField(help_text="TYPE C(2)", max_length=2),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="additional_reference",
+            field=models.CharField(
+                blank=True, help_text="Django-only, no DBF source", max_length=200
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="age_120",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="age_150",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="age_180",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="age_30",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="age_60",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="age_90",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="age_current",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="created_by_user",
+            field=models.CharField(
+                blank=True,
+                editable=False,
+                help_text="USER C(20) — set from logged-in user",
+                max_length=20,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="due_date",
+            field=models.DateField(
+                blank=True,
+                editable=False,
+                help_text="SDUEDATE — auto-set from creditor terms",
+                null=True,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="grn_number",
+            field=models.PositiveIntegerField(
+                blank=True,
+                editable=False,
+                help_text="GRNNO N(6) — set by GRN process",
+                null=True,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="settlement_discount_amount",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="amount_due - amount_paid",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="settlement_discount_percent",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="(discount / amount_due) * 100",
+                max_digits=5,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="station",
+            field=models.CharField(
+                blank=True,
+                editable=False,
+                help_text="STATION C(2) — set from session",
+                max_length=2,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="total_amount",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="STTOT — rolled up from line items",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="transaction_date",
+            field=models.DateField(help_text="STDATE"),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="transaction_number",
+            field=models.CharField(
+                editable=False,
+                help_text="STRANO C(10) — auto-generated",
+                max_length=10,
+                unique=True,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="transaction_reference",
+            field=models.CharField(blank=True, help_text="STREF C(20)", max_length=20),
+        ),
+        migrations.AlterField(
+            model_name="creditorpayment",
+            name="transaction_type",
+            field=models.CharField(
+                choices=[
+                    ("GR", "Goods Received Note"),
+                    ("IN", "Expense Invoice"),
+                    ("CN", "Credit Note"),
+                    ("PY", "Payment"),
+                    ("DJ", "Debit Journal"),
+                    ("CJ", "Credit Journal"),
+                ],
+                editable=False,
+                help_text="STYPE C(2) — set by save()",
+                max_length=2,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="expensecategorymonthlybalance",
+            name="exp_month_1",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="EXP1  Jan",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="expensecategorymonthlybalance",
+            name="exp_month_10",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="EXP10 Oct",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="expensecategorymonthlybalance",
+            name="exp_month_11",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="EXP11 Nov",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="expensecategorymonthlybalance",
+            name="exp_month_12",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="EXP12 Dec",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="expensecategorymonthlybalance",
+            name="exp_month_2",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="EXP2  Feb",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="expensecategorymonthlybalance",
+            name="exp_month_3",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="EXP3  Mar",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="expensecategorymonthlybalance",
+            name="exp_month_4",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="EXP4  Apr",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="expensecategorymonthlybalance",
+            name="exp_month_5",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="EXP5  May",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="expensecategorymonthlybalance",
+            name="exp_month_6",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="EXP6  Jun",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="expensecategorymonthlybalance",
+            name="exp_month_7",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="EXP7  Jul",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="expensecategorymonthlybalance",
+            name="exp_month_8",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="EXP8  Aug",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="expensecategorymonthlybalance",
+            name="exp_month_9",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="EXP9  Sep",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="expensecategorymonthlybalance",
+            name="expense_category",
+            field=models.ForeignKey(
+                help_text="EXPCAT N(8)",
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="monthly_balances",
+                to="settings.expensecategory",
+            ),
+        ),
+        migrations.AlterField(
+            model_name="expensecategorymonthlybalance",
+            name="expense_mtd",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="EXPMTD — month-to-date total, reset at period close",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="expensecategorymonthlybalance",
+            name="input_vat_mtd",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="EXPINVAT — input VAT MTD",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="expensecategorymonthlybalance",
+            name="year",
+            field=models.PositiveIntegerField(
+                help_text="Financial year — Django-only, no DBF source"
+            ),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="additional_reference",
+            field=models.CharField(
+                blank=True, help_text="Django-only, no DBF source", max_length=200
+            ),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="age_120",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="age_150",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="age_180",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="age_30",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="age_60",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="age_90",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="age_current",
+            field=models.DecimalField(
+                decimal_places=2, default=0, editable=False, max_digits=15
+            ),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="created_by_user",
+            field=models.CharField(
+                blank=True,
+                editable=False,
+                help_text="USER C(20) — set from logged-in user",
+                max_length=20,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="due_date",
+            field=models.DateField(
+                blank=True,
+                editable=False,
+                help_text="SDUEDATE — auto-set from creditor terms",
+                null=True,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="grn_number",
+            field=models.PositiveIntegerField(
+                blank=True,
+                editable=False,
+                help_text="GRNNO N(6) — set by GRN process",
+                null=True,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="station",
+            field=models.CharField(
+                blank=True,
+                editable=False,
+                help_text="STATION C(2) — set from session",
+                max_length=2,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="subtotal",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="STSUB — sum of line subtotals",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="total_amount",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="STTOT — rolled up from line items",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="total_quantity",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="Sum of quantity_received across all lines",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="total_vat",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="STGST — sum of line VAT amounts",
+                max_digits=15,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="transaction_date",
+            field=models.DateField(help_text="STDATE"),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="transaction_number",
+            field=models.CharField(
+                editable=False,
+                help_text="STRANO C(10) — auto-generated",
+                max_length=10,
+                unique=True,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="transaction_reference",
+            field=models.CharField(blank=True, help_text="STREF C(20)", max_length=20),
+        ),
+        migrations.AlterField(
+            model_name="goodsreceivednote",
+            name="transaction_type",
+            field=models.CharField(
+                choices=[
+                    ("GR", "Goods Received Note"),
+                    ("IN", "Expense Invoice"),
+                    ("CN", "Credit Note"),
+                    ("PY", "Payment"),
+                    ("DJ", "Debit Journal"),
+                    ("CJ", "Credit Journal"),
+                ],
+                editable=False,
+                help_text="STYPE C(2) — set by save()",
+                max_length=2,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="openitemaudit",
+            name="amount",
+            field=models.DecimalField(
+                decimal_places=2,
+                editable=False,
+                help_text="AMOUNT N(14,2)",
+                max_digits=14,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="openitemaudit",
+            name="audit_notes",
             field=models.TextField(blank=True, editable=False),
         ),
         migrations.AlterField(
-            model_name='openitemaudit',
-            name='this_transaction_number',
-            field=models.IntegerField(editable=False, help_text='THISTRAN — N(6) in DBF'),
+            model_name="openitemaudit",
+            name="this_transaction_number",
+            field=models.IntegerField(
+                editable=False, help_text="THISTRAN — N(6) in DBF"
+            ),
         ),
         migrations.AlterField(
-            model_name='openitemaudit',
-            name='this_transaction_type',
-            field=models.CharField(editable=False, help_text='THISTYPE C(2)', max_length=2),
+            model_name="openitemaudit",
+            name="this_transaction_type",
+            field=models.CharField(
+                editable=False, help_text="THISTYPE C(2)", max_length=2
+            ),
         ),
         migrations.AlterField(
-            model_name='openitemaudit',
-            name='transaction_date',
-            field=models.DateField(editable=False, help_text='DATE'),
+            model_name="openitemaudit",
+            name="transaction_date",
+            field=models.DateField(editable=False, help_text="DATE"),
         ),
         migrations.AlterField(
-            model_name='openitemaudit',
-            name='transaction_number',
-            field=models.CharField(editable=False, help_text='TRANO C(10)', max_length=10),
+            model_name="openitemaudit",
+            name="transaction_number",
+            field=models.CharField(
+                editable=False, help_text="TRANO C(10)", max_length=10
+            ),
         ),
         migrations.AlterField(
-            model_name='openitemaudit',
-            name='transaction_type',
-            field=models.CharField(editable=False, help_text='TYPE C(2)', max_length=2),
+            model_name="openitemaudit",
+            name="transaction_type",
+            field=models.CharField(editable=False, help_text="TYPE C(2)", max_length=2),
         ),
         migrations.AlterField(
-            model_name='rfc',
-            name='rfc_number',
-            field=models.CharField(help_text='RFCNO — N(6) in DBF', max_length=6, unique=True),
+            model_name="rfc",
+            name="rfc_number",
+            field=models.CharField(
+                help_text="RFCNO — N(6) in DBF", max_length=6, unique=True
+            ),
         ),
         migrations.AlterField(
-            model_name='rfc',
-            name='status',
-            field=models.CharField(choices=[('PE', 'Pending with Supplier'), ('CR', 'Credit Note Received'), ('RE', 'Stock Replaced'), ('CA', 'Cancelled')], default='PE', help_text='STATUS C(2)', max_length=2),
+            model_name="rfc",
+            name="status",
+            field=models.CharField(
+                choices=[
+                    ("PE", "Pending with Supplier"),
+                    ("CR", "Credit Note Received"),
+                    ("RE", "Stock Replaced"),
+                    ("CA", "Cancelled"),
+                ],
+                default="PE",
+                help_text="STATUS C(2)",
+                max_length=2,
+            ),
         ),
         migrations.AlterField(
-            model_name='rfc',
-            name='total_value_exclusive',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Sum of line_value_exclusive across all line items', max_digits=15),
+            model_name="rfc",
+            name="total_value_exclusive",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="Sum of line_value_exclusive across all line items",
+                max_digits=15,
+            ),
         ),
         migrations.AlterField(
-            model_name='rfc',
-            name='total_value_inclusive',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Sum of line_value_inclusive across all line items', max_digits=15),
+            model_name="rfc",
+            name="total_value_inclusive",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="Sum of line_value_inclusive across all line items",
+                max_digits=15,
+            ),
         ),
         migrations.AlterField(
-            model_name='rfclineitem',
-            name='original_transaction_type',
-            field=models.CharField(blank=True, help_text='TYPE C(2)', max_length=2),
+            model_name="rfclineitem",
+            name="original_transaction_type",
+            field=models.CharField(blank=True, help_text="TYPE C(2)", max_length=2),
         ),
         migrations.AlterField(
-            model_name='rfclineitem',
-            name='quantity_credited',
-            field=models.DecimalField(blank=True, decimal_places=2, help_text='QTYCRED N(10,2)', max_digits=10, null=True),
+            model_name="rfclineitem",
+            name="quantity_credited",
+            field=models.DecimalField(
+                blank=True,
+                decimal_places=2,
+                help_text="QTYCRED N(10,2)",
+                max_digits=10,
+                null=True,
+            ),
         ),
         migrations.AlterField(
-            model_name='rfclineitem',
-            name='quantity_returned',
-            field=models.DecimalField(decimal_places=2, help_text='QTYRFC N(10,2)', max_digits=10),
+            model_name="rfclineitem",
+            name="quantity_returned",
+            field=models.DecimalField(
+                decimal_places=2, help_text="QTYRFC N(10,2)", max_digits=10
+            ),
         ),
         migrations.AlterField(
-            model_name='rfclineitem',
-            name='quantity_stock',
-            field=models.DecimalField(decimal_places=2, default=0, help_text='QTY N(10,2) — actual stock movement quantity in supcrtrn', max_digits=10),
+            model_name="rfclineitem",
+            name="quantity_stock",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                help_text="QTY N(10,2) — actual stock movement quantity in supcrtrn",
+                max_digits=10,
+            ),
         ),
         migrations.AlterField(
-            model_name='rfclineitem',
-            name='reason',
-            field=models.TextField(blank=True, help_text='COMMENT C(30) — stored as text for flexibility'),
+            model_name="rfclineitem",
+            name="reason",
+            field=models.TextField(
+                blank=True, help_text="COMMENT C(30) — stored as text for flexibility"
+            ),
         ),
         migrations.AlterField(
-            model_name='rfclineitem',
-            name='stock_item',
-            field=models.ForeignKey(help_text='CODE C(13)', on_delete=django.db.models.deletion.PROTECT, related_name='rfc_lines', to='stock_control.stockitem'),
+            model_name="rfclineitem",
+            name="stock_item",
+            field=models.ForeignKey(
+                help_text="CODE C(13)",
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="rfc_lines",
+                to="stock_control.stockitem",
+            ),
         ),
         migrations.AlterField(
-            model_name='rfclineitem',
-            name='supplier_reference_number',
-            field=models.CharField(blank=True, help_text='SUPREFNO C(10)', max_length=10),
+            model_name="rfclineitem",
+            name="supplier_reference_number",
+            field=models.CharField(
+                blank=True, help_text="SUPREFNO C(10)", max_length=10
+            ),
         ),
         migrations.AlterField(
-            model_name='rfclineitem',
-            name='unit_cost',
-            field=models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Pulled from stock_item.cost_price on save', max_digits=12),
+            model_name="rfclineitem",
+            name="unit_cost",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                editable=False,
+                help_text="Pulled from stock_item.cost_price on save",
+                max_digits=12,
+            ),
         ),
         migrations.AlterField(
-            model_name='supplierledgerentry',
-            name='creditor',
-            field=models.ForeignKey(help_text='SUPNO N(4)', on_delete=django.db.models.deletion.PROTECT, related_name='ledger_entries', to='creditors.creditor'),
+            model_name="supplierledgerentry",
+            name="creditor",
+            field=models.ForeignKey(
+                help_text="SUPNO N(4)",
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="ledger_entries",
+                to="creditors.creditor",
+            ),
         ),
         migrations.AlterField(
-            model_name='supplierledgerentry',
-            name='transaction_number',
-            field=models.CharField(db_index=True, help_text='STRANO C(10)', max_length=10),
+            model_name="supplierledgerentry",
+            name="transaction_number",
+            field=models.CharField(
+                db_index=True, help_text="STRANO C(10)", max_length=10
+            ),
         ),
         migrations.AlterField(
-            model_name='supplierledgerentry',
-            name='transaction_type',
-            field=models.CharField(choices=[('GR', 'Goods Received'), ('IN', 'Invoice/GRN'), ('CN', 'Credit Note'), ('PY', 'Payment'), ('DJ', 'Debit Journal'), ('CJ', 'Credit Journal')], help_text='STYPE C(2)', max_length=2),
+            model_name="supplierledgerentry",
+            name="transaction_type",
+            field=models.CharField(
+                choices=[
+                    ("GR", "Goods Received"),
+                    ("IN", "Invoice/GRN"),
+                    ("CN", "Credit Note"),
+                    ("PY", "Payment"),
+                    ("DJ", "Debit Journal"),
+                    ("CJ", "Credit Journal"),
+                ],
+                help_text="STYPE C(2)",
+                max_length=2,
+            ),
         ),
         migrations.AlterField(
-            model_name='supplierpaymentorder',
-            name='is_processed',
-            field=models.BooleanField(default=False, editable=False, help_text='Set True by payment run'),
+            model_name="supplierpaymentorder",
+            name="is_processed",
+            field=models.BooleanField(
+                default=False, editable=False, help_text="Set True by payment run"
+            ),
         ),
         migrations.AlterField(
-            model_name='supplierpaymentorder',
-            name='processed_date',
-            field=models.DateField(blank=True, editable=False, help_text='Set by payment run on processing', null=True),
+            model_name="supplierpaymentorder",
+            name="processed_date",
+            field=models.DateField(
+                blank=True,
+                editable=False,
+                help_text="Set by payment run on processing",
+                null=True,
+            ),
         ),
         migrations.CreateModel(
-            name='ExpenseCategoryTransaction',
+            name="ExpenseCategoryTransaction",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('transaction_date', models.DateField(help_text='DATE')),
-                ('transaction_number', models.CharField(db_index=True, help_text='TRANO C(10)', max_length=10)),
-                ('amount_exclusive', models.DecimalField(decimal_places=2, default=0, help_text='VALUE N(10,2) — expense amount excl. VAT', max_digits=10)),
-                ('tax_indicator', models.PositiveSmallIntegerField(default=0, help_text='TAXIND N(1) — 0=no tax, 1=taxable', validators=[django.core.validators.MinValueValidator(0), django.core.validators.MaxValueValidator(9)])),
-                ('source_type', models.CharField(blank=True, help_text='SOURCE C(2) — same codes as suptran STYPE', max_length=2)),
-                ('grn_number', models.PositiveIntegerField(blank=True, help_text='GRNNO N(6)', null=True)),
-                ('input_vat_amount', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='INVAT N(10,2) — calculated from amount_exclusive × tax rate', max_digits=10)),
-                ('amount_inclusive', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='TOTAL N(10,2) — amount_exclusive + input_vat_amount', max_digits=10)),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('creditor', models.ForeignKey(help_text='SUPNO N(4)', on_delete=django.db.models.deletion.PROTECT, related_name='expense_transactions', to='creditors.creditor')),
-                ('expense_category', models.ForeignKey(help_text='EXPCAT N(8)', on_delete=django.db.models.deletion.CASCADE, related_name='expense_transactions', to='settings.expensecategory')),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("transaction_date", models.DateField(help_text="DATE")),
+                (
+                    "transaction_number",
+                    models.CharField(
+                        db_index=True, help_text="TRANO C(10)", max_length=10
+                    ),
+                ),
+                (
+                    "amount_exclusive",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="VALUE N(10,2) — expense amount excl. VAT",
+                        max_digits=10,
+                    ),
+                ),
+                (
+                    "tax_indicator",
+                    models.PositiveSmallIntegerField(
+                        default=0,
+                        help_text="TAXIND N(1) — 0=no tax, 1=taxable",
+                        validators=[
+                            django.core.validators.MinValueValidator(0),
+                            django.core.validators.MaxValueValidator(9),
+                        ],
+                    ),
+                ),
+                (
+                    "source_type",
+                    models.CharField(
+                        blank=True,
+                        help_text="SOURCE C(2) — same codes as suptran STYPE",
+                        max_length=2,
+                    ),
+                ),
+                (
+                    "grn_number",
+                    models.PositiveIntegerField(
+                        blank=True, help_text="GRNNO N(6)", null=True
+                    ),
+                ),
+                (
+                    "input_vat_amount",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="INVAT N(10,2) — calculated from amount_exclusive × tax rate",
+                        max_digits=10,
+                    ),
+                ),
+                (
+                    "amount_inclusive",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="TOTAL N(10,2) — amount_exclusive + input_vat_amount",
+                        max_digits=10,
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "creditor",
+                    models.ForeignKey(
+                        help_text="SUPNO N(4)",
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="expense_transactions",
+                        to="creditors.creditor",
+                    ),
+                ),
+                (
+                    "expense_category",
+                    models.ForeignKey(
+                        help_text="EXPCAT N(8)",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="expense_transactions",
+                        to="settings.expensecategory",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Expense Category Transaction',
-                'verbose_name_plural': 'Expense Category Transactions',
-                'db_table': 'expense_category_transactions',
-                'ordering': ['-transaction_date', 'transaction_number'],
-                'indexes': [models.Index(fields=['expense_category', '-transaction_date'], name='expense_cat_expense_d51eef_idx'), models.Index(fields=['creditor', '-transaction_date'], name='expense_cat_credito_e05f97_idx'), models.Index(fields=['transaction_number'], name='expense_cat_transac_6ac45f_idx'), models.Index(fields=['grn_number'], name='expense_cat_grn_num_c7ea2e_idx')],
+                "verbose_name": "Expense Category Transaction",
+                "verbose_name_plural": "Expense Category Transactions",
+                "db_table": "expense_category_transactions",
+                "ordering": ["-transaction_date", "transaction_number"],
+                "indexes": [
+                    models.Index(
+                        fields=["expense_category", "-transaction_date"],
+                        name="expense_cat_expense_d51eef_idx",
+                    ),
+                    models.Index(
+                        fields=["creditor", "-transaction_date"],
+                        name="expense_cat_credito_e05f97_idx",
+                    ),
+                    models.Index(
+                        fields=["transaction_number"],
+                        name="expense_cat_transac_6ac45f_idx",
+                    ),
+                    models.Index(
+                        fields=["grn_number"], name="expense_cat_grn_num_c7ea2e_idx"
+                    ),
+                ],
             },
         ),
     ]

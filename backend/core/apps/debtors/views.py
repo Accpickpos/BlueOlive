@@ -51,7 +51,10 @@ logger = logging.getLogger(__name__)
 
 
 class DebtorViewSet(
-    ModuleFunctionPermissionMixin, LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
+    ModuleFunctionPermissionMixin,
+    LookupActionMixin,
+    ShopFilterMixin,
+    viewsets.ModelViewSet,
 ):
     """
     ViewSet for managing debtors (customers) - DMAST table.
@@ -621,7 +624,9 @@ class DebtorViewSet(
             )
 
 
-class DebtorTransactionViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class DebtorTransactionViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet
+):
     """
     ViewSet for debtor transactions (DEBTRAN).
     """
@@ -934,7 +939,9 @@ class DebtorTransactionViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, v
             )
 
 
-class DebteopenViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class DebteopenViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for open item transactions (DEBTOPEN).
     """
@@ -1119,7 +1126,9 @@ class DebteopenViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.
             )
 
 
-class DpdcViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class DpdcViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for post-dated cheques (DPDC).
     """
@@ -1233,7 +1242,9 @@ class DpdcViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.Model
             reason = request.data.get("cancellation_reason")
             if cancellation_note or reason:
                 note_line = f"[Cancelled{f' - {reason}' if reason else ''}] {cancellation_note or ''}".strip()
-                pdc.notes = f"{pdc.notes}\n{note_line}".strip() if pdc.notes else note_line
+                pdc.notes = (
+                    f"{pdc.notes}\n{note_line}".strip() if pdc.notes else note_line
+                )
                 update_fields.append("notes")
 
             pdc.save(update_fields=update_fields)
@@ -1245,7 +1256,9 @@ class DpdcViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.Model
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class DebtorAuditViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class DebtorAuditViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet
+):
     """
     ViewSet for debtor audit records (DEBTORAUD).
     """
@@ -1265,7 +1278,9 @@ class DebtorAuditViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewset
         return super().get_queryset().select_related("dno")
 
 
-class DareaViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class DareaViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for sales area/salesman data (DAREA).
     """

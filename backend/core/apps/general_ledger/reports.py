@@ -111,7 +111,15 @@ def trial_balance(request):
         )
 
     if request.query_params.get("format") == "csv":
-        rows.append({"accno": "", "name": "TOTAL", "drorcr": "", "debit": float(total_debit), "credit": float(total_credit)})
+        rows.append(
+            {
+                "accno": "",
+                "name": "TOTAL",
+                "drorcr": "",
+                "debit": float(total_debit),
+                "credit": float(total_credit),
+            }
+        )
         return _rows_to_csv(
             f"trial-balance-period{curperiod}.csv",
             ["accno", "name", "drorcr", "debit", "credit"],
@@ -255,7 +263,10 @@ def _build_balance_sheet(curperiod: int):
             )
         elif rep_row.fieldtype in ("H", "T", "S"):
             amount = sum(
-                (computed.get(line, Decimal("0.00")) for line in range(rep_row.start, rep_row.endcalc + 1)),
+                (
+                    computed.get(line, Decimal("0.00"))
+                    for line in range(rep_row.start, rep_row.endcalc + 1)
+                ),
                 Decimal("0.00"),
             )
         else:
@@ -302,7 +313,14 @@ def income_statement(request):
         net_result = total_rows[-1]["amount"]
 
     if request.query_params.get("format") == "csv":
-        columns = sorted({k for r in output for k in r if k not in ("line", "fieldtype", "name", "printdet")})
+        columns = sorted(
+            {
+                k
+                for r in output
+                for k in r
+                if k not in ("line", "fieldtype", "name", "printdet")
+            }
+        )
         return _rows_to_csv(
             f"income-statement-{mode}-period{curperiod}.csv",
             ["line", "fieldtype", "name", *columns],
@@ -404,21 +422,29 @@ def integration_transfer(request):
                 date_from=date_from, date_to=date_to
             )
         elif source == "debtors":
-            result = {"debtors": IntegrationTransferService.transfer_debtors(
-                date_from=date_from, date_to=date_to
-            )}
+            result = {
+                "debtors": IntegrationTransferService.transfer_debtors(
+                    date_from=date_from, date_to=date_to
+                )
+            }
         elif source == "creditors":
-            result = {"creditors": IntegrationTransferService.transfer_creditors(
-                date_from=date_from, date_to=date_to
-            )}
+            result = {
+                "creditors": IntegrationTransferService.transfer_creditors(
+                    date_from=date_from, date_to=date_to
+                )
+            }
         elif source == "stock_control":
-            result = {"stock_control": IntegrationTransferService.transfer_stock_control(
-                date_from=date_from, date_to=date_to
-            )}
+            result = {
+                "stock_control": IntegrationTransferService.transfer_stock_control(
+                    date_from=date_from, date_to=date_to
+                )
+            }
         elif source == "cash_book":
-            result = {"cash_book": IntegrationTransferService.transfer_cash_book(
-                date_from=date_from, date_to=date_to
-            )}
+            result = {
+                "cash_book": IntegrationTransferService.transfer_cash_book(
+                    date_from=date_from, date_to=date_to
+                )
+            }
         else:
             return Response(
                 {

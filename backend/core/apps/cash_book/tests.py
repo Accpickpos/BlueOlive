@@ -13,8 +13,6 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
-User = get_user_model()
-
 from .models import (
     BankDeposit,
     BankReconciliation,
@@ -31,6 +29,8 @@ from .services import (
     TransactionService,
     VATService,
 )
+
+User = get_user_model()
 
 
 class VATServiceTest(TestCase):

@@ -6,10 +6,9 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tenancy', '0004_ignore_auditlog'),
-        ('tenancy', '0005_create_auditlog_table'),
-        ('tenancy', '0006_auditlog'),
+        ("tenancy", "0004_ignore_auditlog"),
+        ("tenancy", "0005_create_auditlog_table"),
+        ("tenancy", "0006_auditlog"),
     ]
 
-    operations = [
-    ]
+    operations = []

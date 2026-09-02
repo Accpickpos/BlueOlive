@@ -12,6 +12,7 @@ Usage:
     python manage.py rerun_shop_migrations --tenant-slug=acme --shop-code=MS001
     python manage.py rerun_shop_migrations --dry-run
 """
+
 import logging
 
 from django.conf import settings
@@ -23,47 +24,49 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = 'Re-run shop app migrations for all shops in all tenants'
+    help = "Re-run shop app migrations for all shops in all tenants"
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--tenant-slug',
+            "--tenant-slug",
             type=str,
-            help='Specific tenant slug to process (default: all tenants)',
+            help="Specific tenant slug to process (default: all tenants)",
         )
         parser.add_argument(
-            '--shop-code',
+            "--shop-code",
             type=str,
-            help='Specific shop code to process (requires --tenant-slug)',
+            help="Specific shop code to process (requires --tenant-slug)",
         )
         parser.add_argument(
-            '--dry-run',
-            action='store_true',
-            help='Show what would be migrated without actually migrating',
+            "--dry-run",
+            action="store_true",
+            help="Show what would be migrated without actually migrating",
         )
         parser.add_argument(
-            '--apps',
+            "--apps",
             type=str,
-            help='Comma-separated list of apps to migrate (default: all shop apps)',
+            help="Comma-separated list of apps to migrate (default: all shop apps)",
         )
 
     def handle(self, *args, **options):
-        tenant_slug = options.get('tenant_slug')
-        shop_code = options.get('shop_code')
-        dry_run = options.get('dry_run')
-        apps_arg = options.get('apps')
+        tenant_slug = options.get("tenant_slug")
+        shop_code = options.get("shop_code")
+        dry_run = options.get("dry_run")
+        apps_arg = options.get("apps")
 
         # Get shop apps to migrate
-        shop_app_labels = getattr(settings, 'SHOP_APP_LABELS', [])
+        shop_app_labels = getattr(settings, "SHOP_APP_LABELS", [])
 
         if apps_arg:
             # Filter to only specified apps
-            requested_apps = [app.strip() for app in apps_arg.split(',')]
+            requested_apps = [app.strip() for app in apps_arg.split(",")]
             shop_app_labels = [app for app in shop_app_labels if app in requested_apps]
             if not shop_app_labels:
-                self.stderr.write(self.style.ERROR(
-                    f"None of the specified apps {requested_apps} are in SHOP_APP_LABELS"
-                ))
+                self.stderr.write(
+                    self.style.ERROR(
+                        f"None of the specified apps {requested_apps} are in SHOP_APP_LABELS"
+                    )
+                )
                 return
 
         # Get tenants to process
@@ -83,16 +86,22 @@ class Command(BaseCommand):
         # Count total shops first
         for tenant in tenants:
             if shop_code:
-                total_shops += tenant.shops.filter(code=shop_code, is_active=True).count()
+                total_shops += tenant.shops.filter(
+                    code=shop_code, is_active=True
+                ).count()
             else:
                 total_shops += tenant.shops.filter(is_active=True).count()
 
-        self.stdout.write(self.style.NOTICE(
-            f"Found {total_shops} shop(s) to process across {tenants.count()} tenant(s)"
-        ))
+        self.stdout.write(
+            self.style.NOTICE(
+                f"Found {total_shops} shop(s) to process across {tenants.count()} tenant(s)"
+            )
+        )
 
         if dry_run:
-            self.stdout.write(self.style.WARNING("⚠️  DRY RUN - No migrations will be applied"))
+            self.stdout.write(
+                self.style.WARNING("⚠️  DRY RUN - No migrations will be applied")
+            )
 
         self.stdout.write(f"Apps to migrate: {', '.join(shop_app_labels)}")
 
@@ -115,7 +124,9 @@ class Command(BaseCommand):
 
             for shop in shops:
                 processed_shops += 1
-                self.stdout.write(f"\n  Shop: {shop.name} (code: {shop.code}, schema: {shop.schema_name})")
+                self.stdout.write(
+                    f"\n  Shop: {shop.name} (code: {shop.code}, schema: {shop.schema_name})"
+                )
 
                 if dry_run:
                     self.stdout.write(self.style.WARNING("    → Would run migrations"))
@@ -123,12 +134,20 @@ class Command(BaseCommand):
 
                 try:
                     # Run migrations for this shop
-                    logger.info(f"Running migrations for shop {shop.schema_name} in tenant {tenant.slug}")
+                    logger.info(
+                        f"Running migrations for shop {shop.schema_name} in tenant {tenant.slug}"
+                    )
 
                     # The migrate_shop_apps function will apply any pending migrations
-                    migrate_shop_apps(tenant, shop.schema_name, app_labels=shop_app_labels)
+                    migrate_shop_apps(
+                        tenant, shop.schema_name, app_labels=shop_app_labels
+                    )
 
-                    self.stdout.write(self.style.SUCCESS(f"    ✓ Migrations completed for {shop.name}"))
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            f"    ✓ Migrations completed for {shop.name}"
+                        )
+                    )
 
                 except Exception as e:
                     failed_shops += 1
@@ -144,7 +163,11 @@ class Command(BaseCommand):
         if failed_shops > 0:
             self.stdout.write(self.style.ERROR(f"Failed: {failed_shops}"))
         else:
-            self.stdout.write(self.style.SUCCESS("All migrations completed successfully!"))
+            self.stdout.write(
+                self.style.SUCCESS("All migrations completed successfully!")
+            )
 
         if dry_run:
-            self.stdout.write(self.style.WARNING("\n⚠️  This was a dry run - no changes were made"))
+            self.stdout.write(
+                self.style.WARNING("\n⚠️  This was a dry run - no changes were made")
+            )

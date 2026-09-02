@@ -18,487 +18,1707 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='CreditorCreditNote',
+            name="CreditorCreditNote",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_posted', models.BooleanField(default=False, help_text='Whether this transaction has been posted to GL')),
-                ('posted_at', models.DateTimeField(blank=True, editable=False, help_text='Timestamp when posted to GL', null=True)),
-                ('transaction_type', models.CharField(choices=[('GRN', 'Goods Received Note'), ('INV', 'Expense Invoice'), ('CN', 'Credit Note'), ('PAY', 'Payment'), ('DJ', 'Debit Journal'), ('CJ', 'Credit Journal')], max_length=10)),
-                ('transaction_number', models.CharField(max_length=20, unique=True)),
-                ('transaction_date', models.DateField()),
-                ('due_date', models.DateField(blank=True, help_text='SDUEDATE', null=True)),
-                ('transaction_reference', models.CharField(blank=True, help_text='STREF', max_length=50)),
-                ('additional_reference', models.CharField(blank=True, max_length=200)),
-                ('grn_number', models.PositiveIntegerField(blank=True, help_text='GRNNO from suptran', null=True)),
-                ('station', models.CharField(blank=True, help_text='STATION', max_length=2)),
-                ('created_by_user', models.CharField(blank=True, help_text='USER', max_length=50)),
-                ('total_amount', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_current', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_30', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_60', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_90', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_120', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_150', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_180', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('supplier_credit_note_number', models.CharField(max_length=50)),
-                ('inclusive_exclusive', models.CharField(choices=[('INC', 'Inclusive of VAT'), ('EXC', 'Exclusive of VAT')], default='EXC', max_length=3)),
-                ('subtotal', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
-                ('total_vat', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "is_posted",
+                    models.BooleanField(
+                        default=False,
+                        help_text="Whether this transaction has been posted to GL",
+                    ),
+                ),
+                (
+                    "posted_at",
+                    models.DateTimeField(
+                        blank=True,
+                        editable=False,
+                        help_text="Timestamp when posted to GL",
+                        null=True,
+                    ),
+                ),
+                (
+                    "transaction_type",
+                    models.CharField(
+                        choices=[
+                            ("GRN", "Goods Received Note"),
+                            ("INV", "Expense Invoice"),
+                            ("CN", "Credit Note"),
+                            ("PAY", "Payment"),
+                            ("DJ", "Debit Journal"),
+                            ("CJ", "Credit Journal"),
+                        ],
+                        max_length=10,
+                    ),
+                ),
+                ("transaction_number", models.CharField(max_length=20, unique=True)),
+                ("transaction_date", models.DateField()),
+                (
+                    "due_date",
+                    models.DateField(blank=True, help_text="SDUEDATE", null=True),
+                ),
+                (
+                    "transaction_reference",
+                    models.CharField(blank=True, help_text="STREF", max_length=50),
+                ),
+                ("additional_reference", models.CharField(blank=True, max_length=200)),
+                (
+                    "grn_number",
+                    models.PositiveIntegerField(
+                        blank=True, help_text="GRNNO from suptran", null=True
+                    ),
+                ),
+                (
+                    "station",
+                    models.CharField(blank=True, help_text="STATION", max_length=2),
+                ),
+                (
+                    "created_by_user",
+                    models.CharField(blank=True, help_text="USER", max_length=50),
+                ),
+                (
+                    "total_amount",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_current",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_30",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_60",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_90",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_120",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_150",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_180",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                ("supplier_credit_note_number", models.CharField(max_length=50)),
+                (
+                    "inclusive_exclusive",
+                    models.CharField(
+                        choices=[
+                            ("INC", "Inclusive of VAT"),
+                            ("EXC", "Exclusive of VAT"),
+                        ],
+                        default="EXC",
+                        max_length=3,
+                    ),
+                ),
+                (
+                    "subtotal",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
+                (
+                    "total_vat",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Creditor Credit Note',
-                'verbose_name_plural': 'Creditor Credit Notes',
-                'db_table': 'creditor_credit_notes',
+                "verbose_name": "Creditor Credit Note",
+                "verbose_name_plural": "Creditor Credit Notes",
+                "db_table": "creditor_credit_notes",
             },
         ),
         migrations.CreateModel(
-            name='CreditorCreditNoteLineItem',
+            name="CreditorCreditNoteLineItem",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('line_number', models.PositiveSmallIntegerField(default=1)),
-                ('quantity_returned', models.DecimalField(decimal_places=2, max_digits=15, validators=[django.core.validators.MinValueValidator(Decimal('0.01'))])),
-                ('unit_cost', models.DecimalField(decimal_places=2, max_digits=15)),
-                ('line_subtotal', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
-                ('tax_amount', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
-                ('line_total', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("line_number", models.PositiveSmallIntegerField(default=1)),
+                (
+                    "quantity_returned",
+                    models.DecimalField(
+                        decimal_places=2,
+                        max_digits=15,
+                        validators=[
+                            django.core.validators.MinValueValidator(Decimal("0.01"))
+                        ],
+                    ),
+                ),
+                ("unit_cost", models.DecimalField(decimal_places=2, max_digits=15)),
+                (
+                    "line_subtotal",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
+                (
+                    "tax_amount",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
+                (
+                    "line_total",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
             ],
             options={
-                'db_table': 'creditor_credit_note_line_items',
-                'ordering': ['line_number'],
+                "db_table": "creditor_credit_note_line_items",
+                "ordering": ["line_number"],
             },
         ),
         migrations.CreateModel(
-            name='CreditorInvoice',
+            name="CreditorInvoice",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_posted', models.BooleanField(default=False, help_text='Whether this transaction has been posted to GL')),
-                ('posted_at', models.DateTimeField(blank=True, editable=False, help_text='Timestamp when posted to GL', null=True)),
-                ('transaction_type', models.CharField(choices=[('GRN', 'Goods Received Note'), ('INV', 'Expense Invoice'), ('CN', 'Credit Note'), ('PAY', 'Payment'), ('DJ', 'Debit Journal'), ('CJ', 'Credit Journal')], max_length=10)),
-                ('transaction_number', models.CharField(max_length=20, unique=True)),
-                ('transaction_date', models.DateField()),
-                ('due_date', models.DateField(blank=True, help_text='SDUEDATE', null=True)),
-                ('transaction_reference', models.CharField(blank=True, help_text='STREF', max_length=50)),
-                ('additional_reference', models.CharField(blank=True, max_length=200)),
-                ('grn_number', models.PositiveIntegerField(blank=True, help_text='GRNNO from suptran', null=True)),
-                ('station', models.CharField(blank=True, help_text='STATION', max_length=2)),
-                ('created_by_user', models.CharField(blank=True, help_text='USER', max_length=50)),
-                ('total_amount', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_current', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_30', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_60', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_90', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_120', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_150', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_180', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('supplier_invoice_number', models.CharField(help_text='TRANO in supexpt', max_length=50)),
-                ('inclusive_exclusive', models.CharField(choices=[('INC', 'Inclusive of VAT'), ('EXC', 'Exclusive of VAT')], default='INC', max_length=3)),
-                ('station_no_area', models.CharField(blank=True, help_text='SOURCE in supexpt', max_length=2)),
-                ('tax_indicator', models.PositiveSmallIntegerField(default=1, help_text='TAXIND in supexpt. 1=standard VAT, 0=exempt/zero-rated.')),
-                ('subtotal', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='VALUE/STSUB', max_digits=15)),
-                ('total_vat', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='INVAT/STGST', max_digits=15)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "is_posted",
+                    models.BooleanField(
+                        default=False,
+                        help_text="Whether this transaction has been posted to GL",
+                    ),
+                ),
+                (
+                    "posted_at",
+                    models.DateTimeField(
+                        blank=True,
+                        editable=False,
+                        help_text="Timestamp when posted to GL",
+                        null=True,
+                    ),
+                ),
+                (
+                    "transaction_type",
+                    models.CharField(
+                        choices=[
+                            ("GRN", "Goods Received Note"),
+                            ("INV", "Expense Invoice"),
+                            ("CN", "Credit Note"),
+                            ("PAY", "Payment"),
+                            ("DJ", "Debit Journal"),
+                            ("CJ", "Credit Journal"),
+                        ],
+                        max_length=10,
+                    ),
+                ),
+                ("transaction_number", models.CharField(max_length=20, unique=True)),
+                ("transaction_date", models.DateField()),
+                (
+                    "due_date",
+                    models.DateField(blank=True, help_text="SDUEDATE", null=True),
+                ),
+                (
+                    "transaction_reference",
+                    models.CharField(blank=True, help_text="STREF", max_length=50),
+                ),
+                ("additional_reference", models.CharField(blank=True, max_length=200)),
+                (
+                    "grn_number",
+                    models.PositiveIntegerField(
+                        blank=True, help_text="GRNNO from suptran", null=True
+                    ),
+                ),
+                (
+                    "station",
+                    models.CharField(blank=True, help_text="STATION", max_length=2),
+                ),
+                (
+                    "created_by_user",
+                    models.CharField(blank=True, help_text="USER", max_length=50),
+                ),
+                (
+                    "total_amount",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_current",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_30",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_60",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_90",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_120",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_150",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_180",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "supplier_invoice_number",
+                    models.CharField(help_text="TRANO in supexpt", max_length=50),
+                ),
+                (
+                    "inclusive_exclusive",
+                    models.CharField(
+                        choices=[
+                            ("INC", "Inclusive of VAT"),
+                            ("EXC", "Exclusive of VAT"),
+                        ],
+                        default="INC",
+                        max_length=3,
+                    ),
+                ),
+                (
+                    "station_no_area",
+                    models.CharField(
+                        blank=True, help_text="SOURCE in supexpt", max_length=2
+                    ),
+                ),
+                (
+                    "tax_indicator",
+                    models.PositiveSmallIntegerField(
+                        default=1,
+                        help_text="TAXIND in supexpt. 1=standard VAT, 0=exempt/zero-rated.",
+                    ),
+                ),
+                (
+                    "subtotal",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="VALUE/STSUB",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "total_vat",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="INVAT/STGST",
+                        max_digits=15,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Creditor Invoice',
-                'verbose_name_plural': 'Creditor Invoices',
-                'db_table': 'creditor_invoices',
+                "verbose_name": "Creditor Invoice",
+                "verbose_name_plural": "Creditor Invoices",
+                "db_table": "creditor_invoices",
             },
         ),
         migrations.CreateModel(
-            name='CreditorInvoiceLineItem',
+            name="CreditorInvoiceLineItem",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('line_number', models.PositiveSmallIntegerField(default=1)),
-                ('amount', models.DecimalField(decimal_places=2, max_digits=15)),
-                ('tax_amount', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
-                ('line_total', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("line_number", models.PositiveSmallIntegerField(default=1)),
+                ("amount", models.DecimalField(decimal_places=2, max_digits=15)),
+                (
+                    "tax_amount",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
+                (
+                    "line_total",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
             ],
             options={
-                'db_table': 'creditor_invoice_line_items',
-                'ordering': ['line_number'],
+                "db_table": "creditor_invoice_line_items",
+                "ordering": ["line_number"],
             },
         ),
         migrations.CreateModel(
-            name='CreditorJournal',
+            name="CreditorJournal",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_posted', models.BooleanField(default=False, help_text='Whether this transaction has been posted to GL')),
-                ('posted_at', models.DateTimeField(blank=True, editable=False, help_text='Timestamp when posted to GL', null=True)),
-                ('transaction_type', models.CharField(choices=[('GRN', 'Goods Received Note'), ('INV', 'Expense Invoice'), ('CN', 'Credit Note'), ('PAY', 'Payment'), ('DJ', 'Debit Journal'), ('CJ', 'Credit Journal')], max_length=10)),
-                ('transaction_number', models.CharField(max_length=20, unique=True)),
-                ('transaction_date', models.DateField()),
-                ('due_date', models.DateField(blank=True, help_text='SDUEDATE', null=True)),
-                ('transaction_reference', models.CharField(blank=True, help_text='STREF', max_length=50)),
-                ('additional_reference', models.CharField(blank=True, max_length=200)),
-                ('grn_number', models.PositiveIntegerField(blank=True, help_text='GRNNO from suptran', null=True)),
-                ('station', models.CharField(blank=True, help_text='STATION', max_length=2)),
-                ('created_by_user', models.CharField(blank=True, help_text='USER', max_length=50)),
-                ('total_amount', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_current', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_30', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_60', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_90', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_120', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_150', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_180', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('journal_type', models.CharField(choices=[('DEBIT', 'Debit Journal'), ('CREDIT', 'Credit Journal')], max_length=10)),
-                ('journal_amount', models.DecimalField(decimal_places=2, max_digits=15)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "is_posted",
+                    models.BooleanField(
+                        default=False,
+                        help_text="Whether this transaction has been posted to GL",
+                    ),
+                ),
+                (
+                    "posted_at",
+                    models.DateTimeField(
+                        blank=True,
+                        editable=False,
+                        help_text="Timestamp when posted to GL",
+                        null=True,
+                    ),
+                ),
+                (
+                    "transaction_type",
+                    models.CharField(
+                        choices=[
+                            ("GRN", "Goods Received Note"),
+                            ("INV", "Expense Invoice"),
+                            ("CN", "Credit Note"),
+                            ("PAY", "Payment"),
+                            ("DJ", "Debit Journal"),
+                            ("CJ", "Credit Journal"),
+                        ],
+                        max_length=10,
+                    ),
+                ),
+                ("transaction_number", models.CharField(max_length=20, unique=True)),
+                ("transaction_date", models.DateField()),
+                (
+                    "due_date",
+                    models.DateField(blank=True, help_text="SDUEDATE", null=True),
+                ),
+                (
+                    "transaction_reference",
+                    models.CharField(blank=True, help_text="STREF", max_length=50),
+                ),
+                ("additional_reference", models.CharField(blank=True, max_length=200)),
+                (
+                    "grn_number",
+                    models.PositiveIntegerField(
+                        blank=True, help_text="GRNNO from suptran", null=True
+                    ),
+                ),
+                (
+                    "station",
+                    models.CharField(blank=True, help_text="STATION", max_length=2),
+                ),
+                (
+                    "created_by_user",
+                    models.CharField(blank=True, help_text="USER", max_length=50),
+                ),
+                (
+                    "total_amount",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_current",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_30",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_60",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_90",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_120",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_150",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_180",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "journal_type",
+                    models.CharField(
+                        choices=[
+                            ("DEBIT", "Debit Journal"),
+                            ("CREDIT", "Credit Journal"),
+                        ],
+                        max_length=10,
+                    ),
+                ),
+                (
+                    "journal_amount",
+                    models.DecimalField(decimal_places=2, max_digits=15),
+                ),
             ],
             options={
-                'verbose_name': 'Creditor Journal',
-                'verbose_name_plural': 'Creditor Journals',
-                'db_table': 'creditor_journals',
+                "verbose_name": "Creditor Journal",
+                "verbose_name_plural": "Creditor Journals",
+                "db_table": "creditor_journals",
             },
         ),
         migrations.CreateModel(
-            name='CreditorOpenItem',
+            name="CreditorOpenItem",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('transaction_date', models.DateField(help_text='DATE')),
-                ('due_date', models.DateField(blank=True, null=True)),
-                ('transaction_type', models.CharField(help_text='TYPE', max_length=10)),
-                ('transaction_number', models.CharField(help_text='TRANO', max_length=20)),
-                ('original_amount', models.DecimalField(decimal_places=2, help_text='TOTAL', max_digits=15)),
-                ('balance_due', models.DecimalField(decimal_places=2, help_text='BALANCEDUE', max_digits=15)),
-                ('age_period', models.PositiveSmallIntegerField(default=0)),
-                ('ageing_flag', models.CharField(blank=True, help_text='AGEFLAG', max_length=1)),
-                ('is_fully_allocated', models.BooleanField(default=False)),
-                ('is_legacy', models.BooleanField(default=False, help_text='True for records imported from supopen.dbf. Skips FK link validation.')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("transaction_date", models.DateField(help_text="DATE")),
+                ("due_date", models.DateField(blank=True, null=True)),
+                ("transaction_type", models.CharField(help_text="TYPE", max_length=10)),
+                (
+                    "transaction_number",
+                    models.CharField(help_text="TRANO", max_length=20),
+                ),
+                (
+                    "original_amount",
+                    models.DecimalField(
+                        decimal_places=2, help_text="TOTAL", max_digits=15
+                    ),
+                ),
+                (
+                    "balance_due",
+                    models.DecimalField(
+                        decimal_places=2, help_text="BALANCEDUE", max_digits=15
+                    ),
+                ),
+                ("age_period", models.PositiveSmallIntegerField(default=0)),
+                (
+                    "ageing_flag",
+                    models.CharField(blank=True, help_text="AGEFLAG", max_length=1),
+                ),
+                ("is_fully_allocated", models.BooleanField(default=False)),
+                (
+                    "is_legacy",
+                    models.BooleanField(
+                        default=False,
+                        help_text="True for records imported from supopen.dbf. Skips FK link validation.",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
             ],
             options={
-                'verbose_name': 'Creditor Open Item',
-                'verbose_name_plural': 'Creditor Open Items',
-                'db_table': 'creditor_open_items',
-                'ordering': ['transaction_date'],
+                "verbose_name": "Creditor Open Item",
+                "verbose_name_plural": "Creditor Open Items",
+                "db_table": "creditor_open_items",
+                "ordering": ["transaction_date"],
             },
         ),
         migrations.CreateModel(
-            name='CreditorPayment',
+            name="CreditorPayment",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_posted', models.BooleanField(default=False, help_text='Whether this transaction has been posted to GL')),
-                ('posted_at', models.DateTimeField(blank=True, editable=False, help_text='Timestamp when posted to GL', null=True)),
-                ('transaction_type', models.CharField(choices=[('GRN', 'Goods Received Note'), ('INV', 'Expense Invoice'), ('CN', 'Credit Note'), ('PAY', 'Payment'), ('DJ', 'Debit Journal'), ('CJ', 'Credit Journal')], max_length=10)),
-                ('transaction_number', models.CharField(max_length=20, unique=True)),
-                ('transaction_date', models.DateField()),
-                ('due_date', models.DateField(blank=True, help_text='SDUEDATE', null=True)),
-                ('transaction_reference', models.CharField(blank=True, help_text='STREF', max_length=50)),
-                ('additional_reference', models.CharField(blank=True, max_length=200)),
-                ('grn_number', models.PositiveIntegerField(blank=True, help_text='GRNNO from suptran', null=True)),
-                ('station', models.CharField(blank=True, help_text='STATION', max_length=2)),
-                ('created_by_user', models.CharField(blank=True, help_text='USER', max_length=50)),
-                ('total_amount', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_current', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_30', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_60', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_90', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_120', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_150', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_180', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('amount_due', models.DecimalField(decimal_places=2, max_digits=15)),
-                ('amount_paid', models.DecimalField(decimal_places=2, max_digits=15)),
-                ('settlement_discount_amount', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
-                ('settlement_discount_percent', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=5)),
-                ('is_unallocated', models.BooleanField(default=False)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "is_posted",
+                    models.BooleanField(
+                        default=False,
+                        help_text="Whether this transaction has been posted to GL",
+                    ),
+                ),
+                (
+                    "posted_at",
+                    models.DateTimeField(
+                        blank=True,
+                        editable=False,
+                        help_text="Timestamp when posted to GL",
+                        null=True,
+                    ),
+                ),
+                (
+                    "transaction_type",
+                    models.CharField(
+                        choices=[
+                            ("GRN", "Goods Received Note"),
+                            ("INV", "Expense Invoice"),
+                            ("CN", "Credit Note"),
+                            ("PAY", "Payment"),
+                            ("DJ", "Debit Journal"),
+                            ("CJ", "Credit Journal"),
+                        ],
+                        max_length=10,
+                    ),
+                ),
+                ("transaction_number", models.CharField(max_length=20, unique=True)),
+                ("transaction_date", models.DateField()),
+                (
+                    "due_date",
+                    models.DateField(blank=True, help_text="SDUEDATE", null=True),
+                ),
+                (
+                    "transaction_reference",
+                    models.CharField(blank=True, help_text="STREF", max_length=50),
+                ),
+                ("additional_reference", models.CharField(blank=True, max_length=200)),
+                (
+                    "grn_number",
+                    models.PositiveIntegerField(
+                        blank=True, help_text="GRNNO from suptran", null=True
+                    ),
+                ),
+                (
+                    "station",
+                    models.CharField(blank=True, help_text="STATION", max_length=2),
+                ),
+                (
+                    "created_by_user",
+                    models.CharField(blank=True, help_text="USER", max_length=50),
+                ),
+                (
+                    "total_amount",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_current",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_30",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_60",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_90",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_120",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_150",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_180",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                ("amount_due", models.DecimalField(decimal_places=2, max_digits=15)),
+                ("amount_paid", models.DecimalField(decimal_places=2, max_digits=15)),
+                (
+                    "settlement_discount_amount",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
+                (
+                    "settlement_discount_percent",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=5
+                    ),
+                ),
+                ("is_unallocated", models.BooleanField(default=False)),
             ],
             options={
-                'verbose_name': 'Creditor Payment',
-                'verbose_name_plural': 'Creditor Payments',
-                'db_table': 'creditor_payments',
+                "verbose_name": "Creditor Payment",
+                "verbose_name_plural": "Creditor Payments",
+                "db_table": "creditor_payments",
             },
         ),
         migrations.CreateModel(
-            name='CreditorTransactionLine',
+            name="CreditorTransactionLine",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('object_id', models.PositiveIntegerField()),
-                ('line_number', models.PositiveSmallIntegerField(default=1)),
-                ('quantity', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('unit_cost', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('tax_amount', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
-                ('amount_exclusive', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('amount_inclusive', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("object_id", models.PositiveIntegerField()),
+                ("line_number", models.PositiveSmallIntegerField(default=1)),
+                (
+                    "quantity",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "unit_cost",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "tax_amount",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
+                (
+                    "amount_exclusive",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "amount_inclusive",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
             ],
             options={
-                'db_table': 'creditor_transaction_lines',
-                'ordering': ['line_number'],
+                "db_table": "creditor_transaction_lines",
+                "ordering": ["line_number"],
             },
         ),
         migrations.CreateModel(
-            name='ExpenseCategoryMonthlyBalance',
+            name="ExpenseCategoryMonthlyBalance",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('year', models.PositiveIntegerField()),
-                ('expense_mtd', models.DecimalField(decimal_places=2, default=0, help_text='EXPMTD', max_digits=15)),
-                ('input_vat_mtd', models.DecimalField(decimal_places=2, default=0, help_text='EXPINVAT', max_digits=15)),
-                ('exp_month_1', models.DecimalField(decimal_places=2, default=0, help_text='EXP1  Jan', max_digits=15)),
-                ('exp_month_2', models.DecimalField(decimal_places=2, default=0, help_text='EXP2  Feb', max_digits=15)),
-                ('exp_month_3', models.DecimalField(decimal_places=2, default=0, help_text='EXP3  Mar', max_digits=15)),
-                ('exp_month_4', models.DecimalField(decimal_places=2, default=0, help_text='EXP4  Apr', max_digits=15)),
-                ('exp_month_5', models.DecimalField(decimal_places=2, default=0, help_text='EXP5  May', max_digits=15)),
-                ('exp_month_6', models.DecimalField(decimal_places=2, default=0, help_text='EXP6  Jun', max_digits=15)),
-                ('exp_month_7', models.DecimalField(decimal_places=2, default=0, help_text='EXP7  Jul', max_digits=15)),
-                ('exp_month_8', models.DecimalField(decimal_places=2, default=0, help_text='EXP8  Aug', max_digits=15)),
-                ('exp_month_9', models.DecimalField(decimal_places=2, default=0, help_text='EXP9  Sep', max_digits=15)),
-                ('exp_month_10', models.DecimalField(decimal_places=2, default=0, help_text='EXP10 Oct', max_digits=15)),
-                ('exp_month_11', models.DecimalField(decimal_places=2, default=0, help_text='EXP11 Nov', max_digits=15)),
-                ('exp_month_12', models.DecimalField(decimal_places=2, default=0, help_text='EXP12 Dec', max_digits=15)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("year", models.PositiveIntegerField()),
+                (
+                    "expense_mtd",
+                    models.DecimalField(
+                        decimal_places=2, default=0, help_text="EXPMTD", max_digits=15
+                    ),
+                ),
+                (
+                    "input_vat_mtd",
+                    models.DecimalField(
+                        decimal_places=2, default=0, help_text="EXPINVAT", max_digits=15
+                    ),
+                ),
+                (
+                    "exp_month_1",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="EXP1  Jan",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "exp_month_2",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="EXP2  Feb",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "exp_month_3",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="EXP3  Mar",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "exp_month_4",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="EXP4  Apr",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "exp_month_5",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="EXP5  May",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "exp_month_6",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="EXP6  Jun",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "exp_month_7",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="EXP7  Jul",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "exp_month_8",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="EXP8  Aug",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "exp_month_9",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="EXP9  Sep",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "exp_month_10",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="EXP10 Oct",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "exp_month_11",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="EXP11 Nov",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "exp_month_12",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="EXP12 Dec",
+                        max_digits=15,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Expense Category Monthly Balance',
-                'verbose_name_plural': 'Expense Category Monthly Balances',
-                'db_table': 'expense_category_monthly_balances',
-                'ordering': ['-year', 'expense_category'],
+                "verbose_name": "Expense Category Monthly Balance",
+                "verbose_name_plural": "Expense Category Monthly Balances",
+                "db_table": "expense_category_monthly_balances",
+                "ordering": ["-year", "expense_category"],
             },
         ),
         migrations.CreateModel(
-            name='GoodsReceivedNote',
+            name="GoodsReceivedNote",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_posted', models.BooleanField(default=False, help_text='Whether this transaction has been posted to GL')),
-                ('posted_at', models.DateTimeField(blank=True, editable=False, help_text='Timestamp when posted to GL', null=True)),
-                ('transaction_type', models.CharField(choices=[('GRN', 'Goods Received Note'), ('INV', 'Expense Invoice'), ('CN', 'Credit Note'), ('PAY', 'Payment'), ('DJ', 'Debit Journal'), ('CJ', 'Credit Journal')], max_length=10)),
-                ('transaction_number', models.CharField(max_length=20, unique=True)),
-                ('transaction_date', models.DateField()),
-                ('due_date', models.DateField(blank=True, help_text='SDUEDATE', null=True)),
-                ('transaction_reference', models.CharField(blank=True, help_text='STREF', max_length=50)),
-                ('additional_reference', models.CharField(blank=True, max_length=200)),
-                ('grn_number', models.PositiveIntegerField(blank=True, help_text='GRNNO from suptran', null=True)),
-                ('station', models.CharField(blank=True, help_text='STATION', max_length=2)),
-                ('created_by_user', models.CharField(blank=True, help_text='USER', max_length=50)),
-                ('total_amount', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_current', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_30', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_60', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_90', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_120', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_150', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('age_180', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('supplier_invoice_number', models.CharField(max_length=50)),
-                ('inclusive_exclusive', models.CharField(choices=[('INC', 'Inclusive of VAT'), ('EXC', 'Exclusive of VAT')], default='EXC', max_length=3)),
-                ('surcharge_amount', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('subtotal', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='STSUB', max_digits=15)),
-                ('total_vat', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='STGST', max_digits=15)),
-                ('total_quantity', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "is_posted",
+                    models.BooleanField(
+                        default=False,
+                        help_text="Whether this transaction has been posted to GL",
+                    ),
+                ),
+                (
+                    "posted_at",
+                    models.DateTimeField(
+                        blank=True,
+                        editable=False,
+                        help_text="Timestamp when posted to GL",
+                        null=True,
+                    ),
+                ),
+                (
+                    "transaction_type",
+                    models.CharField(
+                        choices=[
+                            ("GRN", "Goods Received Note"),
+                            ("INV", "Expense Invoice"),
+                            ("CN", "Credit Note"),
+                            ("PAY", "Payment"),
+                            ("DJ", "Debit Journal"),
+                            ("CJ", "Credit Journal"),
+                        ],
+                        max_length=10,
+                    ),
+                ),
+                ("transaction_number", models.CharField(max_length=20, unique=True)),
+                ("transaction_date", models.DateField()),
+                (
+                    "due_date",
+                    models.DateField(blank=True, help_text="SDUEDATE", null=True),
+                ),
+                (
+                    "transaction_reference",
+                    models.CharField(blank=True, help_text="STREF", max_length=50),
+                ),
+                ("additional_reference", models.CharField(blank=True, max_length=200)),
+                (
+                    "grn_number",
+                    models.PositiveIntegerField(
+                        blank=True, help_text="GRNNO from suptran", null=True
+                    ),
+                ),
+                (
+                    "station",
+                    models.CharField(blank=True, help_text="STATION", max_length=2),
+                ),
+                (
+                    "created_by_user",
+                    models.CharField(blank=True, help_text="USER", max_length=50),
+                ),
+                (
+                    "total_amount",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_current",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_30",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_60",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_90",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_120",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_150",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "age_180",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                ("supplier_invoice_number", models.CharField(max_length=50)),
+                (
+                    "inclusive_exclusive",
+                    models.CharField(
+                        choices=[
+                            ("INC", "Inclusive of VAT"),
+                            ("EXC", "Exclusive of VAT"),
+                        ],
+                        default="EXC",
+                        max_length=3,
+                    ),
+                ),
+                (
+                    "surcharge_amount",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                (
+                    "subtotal",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="STSUB",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "total_vat",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="STGST",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "total_quantity",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Goods Received Note',
-                'verbose_name_plural': 'Goods Received Notes',
-                'db_table': 'goods_received_notes',
+                "verbose_name": "Goods Received Note",
+                "verbose_name_plural": "Goods Received Notes",
+                "db_table": "goods_received_notes",
             },
         ),
         migrations.CreateModel(
-            name='GRNLineItem',
+            name="GRNLineItem",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('line_number', models.PositiveSmallIntegerField(default=1)),
-                ('quantity_received', models.DecimalField(decimal_places=2, max_digits=15, validators=[django.core.validators.MinValueValidator(Decimal('0.01'))])),
-                ('unit_cost', models.DecimalField(decimal_places=2, max_digits=15)),
-                ('previous_cost', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
-                ('line_subtotal', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
-                ('tax_amount', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
-                ('line_total', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("line_number", models.PositiveSmallIntegerField(default=1)),
+                (
+                    "quantity_received",
+                    models.DecimalField(
+                        decimal_places=2,
+                        max_digits=15,
+                        validators=[
+                            django.core.validators.MinValueValidator(Decimal("0.01"))
+                        ],
+                    ),
+                ),
+                ("unit_cost", models.DecimalField(decimal_places=2, max_digits=15)),
+                (
+                    "previous_cost",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
+                (
+                    "line_subtotal",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
+                (
+                    "tax_amount",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
+                (
+                    "line_total",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
             ],
             options={
-                'db_table': 'grn_line_items',
-                'ordering': ['line_number'],
+                "db_table": "grn_line_items",
+                "ordering": ["line_number"],
             },
         ),
         migrations.CreateModel(
-            name='OpenItemAllocation',
+            name="OpenItemAllocation",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('amount_paid', models.DecimalField(decimal_places=2, max_digits=15)),
-                ('settlement_discount', models.DecimalField(decimal_places=2, default=0, max_digits=15)),
-                ('allocated_at', models.DateTimeField(auto_now_add=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("amount_paid", models.DecimalField(decimal_places=2, max_digits=15)),
+                (
+                    "settlement_discount",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=15),
+                ),
+                ("allocated_at", models.DateTimeField(auto_now_add=True)),
             ],
             options={
-                'db_table': 'creditor_open_item_allocations',
+                "db_table": "creditor_open_item_allocations",
             },
         ),
         migrations.CreateModel(
-            name='OpenItemAudit',
+            name="OpenItemAudit",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('transaction_number', models.CharField(help_text='TRANO', max_length=20)),
-                ('transaction_type', models.CharField(help_text='TYPE', max_length=10)),
-                ('this_transaction_type', models.CharField(help_text='THISTYPE', max_length=10)),
-                ('this_transaction_number', models.IntegerField(help_text='THISTRAN — N(6) in DBF')),
-                ('transaction_date', models.DateField(help_text='DATE')),
-                ('amount', models.DecimalField(decimal_places=2, help_text='AMOUNT', max_digits=15)),
-                ('audit_timestamp', models.DateTimeField(auto_now_add=True)),
-                ('audit_notes', models.TextField(blank=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "transaction_number",
+                    models.CharField(help_text="TRANO", max_length=20),
+                ),
+                ("transaction_type", models.CharField(help_text="TYPE", max_length=10)),
+                (
+                    "this_transaction_type",
+                    models.CharField(help_text="THISTYPE", max_length=10),
+                ),
+                (
+                    "this_transaction_number",
+                    models.IntegerField(help_text="THISTRAN — N(6) in DBF"),
+                ),
+                ("transaction_date", models.DateField(help_text="DATE")),
+                (
+                    "amount",
+                    models.DecimalField(
+                        decimal_places=2, help_text="AMOUNT", max_digits=15
+                    ),
+                ),
+                ("audit_timestamp", models.DateTimeField(auto_now_add=True)),
+                ("audit_notes", models.TextField(blank=True)),
             ],
             options={
-                'verbose_name': 'Open Item Audit',
-                'verbose_name_plural': 'Open Item Audits',
-                'db_table': 'open_item_audits',
-                'ordering': ['-audit_timestamp'],
+                "verbose_name": "Open Item Audit",
+                "verbose_name_plural": "Open Item Audits",
+                "db_table": "open_item_audits",
+                "ordering": ["-audit_timestamp"],
             },
         ),
         migrations.CreateModel(
-            name='RFC',
+            name="RFC",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('rfc_number', models.CharField(help_text='RFCNO', max_length=20, unique=True)),
-                ('return_date', models.DateField(blank=True, help_text='No DBF source — set from DATESENT on import.', null=True)),
-                ('date_sent', models.DateField(blank=True, help_text='DATESENT', null=True)),
-                ('date_returned', models.DateField(blank=True, help_text='DATERETN — date credit note received', null=True)),
-                ('status', models.CharField(choices=[('PENDING', 'Pending with Supplier'), ('CREDITED', 'Credit Note Received'), ('REPLACED', 'Stock Replaced'), ('CANCELLED', 'Cancelled')], default='PENDING', max_length=20)),
-                ('total_value_exclusive', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
-                ('total_value_inclusive', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "rfc_number",
+                    models.CharField(help_text="RFCNO", max_length=20, unique=True),
+                ),
+                (
+                    "return_date",
+                    models.DateField(
+                        blank=True,
+                        help_text="No DBF source — set from DATESENT on import.",
+                        null=True,
+                    ),
+                ),
+                (
+                    "date_sent",
+                    models.DateField(blank=True, help_text="DATESENT", null=True),
+                ),
+                (
+                    "date_returned",
+                    models.DateField(
+                        blank=True,
+                        help_text="DATERETN — date credit note received",
+                        null=True,
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("PENDING", "Pending with Supplier"),
+                            ("CREDITED", "Credit Note Received"),
+                            ("REPLACED", "Stock Replaced"),
+                            ("CANCELLED", "Cancelled"),
+                        ],
+                        default="PENDING",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "total_value_exclusive",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
+                (
+                    "total_value_inclusive",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'RFC (Return For Credit)',
-                'verbose_name_plural': 'RFCs (Returns For Credit)',
-                'db_table': 'rfcs',
+                "verbose_name": "RFC (Return For Credit)",
+                "verbose_name_plural": "RFCs (Returns For Credit)",
+                "db_table": "rfcs",
             },
         ),
         migrations.CreateModel(
-            name='RFCLineItem',
+            name="RFCLineItem",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('line_number', models.PositiveSmallIntegerField(default=1)),
-                ('quantity_returned', models.DecimalField(decimal_places=2, help_text='QTYRFC', max_digits=15)),
-                ('quantity_credited', models.DecimalField(blank=True, decimal_places=2, help_text='QTYCRED', max_digits=15, null=True)),
-                ('quantity_stock', models.DecimalField(decimal_places=2, default=0, help_text='QTY — actual stock movement quantity in supcrtrn', max_digits=15)),
-                ('unit_cost', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
-                ('rfc_line_date', models.DateField(blank=True, help_text='DATE — date this line was processed in supcrtrn', null=True)),
-                ('original_transaction_type', models.CharField(blank=True, help_text='TYPE', max_length=2)),
-                ('original_transaction_date', models.DateField(blank=True, help_text='PURCHDATE', null=True)),
-                ('original_transaction_time', models.TimeField(blank=True, help_text='TIME', null=True)),
-                ('supplier_reference_number', models.CharField(blank=True, help_text='SUPREFNO', max_length=20)),
-                ('reason', models.TextField(blank=True, help_text='COMMENT')),
-                ('line_value_exclusive', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
-                ('tax_amount', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
-                ('line_value_inclusive', models.DecimalField(decimal_places=2, default=0, editable=False, max_digits=15)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("line_number", models.PositiveSmallIntegerField(default=1)),
+                (
+                    "quantity_returned",
+                    models.DecimalField(
+                        decimal_places=2, help_text="QTYRFC", max_digits=15
+                    ),
+                ),
+                (
+                    "quantity_credited",
+                    models.DecimalField(
+                        blank=True,
+                        decimal_places=2,
+                        help_text="QTYCRED",
+                        max_digits=15,
+                        null=True,
+                    ),
+                ),
+                (
+                    "quantity_stock",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="QTY — actual stock movement quantity in supcrtrn",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "unit_cost",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
+                (
+                    "rfc_line_date",
+                    models.DateField(
+                        blank=True,
+                        help_text="DATE — date this line was processed in supcrtrn",
+                        null=True,
+                    ),
+                ),
+                (
+                    "original_transaction_type",
+                    models.CharField(blank=True, help_text="TYPE", max_length=2),
+                ),
+                (
+                    "original_transaction_date",
+                    models.DateField(blank=True, help_text="PURCHDATE", null=True),
+                ),
+                (
+                    "original_transaction_time",
+                    models.TimeField(blank=True, help_text="TIME", null=True),
+                ),
+                (
+                    "supplier_reference_number",
+                    models.CharField(blank=True, help_text="SUPREFNO", max_length=20),
+                ),
+                ("reason", models.TextField(blank=True, help_text="COMMENT")),
+                (
+                    "line_value_exclusive",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
+                (
+                    "tax_amount",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
+                (
+                    "line_value_inclusive",
+                    models.DecimalField(
+                        decimal_places=2, default=0, editable=False, max_digits=15
+                    ),
+                ),
             ],
             options={
-                'db_table': 'rfc_line_items',
-                'ordering': ['line_number'],
+                "db_table": "rfc_line_items",
+                "ordering": ["line_number"],
             },
         ),
         migrations.CreateModel(
-            name='SupplierLedgerEntry',
+            name="SupplierLedgerEntry",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('transaction_number', models.CharField(db_index=True, help_text='STRANO', max_length=20)),
-                ('transaction_date', models.DateField(db_index=True, help_text='STDATE')),
-                ('due_date', models.DateField(blank=True, help_text='SDUEDATE', null=True)),
-                ('transaction_type', models.CharField(choices=[('IN', 'Invoice/GRN'), ('GRN', 'Goods Received Note'), ('CN', 'Credit Note'), ('INV', 'Expense Invoice'), ('PA', 'Payment'), ('PM', 'Payment'), ('DJ', 'Debit Journal'), ('CJ', 'Credit Journal')], help_text='STYPE', max_length=5)),
-                ('subtotal', models.DecimalField(decimal_places=2, default=0, help_text='STSUB', max_digits=15)),
-                ('vat_amount', models.DecimalField(decimal_places=2, default=0, help_text='STGST', max_digits=15)),
-                ('total_amount', models.DecimalField(decimal_places=2, default=0, help_text='STTOT', max_digits=15)),
-                ('reference', models.CharField(blank=True, help_text='STREF', max_length=20)),
-                ('grn_number', models.PositiveIntegerField(blank=True, help_text='GRNNO', null=True)),
-                ('station', models.CharField(blank=True, help_text='STATION', max_length=2)),
-                ('created_by_user', models.CharField(blank=True, help_text='USER', max_length=20)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "transaction_number",
+                    models.CharField(db_index=True, help_text="STRANO", max_length=20),
+                ),
+                (
+                    "transaction_date",
+                    models.DateField(db_index=True, help_text="STDATE"),
+                ),
+                (
+                    "due_date",
+                    models.DateField(blank=True, help_text="SDUEDATE", null=True),
+                ),
+                (
+                    "transaction_type",
+                    models.CharField(
+                        choices=[
+                            ("IN", "Invoice/GRN"),
+                            ("GRN", "Goods Received Note"),
+                            ("CN", "Credit Note"),
+                            ("INV", "Expense Invoice"),
+                            ("PA", "Payment"),
+                            ("PM", "Payment"),
+                            ("DJ", "Debit Journal"),
+                            ("CJ", "Credit Journal"),
+                        ],
+                        help_text="STYPE",
+                        max_length=5,
+                    ),
+                ),
+                (
+                    "subtotal",
+                    models.DecimalField(
+                        decimal_places=2, default=0, help_text="STSUB", max_digits=15
+                    ),
+                ),
+                (
+                    "vat_amount",
+                    models.DecimalField(
+                        decimal_places=2, default=0, help_text="STGST", max_digits=15
+                    ),
+                ),
+                (
+                    "total_amount",
+                    models.DecimalField(
+                        decimal_places=2, default=0, help_text="STTOT", max_digits=15
+                    ),
+                ),
+                (
+                    "reference",
+                    models.CharField(blank=True, help_text="STREF", max_length=20),
+                ),
+                (
+                    "grn_number",
+                    models.PositiveIntegerField(
+                        blank=True, help_text="GRNNO", null=True
+                    ),
+                ),
+                (
+                    "station",
+                    models.CharField(blank=True, help_text="STATION", max_length=2),
+                ),
+                (
+                    "created_by_user",
+                    models.CharField(blank=True, help_text="USER", max_length=20),
+                ),
             ],
             options={
-                'verbose_name': 'Supplier Ledger Entry',
-                'verbose_name_plural': 'Supplier Ledger Entries',
-                'db_table': 'supplier_ledger_entries',
-                'ordering': ['-transaction_date', 'transaction_number'],
+                "verbose_name": "Supplier Ledger Entry",
+                "verbose_name_plural": "Supplier Ledger Entries",
+                "db_table": "supplier_ledger_entries",
+                "ordering": ["-transaction_date", "transaction_number"],
             },
         ),
         migrations.CreateModel(
-            name='SupplierPaymentOrder',
+            name="SupplierPaymentOrder",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('payment_date', models.DateField(help_text='DATE')),
-                ('amount', models.DecimalField(decimal_places=2, help_text='AMOUNT', max_digits=15, validators=[django.core.validators.MinValueValidator(Decimal('0.01'))])),
-                ('detail_line1', models.CharField(blank=True, help_text='DETAIL1', max_length=25)),
-                ('detail_line2', models.CharField(blank=True, help_text='DETAIL2', max_length=25)),
-                ('detail_line3', models.CharField(blank=True, help_text='DETAIL3', max_length=25)),
-                ('is_processed', models.BooleanField(default=False)),
-                ('processed_date', models.DateField(blank=True, null=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("payment_date", models.DateField(help_text="DATE")),
+                (
+                    "amount",
+                    models.DecimalField(
+                        decimal_places=2,
+                        help_text="AMOUNT",
+                        max_digits=15,
+                        validators=[
+                            django.core.validators.MinValueValidator(Decimal("0.01"))
+                        ],
+                    ),
+                ),
+                (
+                    "detail_line1",
+                    models.CharField(blank=True, help_text="DETAIL1", max_length=25),
+                ),
+                (
+                    "detail_line2",
+                    models.CharField(blank=True, help_text="DETAIL2", max_length=25),
+                ),
+                (
+                    "detail_line3",
+                    models.CharField(blank=True, help_text="DETAIL3", max_length=25),
+                ),
+                ("is_processed", models.BooleanField(default=False)),
+                ("processed_date", models.DateField(blank=True, null=True)),
             ],
             options={
-                'verbose_name': 'Supplier Payment Order',
-                'verbose_name_plural': 'Supplier Payment Orders',
-                'db_table': 'supplier_payment_orders',
-                'ordering': ['payment_date'],
+                "verbose_name": "Supplier Payment Order",
+                "verbose_name_plural": "Supplier Payment Orders",
+                "db_table": "supplier_payment_orders",
+                "ordering": ["payment_date"],
             },
         ),
         migrations.CreateModel(
-            name='Creditor',
+            name="Creditor",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_active', models.BooleanField(default=True, help_text='Active records are available for use')),
-                ('deactivated_at', models.DateTimeField(blank=True, editable=False, null=True)),
-                ('supplier_number', models.CharField(help_text='SUPNO', max_length=20, unique=True)),
-                ('name', models.CharField(help_text='SUPNAME', max_length=200)),
-                ('contact_person', models.CharField(blank=True, help_text='SUPCONT', max_length=100)),
-                ('telephone', models.CharField(blank=True, help_text='SUPTEL', max_length=20)),
-                ('fax', models.CharField(blank=True, help_text='SUPFAX', max_length=20)),
-                ('email', models.EmailField(blank=True, help_text='EMAIL', max_length=254)),
-                ('physical_address_line1', models.CharField(blank=True, help_text='SUPADD1', max_length=100)),
-                ('physical_address_line2', models.CharField(blank=True, help_text='SUPADD2', max_length=100)),
-                ('physical_address_line3', models.CharField(blank=True, help_text='SUPADD3', max_length=100)),
-                ('postal_address_line1', models.CharField(blank=True, help_text='SUPPADD1', max_length=100)),
-                ('postal_address_line2', models.CharField(blank=True, help_text='SUPPADD2', max_length=100)),
-                ('postal_address_line3', models.CharField(blank=True, help_text='SUPPADD3', max_length=100)),
-                ('our_account_number', models.CharField(blank=True, help_text='SUPOURACC', max_length=50)),
-                ('payment_terms_days', models.PositiveSmallIntegerField(default=30, help_text='Raw payment terms days (SUPTERMS). Used when credit_terms FK is not set.')),
-                ('account_category', models.CharField(blank=True, choices=[('BBF', 'Balance Brought Forward'), ('OI', 'Open Item'), ('', 'Not Set')], default='BBF', help_text='ACCTYPE. Legacy may be blank — treated as BBF.', max_length=10)),
-                ('update_selling_price_on_receipt', models.BooleanField(default=False, help_text='UPDSTKSP — auto-update selling prices on GRN')),
-                ('prompt_payment_discount_percent', models.DecimalField(decimal_places=2, default=0, help_text='SUPDISC', max_digits=5, validators=[django.core.validators.MinValueValidator(0), django.core.validators.MaxValueValidator(100)])),
-                ('bank_name', models.CharField(blank=True, help_text='BANK', max_length=100)),
-                ('branch_code', models.CharField(blank=True, help_text='BANKCODE', max_length=20)),
-                ('account_number', models.CharField(blank=True, help_text='BANKACC', max_length=50)),
-                ('balance_brought_forward', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='SUPBALBFWD', max_digits=15)),
-                ('total_outstanding_balance', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='Sum of all aging buckets (calculated).', max_digits=15)),
-                ('balance_current', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='SUPCRNT', max_digits=15)),
-                ('balance_30_days', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='SUP30', max_digits=15)),
-                ('balance_60_days', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='SUP60', max_digits=15)),
-                ('balance_90_days', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='SUP90', max_digits=15)),
-                ('balance_120_days', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='SUP120', max_digits=15)),
-                ('balance_150_days', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='SUP150', max_digits=15)),
-                ('balance_180_days', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='180+ days. No legacy DBF source (DBF stops at SUP150). Always 0 on import.', max_digits=15)),
-                ('last_paid_amount', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='SUPPMT', max_digits=15)),
-                ('last_paid_date', models.DateField(blank=True, editable=False, help_text='SUPPMTDATE', null=True)),
-                ('purchases_mtd', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='SUPURCHMTD', max_digits=15)),
-                ('purchases_ytd', models.DecimalField(decimal_places=2, default=0, editable=False, help_text='SUPURCHYTD', max_digits=15)),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "is_active",
+                    models.BooleanField(
+                        default=True, help_text="Active records are available for use"
+                    ),
+                ),
+                (
+                    "deactivated_at",
+                    models.DateTimeField(blank=True, editable=False, null=True),
+                ),
+                (
+                    "supplier_number",
+                    models.CharField(help_text="SUPNO", max_length=20, unique=True),
+                ),
+                ("name", models.CharField(help_text="SUPNAME", max_length=200)),
+                (
+                    "contact_person",
+                    models.CharField(blank=True, help_text="SUPCONT", max_length=100),
+                ),
+                (
+                    "telephone",
+                    models.CharField(blank=True, help_text="SUPTEL", max_length=20),
+                ),
+                (
+                    "fax",
+                    models.CharField(blank=True, help_text="SUPFAX", max_length=20),
+                ),
+                (
+                    "email",
+                    models.EmailField(blank=True, help_text="EMAIL", max_length=254),
+                ),
+                (
+                    "physical_address_line1",
+                    models.CharField(blank=True, help_text="SUPADD1", max_length=100),
+                ),
+                (
+                    "physical_address_line2",
+                    models.CharField(blank=True, help_text="SUPADD2", max_length=100),
+                ),
+                (
+                    "physical_address_line3",
+                    models.CharField(blank=True, help_text="SUPADD3", max_length=100),
+                ),
+                (
+                    "postal_address_line1",
+                    models.CharField(blank=True, help_text="SUPPADD1", max_length=100),
+                ),
+                (
+                    "postal_address_line2",
+                    models.CharField(blank=True, help_text="SUPPADD2", max_length=100),
+                ),
+                (
+                    "postal_address_line3",
+                    models.CharField(blank=True, help_text="SUPPADD3", max_length=100),
+                ),
+                (
+                    "our_account_number",
+                    models.CharField(blank=True, help_text="SUPOURACC", max_length=50),
+                ),
+                (
+                    "payment_terms_days",
+                    models.PositiveSmallIntegerField(
+                        default=30,
+                        help_text="Raw payment terms days (SUPTERMS). Used when credit_terms FK is not set.",
+                    ),
+                ),
+                (
+                    "account_category",
+                    models.CharField(
+                        blank=True,
+                        choices=[
+                            ("BBF", "Balance Brought Forward"),
+                            ("OI", "Open Item"),
+                            ("", "Not Set"),
+                        ],
+                        default="BBF",
+                        help_text="ACCTYPE. Legacy may be blank — treated as BBF.",
+                        max_length=10,
+                    ),
+                ),
+                (
+                    "update_selling_price_on_receipt",
+                    models.BooleanField(
+                        default=False,
+                        help_text="UPDSTKSP — auto-update selling prices on GRN",
+                    ),
+                ),
+                (
+                    "prompt_payment_discount_percent",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="SUPDISC",
+                        max_digits=5,
+                        validators=[
+                            django.core.validators.MinValueValidator(0),
+                            django.core.validators.MaxValueValidator(100),
+                        ],
+                    ),
+                ),
+                (
+                    "bank_name",
+                    models.CharField(blank=True, help_text="BANK", max_length=100),
+                ),
+                (
+                    "branch_code",
+                    models.CharField(blank=True, help_text="BANKCODE", max_length=20),
+                ),
+                (
+                    "account_number",
+                    models.CharField(blank=True, help_text="BANKACC", max_length=50),
+                ),
+                (
+                    "balance_brought_forward",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="SUPBALBFWD",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "total_outstanding_balance",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="Sum of all aging buckets (calculated).",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "balance_current",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="SUPCRNT",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "balance_30_days",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="SUP30",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "balance_60_days",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="SUP60",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "balance_90_days",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="SUP90",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "balance_120_days",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="SUP120",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "balance_150_days",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="SUP150",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "balance_180_days",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="180+ days. No legacy DBF source (DBF stops at SUP150). Always 0 on import.",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "last_paid_amount",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="SUPPMT",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "last_paid_date",
+                    models.DateField(
+                        blank=True, editable=False, help_text="SUPPMTDATE", null=True
+                    ),
+                ),
+                (
+                    "purchases_mtd",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="SUPURCHMTD",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "purchases_ytd",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        editable=False,
+                        help_text="SUPURCHYTD",
+                        max_digits=15,
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Creditor',
-                'verbose_name_plural': 'Creditors',
-                'db_table': 'creditors',
-                'ordering': ['supplier_number'],
+                "verbose_name": "Creditor",
+                "verbose_name_plural": "Creditors",
+                "db_table": "creditors",
+                "ordering": ["supplier_number"],
             },
         ),
     ]

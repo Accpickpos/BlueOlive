@@ -35,7 +35,11 @@ from .views import PurchaseOrderReceiptViewSet
 
 
 def _make_supplier(**overrides):
-    defaults = {"supplier_number": "2001", "name": "Test Supplier", "account_category": "OI"}
+    defaults = {
+        "supplier_number": "2001",
+        "name": "Test Supplier",
+        "account_category": "OI",
+    }
     defaults.update(overrides)
     return Creditor.objects.create(**defaults)
 

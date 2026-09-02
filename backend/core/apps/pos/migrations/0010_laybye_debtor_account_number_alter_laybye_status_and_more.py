@@ -6,23 +6,49 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('pos', '0009_alter_jobcard_status_alter_laybye_status_and_more'),
+        ("pos", "0009_alter_jobcard_status_alter_laybye_status_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='laybye',
-            name='debtor_account_number',
-            field=models.CharField(max_length=20, blank=True, db_index=True, help_text='Customer account number (DNO)'),
+            model_name="laybye",
+            name="debtor_account_number",
+            field=models.CharField(
+                max_length=20,
+                blank=True,
+                db_index=True,
+                help_text="Customer account number (DNO)",
+            ),
         ),
         migrations.AlterField(
-            model_name='laybye',
-            name='status',
-            field=models.CharField(choices=[('ACTIVE', 'Active'), ('CONVERTED_TO_INVOICE', 'Converted to Invoice'), ('COMPLETED', 'Completed'), ('CANCELLED', 'Cancelled'), ('EXPIRED', 'Expired')], default='ACTIVE', max_length=25),
+            model_name="laybye",
+            name="status",
+            field=models.CharField(
+                choices=[
+                    ("ACTIVE", "Active"),
+                    ("CONVERTED_TO_INVOICE", "Converted to Invoice"),
+                    ("COMPLETED", "Completed"),
+                    ("CANCELLED", "Cancelled"),
+                    ("EXPIRED", "Expired"),
+                ],
+                default="ACTIVE",
+                max_length=25,
+            ),
         ),
         migrations.AlterField(
-            model_name='quotation',
-            name='status',
-            field=models.CharField(choices=[('ACTIVE', 'Active'), ('CONVERTED_TO_INVOICE', 'Converted to Invoice'), ('INVOICED', 'Invoiced'), ('EXPIRED', 'Expired'), ('CANCELLED', 'Cancelled'), ('JOB', 'Converted to Job')], default='ACTIVE', max_length=25),
+            model_name="quotation",
+            name="status",
+            field=models.CharField(
+                choices=[
+                    ("ACTIVE", "Active"),
+                    ("CONVERTED_TO_INVOICE", "Converted to Invoice"),
+                    ("INVOICED", "Invoiced"),
+                    ("EXPIRED", "Expired"),
+                    ("CANCELLED", "Cancelled"),
+                    ("JOB", "Converted to Job"),
+                ],
+                default="ACTIVE",
+                max_length=25,
+            ),
         ),
     ]

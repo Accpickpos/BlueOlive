@@ -6,7 +6,7 @@ from django.db import migrations
 def create_auditlog_table(apps, schema_editor):
     """Create the AuditLog table manually"""
     with schema_editor.connection.cursor() as cursor:
-        cursor.execute('''
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS tenancy_auditlog (
                 id BIGSERIAL PRIMARY KEY,
                 action VARCHAR(20) NOT NULL,
@@ -26,17 +26,19 @@ def create_auditlog_table(apps, schema_editor):
             CREATE INDEX IF NOT EXISTS tenancy_aud_user_id_bbdc4b_idx ON tenancy_auditlog(user_id, timestamp);
             CREATE INDEX IF NOT EXISTS tenancy_aud_action_ff4aee_idx ON tenancy_auditlog(action, timestamp);
             CREATE INDEX IF NOT EXISTS tenancy_aud_tenant__324d97_idx ON tenancy_auditlog(tenant_id, timestamp);
-        ''')
+        """)
+
 
 def drop_auditlog_table(apps, schema_editor):
     """Drop the AuditLog table"""
     with schema_editor.connection.cursor() as cursor:
-        cursor.execute('DROP TABLE IF EXISTS tenancy_auditlog CASCADE')
+        cursor.execute("DROP TABLE IF EXISTS tenancy_auditlog CASCADE")
+
 
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tenancy', '0004_auditlog'),
+        ("tenancy", "0004_auditlog"),
     ]
 
     operations = [

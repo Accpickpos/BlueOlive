@@ -6,13 +6,15 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('pos', '0010_laybye_debtor_account_number_alter_laybye_status_and_more'),
+        ("pos", "0010_laybye_debtor_account_number_alter_laybye_status_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='laybye',
-            name='debtor_account_number',
-            field=models.IntegerField(blank=True, help_text='Customer account number (DNO)', null=True),
+            model_name="laybye",
+            name="debtor_account_number",
+            field=models.IntegerField(
+                blank=True, help_text="Customer account number (DNO)", null=True
+            ),
         ),
     ]

@@ -7,73 +7,120 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('settings', '0004_alter_apikey_tenant'),
+        ("settings", "0004_alter_apikey_tenant"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='systemconfiguration',
-            name='day_end_day_of_week',
-            field=models.JSONField(default=list, help_text='Days of week to run day-end [0=Mon, 6=Sun]'),
+            model_name="systemconfiguration",
+            name="day_end_day_of_week",
+            field=models.JSONField(
+                default=list, help_text="Days of week to run day-end [0=Mon, 6=Sun]"
+            ),
         ),
         migrations.AddField(
-            model_name='systemconfiguration',
-            name='day_end_time',
-            field=models.TimeField(default='23:59', help_text='Time to run automatic day-end (HH:MM)'),
+            model_name="systemconfiguration",
+            name="day_end_time",
+            field=models.TimeField(
+                default="23:59", help_text="Time to run automatic day-end (HH:MM)"
+            ),
         ),
         migrations.AddField(
-            model_name='systemconfiguration',
-            name='enable_auto_day_end',
-            field=models.BooleanField(default=False, help_text='Enable automatic day-end process'),
+            model_name="systemconfiguration",
+            name="enable_auto_day_end",
+            field=models.BooleanField(
+                default=False, help_text="Enable automatic day-end process"
+            ),
         ),
         migrations.AddField(
-            model_name='systemconfiguration',
-            name='enable_auto_month_end',
-            field=models.BooleanField(default=False, help_text='Enable automatic month-end process'),
+            model_name="systemconfiguration",
+            name="enable_auto_month_end",
+            field=models.BooleanField(
+                default=False, help_text="Enable automatic month-end process"
+            ),
         ),
         migrations.AddField(
-            model_name='systemconfiguration',
-            name='enable_auto_year_end',
-            field=models.BooleanField(default=False, help_text='Enable automatic year-end process'),
+            model_name="systemconfiguration",
+            name="enable_auto_year_end",
+            field=models.BooleanField(
+                default=False, help_text="Enable automatic year-end process"
+            ),
         ),
         migrations.AddField(
-            model_name='systemconfiguration',
-            name='last_day_end_date',
-            field=models.DateField(blank=True, help_text='Date of last successful day-end process', null=True),
+            model_name="systemconfiguration",
+            name="last_day_end_date",
+            field=models.DateField(
+                blank=True,
+                help_text="Date of last successful day-end process",
+                null=True,
+            ),
         ),
         migrations.AddField(
-            model_name='systemconfiguration',
-            name='last_month_end_date',
-            field=models.DateField(blank=True, help_text='Date of last successful month-end process', null=True),
+            model_name="systemconfiguration",
+            name="last_month_end_date",
+            field=models.DateField(
+                blank=True,
+                help_text="Date of last successful month-end process",
+                null=True,
+            ),
         ),
         migrations.AddField(
-            model_name='systemconfiguration',
-            name='last_year_end_date',
-            field=models.DateField(blank=True, help_text='Date of last successful year-end process', null=True),
+            model_name="systemconfiguration",
+            name="last_year_end_date",
+            field=models.DateField(
+                blank=True,
+                help_text="Date of last successful year-end process",
+                null=True,
+            ),
         ),
         migrations.AddField(
-            model_name='systemconfiguration',
-            name='month_end_day',
-            field=models.PositiveIntegerField(default=1, help_text='Day of month to run month-end (1-28)', validators=[django.core.validators.MinValueValidator(1), django.core.validators.MaxValueValidator(28)]),
+            model_name="systemconfiguration",
+            name="month_end_day",
+            field=models.PositiveIntegerField(
+                default=1,
+                help_text="Day of month to run month-end (1-28)",
+                validators=[
+                    django.core.validators.MinValueValidator(1),
+                    django.core.validators.MaxValueValidator(28),
+                ],
+            ),
         ),
         migrations.AddField(
-            model_name='systemconfiguration',
-            name='month_end_time',
-            field=models.TimeField(default='23:00', help_text='Time to run automatic month-end (HH:MM)'),
+            model_name="systemconfiguration",
+            name="month_end_time",
+            field=models.TimeField(
+                default="23:00", help_text="Time to run automatic month-end (HH:MM)"
+            ),
         ),
         migrations.AddField(
-            model_name='systemconfiguration',
-            name='year_end_day',
-            field=models.PositiveIntegerField(default=31, help_text='Day of month to run year-end', validators=[django.core.validators.MinValueValidator(1), django.core.validators.MaxValueValidator(31)]),
+            model_name="systemconfiguration",
+            name="year_end_day",
+            field=models.PositiveIntegerField(
+                default=31,
+                help_text="Day of month to run year-end",
+                validators=[
+                    django.core.validators.MinValueValidator(1),
+                    django.core.validators.MaxValueValidator(31),
+                ],
+            ),
         ),
         migrations.AddField(
-            model_name='systemconfiguration',
-            name='year_end_month',
-            field=models.PositiveIntegerField(default=12, help_text='Month to run year-end (1-12)', validators=[django.core.validators.MinValueValidator(1), django.core.validators.MaxValueValidator(12)]),
+            model_name="systemconfiguration",
+            name="year_end_month",
+            field=models.PositiveIntegerField(
+                default=12,
+                help_text="Month to run year-end (1-12)",
+                validators=[
+                    django.core.validators.MinValueValidator(1),
+                    django.core.validators.MaxValueValidator(12),
+                ],
+            ),
         ),
         migrations.AddField(
-            model_name='systemconfiguration',
-            name='year_end_time',
-            field=models.TimeField(default='22:00', help_text='Time to run automatic year-end (HH:MM)'),
+            model_name="systemconfiguration",
+            name="year_end_time",
+            field=models.TimeField(
+                default="22:00", help_text="Time to run automatic year-end (HH:MM)"
+            ),
         ),
     ]

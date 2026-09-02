@@ -215,11 +215,14 @@ class GetDebtorStatementTests(TestCase):
 
         self.assertEqual(statement["opening_balance"], Decimal("100.00"))
         self.assertEqual(statement["closing_balance"], Decimal("140.00"))
-        self.assertEqual(list(statement["transactions"]), list(
-            DebtorTransaction.objects.filter(
-                debtor=self.debtor, transaction_date=date(2026, 2, 10)
-            )
-        ))
+        self.assertEqual(
+            list(statement["transactions"]),
+            list(
+                DebtorTransaction.objects.filter(
+                    debtor=self.debtor, transaction_date=date(2026, 2, 10)
+                )
+            ),
+        )
 
     def test_statement_with_no_transactions_does_not_crash(self):
         statement = DebtorService.get_debtor_statement(

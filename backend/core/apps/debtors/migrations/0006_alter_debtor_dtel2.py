@@ -6,23 +6,28 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('debtors', '0004_fix_tel2_column_name'),
+        ("debtors", "0004_fix_tel2_column_name"),
     ]
 
     operations = [
         # First, set all NULL values to empty string to satisfy NOT NULL constraint
         migrations.RunSQL(
-            sql="UPDATE dmast SET dtel2 = '' WHERE dtel2 IS NULL;",
-            reverse_sql=""
+            sql="UPDATE dmast SET dtel2 = '' WHERE dtel2 IS NULL;", reverse_sql=""
         ),
         # Set the DEFAULT on the column so empty strings don't become NULL
         migrations.RunSQL(
             sql="ALTER TABLE dmast ALTER COLUMN dtel2 SET DEFAULT '';",
-            reverse_sql="ALTER TABLE dmast ALTER COLUMN dtel2 DROP DEFAULT;"
+            reverse_sql="ALTER TABLE dmast ALTER COLUMN dtel2 DROP DEFAULT;",
         ),
         migrations.AlterField(
-            model_name='debtor',
-            name='dtel2',
-            field=models.CharField(blank=True, db_column='dtel2', default='', help_text='Alternative Phone (TEL2) - Character 15', max_length=20),
+            model_name="debtor",
+            name="dtel2",
+            field=models.CharField(
+                blank=True,
+                db_column="dtel2",
+                default="",
+                help_text="Alternative Phone (TEL2) - Character 15",
+                max_length=20,
+            ),
         ),
     ]

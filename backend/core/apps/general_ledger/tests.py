@@ -116,12 +116,22 @@ class GLBatchPostingTestCase(TransactionTestCase):
 
     def test_balanced_batch_posts_and_updates_balances(self):
         GLBatch.objects.create(
-            accno=1000, batchno=55, capturedat="2026-01-10", date="2026-01-10",
-            drorcr="D", amount=Decimal("50.00"), period=1,
+            accno=1000,
+            batchno=55,
+            capturedat="2026-01-10",
+            date="2026-01-10",
+            drorcr="D",
+            amount=Decimal("50.00"),
+            period=1,
         )
         GLBatch.objects.create(
-            accno=4000, batchno=55, capturedat="2026-01-10", date="2026-01-10",
-            drorcr="C", amount=Decimal("50.00"), period=1,
+            accno=4000,
+            batchno=55,
+            capturedat="2026-01-10",
+            date="2026-01-10",
+            drorcr="C",
+            amount=Decimal("50.00"),
+            period=1,
         )
         lines = [
             {"accno": r.accno, "type": r.drorcr, "amount": r.amount, "period": r.period}
@@ -133,12 +143,22 @@ class GLBatchPostingTestCase(TransactionTestCase):
 
     def test_unbalanced_batch_lines_rejected_by_post_batch(self):
         GLBatch.objects.create(
-            accno=1000, batchno=56, capturedat="2026-01-10", date="2026-01-10",
-            drorcr="D", amount=Decimal("50.00"), period=1,
+            accno=1000,
+            batchno=56,
+            capturedat="2026-01-10",
+            date="2026-01-10",
+            drorcr="D",
+            amount=Decimal("50.00"),
+            period=1,
         )
         GLBatch.objects.create(
-            accno=4000, batchno=56, capturedat="2026-01-10", date="2026-01-10",
-            drorcr="C", amount=Decimal("30.00"), period=1,
+            accno=4000,
+            batchno=56,
+            capturedat="2026-01-10",
+            date="2026-01-10",
+            drorcr="C",
+            amount=Decimal("30.00"),
+            period=1,
         )
         lines = [
             {"accno": r.accno, "type": r.drorcr, "amount": r.amount, "period": r.period}
@@ -165,20 +185,31 @@ class StandingJournalPostDueLogicTestCase(TransactionTestCase):
 
     def test_timesbal_increments_and_nextperiod_wraps(self):
         GLStJnl.objects.create(
-            accno=5000, details="Monthly rent", drorcr="D", amount=Decimal("100.00"),
-            frequency=1, stperiod=1, times=12, timesbal=0, nextperiod=12,
+            accno=5000,
+            details="Monthly rent",
+            drorcr="D",
+            amount=Decimal("100.00"),
+            frequency=1,
+            stperiod=1,
+            times=12,
+            timesbal=0,
+            nextperiod=12,
             journalno=1,
         )
         GLStJnl.objects.create(
-            accno=1000, details="Monthly rent", drorcr="C", amount=Decimal("100.00"),
-            frequency=1, stperiod=1, times=12, timesbal=0, nextperiod=12,
+            accno=1000,
+            details="Monthly rent",
+            drorcr="C",
+            amount=Decimal("100.00"),
+            frequency=1,
+            stperiod=1,
+            times=12,
+            timesbal=0,
+            nextperiod=12,
             journalno=1,
         )
         rows = list(GLStJnl.objects.filter(journalno=1))
-        lines = [
-            {"accno": r.accno, "type": r.drorcr, "amount": r.amount}
-            for r in rows
-        ]
+        lines = [{"accno": r.accno, "type": r.drorcr, "amount": r.amount} for r in rows]
         GLPostingService.post_batch(lines)
         for r in rows:
             r.timesbal += 1
