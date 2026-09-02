@@ -60,11 +60,7 @@ class LoginRequiredTemplateView(LoginRequiredMixin, TemplateView):
 # Restrict /admin/ to real platform superusers so tenant users can never
 # reach it, even with valid credentials.
 def _require_superuser(self, request):
-    return bool(
-        request.user
-        and request.user.is_active
-        and request.user.is_superuser
-    )
+    return bool(request.user and request.user.is_active and request.user.is_superuser)
 
 
 admin.site.has_permission = _require_superuser.__get__(admin.site, type(admin.site))

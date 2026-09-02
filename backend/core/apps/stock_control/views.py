@@ -35,6 +35,11 @@ from .models import (
     StockTakeItem,
     StockTransaction,
 )
+from .permissions import (
+    IsStockAccountant,
+    IsStockMover,
+    StockConsolidationEnabledMixin,
+)
 from .serializers import (
     BranchSerializer,
     BranchStockSerializer,
@@ -61,11 +66,6 @@ from .serializers import (
     StockTakeSerializer,
     StockTransactionSerializer,
 )
-from .permissions import (
-    IsStockAccountant,
-    IsStockMover,
-    StockConsolidationEnabledMixin,
-)
 from .services import StockTransactionService
 
 # ─────────────────────────────────────────────
@@ -74,7 +74,10 @@ from .services import StockTransactionService
 
 
 class StockItemViewSet(
-    ModuleFunctionPermissionMixin, LookupActionMixin, ShopFilterMixin, viewsets.ModelViewSet
+    ModuleFunctionPermissionMixin,
+    LookupActionMixin,
+    ShopFilterMixin,
+    viewsets.ModelViewSet,
 ):
     """
     CRUD for stock items with filtering, search, and helper actions.
@@ -381,14 +384,18 @@ class StockItemViewSet(
                     "stock_code": item.stock_code,
                     "description": item.description,
                     "department_id": item.department_id,
-                    "department_name": item.department.name if item.department_id else None,
+                    "department_name": (
+                        item.department.name if item.department_id else None
+                    ),
                     "quantity_on_hand": item.quantity_on_hand,
                     "cost_basis": cost_basis,
                     "unit_cost": unit_cost,
                     "value": value,
                 }
             )
-        return Response({"cost_basis": cost_basis, "total_value": total_value, "items": rows})
+        return Response(
+            {"cost_basis": cost_basis, "total_value": total_value, "items": rows}
+        )
 
     @action(
         detail=True,
@@ -458,7 +465,9 @@ class StockItemViewSet(
 # ─────────────────────────────────────────────
 
 
-class SpecialDealViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class SpecialDealViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     access_module = "stock_control"
     action_function_types = {
         "create": "MAINTENANCE",
@@ -590,7 +599,9 @@ class SpecialDealViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewset
 # ─────────────────────────────────────────────
 
 
-class FuturePricingViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class FuturePricingViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     access_module = "stock_control"
     action_function_types = {
         "create": "MAINTENANCE",
@@ -626,7 +637,9 @@ class FuturePricingViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, views
 # ─────────────────────────────────────────────
 
 
-class ShrinkWrapViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class ShrinkWrapViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     access_module = "stock_control"
     action_function_types = {
         "create": "MAINTENANCE",
@@ -645,7 +658,9 @@ class ShrinkWrapViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets
 # ─────────────────────────────────────────────
 
 
-class PackBundleViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class PackBundleViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     access_module = "stock_control"
     action_function_types = {
         "create": "MAINTENANCE",
@@ -663,7 +678,9 @@ class PackBundleViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets
         return Response({"total_cost": total})
 
 
-class PackBundleIngredientViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class PackBundleIngredientViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     access_module = "stock_control"
     action_function_types = {
         "create": "MAINTENANCE",
@@ -682,7 +699,9 @@ class PackBundleIngredientViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin
 # ─────────────────────────────────────────────
 
 
-class StockTransactionViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class StockTransactionViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     CRUD for stock transactions.
 
@@ -792,7 +811,9 @@ class StockTransactionViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, vi
             .annotate(total_quantity=Sum("quantity_out"), total_value=Sum("value"))
             .order_by("-total_value")
         )
-        grand_total = sum((r["total_value"] or Decimal("0")) for r in rows) or Decimal("1")
+        grand_total = sum((r["total_value"] or Decimal("0")) for r in rows) or Decimal(
+            "1"
+        )
         for r in rows:
             r["contribution_pct"] = round(
                 float((r["total_value"] or Decimal("0")) / grand_total) * 100, 2
@@ -882,7 +903,9 @@ class StockTransactionViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, vi
 # ─────────────────────────────────────────────
 
 
-class StockMovementLedgerViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class StockMovementLedgerViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet
+):
     """Read-only ledger — entries are created by the system during transactions."""
 
     access_module = "stock_control"
@@ -900,7 +923,9 @@ class StockMovementLedgerViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin,
 # ─────────────────────────────────────────────
 
 
-class StockTakeViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class StockTakeViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     Manage stock take sessions.
 
@@ -989,7 +1014,9 @@ class StockTakeViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.
             )
         if take.is_after_trading and not take.trading_start_date:
             return Response(
-                {"error": "trading_start_date is required when is_after_trading is set."},
+                {
+                    "error": "trading_start_date is required when is_after_trading is set."
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1017,7 +1044,9 @@ class StockTakeViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.
                             created_at__gte=take.trading_start_date,
                         )
                         .exclude(transaction_type="STOCK_TAKE")
-                        .aggregate(total_in=Sum("quantity_in"), total_out=Sum("quantity_out"))
+                        .aggregate(
+                            total_in=Sum("quantity_in"), total_out=Sum("quantity_out")
+                        )
                     )
                     net_movement = (movements["total_in"] or Decimal("0")) - (
                         movements["total_out"] or Decimal("0")
@@ -1055,7 +1084,9 @@ class StockTakeViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.
         return Response(StockTakeItemSerializer(items, many=True).data)
 
 
-class StockTakeItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class StockTakeItemViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     access_module = "stock_control"
     action_function_types = {"count": "TRANSACTIONS"}
     queryset = StockTakeItem.objects.select_related("stock_take", "stock_item")
@@ -1092,7 +1123,9 @@ class StockTakeItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, views
 # ─────────────────────────────────────────────
 
 
-class ContractPricingViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class ContractPricingViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     access_module = "stock_control"
     action_function_types = {
         "create": "MAINTENANCE",
@@ -1153,7 +1186,9 @@ class ContractPricingViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, vie
 # ─────────────────────────────────────────────
 
 
-class OneTouchLookupKeyViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class OneTouchLookupKeyViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     access_module = "stock_control"
     action_function_types = {
         "create": "MAINTENANCE",
@@ -1172,7 +1207,9 @@ class OneTouchLookupKeyViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, v
 # ─────────────────────────────────────────────
 
 
-class StockMonthlyStatisticViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class StockMonthlyStatisticViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     access_module = "stock_control"
     queryset = StockMonthlyStatistic.objects.select_related("stock_item")
     serializer_class = StockMonthlyStatisticSerializer
@@ -1191,9 +1228,9 @@ class StockMonthlyStatisticViewSet(ModuleFunctionPermissionMixin, ShopFilterMixi
             "total_sales": total_sales,
             "total_cost": total_sales - total_profit,
             "total_profit": total_profit,
-            "margin_pct": round(float(total_profit / total_sales) * 100, 2)
-            if total_sales
-            else 0,
+            "margin_pct": (
+                round(float(total_profit / total_sales) * 100, 2) if total_sales else 0
+            ),
         }
         row.update(extra)
         return row
@@ -1206,13 +1243,15 @@ class StockMonthlyStatisticViewSet(ModuleFunctionPermissionMixin, ShopFilterMixi
         # default "-year", "-month") — left in place, it leaks into GROUP
         # BY below and fragments each department into one row per
         # year/month instead of one summed row.
-        rows = qs.order_by().values(
-            "stock_item__department_id", "stock_item__department__name"
-        ).annotate(
-            total_quantity=Sum("quantity_sold"),
-            total_sales=Sum("value_sold"),
-            total_profit=Sum("profit_value"),
-            item_count=Count("stock_item", distinct=True),
+        rows = (
+            qs.order_by()
+            .values("stock_item__department_id", "stock_item__department__name")
+            .annotate(
+                total_quantity=Sum("quantity_sold"),
+                total_sales=Sum("value_sold"),
+                total_profit=Sum("profit_value"),
+                item_count=Count("stock_item", distinct=True),
+            )
         )
         result = [
             self._row(
@@ -1238,12 +1277,14 @@ class StockMonthlyStatisticViewSet(ModuleFunctionPermissionMixin, ShopFilterMixi
         qs = self.filter_queryset(self.get_queryset())
         stock_item = request.query_params.get("stock_item")
 
-        item_rows = qs.order_by().values(
-            "stock_item_id", "stock_item__description"
-        ).annotate(
-            total_quantity=Sum("quantity_sold"),
-            total_sales=Sum("value_sold"),
-            total_profit=Sum("profit_value"),
+        item_rows = (
+            qs.order_by()
+            .values("stock_item_id", "stock_item__description")
+            .annotate(
+                total_quantity=Sum("quantity_sold"),
+                total_sales=Sum("value_sold"),
+                total_profit=Sum("profit_value"),
+            )
         )
         by_item = [
             self._row(
@@ -1259,10 +1300,14 @@ class StockMonthlyStatisticViewSet(ModuleFunctionPermissionMixin, ShopFilterMixi
 
         by_month = []
         if stock_item:
-            month_rows = qs.order_by().values("month").annotate(
-                total_quantity=Sum("quantity_sold"),
-                total_sales=Sum("value_sold"),
-                total_profit=Sum("profit_value"),
+            month_rows = (
+                qs.order_by()
+                .values("month")
+                .annotate(
+                    total_quantity=Sum("quantity_sold"),
+                    total_sales=Sum("value_sold"),
+                    total_profit=Sum("profit_value"),
+                )
             )
             by_month = [
                 self._row(
@@ -1292,12 +1337,14 @@ class StockMonthlyStatisticViewSet(ModuleFunctionPermissionMixin, ShopFilterMixi
             threshold = Decimal("5")
 
         qs = self.filter_queryset(self.get_queryset())
-        rows = qs.order_by().values(
-            "stock_item_id", "stock_item__description"
-        ).annotate(
-            total_quantity=Sum("quantity_sold"),
-            total_sales=Sum("value_sold"),
-            months_with_data=Count("month", distinct=True),
+        rows = (
+            qs.order_by()
+            .values("stock_item_id", "stock_item__description")
+            .annotate(
+                total_quantity=Sum("quantity_sold"),
+                total_sales=Sum("value_sold"),
+                months_with_data=Count("month", distinct=True),
+            )
         )
         result = []
         for r in rows:
@@ -1324,7 +1371,9 @@ class StockMonthlyStatisticViewSet(ModuleFunctionPermissionMixin, ShopFilterMixi
 # ─────────────────────────────────────────────
 
 
-class BranchViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class BranchViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     Manage branches/locations.
 
@@ -1374,7 +1423,9 @@ class BranchViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.Mod
 # ─────────────────────────────────────────────
 
 
-class BranchStockViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class BranchStockViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     access_module = "stock_control"
     action_function_types = {"consolidated": "REPORT"}
     queryset = BranchStock.objects.select_related("branch", "stock_item")
@@ -1470,7 +1521,9 @@ class BranchStockViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewset
 # ─────────────────────────────────────────────
 
 
-class GroupOrderViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class GroupOrderViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     Manage group orders.
 
@@ -1502,7 +1555,9 @@ class GroupOrderViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets
         )
 
 
-class GroupOrderItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class GroupOrderItemViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     access_module = "stock_control"
     queryset = GroupOrderItem.objects.select_related("group_order", "stock_item")
     serializer_class = GroupOrderItemSerializer
@@ -1516,7 +1571,12 @@ class GroupOrderItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, view
 # ─────────────────────────────────────────────
 
 
-class BranchTransferViewSet(StockConsolidationEnabledMixin, ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class BranchTransferViewSet(
+    StockConsolidationEnabledMixin,
+    ModuleFunctionPermissionMixin,
+    ShopFilterMixin,
+    viewsets.ModelViewSet,
+):
     """
     Manage inter-branch transfers (IBT).
 
@@ -1715,7 +1775,12 @@ class BranchTransferViewSet(StockConsolidationEnabledMixin, ModuleFunctionPermis
         )
 
 
-class BranchTransferItemViewSet(StockConsolidationEnabledMixin, ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class BranchTransferItemViewSet(
+    StockConsolidationEnabledMixin,
+    ModuleFunctionPermissionMixin,
+    ShopFilterMixin,
+    viewsets.ModelViewSet,
+):
     access_module = "stock_control"
     queryset = BranchTransferItem.objects.select_related("transfer", "stock_item")
     serializer_class = BranchTransferItemSerializer
@@ -1729,7 +1794,12 @@ class BranchTransferItemViewSet(StockConsolidationEnabledMixin, ModuleFunctionPe
 # ─────────────────────────────────────────────
 
 
-class BranchTransferInvoiceViewSet(StockConsolidationEnabledMixin, ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class BranchTransferInvoiceViewSet(
+    StockConsolidationEnabledMixin,
+    ModuleFunctionPermissionMixin,
+    ShopFilterMixin,
+    viewsets.ModelViewSet,
+):
     access_module = "stock_control"
     queryset = BranchTransferInvoice.objects.select_related("transfer")
     serializer_class = BranchTransferInvoiceSerializer

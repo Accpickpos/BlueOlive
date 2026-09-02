@@ -8,79 +8,104 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('debtors', '0010_debtortransaction_settlement_discount_and_more'),
-        ('pos', '0011_alter_laybye_debtor_account_number'),
+        ("debtors", "0010_debtortransaction_settlement_discount_and_more"),
+        ("pos", "0011_alter_laybye_debtor_account_number"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='cashacheque',
-            name='cancel_reason',
+            model_name="cashacheque",
+            name="cancel_reason",
             field=models.TextField(blank=True),
         ),
         migrations.AddField(
-            model_name='cashacheque',
-            name='cancelled_at',
+            model_name="cashacheque",
+            name="cancelled_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='cashacheque',
-            name='is_cancelled',
+            model_name="cashacheque",
+            name="is_cancelled",
             field=models.BooleanField(default=False),
         ),
         migrations.AddField(
-            model_name='cashreturn',
-            name='cancel_reason',
+            model_name="cashreturn",
+            name="cancel_reason",
             field=models.TextField(blank=True),
         ),
         migrations.AddField(
-            model_name='cashreturn',
-            name='cancelled_at',
+            model_name="cashreturn",
+            name="cancelled_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='cashreturn',
-            name='is_cancelled',
+            model_name="cashreturn",
+            name="is_cancelled",
             field=models.BooleanField(default=False),
         ),
         migrations.AddField(
-            model_name='creditnote',
-            name='cancel_reason',
+            model_name="creditnote",
+            name="cancel_reason",
             field=models.TextField(blank=True),
         ),
         migrations.AddField(
-            model_name='creditnote',
-            name='cancelled_at',
+            model_name="creditnote",
+            name="cancelled_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='receiptonaccount',
-            name='cancel_reason',
+            model_name="receiptonaccount",
+            name="cancel_reason",
             field=models.TextField(blank=True),
         ),
         migrations.AddField(
-            model_name='receiptonaccount',
-            name='cancelled_at',
+            model_name="receiptonaccount",
+            name="cancelled_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='receiptonaccount',
-            name='debtor_transaction',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='pos_receipts', to='debtors.debtortransaction'),
+            model_name="receiptonaccount",
+            name="debtor_transaction",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="pos_receipts",
+                to="debtors.debtortransaction",
+            ),
         ),
         migrations.AddField(
-            model_name='repair',
-            name='debtor',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='repairs', to='debtors.debtor'),
+            model_name="repair",
+            name="debtor",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="repairs",
+                to="debtors.debtor",
+            ),
         ),
         migrations.AddField(
-            model_name='tender',
-            name='invoice',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='tenders', to='pos.invoice'),
+            model_name="tender",
+            name="invoice",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="tenders",
+                to="pos.invoice",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='tender',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('cash_sale__isnull', False), ('invoice__isnull', True)), models.Q(('cash_sale__isnull', True), ('invoice__isnull', False)), _connector='OR'), name='tender_exactly_one_parent'),
+            model_name="tender",
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(("cash_sale__isnull", False), ("invoice__isnull", True)),
+                    models.Q(("cash_sale__isnull", True), ("invoice__isnull", False)),
+                    _connector="OR",
+                ),
+                name="tender_exactly_one_parent",
+            ),
         ),
     ]

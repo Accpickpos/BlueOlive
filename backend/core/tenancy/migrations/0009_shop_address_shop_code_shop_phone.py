@@ -6,23 +6,33 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tenancy', '0008_auditlog'),
+        ("tenancy", "0008_auditlog"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='shop',
-            name='address',
-            field=models.TextField(blank=True, help_text='Physical address of the shop', null=True),
+            model_name="shop",
+            name="address",
+            field=models.TextField(
+                blank=True, help_text="Physical address of the shop", null=True
+            ),
         ),
         migrations.AddField(
-            model_name='shop',
-            name='code',
-            field=models.CharField(blank=True, help_text='Shop code (e.g., MS001)', max_length=50, null=True, unique=True),
+            model_name="shop",
+            name="code",
+            field=models.CharField(
+                blank=True,
+                help_text="Shop code (e.g., MS001)",
+                max_length=50,
+                null=True,
+                unique=True,
+            ),
         ),
         migrations.AddField(
-            model_name='shop',
-            name='phone',
-            field=models.CharField(blank=True, help_text='Shop phone number', max_length=20, null=True),
+            model_name="shop",
+            name="phone",
+            field=models.CharField(
+                blank=True, help_text="Shop phone number", max_length=20, null=True
+            ),
         ),
     ]

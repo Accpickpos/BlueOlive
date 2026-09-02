@@ -7,17 +7,21 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('pos', '0003_add_performance_indexes'),
+        ("pos", "0003_add_performance_indexes"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AddIndex(
-            model_name='tender',
-            index=models.Index(fields=['tender_type'], name='pos_tender_tender__688f9a_idx'),
+            model_name="tender",
+            index=models.Index(
+                fields=["tender_type"], name="pos_tender_tender__688f9a_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='tender',
-            index=models.Index(fields=['cash_sale', 'tender_type'], name='idx_receipt_tender'),
+            model_name="tender",
+            index=models.Index(
+                fields=["cash_sale", "tender_type"], name="idx_receipt_tender"
+            ),
         ),
     ]

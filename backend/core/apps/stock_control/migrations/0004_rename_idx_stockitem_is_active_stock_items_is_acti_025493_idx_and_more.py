@@ -6,18 +6,18 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('stock_control', '0003_add_performance_indexes'),
+        ("stock_control", "0003_add_performance_indexes"),
     ]
 
     operations = [
         migrations.RenameIndex(
-            model_name='stockitem',
-            new_name='stock_items_is_acti_025493_idx',
-            old_name='idx_stockitem_is_active',
+            model_name="stockitem",
+            new_name="stock_items_is_acti_025493_idx",
+            old_name="idx_stockitem_is_active",
         ),
         migrations.RenameIndex(
-            model_name='stockitem',
-            new_name='stock_items_bin_num_041fdf_idx',
-            old_name='idx_stockitem_bin',
+            model_name="stockitem",
+            new_name="stock_items_bin_num_041fdf_idx",
+            old_name="idx_stockitem_bin",
         ),
     ]

@@ -14,8 +14,8 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('settings', '0001_initial'),
-        ('tenancy', '0010_shop_setup_status'),
+        ("settings", "0001_initial"),
+        ("tenancy", "0010_shop_setup_status"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

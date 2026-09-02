@@ -34,7 +34,10 @@ class AccessGrantModelTests(TestCase):
         # (ADMIN, pos, MAINTENANCE) already exists from the seed migration.
         with self.assertRaises(ValidationError):
             AccessGrant.objects.create(
-                role="ADMIN", module="pos", function_type="MAINTENANCE", is_allowed=False
+                role="ADMIN",
+                module="pos",
+                function_type="MAINTENANCE",
+                is_allowed=False,
             )
 
     def test_seed_matrix_row_count(self):
@@ -42,15 +45,23 @@ class AccessGrantModelTests(TestCase):
 
     def test_seed_defaults_match_documented_matrix(self):
         # ADMIN: everything allowed.
-        self.assertTrue(AccessGrant.is_role_allowed("ADMIN", "general_ledger", "MAINTENANCE"))
+        self.assertTrue(
+            AccessGrant.is_role_allowed("ADMIN", "general_ledger", "MAINTENANCE")
+        )
         # MANAGER: allowed except the documented deny-list.
-        self.assertFalse(AccessGrant.is_role_allowed("MANAGER", "general_ledger", "MAINTENANCE"))
-        self.assertTrue(AccessGrant.is_role_allowed("MANAGER", "general_ledger", "TRANSACTIONS"))
+        self.assertFalse(
+            AccessGrant.is_role_allowed("MANAGER", "general_ledger", "MAINTENANCE")
+        )
+        self.assertTrue(
+            AccessGrant.is_role_allowed("MANAGER", "general_ledger", "TRANSACTIONS")
+        )
         # STAFF: Transactions everywhere, plus both read tiers (Enquiry and
         # Report — migrations 0003/0004), but never Maintenance.
         self.assertTrue(AccessGrant.is_role_allowed("STAFF", "creditors", "ENQUIRY"))
         self.assertTrue(AccessGrant.is_role_allowed("STAFF", "creditors", "REPORT"))
-        self.assertFalse(AccessGrant.is_role_allowed("STAFF", "creditors", "MAINTENANCE"))
+        self.assertFalse(
+            AccessGrant.is_role_allowed("STAFF", "creditors", "MAINTENANCE")
+        )
         # CASHIER: Transactions only on pos/cash_book, but both read tiers
         # everywhere — the original per-role Enquiry/Report restriction
         # 403'd ordinary reads for non-admin roles the moment a module's
@@ -61,7 +72,9 @@ class AccessGrantModelTests(TestCase):
         self.assertTrue(AccessGrant.is_role_allowed("CASHIER", "pos", "TRANSACTIONS"))
         self.assertTrue(AccessGrant.is_role_allowed("CASHIER", "creditors", "ENQUIRY"))
         self.assertTrue(AccessGrant.is_role_allowed("CASHIER", "creditors", "REPORT"))
-        self.assertFalse(AccessGrant.is_role_allowed("CASHIER", "creditors", "TRANSACTIONS"))
+        self.assertFalse(
+            AccessGrant.is_role_allowed("CASHIER", "creditors", "TRANSACTIONS")
+        )
 
 
 class _FakeRequest:
@@ -81,24 +94,44 @@ class ModuleFunctionPermissionMixinTests(TestCase):
     def test_standard_crud_actions(self):
         self.assertEqual(_FakeViewSet("list").get_function_type(), "ENQUIRY")
         self.assertEqual(_FakeViewSet("retrieve").get_function_type(), "ENQUIRY")
-        self.assertEqual(_FakeViewSet("create", "POST").get_function_type(), "TRANSACTIONS")
-        self.assertEqual(_FakeViewSet("update", "PUT").get_function_type(), "TRANSACTIONS")
-        self.assertEqual(_FakeViewSet("partial_update", "PATCH").get_function_type(), "TRANSACTIONS")
-        self.assertEqual(_FakeViewSet("destroy", "DELETE").get_function_type(), "MAINTENANCE")
+        self.assertEqual(
+            _FakeViewSet("create", "POST").get_function_type(), "TRANSACTIONS"
+        )
+        self.assertEqual(
+            _FakeViewSet("update", "PUT").get_function_type(), "TRANSACTIONS"
+        )
+        self.assertEqual(
+            _FakeViewSet("partial_update", "PATCH").get_function_type(), "TRANSACTIONS"
+        )
+        self.assertEqual(
+            _FakeViewSet("destroy", "DELETE").get_function_type(), "MAINTENANCE"
+        )
 
     def test_explicit_override_wins(self):
-        self.assertEqual(_FakeViewSet("weird_report", "POST").get_function_type(), "REPORT")
+        self.assertEqual(
+            _FakeViewSet("weird_report", "POST").get_function_type(), "REPORT"
+        )
 
     def test_name_heuristics(self):
-        self.assertEqual(_FakeViewSet("monthly_summary", "GET").get_function_type(), "REPORT")
-        self.assertEqual(_FakeViewSet("deactivate", "POST").get_function_type(), "MAINTENANCE")
-        self.assertEqual(_FakeViewSet("post_invoice", "POST").get_function_type(), "TRANSACTIONS")
+        self.assertEqual(
+            _FakeViewSet("monthly_summary", "GET").get_function_type(), "REPORT"
+        )
+        self.assertEqual(
+            _FakeViewSet("deactivate", "POST").get_function_type(), "MAINTENANCE"
+        )
+        self.assertEqual(
+            _FakeViewSet("post_invoice", "POST").get_function_type(), "TRANSACTIONS"
+        )
 
     def test_unmatched_action_falls_back_by_method(self):
         # No keyword match: safe methods -> ENQUIRY, mutating methods -> MAINTENANCE
         # (the conservative choice for an unreviewed state-changing action).
-        self.assertEqual(_FakeViewSet("bank_balances", "GET").get_function_type(), "ENQUIRY")
-        self.assertEqual(_FakeViewSet("close_month", "PATCH").get_function_type(), "MAINTENANCE")
+        self.assertEqual(
+            _FakeViewSet("bank_balances", "GET").get_function_type(), "ENQUIRY"
+        )
+        self.assertEqual(
+            _FakeViewSet("close_month", "PATCH").get_function_type(), "MAINTENANCE"
+        )
 
 
 class HasModuleFunctionAccessTests(TestCase):
@@ -155,7 +188,9 @@ class HasModuleFunctionAccessTests(TestCase):
 
     def test_denies_unauthenticated(self):
         permission = HasModuleFunctionAccess("pos", "TRANSACTIONS")
-        anon_request = type("Req", (), {"user": type("Anon", (), {"is_authenticated": False})()})()
+        anon_request = type(
+            "Req", (), {"user": type("Anon", (), {"is_authenticated": False})()}
+        )()
         self.assertFalse(permission.has_permission(anon_request, None))
 
 
@@ -189,7 +224,9 @@ class AccessGrantAPITests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 200)
-        grant = AccessGrant.objects.get(role="MANAGER", module="pos", function_type="REPORT")
+        grant = AccessGrant.objects.get(
+            role="MANAGER", module="pos", function_type="REPORT"
+        )
         self.assertFalse(grant.is_allowed)
 
     def test_bulk_update_reports_missing_row(self):

@@ -82,9 +82,8 @@ def _validate_attachment(file):
         return f"File type '.{ext or '?'}' is not allowed for security reasons."
 
     if ext not in ALLOWED_ATTACHMENT_EXTENSIONS:
-        return (
-            f"File type '.{ext}' is not supported. Allowed types: "
-            + ", ".join(sorted(ALLOWED_ATTACHMENT_EXTENSIONS))
+        return f"File type '.{ext}' is not supported. Allowed types: " + ", ".join(
+            sorted(ALLOWED_ATTACHMENT_EXTENSIONS)
         )
 
     if file.size and file.size > MAX_ATTACHMENT_SIZE:

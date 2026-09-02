@@ -265,9 +265,9 @@ def list_tenants_and_shops(request):
     if not requester_tenant_id:
         return Response([])
 
-    tenants = Tenant.objects.filter(
-        id=requester_tenant_id, is_active=True
-    ).order_by("name")
+    tenants = Tenant.objects.filter(id=requester_tenant_id, is_active=True).order_by(
+        "name"
+    )
     data = []
     for t in tenants:
         shops = Shop.objects.filter(tenant=t, is_active=True).order_by("name")

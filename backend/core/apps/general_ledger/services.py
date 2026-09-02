@@ -114,12 +114,8 @@ class GLPostingService:
         GLTran.objects.create(accno=debit_accno, type="D", **common)
         GLTran.objects.create(accno=credit_accno, type="C", **common)
 
-        GLPostingService._apply_period_balance(
-            debit_account, post_period, "D", amount
-        )
-        GLPostingService._apply_period_balance(
-            credit_account, post_period, "C", amount
-        )
+        GLPostingService._apply_period_balance(debit_account, post_period, "D", amount)
+        GLPostingService._apply_period_balance(credit_account, post_period, "C", amount)
 
         logger.info(
             "general_ledger.gl_posted batch=%s debit=%s credit=%s amount=%s reference=%s",

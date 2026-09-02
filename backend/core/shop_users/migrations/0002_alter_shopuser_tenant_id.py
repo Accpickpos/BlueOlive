@@ -6,13 +6,17 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('shop_users', '0001_initial'),
+        ("shop_users", "0001_initial"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='shopuser',
-            name='tenant_id',
-            field=models.IntegerField(blank=True, help_text='ID of the tenant this user belongs to (null for superusers)', null=True),
+            model_name="shopuser",
+            name="tenant_id",
+            field=models.IntegerField(
+                blank=True,
+                help_text="ID of the tenant this user belongs to (null for superusers)",
+                null=True,
+            ),
         ),
     ]

@@ -7,87 +7,314 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tenancy', '0013_shop_logo_tenant_charge_interest_on_overdue_and_more'),
+        ("tenancy", "0013_shop_logo_tenant_charge_interest_on_overdue_and_more"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='SubscriptionPlan',
+            name="SubscriptionPlan",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(help_text='Plan name (e.g., Starter, Professional)', max_length=100)),
-                ('slug', models.SlugField(help_text='URL-friendly plan identifier', unique=True)),
-                ('description', models.TextField(blank=True, help_text='Plan description')),
-                ('price', models.DecimalField(decimal_places=2, help_text='Price in ZAR', max_digits=10)),
-                ('setup_fee', models.DecimalField(decimal_places=2, default=0, help_text='One-time setup fee', max_digits=10)),
-                ('billing_period_days', models.PositiveIntegerField(choices=[(30, 'Monthly'), (90, 'Quarterly'), (365, 'Yearly')], default=30, help_text='Billing cycle in days')),
-                ('max_shops', models.PositiveIntegerField(default=1, help_text='Maximum number of shops allowed')),
-                ('max_users', models.PositiveIntegerField(default=5, help_text='Maximum number of users allowed')),
-                ('max_invoices_per_month', models.PositiveIntegerField(default=100, help_text='Maximum invoices per month')),
-                ('features', models.JSONField(default=dict, help_text='Feature flags as JSON (e.g., {"pos": true, "debtors": true})')),
-                ('is_active', models.BooleanField(default=True, help_text='Whether this plan is available for new subscriptions')),
-                ('is_trial', models.BooleanField(default=False, help_text='Is this a free trial plan?')),
-                ('sort_order', models.PositiveIntegerField(default=0, help_text='Display order in pricing tables')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "name",
+                    models.CharField(
+                        help_text="Plan name (e.g., Starter, Professional)",
+                        max_length=100,
+                    ),
+                ),
+                (
+                    "slug",
+                    models.SlugField(
+                        help_text="URL-friendly plan identifier", unique=True
+                    ),
+                ),
+                (
+                    "description",
+                    models.TextField(blank=True, help_text="Plan description"),
+                ),
+                (
+                    "price",
+                    models.DecimalField(
+                        decimal_places=2, help_text="Price in ZAR", max_digits=10
+                    ),
+                ),
+                (
+                    "setup_fee",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="One-time setup fee",
+                        max_digits=10,
+                    ),
+                ),
+                (
+                    "billing_period_days",
+                    models.PositiveIntegerField(
+                        choices=[(30, "Monthly"), (90, "Quarterly"), (365, "Yearly")],
+                        default=30,
+                        help_text="Billing cycle in days",
+                    ),
+                ),
+                (
+                    "max_shops",
+                    models.PositiveIntegerField(
+                        default=1, help_text="Maximum number of shops allowed"
+                    ),
+                ),
+                (
+                    "max_users",
+                    models.PositiveIntegerField(
+                        default=5, help_text="Maximum number of users allowed"
+                    ),
+                ),
+                (
+                    "max_invoices_per_month",
+                    models.PositiveIntegerField(
+                        default=100, help_text="Maximum invoices per month"
+                    ),
+                ),
+                (
+                    "features",
+                    models.JSONField(
+                        default=dict,
+                        help_text='Feature flags as JSON (e.g., {"pos": true, "debtors": true})',
+                    ),
+                ),
+                (
+                    "is_active",
+                    models.BooleanField(
+                        default=True,
+                        help_text="Whether this plan is available for new subscriptions",
+                    ),
+                ),
+                (
+                    "is_trial",
+                    models.BooleanField(
+                        default=False, help_text="Is this a free trial plan?"
+                    ),
+                ),
+                (
+                    "sort_order",
+                    models.PositiveIntegerField(
+                        default=0, help_text="Display order in pricing tables"
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
             ],
             options={
-                'verbose_name': 'Subscription Plan',
-                'verbose_name_plural': 'Subscription Plans',
-                'db_table': 'subscription_plans',
-                'ordering': ['sort_order', 'price'],
+                "verbose_name": "Subscription Plan",
+                "verbose_name_plural": "Subscription Plans",
+                "db_table": "subscription_plans",
+                "ordering": ["sort_order", "price"],
             },
         ),
         migrations.CreateModel(
-            name='Subscription',
+            name="Subscription",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('status', models.CharField(choices=[('TRIAL', 'Trial'), ('ACTIVE', 'Active'), ('PAST_DUE', 'Past Due'), ('CANCELLED', 'Cancelled'), ('EXPIRED', 'Expired'), ('SUSPENDED', 'Suspended')], default='TRIAL', max_length=20)),
-                ('start_date', models.DateField(help_text='Subscription start date')),
-                ('end_date', models.DateField(help_text='Subscription end date (current billing period)')),
-                ('trial_end_date', models.DateField(blank=True, help_text='Free trial end date', null=True)),
-                ('cancelled_at', models.DateTimeField(blank=True, help_text='When subscription was cancelled', null=True)),
-                ('auto_renew', models.BooleanField(default=True, help_text='Auto-renew subscription at end of period')),
-                ('current_period_start', models.DateField(blank=True, null=True)),
-                ('current_period_end', models.DateField(blank=True, null=True)),
-                ('invoices_this_period', models.PositiveIntegerField(default=0)),
-                ('gateway_customer_id', models.CharField(blank=True, help_text='Payment gateway customer ID', max_length=200)),
-                ('gateway_subscription_id', models.CharField(blank=True, help_text='Payment gateway subscription ID', max_length=200)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('tenant', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='subscription', to='tenancy.tenant')),
-                ('plan', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='subscriptions', to='tenancy.subscriptionplan')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("TRIAL", "Trial"),
+                            ("ACTIVE", "Active"),
+                            ("PAST_DUE", "Past Due"),
+                            ("CANCELLED", "Cancelled"),
+                            ("EXPIRED", "Expired"),
+                            ("SUSPENDED", "Suspended"),
+                        ],
+                        default="TRIAL",
+                        max_length=20,
+                    ),
+                ),
+                ("start_date", models.DateField(help_text="Subscription start date")),
+                (
+                    "end_date",
+                    models.DateField(
+                        help_text="Subscription end date (current billing period)"
+                    ),
+                ),
+                (
+                    "trial_end_date",
+                    models.DateField(
+                        blank=True, help_text="Free trial end date", null=True
+                    ),
+                ),
+                (
+                    "cancelled_at",
+                    models.DateTimeField(
+                        blank=True,
+                        help_text="When subscription was cancelled",
+                        null=True,
+                    ),
+                ),
+                (
+                    "auto_renew",
+                    models.BooleanField(
+                        default=True,
+                        help_text="Auto-renew subscription at end of period",
+                    ),
+                ),
+                ("current_period_start", models.DateField(blank=True, null=True)),
+                ("current_period_end", models.DateField(blank=True, null=True)),
+                ("invoices_this_period", models.PositiveIntegerField(default=0)),
+                (
+                    "gateway_customer_id",
+                    models.CharField(
+                        blank=True,
+                        help_text="Payment gateway customer ID",
+                        max_length=200,
+                    ),
+                ),
+                (
+                    "gateway_subscription_id",
+                    models.CharField(
+                        blank=True,
+                        help_text="Payment gateway subscription ID",
+                        max_length=200,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "tenant",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="subscription",
+                        to="tenancy.tenant",
+                    ),
+                ),
+                (
+                    "plan",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="subscriptions",
+                        to="tenancy.subscriptionplan",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Subscription',
-                'verbose_name_plural': 'Subscriptions',
-                'db_table': 'subscriptions',
+                "verbose_name": "Subscription",
+                "verbose_name_plural": "Subscriptions",
+                "db_table": "subscriptions",
             },
         ),
         migrations.CreateModel(
-            name='SubscriptionPayment',
+            name="SubscriptionPayment",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('amount', models.DecimalField(decimal_places=2, help_text='Payment amount in ZAR', max_digits=10)),
-                ('currency', models.CharField(default='ZAR', max_length=3)),
-                ('payment_method', models.CharField(blank=True, choices=[('CREDIT_CARD', 'Credit Card'), ('DEBIT_CARD', 'Debit Card'), ('EFT', 'Electronic Funds Transfer'), ('PAYFAST', 'PayFast'), ('STRIPE', 'Stripe'), ('YOCO', 'Yoco'), ('MANUAL', 'Manual Payment')], max_length=20)),
-                ('status', models.CharField(choices=[('PENDING', 'Pending'), ('PROCESSING', 'Processing'), ('SUCCEEDED', 'Succeeded'), ('FAILED', 'Failed'), ('REFUNDED', 'Refunded'), ('VOIDED', 'Voided')], default='PENDING', max_length=20)),
-                ('gateway_payment_id', models.CharField(blank=True, help_text='Payment gateway transaction ID', max_length=200)),
-                ('gateway_reference', models.CharField(blank=True, help_text='Payment gateway reference', max_length=200)),
-                ('gateway_response', models.JSONField(blank=True, default=dict, help_text='Full gateway response')),
-                ('paid_at', models.DateTimeField(blank=True, null=True)),
-                ('failed_at', models.DateTimeField(blank=True, null=True)),
-                ('description', models.CharField(blank=True, max_length=500)),
-                ('invoice_number', models.CharField(blank=True, help_text='Invoice/receipt number', max_length=50)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('subscription', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='payments', to='tenancy.subscription')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "amount",
+                    models.DecimalField(
+                        decimal_places=2,
+                        help_text="Payment amount in ZAR",
+                        max_digits=10,
+                    ),
+                ),
+                ("currency", models.CharField(default="ZAR", max_length=3)),
+                (
+                    "payment_method",
+                    models.CharField(
+                        blank=True,
+                        choices=[
+                            ("CREDIT_CARD", "Credit Card"),
+                            ("DEBIT_CARD", "Debit Card"),
+                            ("EFT", "Electronic Funds Transfer"),
+                            ("PAYFAST", "PayFast"),
+                            ("STRIPE", "Stripe"),
+                            ("YOCO", "Yoco"),
+                            ("MANUAL", "Manual Payment"),
+                        ],
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("PENDING", "Pending"),
+                            ("PROCESSING", "Processing"),
+                            ("SUCCEEDED", "Succeeded"),
+                            ("FAILED", "Failed"),
+                            ("REFUNDED", "Refunded"),
+                            ("VOIDED", "Voided"),
+                        ],
+                        default="PENDING",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "gateway_payment_id",
+                    models.CharField(
+                        blank=True,
+                        help_text="Payment gateway transaction ID",
+                        max_length=200,
+                    ),
+                ),
+                (
+                    "gateway_reference",
+                    models.CharField(
+                        blank=True,
+                        help_text="Payment gateway reference",
+                        max_length=200,
+                    ),
+                ),
+                (
+                    "gateway_response",
+                    models.JSONField(
+                        blank=True, default=dict, help_text="Full gateway response"
+                    ),
+                ),
+                ("paid_at", models.DateTimeField(blank=True, null=True)),
+                ("failed_at", models.DateTimeField(blank=True, null=True)),
+                ("description", models.CharField(blank=True, max_length=500)),
+                (
+                    "invoice_number",
+                    models.CharField(
+                        blank=True, help_text="Invoice/receipt number", max_length=50
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "subscription",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="payments",
+                        to="tenancy.subscription",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Subscription Payment',
-                'verbose_name_plural': 'Subscription Payments',
-                'db_table': 'subscription_payments',
-                'ordering': ['-created_at'],
+                "verbose_name": "Subscription Payment",
+                "verbose_name_plural": "Subscription Payments",
+                "db_table": "subscription_payments",
+                "ordering": ["-created_at"],
             },
         ),
     ]

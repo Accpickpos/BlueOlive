@@ -44,7 +44,9 @@ class Command(BaseCommand):
 
             if result["discrepancy_count"] == 0:
                 self.stdout.write(
-                    self.style.SUCCESS(f"  {label}: {result['checked']} checked, no discrepancies")
+                    self.style.SUCCESS(
+                        f"  {label}: {result['checked']} checked, no discrepancies"
+                    )
                 )
                 continue
 
@@ -53,8 +55,14 @@ class Command(BaseCommand):
                     f"  {label}: {result['discrepancy_count']} discrepancies out of {result['checked']} checked"
                 )
             )
-            shown = result["discrepancies"] if options["verbose"] else result["discrepancies"][:10]
+            shown = (
+                result["discrepancies"]
+                if options["verbose"]
+                else result["discrepancies"][:10]
+            )
             for d in shown:
                 self.stdout.write(f"    {d}")
             if not options["verbose"] and len(result["discrepancies"]) > 10:
-                self.stdout.write(f"    ... and {len(result['discrepancies']) - 10} more (use --verbose)")
+                self.stdout.write(
+                    f"    ... and {len(result['discrepancies']) - 10} more (use --verbose)"
+                )

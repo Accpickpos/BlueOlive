@@ -58,7 +58,9 @@ def get_consolidated_expenditure(period: str, ytd: bool = False) -> dict:
     }
 
     category_ids = set(creditor_totals) | set(cash_book_totals)
-    categories = {c.id: c.name for c in ExpenseCategory.objects.filter(id__in=category_ids)}
+    categories = {
+        c.id: c.name for c in ExpenseCategory.objects.filter(id__in=category_ids)
+    }
 
     rows = []
     grand_total = Decimal("0")
@@ -168,7 +170,9 @@ def get_tax_control_report(start_date: str, end_date: str) -> dict:
     ).aggregate(total=Sum("input_vat_amount"))["total"] or Decimal("0")
     add("Creditors — Other Expenses (input VAT)", creditor_expense_vat)
 
-    creditors_input_vat = creditor_invoice_vat - creditor_credit_note_vat + creditor_expense_vat
+    creditors_input_vat = (
+        creditor_invoice_vat - creditor_credit_note_vat + creditor_expense_vat
+    )
 
     # --- Cash Book: reuse the audit_type categorization (includes the audit_type=4 fix) ---
     cash_book_vat = CashBookTransaction.objects.filter(
@@ -188,7 +192,9 @@ def get_tax_control_report(start_date: str, end_date: str) -> dict:
     return {
         "start_date": start_date,
         "end_date": end_date,
-        "categories": [{"label": label, "amount": amount} for label, amount in categories.items()],
+        "categories": [
+            {"label": label, "amount": amount} for label, amount in categories.items()
+        ],
         "totals": {
             "output_vat": total_output_vat,
             "input_vat": total_input_vat,

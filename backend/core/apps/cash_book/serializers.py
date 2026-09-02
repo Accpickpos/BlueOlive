@@ -192,7 +192,9 @@ class CreateOtherIncomeSerializer(serializers.Serializer):
     )
     audit_type = serializers.IntegerField(default=2, help_text="2 = Sundry Income")
     category_id = serializers.IntegerField(required=False, allow_null=True)
-    description = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    description = serializers.CharField(
+        max_length=200, required=False, allow_blank=True
+    )
     reference = serializers.CharField(max_length=20, required=False, allow_blank=True)
     paid_into = serializers.ChoiceField(choices=["CASH", "BANK"], default="CASH")
     bank_account_number = serializers.CharField(
@@ -251,7 +253,9 @@ class CreateOtherExpenseSerializer(serializers.Serializer):
     )
     audit_type = serializers.IntegerField(default=4, help_text="4 = Expenses")
     category_id = serializers.IntegerField(required=False, allow_null=True)
-    description = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    description = serializers.CharField(
+        max_length=200, required=False, allow_blank=True
+    )
     reference = serializers.CharField(max_length=20, required=False, allow_blank=True)
     paid_from = serializers.ChoiceField(choices=["CASH", "BANK"], default="CASH")
     bank_account_number = serializers.CharField(

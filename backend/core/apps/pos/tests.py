@@ -12,8 +12,6 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase, TransactionTestCase
 
-User = get_user_model()
-
 from .calculation_service import CalculationService
 from .exceptions import InsufficientStock, InvalidDocumentState, POSValidationException
 from .models import (
@@ -39,6 +37,8 @@ from .models import (
     TransactionQuery,
 )
 from .services import CashSaleService, LaybyeService, QuotationService
+
+User = get_user_model()
 
 
 class CalculationServiceTestCase(TestCase):

@@ -18,10 +18,13 @@ class StockFinderConfig(TimeStampedModel):
     api_key = EncryptedCharField(max_length=255, blank=True)
     api_secret = EncryptedCharField(max_length=255, blank=True)
     fitment_center_code = models.CharField(
-        max_length=100, blank=True, help_text="This shop's Stockfinder fitment-center code"
+        max_length=100,
+        blank=True,
+        help_text="This shop's Stockfinder fitment-center code",
     )
     auto_sync_stock = models.BooleanField(
-        default=False, help_text="Periodically push this shop's stock catalog to Stockfinder"
+        default=False,
+        help_text="Periodically push this shop's stock catalog to Stockfinder",
     )
     sync_interval_minutes = models.PositiveIntegerField(default=60)
     last_sync = models.DateTimeField(null=True, blank=True)

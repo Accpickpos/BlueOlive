@@ -9,46 +9,93 @@ class Migration(migrations.Migration):
 
     initial = True
 
-    dependencies = [
-    ]
+    dependencies = []
 
     operations = [
         migrations.CreateModel(
-            name='Tenant',
+            name="Tenant",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(max_length=200, unique=True)),
-                ('slug', models.SlugField(unique=True)),
-                ('subdomain', models.CharField(default='default', help_text="Subdomain for tenant access, e.g., 'tenant1'", max_length=100, unique=True)),
-                ('phone', models.CharField(default='', max_length=20)),
-                ('email', models.EmailField(default='', max_length=150)),
-                ('db_name', models.CharField(max_length=200)),
-                ('db_user', models.CharField(default='postgres', max_length=200)),
-                ('db_password', tenancy.models.EncryptedCharField(max_length=200)),
-                ('db_host', models.CharField(default='localhost', max_length=200)),
-                ('db_port', models.IntegerField(default=5432)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('tenant_control', models.BooleanField(default=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("name", models.CharField(max_length=200, unique=True)),
+                ("slug", models.SlugField(unique=True)),
+                (
+                    "subdomain",
+                    models.CharField(
+                        default="default",
+                        help_text="Subdomain for tenant access, e.g., 'tenant1'",
+                        max_length=100,
+                        unique=True,
+                    ),
+                ),
+                ("phone", models.CharField(default="", max_length=20)),
+                ("email", models.EmailField(default="", max_length=150)),
+                ("db_name", models.CharField(max_length=200)),
+                ("db_user", models.CharField(default="postgres", max_length=200)),
+                ("db_password", tenancy.models.EncryptedCharField(max_length=200)),
+                ("db_host", models.CharField(default="localhost", max_length=200)),
+                ("db_port", models.IntegerField(default=5432)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("tenant_control", models.BooleanField(default=True)),
             ],
             options={
-                'verbose_name': 'Tenant',
+                "verbose_name": "Tenant",
             },
         ),
         migrations.CreateModel(
-            name='Shop',
+            name="Shop",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(max_length=200)),
-                ('schema_name', models.CharField(max_length=100, unique=True)),
-                ('subdomain', models.CharField(blank=True, help_text="Subdomain for shop access, e.g., 'downtown'", max_length=100)),
-                ('description', models.TextField(blank=True, null=True)),
-                ('is_head_office', models.BooleanField(default=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('tenant', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='shops', to='tenancy.tenant')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("name", models.CharField(max_length=200)),
+                ("schema_name", models.CharField(max_length=100, unique=True)),
+                (
+                    "subdomain",
+                    models.CharField(
+                        blank=True,
+                        help_text="Subdomain for shop access, e.g., 'downtown'",
+                        max_length=100,
+                    ),
+                ),
+                ("description", models.TextField(blank=True, null=True)),
+                ("is_head_office", models.BooleanField(default=False)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                (
+                    "tenant",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="shops",
+                        to="tenancy.tenant",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Shop',
-                'constraints': [models.UniqueConstraint(condition=models.Q(('is_head_office', True)), fields=('tenant', 'is_head_office'), name='unique_head_office_per_tenant'), models.UniqueConstraint(fields=('tenant', 'subdomain'), name='unique_subdomain_per_tenant')],
+                "verbose_name": "Shop",
+                "constraints": [
+                    models.UniqueConstraint(
+                        condition=models.Q(("is_head_office", True)),
+                        fields=("tenant", "is_head_office"),
+                        name="unique_head_office_per_tenant",
+                    ),
+                    models.UniqueConstraint(
+                        fields=("tenant", "subdomain"),
+                        name="unique_subdomain_per_tenant",
+                    ),
+                ],
             },
         ),
     ]

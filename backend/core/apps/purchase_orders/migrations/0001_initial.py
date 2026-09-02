@@ -11,160 +11,449 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('creditors', '0001_initial'),
+        ("creditors", "0001_initial"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='PurchaseOrderReceipt',
+            name="PurchaseOrderReceipt",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('receipt_date', models.DateField(default=django.utils.timezone.now)),
-                ('invoice_number', models.CharField(help_text="Supplier's invoice number", max_length=50)),
-                ('total_quantity', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('total_value_exclusive', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('total_value_vat', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('total_value_inclusive', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('has_variance', models.BooleanField(default=False)),
-                ('variance_notes', models.TextField(blank=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("receipt_date", models.DateField(default=django.utils.timezone.now)),
+                (
+                    "invoice_number",
+                    models.CharField(
+                        help_text="Supplier's invoice number", max_length=50
+                    ),
+                ),
+                (
+                    "total_quantity",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "total_value_exclusive",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "total_value_vat",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "total_value_inclusive",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                ("has_variance", models.BooleanField(default=False)),
+                ("variance_notes", models.TextField(blank=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
             ],
             options={
-                'db_table': 'purchase_order_receipts',
-                'ordering': ['-receipt_date'],
+                "db_table": "purchase_order_receipts",
+                "ordering": ["-receipt_date"],
             },
         ),
         migrations.CreateModel(
-            name='PurchaseOrderReceiptLine',
+            name="PurchaseOrderReceiptLine",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('quantity_received', models.DecimalField(decimal_places=2, max_digits=10, validators=[django.core.validators.MinValueValidator(0.01)])),
-                ('actual_unit_cost', models.DecimalField(decimal_places=2, max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
-                ('line_exclusive', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('line_vat', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('line_inclusive', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('has_cost_variance', models.BooleanField(default=False)),
-                ('cost_variance_amount', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "quantity_received",
+                    models.DecimalField(
+                        decimal_places=2,
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0.01)],
+                    ),
+                ),
+                (
+                    "actual_unit_cost",
+                    models.DecimalField(
+                        decimal_places=2,
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "line_exclusive",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "line_vat",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "line_inclusive",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                ("has_cost_variance", models.BooleanField(default=False)),
+                (
+                    "cost_variance_amount",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
             ],
             options={
-                'db_table': 'purchase_order_receipt_lines',
+                "db_table": "purchase_order_receipt_lines",
             },
         ),
         migrations.CreateModel(
-            name='PurchaseOrderTemplate',
+            name="PurchaseOrderTemplate",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('template_name', models.CharField(max_length=100, unique=True)),
-                ('description', models.TextField(blank=True)),
-                ('default_delivery_days', models.IntegerField(default=7, help_text='Days from order to delivery')),
-                ('pricing_method', models.CharField(choices=[('COST', 'At Cost Price'), ('RETAIL', 'At Retail Price')], default='COST', max_length=10)),
-                ('is_active', models.BooleanField(default=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("template_name", models.CharField(max_length=100, unique=True)),
+                ("description", models.TextField(blank=True)),
+                (
+                    "default_delivery_days",
+                    models.IntegerField(
+                        default=7, help_text="Days from order to delivery"
+                    ),
+                ),
+                (
+                    "pricing_method",
+                    models.CharField(
+                        choices=[
+                            ("COST", "At Cost Price"),
+                            ("RETAIL", "At Retail Price"),
+                        ],
+                        default="COST",
+                        max_length=10,
+                    ),
+                ),
+                ("is_active", models.BooleanField(default=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
             ],
             options={
-                'db_table': 'purchase_order_templates',
-                'ordering': ['template_name'],
+                "db_table": "purchase_order_templates",
+                "ordering": ["template_name"],
             },
         ),
         migrations.CreateModel(
-            name='PurchaseOrderTemplateLine',
+            name="PurchaseOrderTemplateLine",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('line_number', models.IntegerField()),
-                ('default_quantity', models.DecimalField(decimal_places=2, help_text='Default quantity to order', max_digits=10, validators=[django.core.validators.MinValueValidator(0.01)])),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("line_number", models.IntegerField()),
+                (
+                    "default_quantity",
+                    models.DecimalField(
+                        decimal_places=2,
+                        help_text="Default quantity to order",
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0.01)],
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
             ],
             options={
-                'db_table': 'purchase_order_template_lines',
-                'ordering': ['line_number'],
+                "db_table": "purchase_order_template_lines",
+                "ordering": ["line_number"],
             },
         ),
         migrations.CreateModel(
-            name='PurchaseOrder',
+            name="PurchaseOrder",
             fields=[
-                ('order_number', models.AutoField(primary_key=True, serialize=False)),
-                ('order_date', models.DateField(default=django.utils.timezone.now)),
-                ('order_time', models.TimeField(blank=True, null=True)),
-                ('delivery_date', models.DateField(help_text='Expected delivery date')),
-                ('quantity_ordered', models.DecimalField(decimal_places=3, default=0, max_digits=12)),
-                ('value', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('status', models.CharField(choices=[('O', 'Outstanding'), ('P', 'Partially Received'), ('F', 'Fully Received'), ('C', 'Cancelled')], default='O', max_length=1)),
-                ('pricing_method', models.CharField(choices=[('COST', 'At Cost Price'), ('RETAIL', 'At Retail Price')], default='COST', help_text='Price items at cost or retail', max_length=10)),
-                ('total_quantity_received', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('total_quantity_outstanding', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('total_value_exclusive', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('total_value_vat', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('total_value_inclusive', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('outstanding_value_exclusive', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('outstanding_value_vat', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('outstanding_value_inclusive', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('is_back_order', models.BooleanField(default=False, help_text='Created from delivery variance')),
-                ('notes', models.TextField(blank=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('cancelled_at', models.DateTimeField(blank=True, null=True)),
-                ('parent_order', models.ForeignKey(blank=True, help_text='Original order if this is a back order', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='back_orders', to='purchase_orders.purchaseorder')),
-                ('supplier', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='purchase_orders', to='creditors.creditor')),
+                ("order_number", models.AutoField(primary_key=True, serialize=False)),
+                ("order_date", models.DateField(default=django.utils.timezone.now)),
+                ("order_time", models.TimeField(blank=True, null=True)),
+                ("delivery_date", models.DateField(help_text="Expected delivery date")),
+                (
+                    "quantity_ordered",
+                    models.DecimalField(decimal_places=3, default=0, max_digits=12),
+                ),
+                (
+                    "value",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("O", "Outstanding"),
+                            ("P", "Partially Received"),
+                            ("F", "Fully Received"),
+                            ("C", "Cancelled"),
+                        ],
+                        default="O",
+                        max_length=1,
+                    ),
+                ),
+                (
+                    "pricing_method",
+                    models.CharField(
+                        choices=[
+                            ("COST", "At Cost Price"),
+                            ("RETAIL", "At Retail Price"),
+                        ],
+                        default="COST",
+                        help_text="Price items at cost or retail",
+                        max_length=10,
+                    ),
+                ),
+                (
+                    "total_quantity_received",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "total_quantity_outstanding",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "total_value_exclusive",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "total_value_vat",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "total_value_inclusive",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "outstanding_value_exclusive",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "outstanding_value_vat",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "outstanding_value_inclusive",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "is_back_order",
+                    models.BooleanField(
+                        default=False, help_text="Created from delivery variance"
+                    ),
+                ),
+                ("notes", models.TextField(blank=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("cancelled_at", models.DateTimeField(blank=True, null=True)),
+                (
+                    "parent_order",
+                    models.ForeignKey(
+                        blank=True,
+                        help_text="Original order if this is a back order",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="back_orders",
+                        to="purchase_orders.purchaseorder",
+                    ),
+                ),
+                (
+                    "supplier",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="purchase_orders",
+                        to="creditors.creditor",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'purchase_orders',
-                'ordering': ['-order_date', '-order_number'],
+                "db_table": "purchase_orders",
+                "ordering": ["-order_date", "-order_number"],
             },
         ),
         migrations.CreateModel(
-            name='BackOrder',
+            name="BackOrder",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_date', models.DateField(default=django.utils.timezone.now)),
-                ('reason', models.TextField(help_text='Reason for back order (short delivery, etc)')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('back_order', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='back_order_info', to='purchase_orders.purchaseorder')),
-                ('original_order', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='created_back_orders', to='purchase_orders.purchaseorder')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_date", models.DateField(default=django.utils.timezone.now)),
+                (
+                    "reason",
+                    models.TextField(
+                        help_text="Reason for back order (short delivery, etc)"
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                (
+                    "back_order",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="back_order_info",
+                        to="purchase_orders.purchaseorder",
+                    ),
+                ),
+                (
+                    "original_order",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="created_back_orders",
+                        to="purchase_orders.purchaseorder",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'back_orders',
+                "db_table": "back_orders",
             },
         ),
         migrations.CreateModel(
-            name='PurchaseOrderLine',
+            name="PurchaseOrderLine",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('line_number', models.IntegerField()),
-                ('stock_code', models.CharField(blank=True, max_length=13)),
-                ('quantity', models.DecimalField(decimal_places=3, max_digits=10, validators=[django.core.validators.MinValueValidator(0.001)])),
-                ('quantity_delivered', models.DecimalField(decimal_places=3, default=0, max_digits=10)),
-                ('free_quantity', models.DecimalField(decimal_places=3, default=0, max_digits=10)),
-                ('quantity_outstanding', models.DecimalField(decimal_places=3, default=0, max_digits=10)),
-                ('base_price', models.DecimalField(decimal_places=3, max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
-                ('monetary_discount1', models.DecimalField(decimal_places=3, default=0, max_digits=8)),
-                ('monetary_discount2', models.DecimalField(decimal_places=3, default=0, max_digits=8)),
-                ('monetary_discount3', models.DecimalField(decimal_places=3, default=0, max_digits=8)),
-                ('percent_discount1', models.DecimalField(decimal_places=2, default=0, max_digits=6)),
-                ('percent_discount2', models.DecimalField(decimal_places=2, default=0, max_digits=6)),
-                ('percent_discount3', models.DecimalField(decimal_places=2, default=0, max_digits=6)),
-                ('selling_price1', models.DecimalField(decimal_places=4, default=0, max_digits=14)),
-                ('selling_price2', models.DecimalField(decimal_places=4, default=0, max_digits=14)),
-                ('selling_price3', models.DecimalField(decimal_places=4, default=0, max_digits=14)),
-                ('comments', models.CharField(blank=True, max_length=30)),
-                ('total_exclusive', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('total_vat', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('total_inclusive', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('outstanding_exclusive', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('outstanding_vat', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('outstanding_inclusive', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('quantity_on_hand_at_order', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('monthly_sales_at_order', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('tax_code', models.IntegerField(default=1)),
-                ('is_fully_received', models.BooleanField(default=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('purchase_order', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='line_items', to='purchase_orders.purchaseorder')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("line_number", models.IntegerField()),
+                ("stock_code", models.CharField(blank=True, max_length=13)),
+                (
+                    "quantity",
+                    models.DecimalField(
+                        decimal_places=3,
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0.001)],
+                    ),
+                ),
+                (
+                    "quantity_delivered",
+                    models.DecimalField(decimal_places=3, default=0, max_digits=10),
+                ),
+                (
+                    "free_quantity",
+                    models.DecimalField(decimal_places=3, default=0, max_digits=10),
+                ),
+                (
+                    "quantity_outstanding",
+                    models.DecimalField(decimal_places=3, default=0, max_digits=10),
+                ),
+                (
+                    "base_price",
+                    models.DecimalField(
+                        decimal_places=3,
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "monetary_discount1",
+                    models.DecimalField(decimal_places=3, default=0, max_digits=8),
+                ),
+                (
+                    "monetary_discount2",
+                    models.DecimalField(decimal_places=3, default=0, max_digits=8),
+                ),
+                (
+                    "monetary_discount3",
+                    models.DecimalField(decimal_places=3, default=0, max_digits=8),
+                ),
+                (
+                    "percent_discount1",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=6),
+                ),
+                (
+                    "percent_discount2",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=6),
+                ),
+                (
+                    "percent_discount3",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=6),
+                ),
+                (
+                    "selling_price1",
+                    models.DecimalField(decimal_places=4, default=0, max_digits=14),
+                ),
+                (
+                    "selling_price2",
+                    models.DecimalField(decimal_places=4, default=0, max_digits=14),
+                ),
+                (
+                    "selling_price3",
+                    models.DecimalField(decimal_places=4, default=0, max_digits=14),
+                ),
+                ("comments", models.CharField(blank=True, max_length=30)),
+                (
+                    "total_exclusive",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "total_vat",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "total_inclusive",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "outstanding_exclusive",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "outstanding_vat",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "outstanding_inclusive",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "quantity_on_hand_at_order",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "monthly_sales_at_order",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                ("tax_code", models.IntegerField(default=1)),
+                ("is_fully_received", models.BooleanField(default=False)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "purchase_order",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="line_items",
+                        to="purchase_orders.purchaseorder",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'purchase_order_lines',
-                'ordering': ['line_number'],
+                "db_table": "purchase_order_lines",
+                "ordering": ["line_number"],
             },
         ),
     ]

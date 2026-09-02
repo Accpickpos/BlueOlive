@@ -10,496 +10,977 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('contenttypes', '0002_remove_content_type_name'),
-        ('creditors', '0001_initial'),
-        ('settings', '0001_initial'),
-        ('stock_control', '0001_initial'),
+        ("contenttypes", "0002_remove_content_type_name"),
+        ("creditors", "0001_initial"),
+        ("settings", "0001_initial"),
+        ("stock_control", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='creditor',
-            name='credit_terms',
-            field=models.ForeignKey(blank=True, help_text='FK to CreditTerms. Null if not yet matched — use payment_terms_days instead.', null=True, on_delete=django.db.models.deletion.PROTECT, related_name='creditors', to='settings.creditterms'),
-        ),
-        migrations.AddField(
-            model_name='creditor',
-            name='deactivated_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_deactivated', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditor',
-            name='sales_area',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='suppliers', to='settings.salesarea'),
-        ),
-        migrations.AddField(
-            model_name='creditor',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditorcreditnote',
-            name='created_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditorcreditnote',
-            name='creditor',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='%(class)s_set', to='creditors.creditor'),
-        ),
-        migrations.AddField(
-            model_name='creditorcreditnote',
-            name='posted_by',
-            field=models.ForeignKey(blank=True, editable=False, help_text='User who posted this transaction', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_posted', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditorcreditnote',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditorcreditnotelineitem',
-            name='created_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditorcreditnotelineitem',
-            name='credit_note',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='line_items', to='creditors.creditorcreditnote'),
-        ),
-        migrations.AddField(
-            model_name='creditorcreditnotelineitem',
-            name='stock_item',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='creditor_cn_lines', to='stock_control.stockitem'),
-        ),
-        migrations.AddField(
-            model_name='creditorcreditnotelineitem',
-            name='tax_code',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, to='settings.taxcode'),
-        ),
-        migrations.AddField(
-            model_name='creditorcreditnotelineitem',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditorinvoice',
-            name='created_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditorinvoice',
-            name='creditor',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='%(class)s_set', to='creditors.creditor'),
-        ),
-        migrations.AddField(
-            model_name='creditorinvoice',
-            name='posted_by',
-            field=models.ForeignKey(blank=True, editable=False, help_text='User who posted this transaction', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_posted', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditorinvoice',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditorinvoicelineitem',
-            name='created_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditorinvoicelineitem',
-            name='expense_category',
-            field=models.ForeignKey(help_text='EXPCAT in supexpt', limit_choices_to={'category_type__in': ['BOTH', 'CREDITORS']}, on_delete=django.db.models.deletion.PROTECT, related_name='creditor_invoice_lines', to='settings.expensecategory'),
-        ),
-        migrations.AddField(
-            model_name='creditorinvoicelineitem',
-            name='invoice',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='line_items', to='creditors.creditorinvoice'),
-        ),
-        migrations.AddField(
-            model_name='creditorinvoicelineitem',
-            name='tax_code',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, to='settings.taxcode'),
-        ),
-        migrations.AddField(
-            model_name='creditorinvoicelineitem',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditorjournal',
-            name='created_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditorjournal',
-            name='creditor',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='%(class)s_set', to='creditors.creditor'),
-        ),
-        migrations.AddField(
-            model_name='creditorjournal',
-            name='posted_by',
-            field=models.ForeignKey(blank=True, editable=False, help_text='User who posted this transaction', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_posted', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditorjournal',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditoropenitem',
-            name='credit_note',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='open_items', to='creditors.creditorcreditnote'),
-        ),
-        migrations.AddField(
-            model_name='creditoropenitem',
-            name='creditor',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='open_items', to='creditors.creditor'),
-        ),
-        migrations.AddField(
-            model_name='creditoropenitem',
-            name='invoice',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='open_items', to='creditors.creditorinvoice'),
-        ),
-        migrations.AddField(
-            model_name='creditoropenitem',
-            name='journal',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='open_items', to='creditors.creditorjournal'),
-        ),
-        migrations.AddField(
-            model_name='creditorpayment',
-            name='created_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditorpayment',
-            name='creditor',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='%(class)s_set', to='creditors.creditor'),
-        ),
-        migrations.AddField(
-            model_name='creditorpayment',
-            name='payment_method',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, to='settings.paymentmethod'),
-        ),
-        migrations.AddField(
-            model_name='creditorpayment',
-            name='posted_by',
-            field=models.ForeignKey(blank=True, editable=False, help_text='User who posted this transaction', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_posted', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditorpayment',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditortransactionline',
-            name='content_type',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='contenttypes.contenttype'),
-        ),
-        migrations.AddField(
-            model_name='creditortransactionline',
-            name='created_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditortransactionline',
-            name='expense_category',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='transaction_lines', to='settings.expensecategory'),
-        ),
-        migrations.AddField(
-            model_name='creditortransactionline',
-            name='stock_item',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='transaction_lines', to='stock_control.stockitem'),
-        ),
-        migrations.AddField(
-            model_name='creditortransactionline',
-            name='tax_code',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='transaction_lines', to='settings.taxcode'),
-        ),
-        migrations.AddField(
-            model_name='creditortransactionline',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='expensecategorymonthlybalance',
-            name='created_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='expensecategorymonthlybalance',
-            name='expense_category',
-            field=models.ForeignKey(help_text='EXPCAT', on_delete=django.db.models.deletion.CASCADE, related_name='monthly_balances', to='settings.expensecategory'),
-        ),
-        migrations.AddField(
-            model_name='expensecategorymonthlybalance',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='goodsreceivednote',
-            name='created_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='goodsreceivednote',
-            name='creditor',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='%(class)s_set', to='creditors.creditor'),
-        ),
-        migrations.AddField(
-            model_name='goodsreceivednote',
-            name='posted_by',
-            field=models.ForeignKey(blank=True, editable=False, help_text='User who posted this transaction', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_posted', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='goodsreceivednote',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditoropenitem',
-            name='grn',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='open_items', to='creditors.goodsreceivednote'),
-        ),
-        migrations.AddField(
-            model_name='creditorinvoice',
-            name='related_grn',
-            field=models.ForeignKey(blank=True, help_text='GRNNO in supexpt', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='related_expense_invoices', to='creditors.goodsreceivednote'),
-        ),
-        migrations.AddField(
-            model_name='creditorcreditnote',
-            name='original_grn',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='credit_notes', to='creditors.goodsreceivednote'),
-        ),
-        migrations.AddField(
-            model_name='grnlineitem',
-            name='created_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='grnlineitem',
-            name='grn',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='line_items', to='creditors.goodsreceivednote'),
-        ),
-        migrations.AddField(
-            model_name='grnlineitem',
-            name='stock_item',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='grn_lines', to='stock_control.stockitem'),
-        ),
-        migrations.AddField(
-            model_name='grnlineitem',
-            name='tax_code',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, to='settings.taxcode'),
-        ),
-        migrations.AddField(
-            model_name='grnlineitem',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='openitemallocation',
-            name='open_item',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='allocations', to='creditors.creditoropenitem'),
-        ),
-        migrations.AddField(
-            model_name='openitemallocation',
-            name='payment',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='allocations', to='creditors.creditorpayment'),
-        ),
-        migrations.AddField(
-            model_name='openitemaudit',
-            name='created_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='openitemaudit',
-            name='creditor',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='open_item_audits', to='creditors.creditor'),
-        ),
-        migrations.AddField(
-            model_name='openitemaudit',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='rfc',
-            name='created_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='rfc',
-            name='creditor',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='rfcs', to='creditors.creditor'),
-        ),
-        migrations.AddField(
-            model_name='rfc',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='rfclineitem',
-            name='created_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='rfclineitem',
-            name='rfc',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='line_items', to='creditors.rfc'),
-        ),
-        migrations.AddField(
-            model_name='rfclineitem',
-            name='stock_item',
-            field=models.ForeignKey(help_text='CODE', on_delete=django.db.models.deletion.PROTECT, related_name='rfc_lines', to='stock_control.stockitem'),
-        ),
-        migrations.AddField(
-            model_name='rfclineitem',
-            name='tax_code',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, to='settings.taxcode'),
-        ),
-        migrations.AddField(
-            model_name='rfclineitem',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='supplierledgerentry',
-            name='created_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='supplierledgerentry',
-            name='creditor',
-            field=models.ForeignKey(help_text='SUPNO', on_delete=django.db.models.deletion.PROTECT, related_name='ledger_entries', to='creditors.creditor'),
-        ),
-        migrations.AddField(
-            model_name='supplierledgerentry',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='creditoropenitem',
-            name='ledger_entry',
-            field=models.ForeignKey(blank=True, help_text='Set for legacy-imported records without a typed transaction.', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='open_items', to='creditors.supplierledgerentry'),
-        ),
-        migrations.AddField(
-            model_name='supplierpaymentorder',
-            name='created_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AddField(
-            model_name='supplierpaymentorder',
-            name='creditor',
-            field=models.ForeignKey(blank=True, help_text='Optional — suppo.dbf has no SUPNO so legacy records have this as null.', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='payment_orders', to='creditors.creditor'),
-        ),
-        migrations.AddField(
-            model_name='supplierpaymentorder',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL),
+            model_name="creditor",
+            name="credit_terms",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="FK to CreditTerms. Null if not yet matched — use payment_terms_days instead.",
+                null=True,
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="creditors",
+                to="settings.creditterms",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditor",
+            name="deactivated_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_deactivated",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditor",
+            name="sales_area",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="suppliers",
+                to="settings.salesarea",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditor",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_updated",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorcreditnote",
+            name="created_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_created",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorcreditnote",
+            name="creditor",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="%(class)s_set",
+                to="creditors.creditor",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorcreditnote",
+            name="posted_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                help_text="User who posted this transaction",
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_posted",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorcreditnote",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_updated",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorcreditnotelineitem",
+            name="created_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_created",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorcreditnotelineitem",
+            name="credit_note",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="line_items",
+                to="creditors.creditorcreditnote",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorcreditnotelineitem",
+            name="stock_item",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="creditor_cn_lines",
+                to="stock_control.stockitem",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorcreditnotelineitem",
+            name="tax_code",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT, to="settings.taxcode"
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorcreditnotelineitem",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_updated",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorinvoice",
+            name="created_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_created",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorinvoice",
+            name="creditor",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="%(class)s_set",
+                to="creditors.creditor",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorinvoice",
+            name="posted_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                help_text="User who posted this transaction",
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_posted",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorinvoice",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_updated",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorinvoicelineitem",
+            name="created_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_created",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorinvoicelineitem",
+            name="expense_category",
+            field=models.ForeignKey(
+                help_text="EXPCAT in supexpt",
+                limit_choices_to={"category_type__in": ["BOTH", "CREDITORS"]},
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="creditor_invoice_lines",
+                to="settings.expensecategory",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorinvoicelineitem",
+            name="invoice",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="line_items",
+                to="creditors.creditorinvoice",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorinvoicelineitem",
+            name="tax_code",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT, to="settings.taxcode"
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorinvoicelineitem",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_updated",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorjournal",
+            name="created_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_created",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorjournal",
+            name="creditor",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="%(class)s_set",
+                to="creditors.creditor",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorjournal",
+            name="posted_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                help_text="User who posted this transaction",
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_posted",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorjournal",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_updated",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditoropenitem",
+            name="credit_note",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="open_items",
+                to="creditors.creditorcreditnote",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditoropenitem",
+            name="creditor",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="open_items",
+                to="creditors.creditor",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditoropenitem",
+            name="invoice",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="open_items",
+                to="creditors.creditorinvoice",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditoropenitem",
+            name="journal",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="open_items",
+                to="creditors.creditorjournal",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorpayment",
+            name="created_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_created",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorpayment",
+            name="creditor",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="%(class)s_set",
+                to="creditors.creditor",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorpayment",
+            name="payment_method",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.PROTECT,
+                to="settings.paymentmethod",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorpayment",
+            name="posted_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                help_text="User who posted this transaction",
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_posted",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorpayment",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_updated",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditortransactionline",
+            name="content_type",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                to="contenttypes.contenttype",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditortransactionline",
+            name="created_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_created",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditortransactionline",
+            name="expense_category",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="transaction_lines",
+                to="settings.expensecategory",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditortransactionline",
+            name="stock_item",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="transaction_lines",
+                to="stock_control.stockitem",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditortransactionline",
+            name="tax_code",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="transaction_lines",
+                to="settings.taxcode",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditortransactionline",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_updated",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="expensecategorymonthlybalance",
+            name="created_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_created",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="expensecategorymonthlybalance",
+            name="expense_category",
+            field=models.ForeignKey(
+                help_text="EXPCAT",
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="monthly_balances",
+                to="settings.expensecategory",
+            ),
+        ),
+        migrations.AddField(
+            model_name="expensecategorymonthlybalance",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_updated",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="goodsreceivednote",
+            name="created_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_created",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="goodsreceivednote",
+            name="creditor",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="%(class)s_set",
+                to="creditors.creditor",
+            ),
+        ),
+        migrations.AddField(
+            model_name="goodsreceivednote",
+            name="posted_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                help_text="User who posted this transaction",
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_posted",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="goodsreceivednote",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_updated",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditoropenitem",
+            name="grn",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="open_items",
+                to="creditors.goodsreceivednote",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorinvoice",
+            name="related_grn",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="GRNNO in supexpt",
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="related_expense_invoices",
+                to="creditors.goodsreceivednote",
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditorcreditnote",
+            name="original_grn",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="credit_notes",
+                to="creditors.goodsreceivednote",
+            ),
+        ),
+        migrations.AddField(
+            model_name="grnlineitem",
+            name="created_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_created",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="grnlineitem",
+            name="grn",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="line_items",
+                to="creditors.goodsreceivednote",
+            ),
+        ),
+        migrations.AddField(
+            model_name="grnlineitem",
+            name="stock_item",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="grn_lines",
+                to="stock_control.stockitem",
+            ),
+        ),
+        migrations.AddField(
+            model_name="grnlineitem",
+            name="tax_code",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT, to="settings.taxcode"
+            ),
+        ),
+        migrations.AddField(
+            model_name="grnlineitem",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_updated",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="openitemallocation",
+            name="open_item",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="allocations",
+                to="creditors.creditoropenitem",
+            ),
+        ),
+        migrations.AddField(
+            model_name="openitemallocation",
+            name="payment",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="allocations",
+                to="creditors.creditorpayment",
+            ),
+        ),
+        migrations.AddField(
+            model_name="openitemaudit",
+            name="created_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_created",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="openitemaudit",
+            name="creditor",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="open_item_audits",
+                to="creditors.creditor",
+            ),
+        ),
+        migrations.AddField(
+            model_name="openitemaudit",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_updated",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="rfc",
+            name="created_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_created",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="rfc",
+            name="creditor",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="rfcs",
+                to="creditors.creditor",
+            ),
+        ),
+        migrations.AddField(
+            model_name="rfc",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_updated",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="rfclineitem",
+            name="created_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_created",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="rfclineitem",
+            name="rfc",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="line_items",
+                to="creditors.rfc",
+            ),
+        ),
+        migrations.AddField(
+            model_name="rfclineitem",
+            name="stock_item",
+            field=models.ForeignKey(
+                help_text="CODE",
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="rfc_lines",
+                to="stock_control.stockitem",
+            ),
+        ),
+        migrations.AddField(
+            model_name="rfclineitem",
+            name="tax_code",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT, to="settings.taxcode"
+            ),
+        ),
+        migrations.AddField(
+            model_name="rfclineitem",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_updated",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="supplierledgerentry",
+            name="created_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_created",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="supplierledgerentry",
+            name="creditor",
+            field=models.ForeignKey(
+                help_text="SUPNO",
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="ledger_entries",
+                to="creditors.creditor",
+            ),
+        ),
+        migrations.AddField(
+            model_name="supplierledgerentry",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_updated",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="creditoropenitem",
+            name="ledger_entry",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="Set for legacy-imported records without a typed transaction.",
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="open_items",
+                to="creditors.supplierledgerentry",
+            ),
+        ),
+        migrations.AddField(
+            model_name="supplierpaymentorder",
+            name="created_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_created",
+                to=settings.AUTH_USER_MODEL,
+            ),
+        ),
+        migrations.AddField(
+            model_name="supplierpaymentorder",
+            name="creditor",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="Optional — suppo.dbf has no SUPNO so legacy records have this as null.",
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="payment_orders",
+                to="creditors.creditor",
+            ),
+        ),
+        migrations.AddField(
+            model_name="supplierpaymentorder",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                editable=False,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_updated",
+                to=settings.AUTH_USER_MODEL,
+            ),
         ),
         migrations.AddIndex(
-            model_name='creditor',
-            index=models.Index(fields=['supplier_number'], name='creditors_supplie_53c4fc_idx'),
+            model_name="creditor",
+            index=models.Index(
+                fields=["supplier_number"], name="creditors_supplie_53c4fc_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='creditor',
-            index=models.Index(fields=['name'], name='creditors_name_10392d_idx'),
+            model_name="creditor",
+            index=models.Index(fields=["name"], name="creditors_name_10392d_idx"),
         ),
         migrations.AddIndex(
-            model_name='creditor',
-            index=models.Index(fields=['is_active'], name='creditors_is_acti_f4e4c2_idx'),
+            model_name="creditor",
+            index=models.Index(
+                fields=["is_active"], name="creditors_is_acti_f4e4c2_idx"
+            ),
         ),
         migrations.AlterUniqueTogether(
-            name='creditorcreditnotelineitem',
-            unique_together={('credit_note', 'line_number')},
+            name="creditorcreditnotelineitem",
+            unique_together={("credit_note", "line_number")},
         ),
         migrations.AlterUniqueTogether(
-            name='creditorinvoicelineitem',
-            unique_together={('invoice', 'line_number')},
+            name="creditorinvoicelineitem",
+            unique_together={("invoice", "line_number")},
         ),
         migrations.AddIndex(
-            model_name='expensecategorymonthlybalance',
-            index=models.Index(fields=['expense_category', 'year'], name='expense_cat_expense_348867_idx'),
+            model_name="expensecategorymonthlybalance",
+            index=models.Index(
+                fields=["expense_category", "year"],
+                name="expense_cat_expense_348867_idx",
+            ),
         ),
         migrations.AddIndex(
-            model_name='expensecategorymonthlybalance',
-            index=models.Index(fields=['year'], name='expense_cat_year_5b2548_idx'),
+            model_name="expensecategorymonthlybalance",
+            index=models.Index(fields=["year"], name="expense_cat_year_5b2548_idx"),
         ),
         migrations.AlterUniqueTogether(
-            name='expensecategorymonthlybalance',
-            unique_together={('expense_category', 'year')},
+            name="expensecategorymonthlybalance",
+            unique_together={("expense_category", "year")},
         ),
         migrations.AddIndex(
-            model_name='goodsreceivednote',
-            index=models.Index(fields=['creditor', 'transaction_date'], name='grn_cred_dt_idx'),
+            model_name="goodsreceivednote",
+            index=models.Index(
+                fields=["creditor", "transaction_date"], name="grn_cred_dt_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='goodsreceivednote',
-            index=models.Index(fields=['transaction_type'], name='grn_type_idx'),
+            model_name="goodsreceivednote",
+            index=models.Index(fields=["transaction_type"], name="grn_type_idx"),
         ),
         migrations.AddIndex(
-            model_name='goodsreceivednote',
-            index=models.Index(fields=['is_posted'], name='grn_posted_idx'),
+            model_name="goodsreceivednote",
+            index=models.Index(fields=["is_posted"], name="grn_posted_idx"),
         ),
         migrations.AlterUniqueTogether(
-            name='grnlineitem',
-            unique_together={('grn', 'line_number')},
+            name="grnlineitem",
+            unique_together={("grn", "line_number")},
         ),
         migrations.AddIndex(
-            model_name='openitemallocation',
-            index=models.Index(fields=['payment'], name='creditor_op_payment_625dc3_idx'),
+            model_name="openitemallocation",
+            index=models.Index(
+                fields=["payment"], name="creditor_op_payment_625dc3_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='openitemallocation',
-            index=models.Index(fields=['open_item'], name='creditor_op_open_it_6a9126_idx'),
+            model_name="openitemallocation",
+            index=models.Index(
+                fields=["open_item"], name="creditor_op_open_it_6a9126_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='openitemaudit',
-            index=models.Index(fields=['creditor', '-audit_timestamp'], name='open_item_a_credito_f7561e_idx'),
+            model_name="openitemaudit",
+            index=models.Index(
+                fields=["creditor", "-audit_timestamp"],
+                name="open_item_a_credito_f7561e_idx",
+            ),
         ),
         migrations.AddIndex(
-            model_name='openitemaudit',
-            index=models.Index(fields=['transaction_number'], name='open_item_a_transac_b9b0bb_idx'),
+            model_name="openitemaudit",
+            index=models.Index(
+                fields=["transaction_number"], name="open_item_a_transac_b9b0bb_idx"
+            ),
         ),
         migrations.AlterUniqueTogether(
-            name='rfclineitem',
-            unique_together={('rfc', 'line_number')},
+            name="rfclineitem",
+            unique_together={("rfc", "line_number")},
         ),
         migrations.AddIndex(
-            model_name='supplierledgerentry',
-            index=models.Index(fields=['creditor', '-transaction_date'], name='supplier_le_credito_d0df72_idx'),
+            model_name="supplierledgerentry",
+            index=models.Index(
+                fields=["creditor", "-transaction_date"],
+                name="supplier_le_credito_d0df72_idx",
+            ),
         ),
         migrations.AddIndex(
-            model_name='supplierledgerentry',
-            index=models.Index(fields=['transaction_type'], name='supplier_le_transac_7fb396_idx'),
+            model_name="supplierledgerentry",
+            index=models.Index(
+                fields=["transaction_type"], name="supplier_le_transac_7fb396_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='supplierledgerentry',
-            index=models.Index(fields=['grn_number'], name='supplier_le_grn_num_65a1bc_idx'),
+            model_name="supplierledgerentry",
+            index=models.Index(
+                fields=["grn_number"], name="supplier_le_grn_num_65a1bc_idx"
+            ),
         ),
         migrations.AlterUniqueTogether(
-            name='supplierledgerentry',
-            unique_together={('creditor', 'transaction_number')},
+            name="supplierledgerentry",
+            unique_together={("creditor", "transaction_number")},
         ),
         migrations.AddIndex(
-            model_name='creditoropenitem',
-            index=models.Index(fields=['creditor', '-transaction_date'], name='creditor_op_credito_e73314_idx'),
+            model_name="creditoropenitem",
+            index=models.Index(
+                fields=["creditor", "-transaction_date"],
+                name="creditor_op_credito_e73314_idx",
+            ),
         ),
         migrations.AddIndex(
-            model_name='creditoropenitem',
-            index=models.Index(fields=['is_fully_allocated'], name='creditor_op_is_full_cb4e18_idx'),
+            model_name="creditoropenitem",
+            index=models.Index(
+                fields=["is_fully_allocated"], name="creditor_op_is_full_cb4e18_idx"
+            ),
         ),
         migrations.AlterUniqueTogether(
-            name='creditoropenitem',
-            unique_together={('creditor', 'transaction_number', 'transaction_type')},
+            name="creditoropenitem",
+            unique_together={("creditor", "transaction_number", "transaction_type")},
         ),
         migrations.AddIndex(
-            model_name='supplierpaymentorder',
-            index=models.Index(fields=['payment_date', 'is_processed'], name='supplier_pa_payment_3363ab_idx'),
+            model_name="supplierpaymentorder",
+            index=models.Index(
+                fields=["payment_date", "is_processed"],
+                name="supplier_pa_payment_3363ab_idx",
+            ),
         ),
         migrations.AddIndex(
-            model_name='supplierpaymentorder',
-            index=models.Index(fields=['creditor', 'is_processed'], name='supplier_pa_credito_150300_idx'),
+            model_name="supplierpaymentorder",
+            index=models.Index(
+                fields=["creditor", "is_processed"],
+                name="supplier_pa_credito_150300_idx",
+            ),
         ),
     ]

@@ -358,7 +358,8 @@ class PriceValidationService:
             raise POSValidationException(
                 f"Price validation failed for {stock_code}: "
                 + "; ".join(
-                    warnings or ["submitted price/discount does not match configured pricing"]
+                    warnings
+                    or ["submitted price/discount does not match configured pricing"]
                 )
             )
 

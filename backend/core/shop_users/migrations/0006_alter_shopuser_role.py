@@ -6,13 +6,22 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('shop_users', '0005_alter_shopuser_role'),
+        ("shop_users", "0005_alter_shopuser_role"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='shopuser',
-            name='role',
-            field=models.CharField(choices=[('ADMIN', 'Admin - Full tenant access'), ('MANAGER', 'Manager - Can manage shop users'), ('STAFF', 'Staff - Staff member with limited access'), ('CASHIER', 'Cashier - Basic access')], default='CASHIER', max_length=20),
+            model_name="shopuser",
+            name="role",
+            field=models.CharField(
+                choices=[
+                    ("ADMIN", "Admin - Full tenant access"),
+                    ("MANAGER", "Manager - Can manage shop users"),
+                    ("STAFF", "Staff - Staff member with limited access"),
+                    ("CASHIER", "Cashier - Basic access"),
+                ],
+                default="CASHIER",
+                max_length=20,
+            ),
         ),
     ]

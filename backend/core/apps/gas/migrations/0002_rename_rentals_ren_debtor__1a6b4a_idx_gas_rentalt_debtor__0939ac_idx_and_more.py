@@ -6,18 +6,18 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('gas', '0001_initial'),
+        ("gas", "0001_initial"),
     ]
 
     operations = [
         migrations.RenameIndex(
-            model_name='rentaltransaction',
-            new_name='gas_rentalt_debtor__0939ac_idx',
-            old_name='rentals_ren_debtor__1a6b4a_idx',
+            model_name="rentaltransaction",
+            new_name="gas_rentalt_debtor__0939ac_idx",
+            old_name="rentals_ren_debtor__1a6b4a_idx",
         ),
         migrations.RenameIndex(
-            model_name='rentaltransaction',
-            new_name='gas_rentalt_status_3da072_idx',
-            old_name='rentals_ren_status_9d5e21_idx',
+            model_name="rentaltransaction",
+            new_name="gas_rentalt_status_3da072_idx",
+            old_name="rentals_ren_status_9d5e21_idx",
         ),
     ]

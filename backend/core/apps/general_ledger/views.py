@@ -62,7 +62,9 @@ from .serializers import (
 from .services import GLPostingService
 
 
-class GLMastViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class GLMastViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for managing General Ledger Master accounts.
 
@@ -270,7 +272,9 @@ class GLMastViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.Mod
         )
 
 
-class GLTranViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class GLTranViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for managing GL Transactions (Journal Entries).
 
@@ -541,7 +545,9 @@ class GLTranViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.Mod
         )
 
 
-class GLStJnlViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class GLStJnlViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for managing GL Standing Journals.
 
@@ -684,9 +690,7 @@ class GLStJnlViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.Mo
         """
         param, _ = GLParam.objects.select_for_update().get_or_create(pk=1)
         due_journalnos = (
-            GLStJnl.objects.filter(
-                nextperiod=param.curperiod, timesbal__lt=F("times")
-            )
+            GLStJnl.objects.filter(nextperiod=param.curperiod, timesbal__lt=F("times"))
             .values_list("journalno", flat=True)
             .distinct()
         )
@@ -848,7 +852,9 @@ class GLStJnlViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.Mo
         return Response(serializer.data)
 
 
-class GLSpreadViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class GLSpreadViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for managing GL Spread Sheets.
 
@@ -1026,7 +1032,9 @@ class GLSpreadViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.M
         return Response(results)
 
 
-class GLBatchViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class GLBatchViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for GL Batch staging entries — manual/human-captured journal
     lines awaiting review, grouped by batchno. This is the spec's staging
@@ -1193,7 +1201,9 @@ class GLBatchViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.Mo
         )
 
 
-class GLRepViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class GLRepViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for GL Report Format rows (Maintenance only — defines the layout
     Income Statement/Balance Sheet reports are built from; does not itself
@@ -1259,7 +1269,9 @@ class _SingletonViewSetMixin:
         raise ValidationError(f"{self.singleton_model.__name__} cannot be deleted.")
 
 
-class GLParamViewSet(ModuleFunctionPermissionMixin, _SingletonViewSetMixin, viewsets.ModelViewSet):
+class GLParamViewSet(
+    ModuleFunctionPermissionMixin, _SingletonViewSetMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for the GL Parameters singleton (current period/year, next batch
     number, retained earnings account). No create/delete — there is exactly
@@ -1296,9 +1308,7 @@ class GLParamViewSet(ModuleFunctionPermissionMixin, _SingletonViewSetMixin, view
         batch count, and the most recent posted transaction date."""
         param = self.get_object()
         outstanding_batches = GLBatch.objects.filter(postdate__isnull=True)
-        last_transaction = GLTran.objects.aggregate(last_date=Max("date"))[
-            "last_date"
-        ]
+        last_transaction = GLTran.objects.aggregate(last_date=Max("date"))["last_date"]
 
         return Response(
             {
@@ -1412,9 +1422,7 @@ class GLParamViewSet(ModuleFunctionPermissionMixin, _SingletonViewSetMixin, view
                         f"lastyear{month}",
                         getattr(account, f"period{month}"),
                     )
-            GLMast.objects.bulk_update(
-                accounts, [f"lastyear{m}" for m in range(1, 13)]
-            )
+            GLMast.objects.bulk_update(accounts, [f"lastyear{m}" for m in range(1, 13)])
 
             # 2. Compute each Income Statement account's signed contribution
             #    from its pre-closing balance (reads period1..13, so this
@@ -1423,9 +1431,7 @@ class GLParamViewSet(ModuleFunctionPermissionMixin, _SingletonViewSetMixin, view
             closing_lines = []
             net_income = Decimal("0.00")
             for account in income_accounts:
-                balance = sum(
-                    getattr(account, f"period{p}") for p in range(1, 14)
-                )
+                balance = sum(getattr(account, f"period{p}") for p in range(1, 14))
                 if balance == 0:
                     continue
                 contribution = balance if account.drorcr == "C" else -balance
@@ -1457,9 +1463,7 @@ class GLParamViewSet(ModuleFunctionPermissionMixin, _SingletonViewSetMixin, view
                 # The retained earnings account's period balance just changed
                 # in the DB via post_batch's own GLMast instance — refresh
                 # this one row so step 4's balbfwd carry-forward includes it.
-                retained_earnings_account = by_accno.get(
-                    param.retained_earnings_accno
-                )
+                retained_earnings_account = by_accno.get(param.retained_earnings_accno)
                 if retained_earnings_account is not None:
                     retained_earnings_account.refresh_from_db()
             else:
@@ -1483,9 +1487,7 @@ class GLParamViewSet(ModuleFunctionPermissionMixin, _SingletonViewSetMixin, view
                         update_fields.append(f"budget{m}")
                     account.save(update_fields=update_fields)
                 elif account.type == "B":
-                    total = sum(
-                        getattr(account, f"period{p}") for p in range(1, 14)
-                    )
+                    total = sum(getattr(account, f"period{p}") for p in range(1, 14))
                     account.balbfwd = account.balbfwd + total
                     update_fields.append("balbfwd")
                     for p in range(1, 14):
@@ -1497,7 +1499,9 @@ class GLParamViewSet(ModuleFunctionPermissionMixin, _SingletonViewSetMixin, view
             param.currentyr += 1
             param.curperiod = param.startper
             param.adjusted = "N"
-            param.save(update_fields=["currentyr", "curperiod", "adjusted", "updated_at"])
+            param.save(
+                update_fields=["currentyr", "curperiod", "adjusted", "updated_at"]
+            )
 
         return Response(
             {

@@ -6,13 +6,17 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('shop_users', '0002_alter_shopuser_tenant_id'),
+        ("shop_users", "0002_alter_shopuser_tenant_id"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='shopuser',
-            name='shop_ids',
-            field=models.JSONField(blank=True, default=list, help_text='List of shop IDs this user is assigned to'),
+            model_name="shopuser",
+            name="shop_ids",
+            field=models.JSONField(
+                blank=True,
+                default=list,
+                help_text="List of shop IDs this user is assigned to",
+            ),
         ),
     ]

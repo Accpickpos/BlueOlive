@@ -6,13 +6,15 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('pos', '0005_add_debtor_account_number_to_jobcard'),
+        ("pos", "0005_add_debtor_account_number_to_jobcard"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='invoice',
-            name='sales_area',
-            field=models.CharField(blank=True, help_text='Sales Area Code', max_length=2, null=True),
+            model_name="invoice",
+            name="sales_area",
+            field=models.CharField(
+                blank=True, help_text="Sales Area Code", max_length=2, null=True
+            ),
         ),
     ]

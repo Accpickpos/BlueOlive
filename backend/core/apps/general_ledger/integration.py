@@ -99,9 +99,7 @@ class IntegrationTransferService:
                     continue
 
                 try:
-                    lines = IntegrationTransferService._debtor_lines(
-                        txn, settings_row
-                    )
+                    lines = IntegrationTransferService._debtor_lines(txn, settings_row)
                 except GLIntegrationException as e:
                     skipped.append(
                         {"pk": txn.pk, "type": txn.transaction_type, "reason": str(e)}
@@ -585,9 +583,11 @@ class IntegrationTransferService:
                     IntegrationTransferService._require(
                         settings_row,
                         "stock_control_accno",
-                        "stock_shrinkage_expense_accno"
-                        if net_variance < 0
-                        else "stock_gain_income_accno",
+                        (
+                            "stock_shrinkage_expense_accno"
+                            if net_variance < 0
+                            else "stock_gain_income_accno"
+                        ),
                     )
                 except GLIntegrationException as e:
                     skipped.append({"pk": stock_take.pk, "reason": str(e)})
@@ -661,10 +661,14 @@ class IntegrationTransferService:
         SOURCE_APP = "cash_book"
         SOURCE_MODEL = "CashBookTransaction"
 
-        qs = CashBookTransaction.objects.filter(
-            is_reconciled=True,
-            transaction_type__in=("OTHER_INCOME", "OTHER_EXPENSE"),
-        ).exclude(audit_type__in=(1, 3)).order_by("transaction_date")
+        qs = (
+            CashBookTransaction.objects.filter(
+                is_reconciled=True,
+                transaction_type__in=("OTHER_INCOME", "OTHER_EXPENSE"),
+            )
+            .exclude(audit_type__in=(1, 3))
+            .order_by("transaction_date")
+        )
         qs = IntegrationTransferService._apply_date_range(
             qs, "transaction_date", date_from, date_to
         )
@@ -706,7 +710,9 @@ class IntegrationTransferService:
             if txn.account_type == "BANK"
             else settings_row.cash_control_accno
         )
-        field_name = "bank_control_accno" if txn.account_type == "BANK" else "cash_control_accno"
+        field_name = (
+            "bank_control_accno" if txn.account_type == "BANK" else "cash_control_accno"
+        )
         IntegrationTransferService._require(settings_row, field_name)
 
         ref = f"CB{txn.pk}"

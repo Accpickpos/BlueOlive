@@ -728,7 +728,14 @@ class DpdcSerializer(serializers.ModelSerializer):
         # by DpdcViewSet.process/cancel — a raw PATCH must not be able to set
         # status directly (e.g. jump straight to CLEARED), bypassing the
         # transition rules those actions enforce.
-        read_only_fields = ["id", "status", "received_date", "cleared_date", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "status",
+            "received_date",
+            "cleared_date",
+            "created_at",
+            "updated_at",
+        ]
 
     def update(self, instance, validated_data):
         # updateStatus() on the frontend sends a `status_date` alongside the

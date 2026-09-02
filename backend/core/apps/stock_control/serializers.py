@@ -205,7 +205,9 @@ class StockItemSerializer(serializers.ModelSerializer):
     available_quantity = serializers.ReadOnlyField()
     special_deals = SpecialDealSerializer(many=True, read_only=True)
     future_prices = FuturePricingSerializer(many=True, read_only=True)
-    department_detail = SalesDepartmentMinimalSerializer(source="department", read_only=True)
+    department_detail = SalesDepartmentMinimalSerializer(
+        source="department", read_only=True
+    )
 
     class Meta:
         model = StockItem
@@ -283,7 +285,9 @@ class StockItemSerializer(serializers.ModelSerializer):
 
 class StockItemListSerializer(serializers.ModelSerializer):
     available_quantity = serializers.ReadOnlyField()
-    department_detail = SalesDepartmentMinimalSerializer(source="department", read_only=True)
+    department_detail = SalesDepartmentMinimalSerializer(
+        source="department", read_only=True
+    )
 
     class Meta:
         model = StockItem

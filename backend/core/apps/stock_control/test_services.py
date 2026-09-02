@@ -44,7 +44,9 @@ class StockTransactionServiceTest(TestCase):
             stock_item=self.item, quantity=Decimal("10"), unit_cost=Decimal("120.00")
         )
         self.item.refresh_from_db()
-        expected = (Decimal("50") * Decimal("100.00") + Decimal("10") * Decimal("120.00")) / Decimal("60")
+        expected = (
+            Decimal("50") * Decimal("100.00") + Decimal("10") * Decimal("120.00")
+        ) / Decimal("60")
         self.assertAlmostEqual(float(self.item.average_cost), float(expected), places=2)
 
     def test_create_incoming_transaction_rejects_non_positive_quantity(self):
@@ -86,10 +88,14 @@ class StockTransactionServiceTest(TestCase):
         )
         pack_bundle = PackBundle.objects.create(stock_item=bundle)
         PackBundleIngredient.objects.create(
-            pack_bundle=pack_bundle, ingredient_stock=ingredient1, quantity=Decimal("2.00")
+            pack_bundle=pack_bundle,
+            ingredient_stock=ingredient1,
+            quantity=Decimal("2.00"),
         )
         PackBundleIngredient.objects.create(
-            pack_bundle=pack_bundle, ingredient_stock=ingredient2, quantity=Decimal("1.00")
+            pack_bundle=pack_bundle,
+            ingredient_stock=ingredient2,
+            quantity=Decimal("1.00"),
         )
 
         tx = StockTransactionService.create_manufacture_transaction(

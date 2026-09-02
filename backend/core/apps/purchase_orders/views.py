@@ -1,8 +1,8 @@
 from datetime import timedelta
 
+from apps.common.mixins import ModuleFunctionPermissionMixin
 from apps.creditors.models import Creditor, GoodsReceivedNote, GRNLineItem
 from apps.settings.models import TaxCode
-from apps.common.mixins import ModuleFunctionPermissionMixin
 from apps.shop_filter_mixin import ShopFilterMixin
 from apps.stock_control.models import StockItem, StockTransaction
 from django.db.models import Count, F, Prefetch, Q, Sum
@@ -23,7 +23,6 @@ from .models import (
     PurchaseOrderTemplateLine,
 )
 from .permissions import IsPurchaseOrderAdmin, IsPurchaseOrderStockMover
-from .services import resync_stock_on_order
 from .serializers import (
     BackOrderSerializer,
     DeliveryVarianceReportSerializer,
@@ -40,6 +39,7 @@ from .serializers import (
     StockOnOrderSerializer,
     StockReceiptSerializer,
 )
+from .services import resync_stock_on_order
 
 
 def _tax_code_id(numeric_code):
@@ -53,7 +53,9 @@ def _tax_code_id(numeric_code):
     return tax_code.id if tax_code else None
 
 
-class PurchaseOrderViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class PurchaseOrderViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for Purchase Order management
 
@@ -518,7 +520,9 @@ class PurchaseOrderViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, views
         return Response(serializer.data)
 
 
-class PurchaseOrderReceiptViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class PurchaseOrderReceiptViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet
+):
     """
     ViewSet for Goods Received Notes (Read-only)
 
@@ -539,7 +543,9 @@ class PurchaseOrderReceiptViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin
     ordering = ["-receipt_date"]
 
 
-class BackOrderViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet):
+class BackOrderViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ReadOnlyModelViewSet
+):
     """
     ViewSet for Back Orders (Read-only)
 
@@ -555,7 +561,9 @@ class BackOrderViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.
     ordering = ["-created_date"]
 
 
-class PurchaseOrderTemplateViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class PurchaseOrderTemplateViewSet(
+    ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet
+):
     """
     ViewSet for Purchase Order Templates
 

@@ -10,8 +10,9 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
-from tenancy.permissions import CanCreateTenant, IsAdmin, IsTenantMember
+from tenancy.permissions import CanCreateTenant, IsAdmin
 from tenancy.permissions import IsAdminUser as IsPlatformAdmin
+from tenancy.permissions import IsTenantMember
 from tenancy.tenant_context import get_current_tenant
 
 from .models import (

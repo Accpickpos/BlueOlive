@@ -28,13 +28,23 @@ app_name = "general_ledger"
 
 reports_urls = [
     path("reports/trial-balance/", reports.trial_balance, name="trial-balance"),
-    path("reports/income-statement/", reports.income_statement, name="income-statement"),
+    path(
+        "reports/income-statement/", reports.income_statement, name="income-statement"
+    ),
     path("reports/balance-sheet/", reports.balance_sheet, name="balance-sheet"),
 ]
 
 integration_urls = [
-    path("integration/transfer/", reports.integration_transfer, name="integration-transfer"),
-    path("integration/outstanding/", reports.integration_outstanding, name="integration-outstanding"),
+    path(
+        "integration/transfer/",
+        reports.integration_transfer,
+        name="integration-transfer",
+    ),
+    path(
+        "integration/outstanding/",
+        reports.integration_outstanding,
+        name="integration-outstanding",
+    ),
 ]
 
 urlpatterns = [

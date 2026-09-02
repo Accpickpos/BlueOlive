@@ -171,7 +171,7 @@ class PlatformTokenRefreshView(APIView):
 
         user_id = refresh.get("user_id")
         try:
-            user = ShopUser.objects.using("default").get(
+            ShopUser.objects.using("default").get(
                 id=user_id, is_superuser=True, is_active=True
             )
         except ShopUser.DoesNotExist:

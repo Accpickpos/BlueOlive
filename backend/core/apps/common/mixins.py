@@ -58,7 +58,17 @@ class ModuleFunctionPermissionMixin:
             "MAINTENANCE",
         ),
         (
-            ("post", "approve", "reconcile", "allocate", "receive", "issue", "pay", "run_", "convert"),
+            (
+                "post",
+                "approve",
+                "reconcile",
+                "allocate",
+                "receive",
+                "issue",
+                "pay",
+                "run_",
+                "convert",
+            ),
             "TRANSACTIONS",
         ),
     )
@@ -107,7 +117,9 @@ class ModuleFunctionPermissionMixin:
         if self.access_module:
             from apps.common.permissions import HasModuleFunctionAccess
 
-            permission = HasModuleFunctionAccess(self.access_module, self.get_function_type())
+            permission = HasModuleFunctionAccess(
+                self.access_module, self.get_function_type()
+            )
             if not permission.has_permission(request, self):
                 self.permission_denied(
                     request,

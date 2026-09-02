@@ -18,585 +18,2342 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='Darea',
+            name="Darea",
             fields=[
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('darea', models.CharField(help_text='Salesman/area number', max_length=2, primary_key=True, serialize=False, unique=True)),
-                ('dareaname', models.CharField(help_text='Salesman/area name', max_length=20)),
-                ('arsls1', models.DecimalField(decimal_places=2, default=0, help_text='Total sales for month 1', max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
-                ('arsls2', models.DecimalField(decimal_places=2, default=0, help_text='Total sales for month 2', max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
-                ('arsls3', models.DecimalField(decimal_places=2, default=0, help_text='Total sales for month 3', max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
-                ('arsls4', models.DecimalField(decimal_places=2, default=0, help_text='Total sales for month 4', max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
-                ('arsls5', models.DecimalField(decimal_places=2, default=0, help_text='Total sales for month 5', max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
-                ('arsls6', models.DecimalField(decimal_places=2, default=0, help_text='Total sales for month 6', max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
-                ('arsls7', models.DecimalField(decimal_places=2, default=0, help_text='Total sales for month 7', max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
-                ('arsls8', models.DecimalField(decimal_places=2, default=0, help_text='Total sales for month 8', max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
-                ('arsls9', models.DecimalField(decimal_places=2, default=0, help_text='Total sales for month 9', max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
-                ('arsls10', models.DecimalField(decimal_places=2, default=0, help_text='Total sales for month 10', max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
-                ('arsls11', models.DecimalField(decimal_places=2, default=0, help_text='Total sales for month 11', max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
-                ('arsls12', models.DecimalField(decimal_places=2, default=0, help_text='Total sales for month 12', max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "darea",
+                    models.CharField(
+                        help_text="Salesman/area number",
+                        max_length=2,
+                        primary_key=True,
+                        serialize=False,
+                        unique=True,
+                    ),
+                ),
+                (
+                    "dareaname",
+                    models.CharField(help_text="Salesman/area name", max_length=20),
+                ),
+                (
+                    "arsls1",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Total sales for month 1",
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "arsls2",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Total sales for month 2",
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "arsls3",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Total sales for month 3",
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "arsls4",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Total sales for month 4",
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "arsls5",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Total sales for month 5",
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "arsls6",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Total sales for month 6",
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "arsls7",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Total sales for month 7",
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "arsls8",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Total sales for month 8",
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "arsls9",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Total sales for month 9",
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "arsls10",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Total sales for month 10",
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "arsls11",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Total sales for month 11",
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "arsls12",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Total sales for month 12",
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Daily Area Sales (DAREA)',
-                'verbose_name_plural': 'Daily Area Sales (DAREA)',
-                'ordering': ['darea'],
+                "verbose_name": "Daily Area Sales (DAREA)",
+                "verbose_name_plural": "Daily Area Sales (DAREA)",
+                "ordering": ["darea"],
             },
         ),
         migrations.CreateModel(
-            name='Debtor',
+            name="Debtor",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('customer_number', models.IntegerField(db_column='dno', db_index=True, help_text='Debtor Account Number (DNO) - Numeric 5', unique=True)),
-                ('name', models.CharField(db_column='dname', help_text='Customer/Debtor Name (DNAME) - Character 40', max_length=100)),
-                ('short_name', models.CharField(blank=True, db_column='dsname', db_index=True, help_text='Short/Sort Name (DSNAME) - Character 5', max_length=20)),
-                ('contact_person', models.CharField(blank=True, db_column='dcontact', help_text='Contact Person (DCONTACT) - Character 20', max_length=50)),
-                ('phone', models.CharField(blank=True, db_column='dtel', help_text='Telephone Number (DTEL) - Character 15', max_length=20)),
-                ('phone2', models.CharField(blank=True, db_column='tel2', help_text='Alternative Phone (TEL2) - Character 15', max_length=20)),
-                ('fax', models.CharField(blank=True, db_column='dfax', help_text='Fax Number (DFAX) - Character 15', max_length=20)),
-                ('email', models.EmailField(blank=True, db_column='email', help_text='Email Address (EMAIL) - Character 50', max_length=254)),
-                ('address_line1', models.CharField(blank=True, db_column='dadd1', help_text='Postal Address Line 1 (DADD1) - Character 25', max_length=100)),
-                ('address_line2', models.CharField(blank=True, db_column='dadd2', help_text='Postal Address Line 2 (DADD2) - Character 25', max_length=100)),
-                ('address_line3', models.CharField(blank=True, db_column='dadd3', help_text='Postal Address Line 3 (DADD3) - Character 25', max_length=100)),
-                ('postal_code', models.CharField(blank=True, db_column='dpcode', help_text='Postal Code (DPCODE) - Character 4', max_length=10)),
-                ('delivery_address1', models.CharField(blank=True, db_column='delad1', help_text='Delivery Address Line 1 (DELAD1) - Character 25', max_length=100)),
-                ('delivery_address2', models.CharField(blank=True, db_column='delad2', help_text='Delivery Address Line 2 (DELAD2) - Character 25', max_length=100)),
-                ('delivery_address3', models.CharField(blank=True, db_column='delad3', help_text='Delivery Address Line 3 (DELAD3) - Character 25', max_length=100)),
-                ('delivery_address4', models.CharField(blank=True, db_column='delad4', help_text='Delivery Address Line 4 (DELAD4) - Character 25', max_length=100)),
-                ('tax_number', models.CharField(blank=True, db_column='dtaxno', help_text='Tax/Company Registration Number (DTAXNO) - Character 20', max_length=30)),
-                ('vat_reference', models.CharField(blank=True, db_column='vatref', help_text='VAT Registration Number (VATREF) - Character 10', max_length=20)),
-                ('area_code', models.IntegerField(blank=True, db_column='darea', help_text='Salesman/Area Number (DAREA) - Numeric 2', null=True, validators=[django.core.validators.MinValueValidator(0), django.core.validators.MaxValueValidator(99)])),
-                ('account_type', models.CharField(blank=True, choices=[('', 'Balance Brought Forward'), ('O', 'Open Item'), ('C', 'Cash Customer'), ('N', 'Normal Credit'), ('B', 'COD')], db_column='acctype', default='', help_text='Account Type (ACCTYPE) - Blank=Balance Forward, O=Open Item, C=Cash, N=Normal, B=COD', max_length=1)),
-                ('price_level', models.IntegerField(choices=[(1, 'Retail'), (2, 'Trade'), (3, 'Wholesale')], db_column='price', default=1, help_text='Price Level (PRICE) - Numeric 1 (1=Retail, 2=Trade, 3=Wholesale)', validators=[django.core.validators.MinValueValidator(1), django.core.validators.MaxValueValidator(3)])),
-                ('payment_terms', models.IntegerField(db_column='terms', default=30, help_text='Payment Terms in Days (TERMS) - Numeric 3', validators=[django.core.validators.MinValueValidator(0), django.core.validators.MaxValueValidator(999)])),
-                ('discount_percentage', models.DecimalField(db_column='ddiscper', decimal_places=2, default=Decimal('0.00'), help_text='Standard Discount % (DDISCPER) - Numeric 10.2', max_digits=10, validators=[django.core.validators.MinValueValidator(Decimal('0')), django.core.validators.MaxValueValidator(Decimal('100'))])),
-                ('prompt_payment_discount', models.DecimalField(db_column='pdisc', decimal_places=2, default=Decimal('0.00'), help_text='Prompt Payment Discount % (PDISC) - Numeric 6.2', max_digits=6, validators=[django.core.validators.MinValueValidator(Decimal('0')), django.core.validators.MaxValueValidator(Decimal('100'))])),
-                ('discount_printable', models.CharField(choices=[('Y', 'Yes'), ('N', 'No')], db_column='discprn', default='N', help_text='Print Discount on Invoice (DISCPRN) - Y/N', max_length=1)),
-                ('credit_limit', models.DecimalField(db_column='dclimit', decimal_places=2, default=Decimal('0.00'), help_text='Credit Limit (DCLIMIT) - Numeric 12.2', max_digits=12, validators=[django.core.validators.MinValueValidator(Decimal('0'))])),
-                ('block_flag', models.CharField(choices=[('0', 'Active'), ('1', 'Credit Hold'), ('2', 'Closed'), ('3', 'No Delivery'), ('Y', 'Blocked'), ('N', 'Active Legacy')], db_column='blockflag', default='0', help_text='Block Account (BLOCKFLAG) - 0=Active, 1=Credit Hold, 2=Closed, 3=No Delivery', max_length=1)),
-                ('interest_flag', models.CharField(choices=[('Y', 'Yes - Charge Interest'), ('N', 'No - Do Not Charge')], db_column='dintflag', default='N', help_text='Charge Interest (DINTFLAG) - Y/N', max_length=1)),
-                ('positive_balance_only', models.CharField(choices=[('Y', 'Yes'), ('N', 'No')], db_column='dposbal', default='Y', help_text='Print Account Balance on POS (DPOSBAL) - Y/N', max_length=1)),
-                ('balance_brought_forward', models.DecimalField(db_column='dbalbfwd', decimal_places=2, default=Decimal('0.00'), help_text='Balance Brought Forward (DBALBFWD) - Numeric 10.2', max_digits=12)),
-                ('balance_current', models.DecimalField(db_column='dcrnt', decimal_places=2, default=Decimal('0.00'), help_text='Current Month Balance (DCRNT) - Numeric 10.2', max_digits=12)),
-                ('balance_30_days', models.DecimalField(db_column='d30', decimal_places=2, default=Decimal('0.00'), help_text='30 Days Balance (D30) - Numeric 10.2', max_digits=12)),
-                ('balance_60_days', models.DecimalField(db_column='d60', decimal_places=2, default=Decimal('0.00'), help_text='60 Days Balance (D60) - Numeric 10.2', max_digits=12)),
-                ('balance_90_days', models.DecimalField(db_column='d90', decimal_places=2, default=Decimal('0.00'), help_text='90 Days Balance (D90) - Numeric 10.2', max_digits=12)),
-                ('balance_120_days', models.DecimalField(db_column='d120', decimal_places=2, default=Decimal('0.00'), help_text='120 Days Balance (D120) - Numeric 10.2', max_digits=12)),
-                ('balance_150_days', models.DecimalField(db_column='d150', decimal_places=2, default=Decimal('0.00'), help_text='150 Days Balance (D150) - Numeric 10.2', max_digits=12)),
-                ('balance_180_days', models.DecimalField(db_column='d180', decimal_places=2, default=Decimal('0.00'), help_text='180+ Days Balance (D180) - Numeric 10.2', max_digits=12)),
-                ('sales_month', models.DecimalField(db_column='dsalesm', decimal_places=2, default=Decimal('0.00'), help_text='Sales Total for Current Month (DSALESM) - Numeric 10.2', max_digits=12)),
-                ('sales_year', models.DecimalField(db_column='dsalesy', decimal_places=2, default=Decimal('0.00'), help_text='Sales Total for Year (DSALESY) - Numeric 10.2', max_digits=12)),
-                ('profit_month', models.DecimalField(db_column='dprofitm', decimal_places=2, default=Decimal('0.00'), help_text='Profit for Current Month (DPROFITM) - Numeric 10.2', max_digits=12)),
-                ('profit_year', models.DecimalField(db_column='dprofity', decimal_places=2, default=Decimal('0.00'), help_text='Profit for Year (DPROFITY) - Numeric 10.2', max_digits=12)),
-                ('last_payment_amount', models.DecimalField(db_column='damtlpd', decimal_places=2, default=Decimal('0.00'), help_text='Amount of Last Payment (DAMTLPD) - Numeric 10.2', max_digits=12)),
-                ('last_payment_date', models.DateField(blank=True, db_column='ddatlpd', help_text='Date of Last Payment (DDATLPD) - Date 8', null=True)),
-                ('date_opened', models.DateField(blank=True, db_column='dateopened', help_text='Date Account Opened (DATEOPENED) - Date 8', null=True)),
-                ('notes', models.TextField(blank=True, db_column='notes', help_text='Additional Notes (NOTES) - Memo field')),
-                ('is_active', models.BooleanField(default=True, help_text='Active status (for soft delete)')),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "customer_number",
+                    models.IntegerField(
+                        db_column="dno",
+                        db_index=True,
+                        help_text="Debtor Account Number (DNO) - Numeric 5",
+                        unique=True,
+                    ),
+                ),
+                (
+                    "name",
+                    models.CharField(
+                        db_column="dname",
+                        help_text="Customer/Debtor Name (DNAME) - Character 40",
+                        max_length=100,
+                    ),
+                ),
+                (
+                    "short_name",
+                    models.CharField(
+                        blank=True,
+                        db_column="dsname",
+                        db_index=True,
+                        help_text="Short/Sort Name (DSNAME) - Character 5",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "contact_person",
+                    models.CharField(
+                        blank=True,
+                        db_column="dcontact",
+                        help_text="Contact Person (DCONTACT) - Character 20",
+                        max_length=50,
+                    ),
+                ),
+                (
+                    "phone",
+                    models.CharField(
+                        blank=True,
+                        db_column="dtel",
+                        help_text="Telephone Number (DTEL) - Character 15",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "phone2",
+                    models.CharField(
+                        blank=True,
+                        db_column="tel2",
+                        help_text="Alternative Phone (TEL2) - Character 15",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "fax",
+                    models.CharField(
+                        blank=True,
+                        db_column="dfax",
+                        help_text="Fax Number (DFAX) - Character 15",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "email",
+                    models.EmailField(
+                        blank=True,
+                        db_column="email",
+                        help_text="Email Address (EMAIL) - Character 50",
+                        max_length=254,
+                    ),
+                ),
+                (
+                    "address_line1",
+                    models.CharField(
+                        blank=True,
+                        db_column="dadd1",
+                        help_text="Postal Address Line 1 (DADD1) - Character 25",
+                        max_length=100,
+                    ),
+                ),
+                (
+                    "address_line2",
+                    models.CharField(
+                        blank=True,
+                        db_column="dadd2",
+                        help_text="Postal Address Line 2 (DADD2) - Character 25",
+                        max_length=100,
+                    ),
+                ),
+                (
+                    "address_line3",
+                    models.CharField(
+                        blank=True,
+                        db_column="dadd3",
+                        help_text="Postal Address Line 3 (DADD3) - Character 25",
+                        max_length=100,
+                    ),
+                ),
+                (
+                    "postal_code",
+                    models.CharField(
+                        blank=True,
+                        db_column="dpcode",
+                        help_text="Postal Code (DPCODE) - Character 4",
+                        max_length=10,
+                    ),
+                ),
+                (
+                    "delivery_address1",
+                    models.CharField(
+                        blank=True,
+                        db_column="delad1",
+                        help_text="Delivery Address Line 1 (DELAD1) - Character 25",
+                        max_length=100,
+                    ),
+                ),
+                (
+                    "delivery_address2",
+                    models.CharField(
+                        blank=True,
+                        db_column="delad2",
+                        help_text="Delivery Address Line 2 (DELAD2) - Character 25",
+                        max_length=100,
+                    ),
+                ),
+                (
+                    "delivery_address3",
+                    models.CharField(
+                        blank=True,
+                        db_column="delad3",
+                        help_text="Delivery Address Line 3 (DELAD3) - Character 25",
+                        max_length=100,
+                    ),
+                ),
+                (
+                    "delivery_address4",
+                    models.CharField(
+                        blank=True,
+                        db_column="delad4",
+                        help_text="Delivery Address Line 4 (DELAD4) - Character 25",
+                        max_length=100,
+                    ),
+                ),
+                (
+                    "tax_number",
+                    models.CharField(
+                        blank=True,
+                        db_column="dtaxno",
+                        help_text="Tax/Company Registration Number (DTAXNO) - Character 20",
+                        max_length=30,
+                    ),
+                ),
+                (
+                    "vat_reference",
+                    models.CharField(
+                        blank=True,
+                        db_column="vatref",
+                        help_text="VAT Registration Number (VATREF) - Character 10",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "area_code",
+                    models.IntegerField(
+                        blank=True,
+                        db_column="darea",
+                        help_text="Salesman/Area Number (DAREA) - Numeric 2",
+                        null=True,
+                        validators=[
+                            django.core.validators.MinValueValidator(0),
+                            django.core.validators.MaxValueValidator(99),
+                        ],
+                    ),
+                ),
+                (
+                    "account_type",
+                    models.CharField(
+                        blank=True,
+                        choices=[
+                            ("", "Balance Brought Forward"),
+                            ("O", "Open Item"),
+                            ("C", "Cash Customer"),
+                            ("N", "Normal Credit"),
+                            ("B", "COD"),
+                        ],
+                        db_column="acctype",
+                        default="",
+                        help_text="Account Type (ACCTYPE) - Blank=Balance Forward, O=Open Item, C=Cash, N=Normal, B=COD",
+                        max_length=1,
+                    ),
+                ),
+                (
+                    "price_level",
+                    models.IntegerField(
+                        choices=[(1, "Retail"), (2, "Trade"), (3, "Wholesale")],
+                        db_column="price",
+                        default=1,
+                        help_text="Price Level (PRICE) - Numeric 1 (1=Retail, 2=Trade, 3=Wholesale)",
+                        validators=[
+                            django.core.validators.MinValueValidator(1),
+                            django.core.validators.MaxValueValidator(3),
+                        ],
+                    ),
+                ),
+                (
+                    "payment_terms",
+                    models.IntegerField(
+                        db_column="terms",
+                        default=30,
+                        help_text="Payment Terms in Days (TERMS) - Numeric 3",
+                        validators=[
+                            django.core.validators.MinValueValidator(0),
+                            django.core.validators.MaxValueValidator(999),
+                        ],
+                    ),
+                ),
+                (
+                    "discount_percentage",
+                    models.DecimalField(
+                        db_column="ddiscper",
+                        decimal_places=2,
+                        default=Decimal("0.00"),
+                        help_text="Standard Discount % (DDISCPER) - Numeric 10.2",
+                        max_digits=10,
+                        validators=[
+                            django.core.validators.MinValueValidator(Decimal("0")),
+                            django.core.validators.MaxValueValidator(Decimal("100")),
+                        ],
+                    ),
+                ),
+                (
+                    "prompt_payment_discount",
+                    models.DecimalField(
+                        db_column="pdisc",
+                        decimal_places=2,
+                        default=Decimal("0.00"),
+                        help_text="Prompt Payment Discount % (PDISC) - Numeric 6.2",
+                        max_digits=6,
+                        validators=[
+                            django.core.validators.MinValueValidator(Decimal("0")),
+                            django.core.validators.MaxValueValidator(Decimal("100")),
+                        ],
+                    ),
+                ),
+                (
+                    "discount_printable",
+                    models.CharField(
+                        choices=[("Y", "Yes"), ("N", "No")],
+                        db_column="discprn",
+                        default="N",
+                        help_text="Print Discount on Invoice (DISCPRN) - Y/N",
+                        max_length=1,
+                    ),
+                ),
+                (
+                    "credit_limit",
+                    models.DecimalField(
+                        db_column="dclimit",
+                        decimal_places=2,
+                        default=Decimal("0.00"),
+                        help_text="Credit Limit (DCLIMIT) - Numeric 12.2",
+                        max_digits=12,
+                        validators=[
+                            django.core.validators.MinValueValidator(Decimal("0"))
+                        ],
+                    ),
+                ),
+                (
+                    "block_flag",
+                    models.CharField(
+                        choices=[
+                            ("0", "Active"),
+                            ("1", "Credit Hold"),
+                            ("2", "Closed"),
+                            ("3", "No Delivery"),
+                            ("Y", "Blocked"),
+                            ("N", "Active Legacy"),
+                        ],
+                        db_column="blockflag",
+                        default="0",
+                        help_text="Block Account (BLOCKFLAG) - 0=Active, 1=Credit Hold, 2=Closed, 3=No Delivery",
+                        max_length=1,
+                    ),
+                ),
+                (
+                    "interest_flag",
+                    models.CharField(
+                        choices=[
+                            ("Y", "Yes - Charge Interest"),
+                            ("N", "No - Do Not Charge"),
+                        ],
+                        db_column="dintflag",
+                        default="N",
+                        help_text="Charge Interest (DINTFLAG) - Y/N",
+                        max_length=1,
+                    ),
+                ),
+                (
+                    "positive_balance_only",
+                    models.CharField(
+                        choices=[("Y", "Yes"), ("N", "No")],
+                        db_column="dposbal",
+                        default="Y",
+                        help_text="Print Account Balance on POS (DPOSBAL) - Y/N",
+                        max_length=1,
+                    ),
+                ),
+                (
+                    "balance_brought_forward",
+                    models.DecimalField(
+                        db_column="dbalbfwd",
+                        decimal_places=2,
+                        default=Decimal("0.00"),
+                        help_text="Balance Brought Forward (DBALBFWD) - Numeric 10.2",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "balance_current",
+                    models.DecimalField(
+                        db_column="dcrnt",
+                        decimal_places=2,
+                        default=Decimal("0.00"),
+                        help_text="Current Month Balance (DCRNT) - Numeric 10.2",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "balance_30_days",
+                    models.DecimalField(
+                        db_column="d30",
+                        decimal_places=2,
+                        default=Decimal("0.00"),
+                        help_text="30 Days Balance (D30) - Numeric 10.2",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "balance_60_days",
+                    models.DecimalField(
+                        db_column="d60",
+                        decimal_places=2,
+                        default=Decimal("0.00"),
+                        help_text="60 Days Balance (D60) - Numeric 10.2",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "balance_90_days",
+                    models.DecimalField(
+                        db_column="d90",
+                        decimal_places=2,
+                        default=Decimal("0.00"),
+                        help_text="90 Days Balance (D90) - Numeric 10.2",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "balance_120_days",
+                    models.DecimalField(
+                        db_column="d120",
+                        decimal_places=2,
+                        default=Decimal("0.00"),
+                        help_text="120 Days Balance (D120) - Numeric 10.2",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "balance_150_days",
+                    models.DecimalField(
+                        db_column="d150",
+                        decimal_places=2,
+                        default=Decimal("0.00"),
+                        help_text="150 Days Balance (D150) - Numeric 10.2",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "balance_180_days",
+                    models.DecimalField(
+                        db_column="d180",
+                        decimal_places=2,
+                        default=Decimal("0.00"),
+                        help_text="180+ Days Balance (D180) - Numeric 10.2",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "sales_month",
+                    models.DecimalField(
+                        db_column="dsalesm",
+                        decimal_places=2,
+                        default=Decimal("0.00"),
+                        help_text="Sales Total for Current Month (DSALESM) - Numeric 10.2",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "sales_year",
+                    models.DecimalField(
+                        db_column="dsalesy",
+                        decimal_places=2,
+                        default=Decimal("0.00"),
+                        help_text="Sales Total for Year (DSALESY) - Numeric 10.2",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "profit_month",
+                    models.DecimalField(
+                        db_column="dprofitm",
+                        decimal_places=2,
+                        default=Decimal("0.00"),
+                        help_text="Profit for Current Month (DPROFITM) - Numeric 10.2",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "profit_year",
+                    models.DecimalField(
+                        db_column="dprofity",
+                        decimal_places=2,
+                        default=Decimal("0.00"),
+                        help_text="Profit for Year (DPROFITY) - Numeric 10.2",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "last_payment_amount",
+                    models.DecimalField(
+                        db_column="damtlpd",
+                        decimal_places=2,
+                        default=Decimal("0.00"),
+                        help_text="Amount of Last Payment (DAMTLPD) - Numeric 10.2",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "last_payment_date",
+                    models.DateField(
+                        blank=True,
+                        db_column="ddatlpd",
+                        help_text="Date of Last Payment (DDATLPD) - Date 8",
+                        null=True,
+                    ),
+                ),
+                (
+                    "date_opened",
+                    models.DateField(
+                        blank=True,
+                        db_column="dateopened",
+                        help_text="Date Account Opened (DATEOPENED) - Date 8",
+                        null=True,
+                    ),
+                ),
+                (
+                    "notes",
+                    models.TextField(
+                        blank=True,
+                        db_column="notes",
+                        help_text="Additional Notes (NOTES) - Memo field",
+                    ),
+                ),
+                (
+                    "is_active",
+                    models.BooleanField(
+                        default=True, help_text="Active status (for soft delete)"
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Debtor',
-                'verbose_name_plural': 'Debtors',
-                'db_table': 'dmast',
-                'ordering': ['customer_number'],
+                "verbose_name": "Debtor",
+                "verbose_name_plural": "Debtors",
+                "db_table": "dmast",
+                "ordering": ["customer_number"],
             },
         ),
         migrations.CreateModel(
-            name='Debtopen',
+            name="Debtopen",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('dtrano', models.CharField(help_text='Transaction number (DTRANO) - Character 6', max_length=6)),
-                ('type', models.CharField(choices=[('IN', 'Invoice'), ('CN', 'Credit Note'), ('PY', 'Payment'), ('JD', 'Journal Debit'), ('JC', 'Journal Credit'), ('DM', 'Debit Memo'), ('CM', 'Credit Memo')], help_text='Transaction type (TYPE) - Character 2', max_length=2)),
-                ('date', models.DateField(db_index=True, help_text='Date of transaction (DATE) - Date 8')),
-                ('total', models.DecimalField(decimal_places=2, help_text='Original transaction total (TOTAL) - Numeric 14.2', max_digits=14, validators=[django.core.validators.MinValueValidator(0)])),
-                ('balancedue', models.DecimalField(decimal_places=2, help_text='Balance due on transaction (BALANCEDUE) - Numeric 14.2', max_digits=14, validators=[django.core.validators.MinValueValidator(0)])),
-                ('ageflag', models.CharField(choices=[('0', 'Current'), ('1', '30 Days'), ('2', '60 Days'), ('3', '90 Days'), ('4', '120+ Days')], default='0', help_text='Aging flag (AGEFLAG) - Character 1', max_length=1)),
-                ('posted', models.CharField(default='N', help_text='Posted status (POSTED) - Character 10 (Y/N)', max_length=10)),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
-                ('dno', models.ForeignKey(help_text='Debtor number (DNO)', on_delete=django.db.models.deletion.CASCADE, related_name='debtopen_items', to='debtors.debtor')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "dtrano",
+                    models.CharField(
+                        help_text="Transaction number (DTRANO) - Character 6",
+                        max_length=6,
+                    ),
+                ),
+                (
+                    "type",
+                    models.CharField(
+                        choices=[
+                            ("IN", "Invoice"),
+                            ("CN", "Credit Note"),
+                            ("PY", "Payment"),
+                            ("JD", "Journal Debit"),
+                            ("JC", "Journal Credit"),
+                            ("DM", "Debit Memo"),
+                            ("CM", "Credit Memo"),
+                        ],
+                        help_text="Transaction type (TYPE) - Character 2",
+                        max_length=2,
+                    ),
+                ),
+                (
+                    "date",
+                    models.DateField(
+                        db_index=True, help_text="Date of transaction (DATE) - Date 8"
+                    ),
+                ),
+                (
+                    "total",
+                    models.DecimalField(
+                        decimal_places=2,
+                        help_text="Original transaction total (TOTAL) - Numeric 14.2",
+                        max_digits=14,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "balancedue",
+                    models.DecimalField(
+                        decimal_places=2,
+                        help_text="Balance due on transaction (BALANCEDUE) - Numeric 14.2",
+                        max_digits=14,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "ageflag",
+                    models.CharField(
+                        choices=[
+                            ("0", "Current"),
+                            ("1", "30 Days"),
+                            ("2", "60 Days"),
+                            ("3", "90 Days"),
+                            ("4", "120+ Days"),
+                        ],
+                        default="0",
+                        help_text="Aging flag (AGEFLAG) - Character 1",
+                        max_length=1,
+                    ),
+                ),
+                (
+                    "posted",
+                    models.CharField(
+                        default="N",
+                        help_text="Posted status (POSTED) - Character 10 (Y/N)",
+                        max_length=10,
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "dno",
+                    models.ForeignKey(
+                        help_text="Debtor number (DNO)",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="debtopen_items",
+                        to="debtors.debtor",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Open Item Transaction (DEBTOPEN)',
-                'verbose_name_plural': 'Open Item Transactions (DEBTOPEN)',
-                'ordering': ['date', 'dtrano'],
+                "verbose_name": "Open Item Transaction (DEBTOPEN)",
+                "verbose_name_plural": "Open Item Transactions (DEBTOPEN)",
+                "ordering": ["date", "dtrano"],
             },
         ),
         migrations.CreateModel(
-            name='DebtorAudit',
+            name="DebtorAudit",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('dtrano', models.CharField(help_text='Transaction number (DTRANO) - Character 6', max_length=6)),
-                ('type', models.CharField(choices=[('IN', 'Invoice'), ('CR', 'Credit Note'), ('PA', 'Payment'), ('AD', 'Adjustment'), ('DM', 'Debit Memo'), ('CM', 'Credit Memo')], help_text='Transaction type (TYPE) - Character 2', max_length=2)),
-                ('thistype', models.CharField(choices=[('IN', 'Invoice'), ('CR', 'Credit Note'), ('PA', 'Payment'), ('AD', 'Adjustment'), ('DM', 'Debit Memo'), ('CM', 'Credit Memo')], help_text='Current transaction type (THISTYPE) - Character 2', max_length=2)),
-                ('thistran', models.CharField(help_text='Current transaction type identifier (THISTRAN) - Character 6', max_length=6)),
-                ('date', models.DateField(db_index=True, help_text='Audit date (DATE) - Date 8')),
-                ('amount', models.DecimalField(decimal_places=2, help_text='Audit amount (AMOUNT) - Numeric 12.2', max_digits=12, validators=[django.core.validators.MinValueValidator(0)])),
-                ('dno', models.ForeignKey(help_text='Debtor number (DNO)', on_delete=django.db.models.deletion.CASCADE, related_name='debtoraud_records', to='debtors.debtor')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "dtrano",
+                    models.CharField(
+                        help_text="Transaction number (DTRANO) - Character 6",
+                        max_length=6,
+                    ),
+                ),
+                (
+                    "type",
+                    models.CharField(
+                        choices=[
+                            ("IN", "Invoice"),
+                            ("CR", "Credit Note"),
+                            ("PA", "Payment"),
+                            ("AD", "Adjustment"),
+                            ("DM", "Debit Memo"),
+                            ("CM", "Credit Memo"),
+                        ],
+                        help_text="Transaction type (TYPE) - Character 2",
+                        max_length=2,
+                    ),
+                ),
+                (
+                    "thistype",
+                    models.CharField(
+                        choices=[
+                            ("IN", "Invoice"),
+                            ("CR", "Credit Note"),
+                            ("PA", "Payment"),
+                            ("AD", "Adjustment"),
+                            ("DM", "Debit Memo"),
+                            ("CM", "Credit Memo"),
+                        ],
+                        help_text="Current transaction type (THISTYPE) - Character 2",
+                        max_length=2,
+                    ),
+                ),
+                (
+                    "thistran",
+                    models.CharField(
+                        help_text="Current transaction type identifier (THISTRAN) - Character 6",
+                        max_length=6,
+                    ),
+                ),
+                (
+                    "date",
+                    models.DateField(
+                        db_index=True, help_text="Audit date (DATE) - Date 8"
+                    ),
+                ),
+                (
+                    "amount",
+                    models.DecimalField(
+                        decimal_places=2,
+                        help_text="Audit amount (AMOUNT) - Numeric 12.2",
+                        max_digits=12,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "dno",
+                    models.ForeignKey(
+                        help_text="Debtor number (DNO)",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="debtoraud_records",
+                        to="debtors.debtor",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Debtor Audit (DEBTORAUD)',
-                'verbose_name_plural': 'Debtor Audits (DEBTORAUD)',
-                'ordering': ['date', 'dtrano'],
+                "verbose_name": "Debtor Audit (DEBTORAUD)",
+                "verbose_name_plural": "Debtor Audits (DEBTORAUD)",
+                "ordering": ["date", "dtrano"],
             },
         ),
         migrations.CreateModel(
-            name='DebtorOpenItem',
+            name="DebtorOpenItem",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('transaction_number', models.CharField(db_column='dtrano', help_text='Transaction Number (DTRANO) - Character 6', max_length=6)),
-                ('transaction_type', models.CharField(choices=[('IN', 'Invoice'), ('CN', 'Credit Note'), ('PY', 'Payment'), ('JD', 'Journal Debit'), ('JC', 'Journal Credit'), ('DM', 'Debit Memo'), ('CM', 'Credit Memo')], db_column='type', help_text='Transaction Type (TYPE) - Character 2', max_length=2)),
-                ('transaction_date', models.DateField(db_column='date', db_index=True, help_text='Transaction Date (DATE) - Date 8')),
-                ('original_amount', models.DecimalField(db_column='total', decimal_places=2, help_text='Original Transaction Total (TOTAL) - Numeric 14.2', max_digits=14, validators=[django.core.validators.MinValueValidator(Decimal('0'))])),
-                ('balance_due', models.DecimalField(db_column='balancedue', decimal_places=2, help_text='Current Balance Due (BALANCEDUE) - Numeric 14.2', max_digits=14, validators=[django.core.validators.MinValueValidator(Decimal('0'))])),
-                ('age_flag', models.CharField(choices=[('0', 'Current'), ('1', '30 Days'), ('2', '60 Days'), ('3', '90 Days'), ('4', '120+ Days')], db_column='ageflag', default='0', help_text='Aging Flag (AGEFLAG) - 0=Current, 1=30, 2=60, 3=90, 4=120+', max_length=1)),
-                ('posted', models.CharField(db_column='posted', default='Y', help_text='Posted Status (POSTED) - Y/N', max_length=10)),
-                ('due_date', models.DateField(blank=True, help_text='Payment due date', null=True)),
-                ('fully_paid', models.BooleanField(default=False, help_text='Fully allocated/paid flag')),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('debtor', models.ForeignKey(db_column='dno', help_text='Debtor Number (DNO)', on_delete=django.db.models.deletion.CASCADE, related_name='open_items', to='debtors.debtor')),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "transaction_number",
+                    models.CharField(
+                        db_column="dtrano",
+                        help_text="Transaction Number (DTRANO) - Character 6",
+                        max_length=6,
+                    ),
+                ),
+                (
+                    "transaction_type",
+                    models.CharField(
+                        choices=[
+                            ("IN", "Invoice"),
+                            ("CN", "Credit Note"),
+                            ("PY", "Payment"),
+                            ("JD", "Journal Debit"),
+                            ("JC", "Journal Credit"),
+                            ("DM", "Debit Memo"),
+                            ("CM", "Credit Memo"),
+                        ],
+                        db_column="type",
+                        help_text="Transaction Type (TYPE) - Character 2",
+                        max_length=2,
+                    ),
+                ),
+                (
+                    "transaction_date",
+                    models.DateField(
+                        db_column="date",
+                        db_index=True,
+                        help_text="Transaction Date (DATE) - Date 8",
+                    ),
+                ),
+                (
+                    "original_amount",
+                    models.DecimalField(
+                        db_column="total",
+                        decimal_places=2,
+                        help_text="Original Transaction Total (TOTAL) - Numeric 14.2",
+                        max_digits=14,
+                        validators=[
+                            django.core.validators.MinValueValidator(Decimal("0"))
+                        ],
+                    ),
+                ),
+                (
+                    "balance_due",
+                    models.DecimalField(
+                        db_column="balancedue",
+                        decimal_places=2,
+                        help_text="Current Balance Due (BALANCEDUE) - Numeric 14.2",
+                        max_digits=14,
+                        validators=[
+                            django.core.validators.MinValueValidator(Decimal("0"))
+                        ],
+                    ),
+                ),
+                (
+                    "age_flag",
+                    models.CharField(
+                        choices=[
+                            ("0", "Current"),
+                            ("1", "30 Days"),
+                            ("2", "60 Days"),
+                            ("3", "90 Days"),
+                            ("4", "120+ Days"),
+                        ],
+                        db_column="ageflag",
+                        default="0",
+                        help_text="Aging Flag (AGEFLAG) - 0=Current, 1=30, 2=60, 3=90, 4=120+",
+                        max_length=1,
+                    ),
+                ),
+                (
+                    "posted",
+                    models.CharField(
+                        db_column="posted",
+                        default="Y",
+                        help_text="Posted Status (POSTED) - Y/N",
+                        max_length=10,
+                    ),
+                ),
+                (
+                    "due_date",
+                    models.DateField(
+                        blank=True, help_text="Payment due date", null=True
+                    ),
+                ),
+                (
+                    "fully_paid",
+                    models.BooleanField(
+                        default=False, help_text="Fully allocated/paid flag"
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "debtor",
+                    models.ForeignKey(
+                        db_column="dno",
+                        help_text="Debtor Number (DNO)",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="open_items",
+                        to="debtors.debtor",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Open Item Transaction',
-                'verbose_name_plural': 'Open Item Transactions',
-                'db_table': 'debtopen',
-                'ordering': ['transaction_date', 'transaction_number'],
+                "verbose_name": "Open Item Transaction",
+                "verbose_name_plural": "Open Item Transactions",
+                "db_table": "debtopen",
+                "ordering": ["transaction_date", "transaction_number"],
             },
         ),
         migrations.CreateModel(
-            name='DebtorTransaction',
+            name="DebtorTransaction",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('transaction_number', models.CharField(db_column='dtrano', db_index=True, help_text='Transaction Number (DTRANO) - Numeric 6', max_length=6)),
-                ('transaction_type', models.CharField(choices=[('IN', 'Invoice'), ('CN', 'Credit Note'), ('CS', 'Cash Sale'), ('CR', 'Cash Return'), ('PM', 'Payment'), ('RCP', 'Receipt'), ('INT', 'Interest Charge'), ('JD', 'Journal Debit'), ('JC', 'Journal Credit'), ('RF', 'Refund')], db_column='dtype', help_text='Transaction Type (DTYPE) - Character 3', max_length=3)),
-                ('transaction_date', models.DateField(db_column='dtdate', db_index=True, help_text='Transaction Date (DTDATE) - Date 8')),
-                ('transaction_time', models.TimeField(blank=True, db_column='time', help_text='Transaction Time (TIME) - Character 8 (HH:MM:SS)', null=True)),
-                ('subtotal', models.DecimalField(db_column='dtsub', decimal_places=2, help_text='Subtotal Excl. VAT (DTSUB) - Numeric 12.2', max_digits=12)),
-                ('vat_amount', models.DecimalField(db_column='dtgst', decimal_places=2, default=Decimal('0.00'), help_text='VAT Amount (DTGST) - Numeric 12.2', max_digits=12)),
-                ('total_amount', models.DecimalField(db_column='dttot', decimal_places=2, help_text='Transaction Total Incl. VAT (DTTOT) - Numeric 12.2', max_digits=12)),
-                ('vat_status', models.CharField(choices=[('S', 'Standard Rated (15%)'), ('E', 'Exempt'), ('Z', 'Zero Rated')], db_column='dtaxstat', default='S', help_text='VAT Status (DTAXSTAT) - Character 1', max_length=1)),
-                ('source_station', models.PositiveIntegerField(db_column='source', default=0, help_text='Station/Till Number (SOURCE) - Numeric 2', validators=[django.core.validators.MaxValueValidator(99)])),
-                ('order_number', models.CharField(blank=True, db_column='ordno', help_text='Order Number (ORDNO) - Character 10', max_length=10)),
-                ('customer_reference', models.CharField(blank=True, db_column='custref', help_text='Customer Reference (CUSTREF) - Character 10', max_length=10)),
-                ('vat_reference', models.CharField(blank=True, db_column='vatref', help_text='VAT Reference (VATREF) - Character 10', max_length=10)),
-                ('station', models.CharField(blank=True, db_column='station', help_text='Station Code (STATION) - Character 2', max_length=5)),
-                ('description_line1', models.CharField(blank=True, db_column='del1', help_text='Delivery/Description Line 1 (DEL1) - Character 25', max_length=100)),
-                ('description_line2', models.CharField(blank=True, db_column='del2', help_text='Delivery/Description Line 2 (DEL2) - Character 25', max_length=100)),
-                ('description_line3', models.CharField(blank=True, db_column='del3', help_text='Delivery/Description Line 3 (DEL3) - Character 25', max_length=100)),
-                ('description_line4', models.CharField(blank=True, db_column='del4', help_text='Delivery/Description Line 4 (DEL4) - Character 25', max_length=100)),
-                ('source_type', models.CharField(choices=[('POS', 'Point of Sale'), ('INVOICE', 'Invoice Entry'), ('IMPORT', 'Bulk Import'), ('MANUAL', 'Manual Entry')], default='POS', help_text='Source of transaction (POS, Invoice, Import, Manual)', max_length=20)),
-                ('source_reference', models.CharField(blank=True, help_text='Link to original record (invoice ID, import batch ID, etc)', max_length=100)),
-                ('is_allocated', models.BooleanField(db_index=True, default=False, help_text='Whether transaction has been fully allocated/paid')),
-                ('status', models.CharField(choices=[('draft', 'Draft'), ('posted', 'Posted'), ('void', 'Void'), ('reversed', 'Reversed')], default='posted', help_text='Transaction status', max_length=10)),
-                ('created_by', models.CharField(blank=True, help_text='User who created transaction', max_length=50)),
-                ('debtor', models.ForeignKey(db_column='dno', help_text='Debtor Account Number (DNO)', on_delete=django.db.models.deletion.PROTECT, related_name='transactions', to='debtors.debtor')),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "transaction_number",
+                    models.CharField(
+                        db_column="dtrano",
+                        db_index=True,
+                        help_text="Transaction Number (DTRANO) - Numeric 6",
+                        max_length=6,
+                    ),
+                ),
+                (
+                    "transaction_type",
+                    models.CharField(
+                        choices=[
+                            ("IN", "Invoice"),
+                            ("CN", "Credit Note"),
+                            ("CS", "Cash Sale"),
+                            ("CR", "Cash Return"),
+                            ("PM", "Payment"),
+                            ("RCP", "Receipt"),
+                            ("INT", "Interest Charge"),
+                            ("JD", "Journal Debit"),
+                            ("JC", "Journal Credit"),
+                            ("RF", "Refund"),
+                        ],
+                        db_column="dtype",
+                        help_text="Transaction Type (DTYPE) - Character 3",
+                        max_length=3,
+                    ),
+                ),
+                (
+                    "transaction_date",
+                    models.DateField(
+                        db_column="dtdate",
+                        db_index=True,
+                        help_text="Transaction Date (DTDATE) - Date 8",
+                    ),
+                ),
+                (
+                    "transaction_time",
+                    models.TimeField(
+                        blank=True,
+                        db_column="time",
+                        help_text="Transaction Time (TIME) - Character 8 (HH:MM:SS)",
+                        null=True,
+                    ),
+                ),
+                (
+                    "subtotal",
+                    models.DecimalField(
+                        db_column="dtsub",
+                        decimal_places=2,
+                        help_text="Subtotal Excl. VAT (DTSUB) - Numeric 12.2",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "vat_amount",
+                    models.DecimalField(
+                        db_column="dtgst",
+                        decimal_places=2,
+                        default=Decimal("0.00"),
+                        help_text="VAT Amount (DTGST) - Numeric 12.2",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "total_amount",
+                    models.DecimalField(
+                        db_column="dttot",
+                        decimal_places=2,
+                        help_text="Transaction Total Incl. VAT (DTTOT) - Numeric 12.2",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "vat_status",
+                    models.CharField(
+                        choices=[
+                            ("S", "Standard Rated (15%)"),
+                            ("E", "Exempt"),
+                            ("Z", "Zero Rated"),
+                        ],
+                        db_column="dtaxstat",
+                        default="S",
+                        help_text="VAT Status (DTAXSTAT) - Character 1",
+                        max_length=1,
+                    ),
+                ),
+                (
+                    "source_station",
+                    models.PositiveIntegerField(
+                        db_column="source",
+                        default=0,
+                        help_text="Station/Till Number (SOURCE) - Numeric 2",
+                        validators=[django.core.validators.MaxValueValidator(99)],
+                    ),
+                ),
+                (
+                    "order_number",
+                    models.CharField(
+                        blank=True,
+                        db_column="ordno",
+                        help_text="Order Number (ORDNO) - Character 10",
+                        max_length=10,
+                    ),
+                ),
+                (
+                    "customer_reference",
+                    models.CharField(
+                        blank=True,
+                        db_column="custref",
+                        help_text="Customer Reference (CUSTREF) - Character 10",
+                        max_length=10,
+                    ),
+                ),
+                (
+                    "vat_reference",
+                    models.CharField(
+                        blank=True,
+                        db_column="vatref",
+                        help_text="VAT Reference (VATREF) - Character 10",
+                        max_length=10,
+                    ),
+                ),
+                (
+                    "station",
+                    models.CharField(
+                        blank=True,
+                        db_column="station",
+                        help_text="Station Code (STATION) - Character 2",
+                        max_length=5,
+                    ),
+                ),
+                (
+                    "description_line1",
+                    models.CharField(
+                        blank=True,
+                        db_column="del1",
+                        help_text="Delivery/Description Line 1 (DEL1) - Character 25",
+                        max_length=100,
+                    ),
+                ),
+                (
+                    "description_line2",
+                    models.CharField(
+                        blank=True,
+                        db_column="del2",
+                        help_text="Delivery/Description Line 2 (DEL2) - Character 25",
+                        max_length=100,
+                    ),
+                ),
+                (
+                    "description_line3",
+                    models.CharField(
+                        blank=True,
+                        db_column="del3",
+                        help_text="Delivery/Description Line 3 (DEL3) - Character 25",
+                        max_length=100,
+                    ),
+                ),
+                (
+                    "description_line4",
+                    models.CharField(
+                        blank=True,
+                        db_column="del4",
+                        help_text="Delivery/Description Line 4 (DEL4) - Character 25",
+                        max_length=100,
+                    ),
+                ),
+                (
+                    "source_type",
+                    models.CharField(
+                        choices=[
+                            ("POS", "Point of Sale"),
+                            ("INVOICE", "Invoice Entry"),
+                            ("IMPORT", "Bulk Import"),
+                            ("MANUAL", "Manual Entry"),
+                        ],
+                        default="POS",
+                        help_text="Source of transaction (POS, Invoice, Import, Manual)",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "source_reference",
+                    models.CharField(
+                        blank=True,
+                        help_text="Link to original record (invoice ID, import batch ID, etc)",
+                        max_length=100,
+                    ),
+                ),
+                (
+                    "is_allocated",
+                    models.BooleanField(
+                        db_index=True,
+                        default=False,
+                        help_text="Whether transaction has been fully allocated/paid",
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("draft", "Draft"),
+                            ("posted", "Posted"),
+                            ("void", "Void"),
+                            ("reversed", "Reversed"),
+                        ],
+                        default="posted",
+                        help_text="Transaction status",
+                        max_length=10,
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.CharField(
+                        blank=True,
+                        help_text="User who created transaction",
+                        max_length=50,
+                    ),
+                ),
+                (
+                    "debtor",
+                    models.ForeignKey(
+                        db_column="dno",
+                        help_text="Debtor Account Number (DNO)",
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="transactions",
+                        to="debtors.debtor",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Debtor Transaction',
-                'verbose_name_plural': 'Debtor Transactions',
-                'db_table': 'debtran',
-                'ordering': ['-transaction_date', '-transaction_number'],
+                "verbose_name": "Debtor Transaction",
+                "verbose_name_plural": "Debtor Transactions",
+                "db_table": "debtran",
+                "ordering": ["-transaction_date", "-transaction_number"],
             },
         ),
         migrations.CreateModel(
-            name='Dpdc',
+            name="Dpdc",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('date', models.DateField(db_index=True, help_text='Date of cheque (DATE) - Date 8')),
-                ('amount', models.DecimalField(decimal_places=2, help_text='Cheque value (AMOUNT) - Numeric 10.2', max_digits=10, validators=[django.core.validators.MinValueValidator(0)])),
-                ('status', models.CharField(choices=[('A', 'Active'), ('I', 'Inactive'), ('P', 'Processed'), ('C', 'Cancelled')], default='A', help_text='Status: A=Active, I=Inactive, P=Processed, C=Cancelled', max_length=1)),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('dno', models.ForeignKey(help_text='Debtor account number (DNO)', on_delete=django.db.models.deletion.CASCADE, related_name='dpdc_cheques', to='debtors.debtor')),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "date",
+                    models.DateField(
+                        db_index=True, help_text="Date of cheque (DATE) - Date 8"
+                    ),
+                ),
+                (
+                    "amount",
+                    models.DecimalField(
+                        decimal_places=2,
+                        help_text="Cheque value (AMOUNT) - Numeric 10.2",
+                        max_digits=10,
+                        validators=[django.core.validators.MinValueValidator(0)],
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("A", "Active"),
+                            ("I", "Inactive"),
+                            ("P", "Processed"),
+                            ("C", "Cancelled"),
+                        ],
+                        default="A",
+                        help_text="Status: A=Active, I=Inactive, P=Processed, C=Cancelled",
+                        max_length=1,
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "dno",
+                    models.ForeignKey(
+                        help_text="Debtor account number (DNO)",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="dpdc_cheques",
+                        to="debtors.debtor",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Post-Dated Cheque (DPDC)',
-                'verbose_name_plural': 'Post-Dated Cheques (DPDC)',
-                'ordering': ['date'],
+                "verbose_name": "Post-Dated Cheque (DPDC)",
+                "verbose_name_plural": "Post-Dated Cheques (DPDC)",
+                "ordering": ["date"],
             },
         ),
         migrations.CreateModel(
-            name='JobCosting',
+            name="JobCosting",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('job_number', models.CharField(db_index=True, help_text='Job # (6 digits)', max_length=6, unique=True)),
-                ('job_date', models.DateField(db_index=True, help_text='Date of Job')),
-                ('time_start', models.CharField(blank=True, help_text='Time Job Started (HH:MM format)', max_length=5)),
-                ('customer_name', models.CharField(help_text='Customer Name', max_length=40)),
-                ('address_line1', models.CharField(blank=True, help_text='Address Line 1', max_length=25)),
-                ('address_line2', models.CharField(blank=True, help_text='Address Line 2', max_length=25)),
-                ('address_line3', models.CharField(blank=True, help_text='Address Line 3', max_length=25)),
-                ('order_number', models.CharField(blank=True, help_text='Order Number', max_length=10)),
-                ('vehicle_registration', models.CharField(blank=True, help_text='Vehicle Registration Number', max_length=10)),
-                ('vehicle_make_model', models.CharField(blank=True, help_text='Make & Model of Vehicle', max_length=15)),
-                ('odometer_reading', models.DecimalField(blank=True, decimal_places=0, help_text='Odometer Reading (Kms)', max_digits=7, null=True)),
-                ('telephone', models.CharField(blank=True, help_text='Telephone Number', max_length=25)),
-                ('contact_person', models.CharField(blank=True, help_text='Contact person', max_length=20)),
-                ('status', models.CharField(choices=[('A', 'Active'), ('C', 'Cancelled'), ('D', 'Complete')], default='A', help_text='Job status: A=Active, C=Cancelled, D=Complete', max_length=1)),
-                ('total_value', models.DecimalField(decimal_places=2, default=0, help_text='Total value of job', max_digits=12)),
-                ('salesman_number', models.PositiveIntegerField(blank=True, help_text='Salesperson number (2 digits)', null=True, validators=[django.core.validators.MaxValueValidator(99)])),
-                ('station_number', models.PositiveIntegerField(blank=True, help_text='Station/Till number (2 digits)', null=True, validators=[django.core.validators.MaxValueValidator(99)])),
-                ('completion_date', models.DateField(blank=True, help_text='Date completed', null=True)),
-                ('time_completed', models.CharField(blank=True, help_text='Time completed (HH:MM format)', max_length=5)),
-                ('amount_charged', models.DecimalField(decimal_places=2, default=0, help_text='Amount charged out', max_digits=12)),
-                ('transaction_number', models.PositiveIntegerField(blank=True, help_text='Transaction number (6 digits)', null=True, validators=[django.core.validators.MaxValueValidator(999999)])),
-                ('transaction_type', models.CharField(blank=True, help_text='Transaction type', max_length=1)),
-                ('station_completion', models.CharField(blank=True, help_text='Station number (Character, 2 digits)', max_length=2)),
-                ('operator_number', models.CharField(blank=True, help_text='Operator number', max_length=10)),
-                ('comment_line1', models.CharField(blank=True, help_text='Comment line 1', max_length=30)),
-                ('comment_line2', models.CharField(blank=True, help_text='Comment line 2', max_length=30)),
-                ('comment_line3', models.CharField(blank=True, help_text='Comment line 3', max_length=30)),
-                ('comment_line4', models.CharField(blank=True, help_text='Comment line 4', max_length=30)),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('debtor', models.ForeignKey(blank=True, help_text='Debtor account number', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='job_costings', to='debtors.debtor')),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "job_number",
+                    models.CharField(
+                        db_index=True,
+                        help_text="Job # (6 digits)",
+                        max_length=6,
+                        unique=True,
+                    ),
+                ),
+                ("job_date", models.DateField(db_index=True, help_text="Date of Job")),
+                (
+                    "time_start",
+                    models.CharField(
+                        blank=True,
+                        help_text="Time Job Started (HH:MM format)",
+                        max_length=5,
+                    ),
+                ),
+                (
+                    "customer_name",
+                    models.CharField(help_text="Customer Name", max_length=40),
+                ),
+                (
+                    "address_line1",
+                    models.CharField(
+                        blank=True, help_text="Address Line 1", max_length=25
+                    ),
+                ),
+                (
+                    "address_line2",
+                    models.CharField(
+                        blank=True, help_text="Address Line 2", max_length=25
+                    ),
+                ),
+                (
+                    "address_line3",
+                    models.CharField(
+                        blank=True, help_text="Address Line 3", max_length=25
+                    ),
+                ),
+                (
+                    "order_number",
+                    models.CharField(
+                        blank=True, help_text="Order Number", max_length=10
+                    ),
+                ),
+                (
+                    "vehicle_registration",
+                    models.CharField(
+                        blank=True,
+                        help_text="Vehicle Registration Number",
+                        max_length=10,
+                    ),
+                ),
+                (
+                    "vehicle_make_model",
+                    models.CharField(
+                        blank=True, help_text="Make & Model of Vehicle", max_length=15
+                    ),
+                ),
+                (
+                    "odometer_reading",
+                    models.DecimalField(
+                        blank=True,
+                        decimal_places=0,
+                        help_text="Odometer Reading (Kms)",
+                        max_digits=7,
+                        null=True,
+                    ),
+                ),
+                (
+                    "telephone",
+                    models.CharField(
+                        blank=True, help_text="Telephone Number", max_length=25
+                    ),
+                ),
+                (
+                    "contact_person",
+                    models.CharField(
+                        blank=True, help_text="Contact person", max_length=20
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("A", "Active"),
+                            ("C", "Cancelled"),
+                            ("D", "Complete"),
+                        ],
+                        default="A",
+                        help_text="Job status: A=Active, C=Cancelled, D=Complete",
+                        max_length=1,
+                    ),
+                ),
+                (
+                    "total_value",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Total value of job",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "salesman_number",
+                    models.PositiveIntegerField(
+                        blank=True,
+                        help_text="Salesperson number (2 digits)",
+                        null=True,
+                        validators=[django.core.validators.MaxValueValidator(99)],
+                    ),
+                ),
+                (
+                    "station_number",
+                    models.PositiveIntegerField(
+                        blank=True,
+                        help_text="Station/Till number (2 digits)",
+                        null=True,
+                        validators=[django.core.validators.MaxValueValidator(99)],
+                    ),
+                ),
+                (
+                    "completion_date",
+                    models.DateField(blank=True, help_text="Date completed", null=True),
+                ),
+                (
+                    "time_completed",
+                    models.CharField(
+                        blank=True,
+                        help_text="Time completed (HH:MM format)",
+                        max_length=5,
+                    ),
+                ),
+                (
+                    "amount_charged",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Amount charged out",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "transaction_number",
+                    models.PositiveIntegerField(
+                        blank=True,
+                        help_text="Transaction number (6 digits)",
+                        null=True,
+                        validators=[django.core.validators.MaxValueValidator(999999)],
+                    ),
+                ),
+                (
+                    "transaction_type",
+                    models.CharField(
+                        blank=True, help_text="Transaction type", max_length=1
+                    ),
+                ),
+                (
+                    "station_completion",
+                    models.CharField(
+                        blank=True,
+                        help_text="Station number (Character, 2 digits)",
+                        max_length=2,
+                    ),
+                ),
+                (
+                    "operator_number",
+                    models.CharField(
+                        blank=True, help_text="Operator number", max_length=10
+                    ),
+                ),
+                (
+                    "comment_line1",
+                    models.CharField(
+                        blank=True, help_text="Comment line 1", max_length=30
+                    ),
+                ),
+                (
+                    "comment_line2",
+                    models.CharField(
+                        blank=True, help_text="Comment line 2", max_length=30
+                    ),
+                ),
+                (
+                    "comment_line3",
+                    models.CharField(
+                        blank=True, help_text="Comment line 3", max_length=30
+                    ),
+                ),
+                (
+                    "comment_line4",
+                    models.CharField(
+                        blank=True, help_text="Comment line 4", max_length=30
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "debtor",
+                    models.ForeignKey(
+                        blank=True,
+                        help_text="Debtor account number",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="job_costings",
+                        to="debtors.debtor",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Job Costing (JMAST)',
-                'verbose_name_plural': 'Job Costing Records (JMAST)',
-                'ordering': ['-job_date', '-job_number'],
+                "verbose_name": "Job Costing (JMAST)",
+                "verbose_name_plural": "Job Costing Records (JMAST)",
+                "ordering": ["-job_date", "-job_number"],
             },
         ),
         migrations.CreateModel(
-            name='JobCostingTransaction',
+            name="JobCostingTransaction",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('code', models.CharField(help_text='Stock Code', max_length=13)),
-                ('quantity', models.DecimalField(decimal_places=4, help_text='Quantity of item', max_digits=12)),
-                ('selling_price', models.DecimalField(decimal_places=4, help_text='Selling price per unit', max_digits=12)),
-                ('discount', models.DecimalField(decimal_places=2, default=0, help_text='Discount percentage', max_digits=5)),
-                ('cost_price', models.DecimalField(decimal_places=2, default=0, help_text='Cost price per unit', max_digits=10)),
-                ('department', models.CharField(blank=True, help_text='Department # (3 characters)', max_length=3)),
-                ('tax_code', models.CharField(blank=True, help_text='Tax code', max_length=1)),
-                ('comments', models.CharField(blank=True, help_text='Comment on transaction', max_length=30)),
-                ('transaction_date', models.DateField(db_index=True, help_text='Date of transaction')),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('job_costing', models.ForeignKey(help_text='Job # (6 digits)', on_delete=django.db.models.deletion.CASCADE, related_name='transactions', to='debtors.jobcosting')),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("code", models.CharField(help_text="Stock Code", max_length=13)),
+                (
+                    "quantity",
+                    models.DecimalField(
+                        decimal_places=4, help_text="Quantity of item", max_digits=12
+                    ),
+                ),
+                (
+                    "selling_price",
+                    models.DecimalField(
+                        decimal_places=4,
+                        help_text="Selling price per unit",
+                        max_digits=12,
+                    ),
+                ),
+                (
+                    "discount",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Discount percentage",
+                        max_digits=5,
+                    ),
+                ),
+                (
+                    "cost_price",
+                    models.DecimalField(
+                        decimal_places=2,
+                        default=0,
+                        help_text="Cost price per unit",
+                        max_digits=10,
+                    ),
+                ),
+                (
+                    "department",
+                    models.CharField(
+                        blank=True,
+                        help_text="Department # (3 characters)",
+                        max_length=3,
+                    ),
+                ),
+                (
+                    "tax_code",
+                    models.CharField(blank=True, help_text="Tax code", max_length=1),
+                ),
+                (
+                    "comments",
+                    models.CharField(
+                        blank=True, help_text="Comment on transaction", max_length=30
+                    ),
+                ),
+                (
+                    "transaction_date",
+                    models.DateField(db_index=True, help_text="Date of transaction"),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "job_costing",
+                    models.ForeignKey(
+                        help_text="Job # (6 digits)",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="transactions",
+                        to="debtors.jobcosting",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Job Costing Transaction (JTRAN)',
-                'verbose_name_plural': 'Job Costing Transactions (JTRAN)',
-                'ordering': ['transaction_date', 'created_at'],
+                "verbose_name": "Job Costing Transaction (JTRAN)",
+                "verbose_name_plural": "Job Costing Transactions (JTRAN)",
+                "ordering": ["transaction_date", "created_at"],
             },
         ),
         migrations.CreateModel(
-            name='JobPerson',
+            name="JobPerson",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('operator_number', models.CharField(db_index=True, help_text='Operator number', max_length=10, unique=True)),
-                ('operator_name', models.CharField(help_text='Operator name', max_length=20)),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "operator_number",
+                    models.CharField(
+                        db_index=True,
+                        help_text="Operator number",
+                        max_length=10,
+                        unique=True,
+                    ),
+                ),
+                (
+                    "operator_name",
+                    models.CharField(help_text="Operator name", max_length=20),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Job Operator (JPERSON)',
-                'verbose_name_plural': 'Job Operators (JPERSON)',
-                'ordering': ['operator_number'],
+                "verbose_name": "Job Operator (JPERSON)",
+                "verbose_name_plural": "Job Operators (JPERSON)",
+                "ordering": ["operator_number"],
             },
         ),
         migrations.CreateModel(
-            name='JobPrinting',
+            name="JobPrinting",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('station', models.CharField(db_index=True, help_text='Station number', max_length=2, unique=True)),
-                ('job_cards_station', models.CharField(blank=True, help_text='Station number for job cards printing', max_length=1)),
-                ('job_invoices_station', models.CharField(blank=True, help_text='Station number for job invoices printing', max_length=1)),
-                ('job_reports_station', models.CharField(blank=True, help_text='Station number for job reports printing', max_length=1)),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "station",
+                    models.CharField(
+                        db_index=True,
+                        help_text="Station number",
+                        max_length=2,
+                        unique=True,
+                    ),
+                ),
+                (
+                    "job_cards_station",
+                    models.CharField(
+                        blank=True,
+                        help_text="Station number for job cards printing",
+                        max_length=1,
+                    ),
+                ),
+                (
+                    "job_invoices_station",
+                    models.CharField(
+                        blank=True,
+                        help_text="Station number for job invoices printing",
+                        max_length=1,
+                    ),
+                ),
+                (
+                    "job_reports_station",
+                    models.CharField(
+                        blank=True,
+                        help_text="Station number for job reports printing",
+                        max_length=1,
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Job Printing Configuration (JPRINT)',
-                'verbose_name_plural': 'Job Printing Configurations (JPRINT)',
-                'ordering': ['station'],
+                "verbose_name": "Job Printing Configuration (JPRINT)",
+                "verbose_name_plural": "Job Printing Configurations (JPRINT)",
+                "ordering": ["station"],
             },
         ),
         migrations.CreateModel(
-            name='PostDatedCheque',
+            name="PostDatedCheque",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('cheque_date', models.DateField(db_index=True)),
-                ('amount', models.DecimalField(decimal_places=2, max_digits=12)),
-                ('reference', models.CharField(blank=True, max_length=100)),
-                ('is_processed', models.BooleanField(default=False)),
-                ('processed_date', models.DateField(blank=True, null=True)),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('debtor', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='post_dated_cheques', to='debtors.debtor')),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("cheque_date", models.DateField(db_index=True)),
+                ("amount", models.DecimalField(decimal_places=2, max_digits=12)),
+                ("reference", models.CharField(blank=True, max_length=100)),
+                ("is_processed", models.BooleanField(default=False)),
+                ("processed_date", models.DateField(blank=True, null=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "debtor",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="post_dated_cheques",
+                        to="debtors.debtor",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'ordering': ['cheque_date'],
+                "ordering": ["cheque_date"],
             },
         ),
         migrations.CreateModel(
-            name='SalesOrder',
+            name="SalesOrder",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('sales_order_number', models.CharField(db_index=True, max_length=20, unique=True)),
-                ('order_date', models.DateField()),
-                ('order_time', models.TimeField(blank=True, null=True)),
-                ('customer_name', models.CharField(blank=True, max_length=40)),
-                ('delivery_address_line1', models.CharField(blank=True, max_length=20)),
-                ('delivery_address_line2', models.CharField(blank=True, max_length=20)),
-                ('delivery_address_line3', models.CharField(blank=True, max_length=20)),
-                ('date_required', models.DateField(blank=True, null=True)),
-                ('time_required', models.TimeField(blank=True, null=True)),
-                ('customer_reference', models.CharField(blank=True, max_length=10)),
-                ('order_number', models.CharField(blank=True, max_length=10)),
-                ('transaction_number', models.PositiveIntegerField(blank=True, null=True)),
-                ('delivery_option', models.CharField(choices=[('D', 'Delivery'), ('C', 'Collection'), ('M', 'Mail'), ('X', 'Collect Later')], default='D', max_length=1)),
-                ('salesman_number', models.PositiveIntegerField(blank=True, null=True)),
-                ('station_number', models.CharField(blank=True, max_length=2)),
-                ('value', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('status', models.CharField(choices=[('O', 'Outstanding'), ('P', 'Partially Invoiced'), ('I', 'Invoiced'), ('C', 'Cancelled'), ('H', 'On Hold')], default='O', max_length=1)),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('debtor', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='sales_orders', to='debtors.debtor')),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "sales_order_number",
+                    models.CharField(db_index=True, max_length=20, unique=True),
+                ),
+                ("order_date", models.DateField()),
+                ("order_time", models.TimeField(blank=True, null=True)),
+                ("customer_name", models.CharField(blank=True, max_length=40)),
+                ("delivery_address_line1", models.CharField(blank=True, max_length=20)),
+                ("delivery_address_line2", models.CharField(blank=True, max_length=20)),
+                ("delivery_address_line3", models.CharField(blank=True, max_length=20)),
+                ("date_required", models.DateField(blank=True, null=True)),
+                ("time_required", models.TimeField(blank=True, null=True)),
+                ("customer_reference", models.CharField(blank=True, max_length=10)),
+                ("order_number", models.CharField(blank=True, max_length=10)),
+                (
+                    "transaction_number",
+                    models.PositiveIntegerField(blank=True, null=True),
+                ),
+                (
+                    "delivery_option",
+                    models.CharField(
+                        choices=[
+                            ("D", "Delivery"),
+                            ("C", "Collection"),
+                            ("M", "Mail"),
+                            ("X", "Collect Later"),
+                        ],
+                        default="D",
+                        max_length=1,
+                    ),
+                ),
+                ("salesman_number", models.PositiveIntegerField(blank=True, null=True)),
+                ("station_number", models.CharField(blank=True, max_length=2)),
+                (
+                    "value",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("O", "Outstanding"),
+                            ("P", "Partially Invoiced"),
+                            ("I", "Invoiced"),
+                            ("C", "Cancelled"),
+                            ("H", "On Hold"),
+                        ],
+                        default="O",
+                        max_length=1,
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "debtor",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="sales_orders",
+                        to="debtors.debtor",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Sales Order (SORDER)',
-                'verbose_name_plural': 'Sales Orders (SORDER)',
-                'ordering': ['-order_date', 'sales_order_number'],
+                "verbose_name": "Sales Order (SORDER)",
+                "verbose_name_plural": "Sales Orders (SORDER)",
+                "ordering": ["-order_date", "sales_order_number"],
             },
         ),
         migrations.CreateModel(
-            name='SalesOrderLine',
+            name="SalesOrderLine",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('line_number', models.PositiveIntegerField()),
-                ('stock_code', models.CharField(max_length=13)),
-                ('quantity', models.DecimalField(decimal_places=4, max_digits=12)),
-                ('selling_price', models.DecimalField(decimal_places=4, max_digits=12)),
-                ('discount', models.DecimalField(decimal_places=2, default=0, max_digits=5)),
-                ('comments', models.CharField(blank=True, max_length=30)),
-                ('line_total', models.DecimalField(decimal_places=2, default=0, max_digits=12)),
-                ('created_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL)),
-                ('sales_order', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='lines', to='debtors.salesorder')),
-                ('updated_by', models.ForeignKey(blank=True, editable=False, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("line_number", models.PositiveIntegerField()),
+                ("stock_code", models.CharField(max_length=13)),
+                ("quantity", models.DecimalField(decimal_places=4, max_digits=12)),
+                ("selling_price", models.DecimalField(decimal_places=4, max_digits=12)),
+                (
+                    "discount",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=5),
+                ),
+                ("comments", models.CharField(blank=True, max_length=30)),
+                (
+                    "line_total",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=12),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "sales_order",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="lines",
+                        to="debtors.salesorder",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Sales Order Line (SORDTRN)',
-                'verbose_name_plural': 'Sales Order Lines (SORDTRN)',
-                'ordering': ['line_number'],
+                "verbose_name": "Sales Order Line (SORDTRN)",
+                "verbose_name_plural": "Sales Order Lines (SORDTRN)",
+                "ordering": ["line_number"],
             },
         ),
         migrations.AddIndex(
-            model_name='debtor',
-            index=models.Index(fields=['customer_number'], name='idx_dno'),
+            model_name="debtor",
+            index=models.Index(fields=["customer_number"], name="idx_dno"),
         ),
         migrations.AddIndex(
-            model_name='debtor',
-            index=models.Index(fields=['short_name'], name='idx_dsname'),
+            model_name="debtor",
+            index=models.Index(fields=["short_name"], name="idx_dsname"),
         ),
         migrations.AddIndex(
-            model_name='debtor',
-            index=models.Index(fields=['name'], name='idx_dname'),
+            model_name="debtor",
+            index=models.Index(fields=["name"], name="idx_dname"),
         ),
         migrations.AddIndex(
-            model_name='debtor',
-            index=models.Index(fields=['area_code'], name='idx_darea'),
+            model_name="debtor",
+            index=models.Index(fields=["area_code"], name="idx_darea"),
         ),
         migrations.AddIndex(
-            model_name='debtor',
-            index=models.Index(fields=['block_flag'], name='idx_blockflag'),
+            model_name="debtor",
+            index=models.Index(fields=["block_flag"], name="idx_blockflag"),
         ),
         migrations.AddIndex(
-            model_name='debtor',
-            index=models.Index(fields=['-balance_current'], name='idx_balance_curr'),
+            model_name="debtor",
+            index=models.Index(fields=["-balance_current"], name="idx_balance_curr"),
         ),
         migrations.AddIndex(
-            model_name='debtor',
-            index=models.Index(fields=['is_active'], name='idx_is_active'),
+            model_name="debtor",
+            index=models.Index(fields=["is_active"], name="idx_is_active"),
         ),
         migrations.AddIndex(
-            model_name='debtopen',
-            index=models.Index(fields=['dno', 'date'], name='debtors_deb_dno_id_09c216_idx'),
+            model_name="debtopen",
+            index=models.Index(
+                fields=["dno", "date"], name="debtors_deb_dno_id_09c216_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='debtopen',
-            index=models.Index(fields=['posted', 'ageflag'], name='debtors_deb_posted_05090e_idx'),
+            model_name="debtopen",
+            index=models.Index(
+                fields=["posted", "ageflag"], name="debtors_deb_posted_05090e_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='debtopen',
-            index=models.Index(fields=['date', 'ageflag'], name='debtors_deb_date_abef1f_idx'),
+            model_name="debtopen",
+            index=models.Index(
+                fields=["date", "ageflag"], name="debtors_deb_date_abef1f_idx"
+            ),
         ),
         migrations.AlterUniqueTogether(
-            name='debtopen',
-            unique_together={('dno', 'dtrano')},
+            name="debtopen",
+            unique_together={("dno", "dtrano")},
         ),
         migrations.AddIndex(
-            model_name='debtoraudit',
-            index=models.Index(fields=['dno', 'date'], name='debtors_deb_dno_id_137c5e_idx'),
+            model_name="debtoraudit",
+            index=models.Index(
+                fields=["dno", "date"], name="debtors_deb_dno_id_137c5e_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='debtoraudit',
-            index=models.Index(fields=['date', 'type'], name='debtors_deb_date_a1c38f_idx'),
+            model_name="debtoraudit",
+            index=models.Index(
+                fields=["date", "type"], name="debtors_deb_date_a1c38f_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='debtoraudit',
-            index=models.Index(fields=['type'], name='debtors_deb_type_7bcc73_idx'),
+            model_name="debtoraudit",
+            index=models.Index(fields=["type"], name="debtors_deb_type_7bcc73_idx"),
         ),
         migrations.AlterUniqueTogether(
-            name='debtoraudit',
-            unique_together={('dno', 'dtrano', 'date')},
+            name="debtoraudit",
+            unique_together={("dno", "dtrano", "date")},
         ),
         migrations.AddIndex(
-            model_name='debtoropenitem',
-            index=models.Index(fields=['debtor', 'transaction_date'], name='idx_dopen_deb_date'),
+            model_name="debtoropenitem",
+            index=models.Index(
+                fields=["debtor", "transaction_date"], name="idx_dopen_deb_date"
+            ),
         ),
         migrations.AddIndex(
-            model_name='debtoropenitem',
-            index=models.Index(fields=['posted', 'age_flag'], name='idx_dopen_post_age'),
+            model_name="debtoropenitem",
+            index=models.Index(
+                fields=["posted", "age_flag"], name="idx_dopen_post_age"
+            ),
         ),
         migrations.AddIndex(
-            model_name='debtoropenitem',
-            index=models.Index(fields=['transaction_date', 'age_flag'], name='idx_dopen_date_age'),
+            model_name="debtoropenitem",
+            index=models.Index(
+                fields=["transaction_date", "age_flag"], name="idx_dopen_date_age"
+            ),
         ),
         migrations.AddIndex(
-            model_name='debtoropenitem',
-            index=models.Index(fields=['fully_paid'], name='idx_dopen_paid'),
+            model_name="debtoropenitem",
+            index=models.Index(fields=["fully_paid"], name="idx_dopen_paid"),
         ),
         migrations.AlterUniqueTogether(
-            name='debtoropenitem',
-            unique_together={('debtor', 'transaction_number')},
+            name="debtoropenitem",
+            unique_together={("debtor", "transaction_number")},
         ),
         migrations.AddIndex(
-            model_name='debtortransaction',
-            index=models.Index(fields=['debtor', '-transaction_date'], name='idx_deb_tran_date'),
+            model_name="debtortransaction",
+            index=models.Index(
+                fields=["debtor", "-transaction_date"], name="idx_deb_tran_date"
+            ),
         ),
         migrations.AddIndex(
-            model_name='debtortransaction',
-            index=models.Index(fields=['transaction_type', '-transaction_date'], name='idx_tran_type_date'),
+            model_name="debtortransaction",
+            index=models.Index(
+                fields=["transaction_type", "-transaction_date"],
+                name="idx_tran_type_date",
+            ),
         ),
         migrations.AddIndex(
-            model_name='debtortransaction',
-            index=models.Index(fields=['transaction_number'], name='idx_dtrano'),
+            model_name="debtortransaction",
+            index=models.Index(fields=["transaction_number"], name="idx_dtrano"),
         ),
         migrations.AddIndex(
-            model_name='debtortransaction',
-            index=models.Index(fields=['status'], name='idx_tran_status'),
+            model_name="debtortransaction",
+            index=models.Index(fields=["status"], name="idx_tran_status"),
         ),
         migrations.AddIndex(
-            model_name='debtortransaction',
-            index=models.Index(fields=['source_type'], name='idx_tran_source_type'),
+            model_name="debtortransaction",
+            index=models.Index(fields=["source_type"], name="idx_tran_source_type"),
         ),
         migrations.AddIndex(
-            model_name='debtortransaction',
-            index=models.Index(fields=['is_allocated'], name='idx_tran_allocated'),
+            model_name="debtortransaction",
+            index=models.Index(fields=["is_allocated"], name="idx_tran_allocated"),
         ),
         migrations.AddIndex(
-            model_name='debtortransaction',
-            index=models.Index(fields=['debtor', 'is_allocated', '-transaction_date'], name='idx_deb_alloc_date'),
+            model_name="debtortransaction",
+            index=models.Index(
+                fields=["debtor", "is_allocated", "-transaction_date"],
+                name="idx_deb_alloc_date",
+            ),
         ),
         migrations.AlterUniqueTogether(
-            name='debtortransaction',
-            unique_together={('debtor', 'transaction_number', 'transaction_date')},
+            name="debtortransaction",
+            unique_together={("debtor", "transaction_number", "transaction_date")},
         ),
         migrations.AddIndex(
-            model_name='dpdc',
-            index=models.Index(fields=['dno', 'date'], name='debtors_dpd_dno_id_a5777a_idx'),
+            model_name="dpdc",
+            index=models.Index(
+                fields=["dno", "date"], name="debtors_dpd_dno_id_a5777a_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='dpdc',
-            index=models.Index(fields=['status', 'date'], name='debtors_dpd_status_38dc5e_idx'),
+            model_name="dpdc",
+            index=models.Index(
+                fields=["status", "date"], name="debtors_dpd_status_38dc5e_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='jobcosting',
-            index=models.Index(fields=['job_date'], name='debtors_job_job_dat_74aa8d_idx'),
+            model_name="jobcosting",
+            index=models.Index(
+                fields=["job_date"], name="debtors_job_job_dat_74aa8d_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='jobcosting',
-            index=models.Index(fields=['debtor', 'job_date'], name='debtors_job_debtor__54c9c4_idx'),
+            model_name="jobcosting",
+            index=models.Index(
+                fields=["debtor", "job_date"], name="debtors_job_debtor__54c9c4_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='jobcosting',
-            index=models.Index(fields=['status', 'job_date'], name='debtors_job_status_175960_idx'),
+            model_name="jobcosting",
+            index=models.Index(
+                fields=["status", "job_date"], name="debtors_job_status_175960_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='jobcosting',
-            index=models.Index(fields=['vehicle_registration'], name='debtors_job_vehicle_743204_idx'),
+            model_name="jobcosting",
+            index=models.Index(
+                fields=["vehicle_registration"], name="debtors_job_vehicle_743204_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='jobcostingtransaction',
-            index=models.Index(fields=['job_costing', 'transaction_date'], name='debtors_job_job_cos_c617d3_idx'),
+            model_name="jobcostingtransaction",
+            index=models.Index(
+                fields=["job_costing", "transaction_date"],
+                name="debtors_job_job_cos_c617d3_idx",
+            ),
         ),
         migrations.AddIndex(
-            model_name='jobcostingtransaction',
-            index=models.Index(fields=['code'], name='debtors_job_code_4ff8d1_idx'),
+            model_name="jobcostingtransaction",
+            index=models.Index(fields=["code"], name="debtors_job_code_4ff8d1_idx"),
         ),
         migrations.AddIndex(
-            model_name='jobcostingtransaction',
-            index=models.Index(fields=['department'], name='debtors_job_departm_fbd3f5_idx'),
+            model_name="jobcostingtransaction",
+            index=models.Index(
+                fields=["department"], name="debtors_job_departm_fbd3f5_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='jobperson',
-            index=models.Index(fields=['operator_number'], name='debtors_job_operato_ec0a73_idx'),
+            model_name="jobperson",
+            index=models.Index(
+                fields=["operator_number"], name="debtors_job_operato_ec0a73_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='jobperson',
-            index=models.Index(fields=['operator_name'], name='debtors_job_operato_e6baf6_idx'),
+            model_name="jobperson",
+            index=models.Index(
+                fields=["operator_name"], name="debtors_job_operato_e6baf6_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='jobprinting',
-            index=models.Index(fields=['station'], name='debtors_job_station_79c7e7_idx'),
+            model_name="jobprinting",
+            index=models.Index(
+                fields=["station"], name="debtors_job_station_79c7e7_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='postdatedcheque',
-            index=models.Index(fields=['debtor', 'is_processed'], name='debtors_pos_debtor__ec1220_idx'),
+            model_name="postdatedcheque",
+            index=models.Index(
+                fields=["debtor", "is_processed"], name="debtors_pos_debtor__ec1220_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='postdatedcheque',
-            index=models.Index(fields=['cheque_date', 'is_processed'], name='debtors_pos_cheque__fcfab7_idx'),
+            model_name="postdatedcheque",
+            index=models.Index(
+                fields=["cheque_date", "is_processed"],
+                name="debtors_pos_cheque__fcfab7_idx",
+            ),
         ),
         migrations.AddIndex(
-            model_name='salesorder',
-            index=models.Index(fields=['debtor', 'status'], name='debtors_sal_debtor__0e0502_idx'),
+            model_name="salesorder",
+            index=models.Index(
+                fields=["debtor", "status"], name="debtors_sal_debtor__0e0502_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='salesorder',
-            index=models.Index(fields=['order_date'], name='debtors_sal_order_d_f5b972_idx'),
+            model_name="salesorder",
+            index=models.Index(
+                fields=["order_date"], name="debtors_sal_order_d_f5b972_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='salesorder',
-            index=models.Index(fields=['status'], name='debtors_sal_status_4f555c_idx'),
+            model_name="salesorder",
+            index=models.Index(fields=["status"], name="debtors_sal_status_4f555c_idx"),
         ),
         migrations.AddIndex(
-            model_name='salesorderline',
-            index=models.Index(fields=['stock_code'], name='debtors_sal_stock_c_61faeb_idx'),
+            model_name="salesorderline",
+            index=models.Index(
+                fields=["stock_code"], name="debtors_sal_stock_c_61faeb_idx"
+            ),
         ),
         migrations.AlterUniqueTogether(
-            name='salesorderline',
-            unique_together={('sales_order', 'line_number')},
+            name="salesorderline",
+            unique_together={("sales_order", "line_number")},
         ),
     ]

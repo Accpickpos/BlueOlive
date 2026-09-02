@@ -6,13 +6,15 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('stock_control', '0006_departmenttimediscount_serializedstockitem_and_more'),
+        ("stock_control", "0006_departmenttimediscount_serializedstockitem_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='stagedpriceupdate',
-            name='stock_code',
-            field=models.CharField(blank=True, help_text='STOCKCODE (raw)', max_length=13),
+            model_name="stagedpriceupdate",
+            name="stock_code",
+            field=models.CharField(
+                blank=True, help_text="STOCKCODE (raw)", max_length=13
+            ),
         ),
     ]

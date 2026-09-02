@@ -712,7 +712,9 @@ class CashBookReportService:
             "by_audit_type": [
                 {
                     "audit_type": row["audit_type"],
-                    "audit_type_name": audit_type_names.get(row["audit_type"], "Unknown"),
+                    "audit_type_name": audit_type_names.get(
+                        row["audit_type"], "Unknown"
+                    ),
                     "value_excl_vat": row["value_excl_vat"] or Decimal("0"),
                     "tax_amount": row["tax_amount"] or Decimal("0"),
                     "total_incl_vat": row["total_incl_vat"] or Decimal("0"),
@@ -755,9 +757,7 @@ class CashBookReportService:
         }
         count_by_month = {
             row["month"]: row["count"]
-            for row in transactions.annotate(
-                month=ExtractMonth("transaction_date")
-            )
+            for row in transactions.annotate(month=ExtractMonth("transaction_date"))
             .values("month")
             .annotate(count=models.Count("id"))
         }

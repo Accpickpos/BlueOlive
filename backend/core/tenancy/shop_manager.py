@@ -61,7 +61,9 @@ def create_shop_schema(tenant, schema_name):
         # Step 3: Migrate shop apps to this schema (core apps always; optional
         # addons only if this tenant has them enabled - see
         # settings.OPTIONAL_ADDON_APPS / Tenant.enabled_addons)
-        migrate_shop_apps(tenant, schema_name, app_labels=enabled_shop_app_labels(tenant))
+        migrate_shop_apps(
+            tenant, schema_name, app_labels=enabled_shop_app_labels(tenant)
+        )
 
         # Step 4: Fix tel2 column NOT NULL issue for all tables
         logger.info("Step 4: Fixing tel2 column default...")

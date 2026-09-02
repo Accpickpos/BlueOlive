@@ -61,7 +61,9 @@ def _make_creditor(update_selling_price=False, **overrides):
 class CreditorsAuditFixesTestBase(TestCase):
     def setUp(self):
         self.department = SalesDepartment.objects.create(number=1, name="Groceries")
-        self.tax_code = TaxCode.objects.create(code=1, description="15% VAT", rate=Decimal("15.00"))
+        self.tax_code = TaxCode.objects.create(
+            code=1, description="15% VAT", rate=Decimal("15.00")
+        )
         self.stock_item = StockItem.objects.create(
             stock_code="TEST001",
             description="Test Product",
@@ -298,7 +300,7 @@ class RFCResolutionStockTests(CreditorsAuditFixesTestBase):
 
     def test_rfc_replaced_brings_stock_back_in(self):
         rfc = RFC.objects.create(creditor=self.creditor, rfc_number="000003")
-        line = RFCLineItem.objects.create(
+        RFCLineItem.objects.create(
             rfc=rfc,
             line_number=1,
             stock_item=self.stock_item,
@@ -307,11 +309,15 @@ class RFCResolutionStockTests(CreditorsAuditFixesTestBase):
             tax_code=self.tax_code,
         )
         self.stock_item.refresh_from_db()
-        self.assertEqual(self.stock_item.quantity_on_hand, Decimal("45"))  # left on RFC send
+        self.assertEqual(
+            self.stock_item.quantity_on_hand, Decimal("45")
+        )  # left on RFC send
 
         _resolve_rfc_stock(rfc, "RE")
         self.stock_item.refresh_from_db()
-        self.assertEqual(self.stock_item.quantity_on_hand, Decimal("50"))  # replacement received
+        self.assertEqual(
+            self.stock_item.quantity_on_hand, Decimal("50")
+        )  # replacement received
 
     def test_rfc_cancelled_reverses_original_movement(self):
         rfc = RFC.objects.create(creditor=self.creditor, rfc_number="000004")
@@ -398,7 +404,10 @@ class ExpenseAccumulationTests(CreditorsAuditFixesTestBase):
         self.assertEqual(balance.expense_mtd, Decimal("1000.00"))
 
 
-@override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}})
+@override_settings(
+    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
+    SECURE_SSL_REDIRECT=False,
+)
 class ReportsEnquiriesSmokeTests(CreditorsAuditFixesTestBase):
     """
     Every one of these routes previously 404'd (unregistered). Exercises
@@ -408,7 +417,10 @@ class ReportsEnquiriesSmokeTests(CreditorsAuditFixesTestBase):
     once the ORM actually executes the query. CACHES is overridden to
     locmem because DRF's request throttling reads through the configured
     cache backend, which in this project's local .env is real Redis — not
-    available/relevant in a unit test.
+    available/relevant in a unit test. SECURE_SSL_REDIRECT is overridden
+    because CI runs with DEBUG=False (SECURE_SSL_REDIRECT = not DEBUG),
+    and the plain-HTTP test client otherwise gets 301'd by SecurityMiddleware
+    before ever reaching the view.
     """
 
     def setUp(self):
@@ -419,7 +431,9 @@ class ReportsEnquiriesSmokeTests(CreditorsAuditFixesTestBase):
         # permission behavior under test, so a superuser sidesteps that
         # requirement cleanly.
         self.user = User.objects.create_user(
-            username="reportuser", password="testpass123", is_superuser=True  # nosec B106
+            username="reportuser",
+            password="testpass123",
+            is_superuser=True,  # nosec B106
         )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
@@ -434,8 +448,11 @@ class ReportsEnquiriesSmokeTests(CreditorsAuditFixesTestBase):
             supplier_invoice_number="SMOKE-GRN",
         )
         GRNLineItem.objects.create(
-            grn=grn, line_number=1, stock_item=self.stock_item,
-            quantity_received=Decimal("2"), unit_cost=Decimal("50.00"),
+            grn=grn,
+            line_number=1,
+            stock_item=self.stock_item,
+            quantity_received=Decimal("2"),
+            unit_cost=Decimal("50.00"),
             tax_code=self.tax_code,
         )
 
@@ -445,9 +462,11 @@ class ReportsEnquiriesSmokeTests(CreditorsAuditFixesTestBase):
             supplier_invoice_number="SMOKE-INV",
         )
         CreditorInvoiceLineItem.objects.create(
-            invoice=invoice, line_number=1,
+            invoice=invoice,
+            line_number=1,
             expense_category=self.expense_category,
-            amount=Decimal("200.00"), tax_code=self.tax_code,
+            amount=Decimal("200.00"),
+            tax_code=self.tax_code,
         )
 
         cn = CreditorCreditNote.objects.create(
@@ -456,15 +475,19 @@ class ReportsEnquiriesSmokeTests(CreditorsAuditFixesTestBase):
             supplier_credit_note_number="SMOKE-CN",
         )
         CreditorCreditNoteLineItem.objects.create(
-            credit_note=cn, line_number=1, stock_item=self.stock_item,
-            quantity_returned=Decimal("1"), unit_cost=Decimal("50.00"),
+            credit_note=cn,
+            line_number=1,
+            stock_item=self.stock_item,
+            quantity_returned=Decimal("1"),
+            unit_cost=Decimal("50.00"),
             tax_code=self.tax_code,
         )
 
         payment = CreditorPayment.objects.create(
             creditor=self.creditor,
             transaction_date=date(2026, 3, 7),
-            amount_due=Decimal("100.00"), amount_paid=Decimal("100.00"),
+            amount_due=Decimal("100.00"),
+            amount_paid=Decimal("100.00"),
         )
         from .models import CreditorOpenItem, OpenItemAllocation
 
@@ -473,25 +496,34 @@ class ReportsEnquiriesSmokeTests(CreditorsAuditFixesTestBase):
         ).first()
         if open_item:
             OpenItemAllocation.objects.create(
-                payment=payment, open_item=open_item,
-                amount_paid=open_item.balance_due, settlement_discount=Decimal("0"),
+                payment=payment,
+                open_item=open_item,
+                amount_paid=open_item.balance_due,
+                settlement_discount=Decimal("0"),
             )
 
         CreditorJournal.objects.create(
-            creditor=self.creditor, transaction_date=date(2026, 3, 8),
-            journal_type="DJ", journal_amount=Decimal("25.00"),
+            creditor=self.creditor,
+            transaction_date=date(2026, 3, 8),
+            journal_type="DJ",
+            journal_amount=Decimal("25.00"),
         )
 
         rfc = RFC.objects.create(creditor=self.creditor, rfc_number="900001")
         RFCLineItem.objects.create(
-            rfc=rfc, line_number=1, stock_item=self.stock_item,
-            quantity_returned=Decimal("1"), tax_code=self.tax_code,
+            rfc=rfc,
+            line_number=1,
+            stock_item=self.stock_item,
+            quantity_returned=Decimal("1"),
+            tax_code=self.tax_code,
         )
 
     def _get(self, path, **params):
         response = self.client.get(f"/api/creditors/{path}", params)
         self.assertEqual(
-            response.status_code, 200, f"{path} -> {response.status_code}: {response.content[:500]}"
+            response.status_code,
+            200,
+            f"{path} -> {response.status_code}: {response.content[:500]}",
         )
         return response.json()
 
@@ -499,17 +531,26 @@ class ReportsEnquiriesSmokeTests(CreditorsAuditFixesTestBase):
         self._get("reports/account_details/", include_banking="true")
 
     def test_age_analysis_report(self):
-        self._get("reports/age_analysis/", include_zero="true", print_last_paid="true", print_banking="true")
+        self._get(
+            "reports/age_analysis/",
+            include_zero="true",
+            print_last_paid="true",
+            print_banking="true",
+        )
 
     def test_remittance_advices_report(self):
         self._get("reports/remittance_advices/", include_zero="true")
 
     def test_transactions_report(self):
-        data = self._get("reports/transactions/", start_date="2026-01-01", end_date="2026-12-31")
+        data = self._get(
+            "reports/transactions/", start_date="2026-01-01", end_date="2026-12-31"
+        )
         self.assertGreaterEqual(len(data["transactions"]), 4)
 
     def test_expense_tax_report_monthly_and_ytd(self):
-        self._get("reports/expense_tax/", report_type="monthly_tax", report_date="2026-03-15")
+        self._get(
+            "reports/expense_tax/", report_type="monthly_tax", report_date="2026-03-15"
+        )
         self._get("reports/expense_tax/", report_type="ytd", report_date="2026-03-15")
 
     def test_payouts_report(self):
@@ -518,12 +559,16 @@ class ReportsEnquiriesSmokeTests(CreditorsAuditFixesTestBase):
     def test_transaction_scroll_enquiry_both_modes(self):
         scroll = self._get(
             "enquiries/transaction_scroll/",
-            start_date="2026-01-01", end_date="2026-12-31", enquiry_type="scroll",
+            start_date="2026-01-01",
+            end_date="2026-12-31",
+            enquiry_type="scroll",
         )
         self.assertGreaterEqual(scroll["grand_total"]["count"], 4)
         totals = self._get(
             "enquiries/transaction_scroll/",
-            start_date="2026-01-01", end_date="2026-12-31", enquiry_type="totals",
+            start_date="2026-01-01",
+            end_date="2026-12-31",
+            enquiry_type="totals",
         )
         self.assertIn("totals", totals)
 
@@ -537,19 +582,24 @@ class ReportsEnquiriesSmokeTests(CreditorsAuditFixesTestBase):
     def test_expense_category_details_enquiry(self):
         data = self._get(
             "enquiries/expense_category_details/",
-            category_id=self.expense_category.id, year=2026, month=3,
+            category_id=self.expense_category.id,
+            year=2026,
+            month=3,
         )
         self.assertEqual(len(data["details"]), 1)
 
     def test_monthly_expense_details_enquiry(self):
         data = self._get(
             "enquiries/monthly_expense_details/",
-            category_id=self.expense_category.id, year=2026,
+            category_id=self.expense_category.id,
+            year=2026,
         )
         self.assertEqual(len(data["monthly_data"]), 12)
 
     def test_purchase_history_enquiry(self):
-        data = self._get("enquiries/purchase_history/", year=2026, sort_by="total_purchases")
+        data = self._get(
+            "enquiries/purchase_history/", year=2026, sort_by="total_purchases"
+        )
         self.assertEqual(data["supplier_count"], 1)
 
     def test_individual_account_enquiry(self):

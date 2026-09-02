@@ -6,9 +6,11 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('settings', '0002_apikey'),
-        ('settings', '0002_salesdepartment_sales_p1_salesdepartment_sales_p10_and_more'),
+        ("settings", "0002_apikey"),
+        (
+            "settings",
+            "0002_salesdepartment_sales_p1_salesdepartment_sales_p10_and_more",
+        ),
     ]
 
-    operations = [
-    ]
+    operations = []

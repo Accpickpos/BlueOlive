@@ -41,8 +41,18 @@ from .models import (
 )
 
 MONTH_NAMES = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
 ]
 ZERO = Decimal("0")
 
@@ -114,7 +124,11 @@ def account_details_report(request):
             row["postal_address"] = ", ".join(
                 filter(
                     None,
-                    [c.postal_address_line1, c.postal_address_line2, c.postal_address_line3],
+                    [
+                        c.postal_address_line1,
+                        c.postal_address_line2,
+                        c.postal_address_line3,
+                    ],
                 )
             )
         if address_type in ("both", "delivery"):
@@ -165,18 +179,30 @@ def age_analysis_report(request):
     qs = qs.order_by("name" if sequence == "A" else "supplier_number")
 
     totals = {
-        "current": ZERO, "30_days": ZERO, "60_days": ZERO, "90_days": ZERO,
-        "120_days": ZERO, "150_days": ZERO, "180_days": ZERO, "total": ZERO,
+        "current": ZERO,
+        "30_days": ZERO,
+        "60_days": ZERO,
+        "90_days": ZERO,
+        "120_days": ZERO,
+        "150_days": ZERO,
+        "180_days": ZERO,
+        "total": ZERO,
     }
     creditors = []
     for c in qs:
         balances = _balances_dict(c)
         for key in totals:
             totals[key] += balances[key]
-        row = {"account_number": c.supplier_number, "name": c.name, "balances": balances}
+        row = {
+            "account_number": c.supplier_number,
+            "name": c.name,
+            "balances": balances,
+        }
         if print_last_paid:
             row["last_paid_amount"] = c.last_paid_amount
-            row["last_paid_date"] = c.last_paid_date.isoformat() if c.last_paid_date else None
+            row["last_paid_date"] = (
+                c.last_paid_date.isoformat() if c.last_paid_date else None
+            )
         if print_banking:
             row["banking_details"] = {
                 "bank_name": c.bank_name,
@@ -215,7 +241,10 @@ def remittance_advices_report(request):
         {
             "supplier_id": c.id,
             "supplier_name": c.name,
-            "balances": {"current": c.balance_current, "total": c.total_outstanding_balance},
+            "balances": {
+                "current": c.balance_current,
+                "total": c.total_outstanding_balance,
+            },
         }
         for c in qs
     ]
@@ -294,16 +323,22 @@ def expense_tax_report(request):
     report_zero = _bool(request.query_params.get("report_zero"))
     report_date = _parse_date(request.query_params.get("report_date")) or _today()
 
-    qs = ExpenseCategoryTransaction.objects.filter(transaction_date__year=report_date.year)
+    qs = ExpenseCategoryTransaction.objects.filter(
+        transaction_date__year=report_date.year
+    )
     if report_type != "ytd":
         qs = qs.filter(transaction_date__month=report_date.month)
     else:
         qs = qs.filter(transaction_date__lte=report_date)
 
-    order_field = "expense_category__name" if sequence == "A" else "expense_category__number"
+    order_field = (
+        "expense_category__name" if sequence == "A" else "expense_category__number"
+    )
     agg = (
         qs.values("expense_category__name", "expense_category__number")
-        .annotate(excl=Sum("amount_exclusive"), vat=Sum("input_vat_amount"), cnt=Count("id"))
+        .annotate(
+            excl=Sum("amount_exclusive"), vat=Sum("input_vat_amount"), cnt=Count("id")
+        )
         .order_by(order_field)
     )
 
@@ -396,8 +431,14 @@ def payouts_report(request):
 # ============================================================================
 
 _ALL_ENTRY_TYPES = [
-    "INVOICE_STOCK", "INVOICE_EXPENSE", "CREDIT_STOCK", "CREDIT_EXPENSE",
-    "PAYMENT", "SETTLEMENT_DISCOUNT", "DEBIT_JOURNAL", "CREDIT_JOURNAL",
+    "INVOICE_STOCK",
+    "INVOICE_EXPENSE",
+    "CREDIT_STOCK",
+    "CREDIT_EXPENSE",
+    "PAYMENT",
+    "SETTLEMENT_DISCOUNT",
+    "DEBIT_JOURNAL",
+    "CREDIT_JOURNAL",
 ]
 
 
@@ -424,31 +465,105 @@ def _apply_date_range(qs, start_date, end_date, field="transaction_date"):
 def _scroll_rows(entry_type, start_date, end_date):
     rows = []
     if entry_type == "INVOICE_STOCK":
-        for t in _apply_date_range(GoodsReceivedNote.objects.select_related("creditor"), start_date, end_date):
-            rows.append(_scroll_row(t.transaction_date, t.transaction_number, entry_type, t.creditor.name, t.subtotal, t.total_vat, t.total_amount))
+        for t in _apply_date_range(
+            GoodsReceivedNote.objects.select_related("creditor"), start_date, end_date
+        ):
+            rows.append(
+                _scroll_row(
+                    t.transaction_date,
+                    t.transaction_number,
+                    entry_type,
+                    t.creditor.name,
+                    t.subtotal,
+                    t.total_vat,
+                    t.total_amount,
+                )
+            )
     elif entry_type == "INVOICE_EXPENSE":
-        for t in _apply_date_range(CreditorInvoice.objects.select_related("creditor"), start_date, end_date):
-            rows.append(_scroll_row(t.transaction_date, t.transaction_number, entry_type, t.creditor.name, t.subtotal, t.total_vat, t.total_amount))
+        for t in _apply_date_range(
+            CreditorInvoice.objects.select_related("creditor"), start_date, end_date
+        ):
+            rows.append(
+                _scroll_row(
+                    t.transaction_date,
+                    t.transaction_number,
+                    entry_type,
+                    t.creditor.name,
+                    t.subtotal,
+                    t.total_vat,
+                    t.total_amount,
+                )
+            )
     elif entry_type == "CREDIT_STOCK":
-        for t in _apply_date_range(CreditorCreditNote.objects.select_related("creditor"), start_date, end_date):
-            rows.append(_scroll_row(t.transaction_date, t.transaction_number, entry_type, t.creditor.name, t.subtotal, t.total_vat, t.total_amount))
+        for t in _apply_date_range(
+            CreditorCreditNote.objects.select_related("creditor"), start_date, end_date
+        ):
+            rows.append(
+                _scroll_row(
+                    t.transaction_date,
+                    t.transaction_number,
+                    entry_type,
+                    t.creditor.name,
+                    t.subtotal,
+                    t.total_vat,
+                    t.total_amount,
+                )
+            )
     elif entry_type == "CREDIT_EXPENSE":
         # No distinct expense credit-note model exists in this schema —
         # expense corrections are posted as CreditorJournal credit journals.
         pass
     elif entry_type == "PAYMENT":
-        for t in _apply_date_range(CreditorPayment.objects.select_related("creditor"), start_date, end_date):
-            rows.append(_scroll_row(t.transaction_date, t.transaction_number, entry_type, t.creditor.name, t.amount_paid, ZERO, t.amount_paid))
+        for t in _apply_date_range(
+            CreditorPayment.objects.select_related("creditor"), start_date, end_date
+        ):
+            rows.append(
+                _scroll_row(
+                    t.transaction_date,
+                    t.transaction_number,
+                    entry_type,
+                    t.creditor.name,
+                    t.amount_paid,
+                    ZERO,
+                    t.amount_paid,
+                )
+            )
     elif entry_type == "SETTLEMENT_DISCOUNT":
-        allocations = OpenItemAllocation.objects.filter(settlement_discount__gt=0).select_related("payment__creditor")
-        allocations = _apply_date_range(allocations, start_date, end_date, field="payment__transaction_date")
+        allocations = OpenItemAllocation.objects.filter(
+            settlement_discount__gt=0
+        ).select_related("payment__creditor")
+        allocations = _apply_date_range(
+            allocations, start_date, end_date, field="payment__transaction_date"
+        )
         for a in allocations:
-            rows.append(_scroll_row(a.payment.transaction_date, a.payment.transaction_number, entry_type, a.payment.creditor.name, a.settlement_discount, ZERO, a.settlement_discount))
+            rows.append(
+                _scroll_row(
+                    a.payment.transaction_date,
+                    a.payment.transaction_number,
+                    entry_type,
+                    a.payment.creditor.name,
+                    a.settlement_discount,
+                    ZERO,
+                    a.settlement_discount,
+                )
+            )
     elif entry_type in ("DEBIT_JOURNAL", "CREDIT_JOURNAL"):
         jtype = "DJ" if entry_type == "DEBIT_JOURNAL" else "CJ"
-        qs = CreditorJournal.objects.filter(journal_type=jtype).select_related("creditor")
+        qs = CreditorJournal.objects.filter(journal_type=jtype).select_related(
+            "creditor"
+        )
         for t in _apply_date_range(qs, start_date, end_date):
-            rows.append(_scroll_row(t.transaction_date, t.transaction_number, entry_type, t.creditor.name, t.journal_amount, ZERO, t.journal_amount))
+            rows.append(
+                _scroll_row(
+                    t.transaction_date,
+                    t.transaction_number,
+                    entry_type,
+                    t.creditor.name,
+                    t.journal_amount,
+                    ZERO,
+                    t.journal_amount,
+                )
+            )
     return rows
 
 
@@ -477,7 +592,13 @@ def transaction_scroll_enquiry(request):
         for r in all_rows:
             bucket = by_type.setdefault(
                 r["transaction_type"],
-                {"transaction_type": r["transaction_type"], "count": 0, "total_exclusive": ZERO, "total_vat": ZERO, "total_inclusive": ZERO},
+                {
+                    "transaction_type": r["transaction_type"],
+                    "count": 0,
+                    "total_exclusive": ZERO,
+                    "total_vat": ZERO,
+                    "total_inclusive": ZERO,
+                },
             )
             bucket["count"] += 1
             bucket["total_exclusive"] += r["net_amount"]
@@ -485,7 +606,9 @@ def transaction_scroll_enquiry(request):
             bucket["total_inclusive"] += r["total_amount"]
         return Response({"totals": list(by_type.values()), "grand_total": grand_total})
 
-    return Response({"count": len(all_rows), "transactions": all_rows, "grand_total": grand_total})
+    return Response(
+        {"count": len(all_rows), "transactions": all_rows, "grand_total": grand_total}
+    )
 
 
 @api_view(["GET"])
@@ -497,13 +620,19 @@ def expenditure_totals_enquiry(request):
 
     agg = ExpenseCategoryTransaction.objects.filter(
         transaction_date__year=year, transaction_date__month=month
-    ).aggregate(excl=Sum("amount_exclusive"), vat=Sum("input_vat_amount"), cnt=Count("id"))
+    ).aggregate(
+        excl=Sum("amount_exclusive"), vat=Sum("input_vat_amount"), cnt=Count("id")
+    )
     excl = agg["excl"] or ZERO
     vat = agg["vat"] or ZERO
 
     return Response(
         {
-            "expenditure": {"total_exclusive": excl, "total_vat": vat, "total_inclusive": excl + vat},
+            "expenditure": {
+                "total_exclusive": excl,
+                "total_vat": vat,
+                "total_inclusive": excl + vat,
+            },
             "transaction_count": agg["cnt"] or 0,
         }
     )
@@ -517,7 +646,9 @@ def expense_category_totals_enquiry(request):
     month = int(request.query_params.get("month") or today.month)
 
     agg = (
-        ExpenseCategoryTransaction.objects.filter(transaction_date__year=year, transaction_date__month=month)
+        ExpenseCategoryTransaction.objects.filter(
+            transaction_date__year=year, transaction_date__month=month
+        )
         .values("expense_category__name")
         .annotate(excl=Sum("amount_exclusive"), vat=Sum("input_vat_amount"))
         .order_by("expense_category__name")
@@ -532,13 +663,22 @@ def expense_category_totals_enquiry(request):
         grand_excl += excl
         grand_vat += vat
         categories.append(
-            {"category_name": row["expense_category__name"], "mtd_exclusive": excl, "mtd_vat": vat, "mtd_inclusive": excl + vat}
+            {
+                "category_name": row["expense_category__name"],
+                "mtd_exclusive": excl,
+                "mtd_vat": vat,
+                "mtd_inclusive": excl + vat,
+            }
         )
 
     return Response(
         {
             "categories": categories,
-            "grand_total": {"exclusive": grand_excl, "vat": grand_vat, "inclusive": grand_excl + grand_vat},
+            "grand_total": {
+                "exclusive": grand_excl,
+                "vat": grand_vat,
+                "inclusive": grand_excl + grand_vat,
+            },
         }
     )
 
@@ -556,7 +696,9 @@ def expense_category_details_enquiry(request):
     category = get_object_or_404(ExpenseCategory, pk=category_id)
     qs = (
         ExpenseCategoryTransaction.objects.filter(
-            expense_category_id=category_id, transaction_date__year=year, transaction_date__month=month
+            expense_category_id=category_id,
+            transaction_date__year=year,
+            transaction_date__month=month,
         )
         .select_related("creditor")
         .order_by("transaction_date")
@@ -583,7 +725,11 @@ def expense_category_details_enquiry(request):
     return Response(
         {
             "category": {"name": category.name},
-            "totals": {"exclusive": excl_total, "vat": vat_total, "inclusive": excl_total + vat_total},
+            "totals": {
+                "exclusive": excl_total,
+                "vat": vat_total,
+                "inclusive": excl_total + vat_total,
+            },
             "details": details,
         }
     )
@@ -693,14 +839,24 @@ def individual_account_enquiry(request):
 
     statistics = {
         "amount_last_paid": creditor.last_paid_amount,
-        "date_last_paid": creditor.last_paid_date.isoformat() if creditor.last_paid_date else None,
+        "date_last_paid": (
+            creditor.last_paid_date.isoformat() if creditor.last_paid_date else None
+        ),
         "purchases_mtd": creditor.purchases_mtd,
         "purchases_ytd": creditor.purchases_ytd,
     }
 
     recent = []
-    for model in (GoodsReceivedNote, CreditorInvoice, CreditorCreditNote, CreditorPayment, CreditorJournal):
-        for t in model.objects.filter(creditor=creditor).order_by("-transaction_date")[:20]:
+    for model in (
+        GoodsReceivedNote,
+        CreditorInvoice,
+        CreditorCreditNote,
+        CreditorPayment,
+        CreditorJournal,
+    ):
+        for t in model.objects.filter(creditor=creditor).order_by("-transaction_date")[
+            :20
+        ]:
             total = t.total_amount
             vat = getattr(t, "total_vat", ZERO) or ZERO
             recent.append(

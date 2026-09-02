@@ -9,96 +9,149 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('cash_book', '0001_initial'),
-        ('settings', '0001_initial'),
+        ("cash_book", "0001_initial"),
+        ("settings", "0001_initial"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='expensecategorybalance',
-            name='expense_category',
-            field=models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='balance', to='settings.expensecategory'),
+            model_name="expensecategorybalance",
+            name="expense_category",
+            field=models.OneToOneField(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="balance",
+                to="settings.expensecategory",
+            ),
         ),
         migrations.AddField(
-            model_name='incomecategorybalance',
-            name='income_category',
-            field=models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='balance', to='settings.incomecategory'),
+            model_name="incomecategorybalance",
+            name="income_category",
+            field=models.OneToOneField(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="balance",
+                to="settings.incomecategory",
+            ),
         ),
         migrations.AddField(
-            model_name='interestreceived',
-            name='transaction',
-            field=models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='interest_received', to='cash_book.cashbooktransaction'),
+            model_name="interestreceived",
+            name="transaction",
+            field=models.OneToOneField(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="interest_received",
+                to="cash_book.cashbooktransaction",
+            ),
         ),
         migrations.AddField(
-            model_name='otherexpense',
-            name='expense_category',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, to='settings.expensecategory'),
+            model_name="otherexpense",
+            name="expense_category",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                to="settings.expensecategory",
+            ),
         ),
         migrations.AddField(
-            model_name='otherexpense',
-            name='transaction',
-            field=models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='other_expense', to='cash_book.cashbooktransaction'),
+            model_name="otherexpense",
+            name="transaction",
+            field=models.OneToOneField(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="other_expense",
+                to="cash_book.cashbooktransaction",
+            ),
         ),
         migrations.AddField(
-            model_name='otherincome',
-            name='income_category',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, to='settings.incomecategory'),
+            model_name="otherincome",
+            name="income_category",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                to="settings.incomecategory",
+            ),
         ),
         migrations.AddField(
-            model_name='otherincome',
-            name='transaction',
-            field=models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='other_income', to='cash_book.cashbooktransaction'),
+            model_name="otherincome",
+            name="transaction",
+            field=models.OneToOneField(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="other_income",
+                to="cash_book.cashbooktransaction",
+            ),
         ),
         migrations.AddIndex(
-            model_name='unpresentedcheque',
-            index=models.Index(fields=['cheque_number'], name='unpresented_cheque__45d0e7_idx'),
+            model_name="unpresentedcheque",
+            index=models.Index(
+                fields=["cheque_number"], name="unpresented_cheque__45d0e7_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='unpresentedcheque',
-            index=models.Index(fields=['-cheque_date'], name='unpresented_cheque__741928_idx'),
+            model_name="unpresentedcheque",
+            index=models.Index(
+                fields=["-cheque_date"], name="unpresented_cheque__741928_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='unpresentedcheque',
-            index=models.Index(fields=['tag'], name='unpresented_tag_61e3ba_idx'),
+            model_name="unpresentedcheque",
+            index=models.Index(fields=["tag"], name="unpresented_tag_61e3ba_idx"),
         ),
         migrations.AddIndex(
-            model_name='unpresentedcheque',
-            index=models.Index(fields=['is_presented'], name='unpresented_is_pres_094001_idx'),
+            model_name="unpresentedcheque",
+            index=models.Index(
+                fields=["is_presented"], name="unpresented_is_pres_094001_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='unpresentedcheque',
-            index=models.Index(fields=['is_stale'], name='unpresented_is_stal_11446b_idx'),
+            model_name="unpresentedcheque",
+            index=models.Index(
+                fields=["is_stale"], name="unpresented_is_stal_11446b_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='unpresentedcheque',
-            index=models.Index(fields=['requires_follow_up'], name='unpresented_require_d0e985_idx'),
+            model_name="unpresentedcheque",
+            index=models.Index(
+                fields=["requires_follow_up"], name="unpresented_require_d0e985_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='cashbooktransaction',
-            index=models.Index(fields=['transaction_type', '-transaction_date'], name='cashbook_tr_transac_706480_idx'),
+            model_name="cashbooktransaction",
+            index=models.Index(
+                fields=["transaction_type", "-transaction_date"],
+                name="cashbook_tr_transac_706480_idx",
+            ),
         ),
         migrations.AddIndex(
-            model_name='cashbooktransaction',
-            index=models.Index(fields=['transaction_number'], name='cashbook_tr_transac_116d80_idx'),
+            model_name="cashbooktransaction",
+            index=models.Index(
+                fields=["transaction_number"], name="cashbook_tr_transac_116d80_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='cashbooktransaction',
-            index=models.Index(fields=['is_reconciled'], name='cashbook_tr_is_reco_e73466_idx'),
+            model_name="cashbooktransaction",
+            index=models.Index(
+                fields=["is_reconciled"], name="cashbook_tr_is_reco_e73466_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='cashbooktransaction',
-            index=models.Index(fields=['is_archived', 'archive_month'], name='cashbook_tr_is_arch_c0abe9_idx'),
+            model_name="cashbooktransaction",
+            index=models.Index(
+                fields=["is_archived", "archive_month"],
+                name="cashbook_tr_is_arch_c0abe9_idx",
+            ),
         ),
         migrations.AddIndex(
-            model_name='cashbooktransaction',
-            index=models.Index(fields=['audit_type', '-transaction_date'], name='cashbook_tr_audit_t_8cdf95_idx'),
+            model_name="cashbooktransaction",
+            index=models.Index(
+                fields=["audit_type", "-transaction_date"],
+                name="cashbook_tr_audit_t_8cdf95_idx",
+            ),
         ),
         migrations.AddIndex(
-            model_name='cashbooktransaction',
-            index=models.Index(fields=['bank_recon_tag'], name='cashbook_tr_bank_re_7acca5_idx'),
+            model_name="cashbooktransaction",
+            index=models.Index(
+                fields=["bank_recon_tag"], name="cashbook_tr_bank_re_7acca5_idx"
+            ),
         ),
         migrations.AddIndex(
-            model_name='cashbooktransaction',
-            index=models.Index(fields=['category_id'], name='cashbook_tr_categor_43cd4e_idx'),
+            model_name="cashbooktransaction",
+            index=models.Index(
+                fields=["category_id"], name="cashbook_tr_categor_43cd4e_idx"
+            ),
         ),
     ]

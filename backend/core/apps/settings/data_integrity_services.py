@@ -37,7 +37,10 @@ def check_debtor_balances() -> dict:
         checked += 1
         stored_balance = debtor.total_balance
         computed_balance = sum(
-            (t.signed_amount for t in debtor.transactions.only("total_amount", "transaction_type")),
+            (
+                t.signed_amount
+                for t in debtor.transactions.only("total_amount", "transaction_type")
+            ),
             Decimal("0"),
         )
         diff = stored_balance - computed_balance
@@ -109,7 +112,9 @@ def check_stock_quantities() -> dict:
         net_movement=Coalesce(Sum("quantity_in"), Value(0), output_field=DecimalField())
         - Coalesce(Sum("quantity_out"), Value(0), output_field=DecimalField())
     )
-    movement_by_item = {row["stock_item_id"]: row["net_movement"] for row in movement_totals}
+    movement_by_item = {
+        row["stock_item_id"]: row["net_movement"] for row in movement_totals
+    }
 
     discrepancies = []
     checked = 0

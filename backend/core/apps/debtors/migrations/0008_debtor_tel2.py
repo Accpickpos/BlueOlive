@@ -12,21 +12,21 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('debtors', '0007_fix_tel2_default'),
+        ("debtors", "0007_fix_tel2_default"),
     ]
 
     operations = [
         # Drop NOT NULL, set DEFAULT, then re-add NOT NULL
         migrations.RunSQL(
             sql="ALTER TABLE dmast ALTER COLUMN tel2 DROP NOT NULL;",
-            reverse_sql="ALTER TABLE dmast ALTER COLUMN tel2 SET NOT NULL;"
+            reverse_sql="ALTER TABLE dmast ALTER COLUMN tel2 SET NOT NULL;",
         ),
         migrations.RunSQL(
             sql="ALTER TABLE dmast ALTER COLUMN tel2 SET DEFAULT '';",
-            reverse_sql="ALTER TABLE dmast ALTER COLUMN tel2 DROP DEFAULT;"
+            reverse_sql="ALTER TABLE dmast ALTER COLUMN tel2 DROP DEFAULT;",
         ),
         migrations.RunSQL(
             sql="ALTER TABLE dmast ALTER COLUMN tel2 SET NOT NULL;",
-            reverse_sql="ALTER TABLE dmast ALTER COLUMN tel2 DROP NOT NULL;"
+            reverse_sql="ALTER TABLE dmast ALTER COLUMN tel2 DROP NOT NULL;",
         ),
     ]

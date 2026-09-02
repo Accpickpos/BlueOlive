@@ -11,7 +11,13 @@ from .models import (
 
 @admin.register(StockFinderConfig)
 class StockFinderConfigAdmin(admin.ModelAdmin):
-    list_display = ["name", "base_url", "fitment_center_code", "is_active", "auto_sync_stock"]
+    list_display = [
+        "name",
+        "base_url",
+        "fitment_center_code",
+        "is_active",
+        "auto_sync_stock",
+    ]
     list_filter = ["is_active", "auto_sync_stock", "webhook_enabled"]
     readonly_fields = ["created_at", "updated_at", "last_sync"]
 

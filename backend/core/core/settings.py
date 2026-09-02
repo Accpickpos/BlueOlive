@@ -35,7 +35,7 @@ DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 # Fail closed: a missing SECRET_KEY in production must not silently fall back
 # to a well-known placeholder value. Only DEBUG (local dev) gets the fallback,
 # and even then it's logged loudly so it can't go unnoticed.
-_INSECURE_SECRET_KEY_FALLBACK = "django-insecure-change-me-in-production"
+_INSECURE_SECRET_KEY_FALLBACK = "django-insecure-change-me-in-production"  # nosec B105
 SECRET_KEY = os.environ.get("SECRET_KEY")
 if not SECRET_KEY:
     if DEBUG:

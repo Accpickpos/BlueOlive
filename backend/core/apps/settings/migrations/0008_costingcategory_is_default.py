@@ -6,13 +6,16 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('settings', '0007_expensecategory_gl_accno_incomecategory_gl_accno'),
+        ("settings", "0007_expensecategory_gl_accno_incomecategory_gl_accno"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='costingcategory',
-            name='is_default',
-            field=models.BooleanField(default=False, help_text='The single active system-wide costing/pricing method (manual §8.1 System Parameters treats this as one global setting, not per-category, despite the full CRUD table).'),
+            model_name="costingcategory",
+            name="is_default",
+            field=models.BooleanField(
+                default=False,
+                help_text="The single active system-wide costing/pricing method (manual §8.1 System Parameters treats this as one global setting, not per-category, despite the full CRUD table).",
+            ),
         ),
     ]

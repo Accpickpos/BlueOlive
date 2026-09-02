@@ -10,76 +10,130 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('debtors', '0001_initial'),
+        ("debtors", "0001_initial"),
     ]
 
     operations = [
         migrations.AlterModelOptions(
-            name='debtoraudit',
-            options={'ordering': ['-date', '-dtrano'], 'verbose_name': 'Debtor Audit (DEBTORAUD)', 'verbose_name_plural': 'Debtor Audits (DEBTORAUD)'},
+            name="debtoraudit",
+            options={
+                "ordering": ["-date", "-dtrano"],
+                "verbose_name": "Debtor Audit (DEBTORAUD)",
+                "verbose_name_plural": "Debtor Audits (DEBTORAUD)",
+            },
         ),
         migrations.RenameIndex(
-            model_name='debtoraudit',
-            new_name='idx_daud_deb_date',
-            old_name='debtors_deb_dno_id_137c5e_idx',
+            model_name="debtoraudit",
+            new_name="idx_daud_deb_date",
+            old_name="debtors_deb_dno_id_137c5e_idx",
         ),
         migrations.RenameIndex(
-            model_name='debtoraudit',
-            new_name='idx_daud_date_type',
-            old_name='debtors_deb_date_a1c38f_idx',
+            model_name="debtoraudit",
+            new_name="idx_daud_date_type",
+            old_name="debtors_deb_date_a1c38f_idx",
         ),
         migrations.RenameIndex(
-            model_name='debtoraudit',
-            new_name='idx_daud_type',
-            old_name='debtors_deb_type_7bcc73_idx',
+            model_name="debtoraudit",
+            new_name="idx_daud_type",
+            old_name="debtors_deb_type_7bcc73_idx",
         ),
         migrations.AddField(
-            model_name='debtoraudit',
-            name='notes',
-            field=models.TextField(blank=True, help_text='Audit notes'),
+            model_name="debtoraudit",
+            name="notes",
+            field=models.TextField(blank=True, help_text="Audit notes"),
         ),
         migrations.AddField(
-            model_name='debtoraudit',
-            name='performed_by',
-            field=models.CharField(blank=True, help_text='User who performed the action', max_length=50),
+            model_name="debtoraudit",
+            name="performed_by",
+            field=models.CharField(
+                blank=True, help_text="User who performed the action", max_length=50
+            ),
         ),
         migrations.AlterField(
-            model_name='debtoraudit',
-            name='amount',
-            field=models.DecimalField(db_column='amount', decimal_places=2, help_text='Audit amount (AMOUNT) - Numeric 12.2', max_digits=12, validators=[django.core.validators.MinValueValidator(Decimal('0'))]),
+            model_name="debtoraudit",
+            name="amount",
+            field=models.DecimalField(
+                db_column="amount",
+                decimal_places=2,
+                help_text="Audit amount (AMOUNT) - Numeric 12.2",
+                max_digits=12,
+                validators=[django.core.validators.MinValueValidator(Decimal("0"))],
+            ),
         ),
         migrations.AlterField(
-            model_name='debtoraudit',
-            name='date',
-            field=models.DateField(db_column='date', db_index=True, help_text='Audit date (DATE) - Date 8'),
+            model_name="debtoraudit",
+            name="date",
+            field=models.DateField(
+                db_column="date", db_index=True, help_text="Audit date (DATE) - Date 8"
+            ),
         ),
         migrations.AlterField(
-            model_name='debtoraudit',
-            name='dno',
-            field=models.ForeignKey(db_column='dno', help_text='Debtor number (DNO)', on_delete=django.db.models.deletion.CASCADE, related_name='debtoraud_records', to='debtors.debtor'),
+            model_name="debtoraudit",
+            name="dno",
+            field=models.ForeignKey(
+                db_column="dno",
+                help_text="Debtor number (DNO)",
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="debtoraud_records",
+                to="debtors.debtor",
+            ),
         ),
         migrations.AlterField(
-            model_name='debtoraudit',
-            name='dtrano',
-            field=models.CharField(db_column='dtrano', help_text='Transaction number (DTRANO) - Character 6', max_length=6),
+            model_name="debtoraudit",
+            name="dtrano",
+            field=models.CharField(
+                db_column="dtrano",
+                help_text="Transaction number (DTRANO) - Character 6",
+                max_length=6,
+            ),
         ),
         migrations.AlterField(
-            model_name='debtoraudit',
-            name='thistran',
-            field=models.CharField(db_column='thistran', help_text='Current transaction type identifier (THISTRAN) - Character 6', max_length=6),
+            model_name="debtoraudit",
+            name="thistran",
+            field=models.CharField(
+                db_column="thistran",
+                help_text="Current transaction type identifier (THISTRAN) - Character 6",
+                max_length=6,
+            ),
         ),
         migrations.AlterField(
-            model_name='debtoraudit',
-            name='thistype',
-            field=models.CharField(choices=[('IN', 'Invoice'), ('CR', 'Credit Note'), ('PA', 'Payment'), ('AD', 'Adjustment'), ('DM', 'Debit Memo'), ('CM', 'Credit Memo'), ('AL', 'Allocation')], db_column='thistype', help_text='Current transaction type (THISTYPE) - Character 2', max_length=2),
+            model_name="debtoraudit",
+            name="thistype",
+            field=models.CharField(
+                choices=[
+                    ("IN", "Invoice"),
+                    ("CR", "Credit Note"),
+                    ("PA", "Payment"),
+                    ("AD", "Adjustment"),
+                    ("DM", "Debit Memo"),
+                    ("CM", "Credit Memo"),
+                    ("AL", "Allocation"),
+                ],
+                db_column="thistype",
+                help_text="Current transaction type (THISTYPE) - Character 2",
+                max_length=2,
+            ),
         ),
         migrations.AlterField(
-            model_name='debtoraudit',
-            name='type',
-            field=models.CharField(choices=[('IN', 'Invoice'), ('CR', 'Credit Note'), ('PA', 'Payment'), ('AD', 'Adjustment'), ('DM', 'Debit Memo'), ('CM', 'Credit Memo'), ('AL', 'Allocation')], db_column='type', help_text='Transaction type (TYPE) - Character 2', max_length=2),
+            model_name="debtoraudit",
+            name="type",
+            field=models.CharField(
+                choices=[
+                    ("IN", "Invoice"),
+                    ("CR", "Credit Note"),
+                    ("PA", "Payment"),
+                    ("AD", "Adjustment"),
+                    ("DM", "Debit Memo"),
+                    ("CM", "Credit Memo"),
+                    ("AL", "Allocation"),
+                ],
+                db_column="type",
+                help_text="Transaction type (TYPE) - Character 2",
+                max_length=2,
+            ),
         ),
         migrations.AlterModelTable(
-            name='debtoraudit',
-            table='debtoraud',
+            name="debtoraudit",
+            table="debtoraud",
         ),
     ]
