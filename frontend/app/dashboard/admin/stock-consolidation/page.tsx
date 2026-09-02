@@ -30,9 +30,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Search, Loader2, ArrowLeft, Package } from 'lucide-react';
+import { Plus, Search, Loader2, ArrowLeft, Package, Ban, Building2 } from 'lucide-react';
 import Link from 'next/link';
-import type { BranchTransfer } from '@/lib/types/stockControl';
+import { useAuthContext } from '@/lib/AuthContext';
+import { tenantsApi } from '@/lib/tenantsApi';
+import type { BranchTransfer, ConsolidatedStockItem } from '@/lib/types/stockControl';
 
 const statusColors: Record<string, string> = {
   DRAFT: 'bg-gray-400',
@@ -46,6 +48,12 @@ const statusColors: Record<string, string> = {
 };
 
 export default function StockConsolidationPage() {
+  const { stockConsolidationEnabled, user, refetchShops } = useAuthContext();
+  // Matches the backend's IsAdmin permission (role === 'ADMIN' exactly) on
+  // TenantViewSet.update, which is what actually enforces this toggle -
+  // isAdmin from context is broader (also true for MANAGER) and would show
+  // a button here that 403s for that role.
+  const canToggleConsolidation = user?.role === 'ADMIN';
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -58,6 +66,8 @@ export default function StockConsolidationPage() {
   });
   const [newItem, setNewItem] = useState({ stock_code: '', quantity_requested: 0 });
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [hqBranchCode, setHqBranchCode] = useState('');
+  const [consolidatedSearch, setConsolidatedSearch] = useState('');
 
   const { data: transfers, isLoading } = useQuery({
     queryKey: ['branch-transfers'],
@@ -67,6 +77,26 @@ export default function StockConsolidationPage() {
   const { data: branches } = useQuery({
     queryKey: ['branches'],
     queryFn: () => stockControlApi.branches.list(),
+  });
+
+  const hqBranches = (branches?.results || []).filter((b: any) => b.branch_type === 'HQ');
+
+  const { data: consolidatedStock, isLoading: isLoadingConsolidated } = useQuery({
+    queryKey: ['consolidated-stock', hqBranchCode, consolidatedSearch],
+    queryFn: () => stockControlApi.branchStock.getConsolidated(hqBranchCode, consolidatedSearch || undefined),
+    enabled: !!hqBranchCode,
+  });
+
+  const consolidatedResults: ConsolidatedStockItem[] = Array.isArray(consolidatedStock)
+    ? consolidatedStock
+    : consolidatedStock?.results || [];
+
+  const toggleConsolidationMutation = useMutation({
+    mutationFn: (enabled: boolean) => {
+      if (!user?.tenant_id) throw new Error('No tenant context for this user.');
+      return tenantsApi.tenants.update(user.tenant_id, { enable_stock_consolidation: enabled });
+    },
+    onSuccess: () => refetchShops(),
   });
 
   const { data: selectedTransferDetail } = useQuery({
@@ -183,18 +213,51 @@ export default function StockConsolidationPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Link href="/dashboard/admin">
-          <Button variant="outline" size="sm">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
-          </Button>
-        </Link>
-        <div>
-          <h1 className="text-3xl font-bold">Stock Consolidation</h1>
-          <p className="text-gray-600 mt-1">Move stock between branches (inter-branch transfer)</p>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Link href="/dashboard/admin">
+            <Button variant="outline" size="sm">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-3xl font-bold">Stock Consolidation</h1>
+            <p className="text-gray-600 mt-1">Move stock between branches (inter-branch transfer)</p>
+          </div>
         </div>
+        {canToggleConsolidation && (
+          <div className="flex items-center gap-3 shrink-0">
+            <span className="text-sm text-gray-500">
+              {stockConsolidationEnabled ? 'Enabled for this account' : 'Disabled for this account'}
+            </span>
+            <Button
+              variant={stockConsolidationEnabled ? 'outline' : 'default'}
+              size="sm"
+              disabled={toggleConsolidationMutation.isPending || !user?.tenant_id}
+              onClick={() => toggleConsolidationMutation.mutate(!stockConsolidationEnabled)}
+            >
+              {toggleConsolidationMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : null}
+              {stockConsolidationEnabled ? 'Turn Off' : 'Turn On'}
+            </Button>
+          </div>
+        )}
       </div>
+
+      {!stockConsolidationEnabled ? (
+        <Card className="p-12 text-center">
+          <Ban className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+          <p className="text-gray-600 font-medium">Stock Consolidation is disabled for this account.</p>
+          <p className="text-gray-500 text-sm mt-1">
+            {canToggleConsolidation
+              ? 'Use the "Turn On" button above to re-enable it.'
+              : 'An administrator can turn it back on from this page.'}
+          </p>
+        </Card>
+      ) : (
+      <>
 
       <Card className="p-6">
         <div className="flex items-center justify-between mb-6">
@@ -257,6 +320,92 @@ export default function StockConsolidationPage() {
                       View / Manage
                     </Button>
                   </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Card>
+
+      {/* Consolidated Stock (main shop / HQ view) */}
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Building2 className="w-5 h-5 text-gray-500" />
+          <h2 className="text-lg font-semibold">Consolidated Stock</h2>
+        </div>
+        <p className="text-gray-500 text-sm mb-4">
+          On-hand quantity per item across every branch, viewed from head office.
+        </p>
+
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
+          <Select value={hqBranchCode} onValueChange={setHqBranchCode}>
+            <SelectTrigger className="w-56">
+              <SelectValue placeholder="Select HQ branch" />
+            </SelectTrigger>
+            <SelectContent>
+              {hqBranches.map((b: any) => (
+                <SelectItem key={b.branch_code} value={b.branch_code}>
+                  {b.branch_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Input
+              placeholder="Search stock code or description..."
+              value={consolidatedSearch}
+              onChange={(e) => setConsolidatedSearch(e.target.value)}
+              className="pl-10"
+              disabled={!hqBranchCode}
+            />
+          </div>
+        </div>
+
+        {!hqBranchCode ? (
+          <div className="text-center py-8 text-gray-500">
+            <Building2 className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+            <p>
+              {hqBranches.length === 0
+                ? 'No branch is marked as HQ (branch_type = HQ) yet — set one up in Stock Control > Branches.'
+                : 'Select the HQ branch to view consolidated stock across all branches.'}
+            </p>
+          </div>
+        ) : isLoadingConsolidated ? (
+          <div className="text-center py-8">
+            <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+            <p className="text-gray-500 mt-2">Loading consolidated stock...</p>
+          </div>
+        ) : consolidatedResults.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <Package className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+            <p>No stock found.</p>
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Stock Code</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Per-Branch Breakdown</TableHead>
+                <TableHead className="text-right">Total On Hand</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {consolidatedResults.map((item) => (
+                <TableRow key={item.stock_code}>
+                  <TableCell className="font-medium">{item.stock_code}</TableCell>
+                  <TableCell>{item.description}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1.5">
+                      {item.branches.map((b) => (
+                        <Badge key={b.branch_code} variant="outline" className="font-normal">
+                          {b.branch_code}: {b.quantity}
+                        </Badge>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right font-semibold">{item.total_quantity}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -448,6 +597,8 @@ export default function StockConsolidationPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </>
+      )}
     </div>
   );
 }

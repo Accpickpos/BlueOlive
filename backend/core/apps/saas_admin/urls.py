@@ -6,6 +6,12 @@ All endpoints require platform superuser (IsPlatformSuperuser) permission.
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .auth_views import (
+    PlatformLoginView,
+    PlatformLogoutView,
+    PlatformProfileView,
+    PlatformTokenRefreshView,
+)
 from .import_views import analyze_csv, import_csv, list_tenants_and_shops
 from .tenant_views import ShopViewSet, TenantStatsViewSet, TenantViewSet
 from .user_views import (
@@ -25,6 +31,15 @@ router.register(r"shops", ShopViewSet, basename="shop")
 router.register(r"tenant-stats", TenantStatsViewSet, basename="tenant-stats")
 
 urlpatterns = [
+    # Platform Owner Authentication (separate from tenant login)
+    path("auth/login/", PlatformLoginView.as_view(), name="platform-login"),
+    path("auth/logout/", PlatformLogoutView.as_view(), name="platform-logout"),
+    path("auth/profile/", PlatformProfileView.as_view(), name="platform-profile"),
+    path(
+        "auth/token/refresh/",
+        PlatformTokenRefreshView.as_view(),
+        name="platform-token-refresh",
+    ),
     # Tenant Management API (RESTful with ViewSets)
     path("", include(router.urls)),
     # CSV Import endpoints

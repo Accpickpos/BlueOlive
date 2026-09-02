@@ -52,6 +52,7 @@ class TenantSerializer(serializers.ModelSerializer):
             "decimal_places",
             "default_interest_rate",
             "charge_interest_on_overdue",
+            "enable_stock_consolidation",
             "financial_year_start_month",
             "db_name",
             "db_user",
@@ -116,6 +117,14 @@ class TenantSerializer(serializers.ModelSerializer):
             validated_data["db_name"] = f"{slugify(name)}_db"
 
         validated_data["subdomain"] = validated_data["slug"]
+
+        # enabled_addons isn't a field on this serializer (only the
+        # platform-owner PlatformTenantSerializer exposes it), so a
+        # self-signup tenant always falls through to this default rather
+        # than ever being set from request data.
+        validated_data["enabled_addons"] = list(
+            getattr(settings, "DEFAULT_ADDONS_FOR_NEW_TENANTS", [])
+        )
 
         # Create tenant row. Tenant's post_save signal queues async physical
         # database creation + migrations (tenancy.tasks.setup_tenant_database_async).
@@ -201,6 +210,7 @@ class TenantListSerializer(serializers.ModelSerializer):
             "decimal_places",
             "default_interest_rate",
             "charge_interest_on_overdue",
+            "enable_stock_consolidation",
             "financial_year_start_month",
             "db_name",
             "setup_status",
@@ -258,6 +268,7 @@ class ShopSerializer(serializers.ModelSerializer):
             "code",
             "address",
             "phone",
+            "email",
             "logo",
             "description",
             "schema_name",

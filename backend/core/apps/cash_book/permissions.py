@@ -19,31 +19,28 @@ class CashBookPermission(permissions.BasePermission):
 
 
 class IsCashier(permissions.BasePermission):
-    """Permission for cashier role - can create and view transactions"""
+    """Permission for cashier role (or above) - can create and view transactions"""
 
     def has_permission(self, request, view):
         if not (request.user and request.user.is_authenticated):
             return False
 
-        return (
-            hasattr(request.user, "groups")
-            and request.user.groups.filter(
-                name__in=["Cashier", "Accountant", "Admin"]
-            ).exists()
+        return getattr(request.user, "role", None) in (
+            "CASHIER",
+            "MANAGER",
+            "ACCOUNTANT",
+            "ADMIN",
         )
 
 
 class IsAccountant(permissions.BasePermission):
-    """Permission for accountant role - can create, view, and reconcile"""
+    """Permission for accountant role (or above) - can create, view, and reconcile"""
 
     def has_permission(self, request, view):
         if not (request.user and request.user.is_authenticated):
             return False
 
-        return (
-            hasattr(request.user, "groups")
-            and request.user.groups.filter(name__in=["Accountant", "Admin"]).exists()
-        )
+        return getattr(request.user, "role", None) in ("MANAGER", "ACCOUNTANT", "ADMIN")
 
 
 class IsAdmin(permissions.BasePermission):
@@ -68,11 +65,11 @@ class CanViewTransactions(permissions.BasePermission):
             return True
 
         # Only cashier and above can create/edit
-        return (
-            hasattr(request.user, "groups")
-            and request.user.groups.filter(
-                name__in=["Cashier", "Accountant", "Admin"]
-            ).exists()
+        return getattr(request.user, "role", None) in (
+            "CASHIER",
+            "MANAGER",
+            "ACCOUNTANT",
+            "ADMIN",
         )
 
 
@@ -88,11 +85,11 @@ class CanCreateTransactions(permissions.BasePermission):
             return True
 
         # Create/Edit operations require cashier role or higher
-        return (
-            hasattr(request.user, "groups")
-            and request.user.groups.filter(
-                name__in=["Cashier", "Accountant", "Admin"]
-            ).exists()
+        return getattr(request.user, "role", None) in (
+            "CASHIER",
+            "MANAGER",
+            "ACCOUNTANT",
+            "ADMIN",
         )
 
 
@@ -108,10 +105,7 @@ class CanReconcile(permissions.BasePermission):
             return True
 
         # Reconciliation operations require accountant role or higher
-        return (
-            hasattr(request.user, "groups")
-            and request.user.groups.filter(name__in=["Accountant", "Admin"]).exists()
-        )
+        return getattr(request.user, "role", None) in ("MANAGER", "ACCOUNTANT", "ADMIN")
 
 
 class CanModifyReconciledTransactions(permissions.BasePermission):
@@ -237,10 +231,7 @@ class CanApproveLargeTransactions(permissions.BasePermission):
             return True
 
         # Only accountant and admin can approve
-        return (
-            hasattr(request.user, "groups")
-            and request.user.groups.filter(name__in=["Accountant", "Admin"]).exists()
-        )
+        return getattr(request.user, "role", None) in ("MANAGER", "ACCOUNTANT", "ADMIN")
 
 
 class CanApproveReconciliationDifferences(permissions.BasePermission):

@@ -7,11 +7,13 @@ This API is completely separate from business logic APIs.
 
 from django.conf import settings
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from tenancy.models import Shop, Tenant
-from tenancy.serializers import TenantSerializer
 
+from .auth import PlatformOwnerJWTAuthentication
 from .permissions import IsPlatformSuperuser
+from .serializers import PlatformShopSerializer, PlatformTenantSerializer
 
 
 class TenantViewSet(viewsets.ModelViewSet):
@@ -28,10 +30,29 @@ class TenantViewSet(viewsets.ModelViewSet):
     All operations require IsPlatformSuperuser permission.
     """
 
+    authentication_classes = [PlatformOwnerJWTAuthentication]
     permission_classes = [IsPlatformSuperuser]
     queryset = Tenant.objects.all()
-    serializer_class = TenantSerializer
+    serializer_class = PlatformTenantSerializer
     lookup_field = "id"
+
+    def perform_update(self, serializer):
+        """
+        If this update grows enabled_addons (a platform owner turning an
+        addon on for an already-provisioned tenant), retroactively migrate
+        it into every existing shop of that tenant. Shrinking the set never
+        un-migrates anything (destructive, not supported) - it only cuts off
+        access via AddonAccessMiddleware / frontend nav.
+        """
+        old_addons = set(serializer.instance.enabled_addons or [])
+        tenant = serializer.save()
+        newly_enabled = set(tenant.enabled_addons or []) - old_addons
+
+        if newly_enabled:
+            from tenancy.tasks import provision_addon_async
+
+            for addon in newly_enabled:
+                provision_addon_async.delay(tenant.id, addon)
 
     def destroy(self, request, *args, **kwargs):
         """
@@ -47,6 +68,7 @@ class TenantViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @action(detail=True, methods=["post"])
     def activate(self, request, pk=None):
         """Activate a deactivated tenant."""
         tenant = self.get_object()
@@ -58,6 +80,7 @@ class TenantViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @action(detail=True, methods=["post"])
     def deactivate(self, request, pk=None):
         """Deactivate a tenant (soft delete)."""
         tenant = self.get_object()
@@ -84,15 +107,11 @@ class ShopViewSet(viewsets.ModelViewSet):
     All operations require IsPlatformSuperuser permission.
     """
 
+    authentication_classes = [PlatformOwnerJWTAuthentication]
     permission_classes = [IsPlatformSuperuser]
     queryset = Shop.objects.all()
+    serializer_class = PlatformShopSerializer
     lookup_field = "id"
-
-    def get_serializer_class(self):
-        """Use the Tenant serializer for Shop model."""
-        from tenancy.serializers import ShopSerializer
-
-        return ShopSerializer
 
     def get_queryset(self):
         """Filter shops by tenant if tenant_id is provided."""
@@ -103,6 +122,42 @@ class ShopViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(tenant_id=tenant_id)
 
         return queryset
+
+    def create(self, request, *args, **kwargs):
+        """
+        Create a shop for an arbitrary tenant, given tenant_id in the body.
+
+        ShopSerializer.create() (tenancy/serializers.py) reads the target
+        tenant from tenant_context.get_current_tenant() - a thread-local
+        that TenantMiddleware normally derives from the caller's own JWT/
+        subdomain. The platform owner's JWT carries no tenant at all (see
+        tenancy/platform_auth.py), so that thread-local would otherwise be
+        None in production, or silently "the first active tenant" in DEBUG
+        (see TenantMiddleware._handle_localhost) - neither of which is the
+        tenant_id the owner actually asked for. Resolve it explicitly here
+        instead of trusting whatever middleware guessed.
+        """
+        tenant_id = request.data.get("tenant_id")
+        if not tenant_id:
+            return Response(
+                {"error": "tenant_id is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            tenant = Tenant.objects.get(id=tenant_id, is_active=True)
+        except Tenant.DoesNotExist:
+            return Response(
+                {"error": f"Tenant with id {tenant_id} not found or inactive"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        from tenancy.tenant_context import set_current_tenant
+        from tenancy.utils import register_tenant_connection
+
+        register_tenant_connection(tenant)
+        set_current_tenant(tenant)
+
+        return super().create(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         """
@@ -117,6 +172,7 @@ class ShopViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @action(detail=True, methods=["post"])
     def activate(self, request, pk=None):
         """Activate a deactivated shop."""
         shop = self.get_object()
@@ -128,6 +184,7 @@ class ShopViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @action(detail=True, methods=["post"])
     def deactivate(self, request, pk=None):
         """Deactivate a shop (soft delete)."""
         shop = self.get_object()
@@ -149,6 +206,7 @@ class TenantStatsViewSet(viewsets.ReadOnlyModelViewSet):
     - RETRIEVE: Returns statistics for a specific tenant
     """
 
+    authentication_classes = [PlatformOwnerJWTAuthentication]
     permission_classes = [IsPlatformSuperuser]
     queryset = Tenant.objects.all()
     lookup_field = "id"

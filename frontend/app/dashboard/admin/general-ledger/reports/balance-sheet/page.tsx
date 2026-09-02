@@ -7,7 +7,8 @@ import { FinancialReportLine } from '@/lib/types/generalLedger';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { ArrowLeft, Download, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
 const rowClass = (line: FinancialReportLine) => {
@@ -24,6 +25,22 @@ export default function BalanceSheetReportPage() {
     queryKey: ['gl-balance-sheet', asOfPeriod],
     queryFn: () => glReportsApi.balanceSheet(asOfPeriod ? parseInt(asOfPeriod) : undefined),
   });
+
+  const handleExportCsv = () => {
+    if (!data) return;
+    const rows = [
+      ['Line', 'Type', 'Name', 'Amount'],
+      ...data.lines.map((line) => [line.line, line.fieldtype, line.name, line.amount ?? '']),
+    ];
+    const csvContent = rows.map((row) => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `balance-sheet-period${data.as_of_period}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6">
@@ -72,17 +89,37 @@ export default function BalanceSheetReportPage() {
         </div>
       ) : data ? (
         <Card className="p-6">
-          <h2 className="text-lg font-bold mb-4">
-            Period {data.as_of_period} — {data.currentyr}
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold">
+              Period {data.as_of_period} — {data.currentyr}
+            </h2>
+            <div className="flex items-center gap-3">
+              <Badge variant={data.is_balanced ? 'default' : 'destructive'}>
+                {data.is_balanced ? 'Balanced' : 'Out of Balance'}
+              </Badge>
+              <Button variant="outline" size="sm" onClick={handleExportCsv}>
+                <Download className="w-4 h-4 mr-2" />
+                Export CSV
+              </Button>
+            </div>
+          </div>
           <div className="space-y-1">
             {data.lines.map((line) => (
               <div key={line.line} className={`flex justify-between py-1 ${rowClass(line)}`}>
                 <span>{line.name}</span>
-                <span>{line.amount.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</span>
+                <span>{(line.amount ?? 0).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</span>
               </div>
             ))}
           </div>
+          {!data.is_balanced && (
+            <div className="mt-4 pt-4 border-t text-sm text-amber-800 bg-amber-50 rounded-lg p-3">
+              Assets ({data.total_assets.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}) does not equal
+              Liabilities + Equity + Net Income ({data.total_liabilities_and_equity.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
+              {' + '}
+              {data.net_income.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}). Check for unbalanced batches or
+              unposted transactions for this period.
+            </div>
+          )}
         </Card>
       ) : null}
     </div>

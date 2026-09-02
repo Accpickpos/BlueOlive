@@ -363,17 +363,36 @@ export interface TrialBalanceResponse {
   is_balanced: boolean;
 }
 
+// Income Statement layout modes (7. General Ledger, Enquiries > 5. Income
+// Statement in the manual). "current" is a single "amount" column;
+// everything else carries a different, mode-specific set of numeric
+// columns instead (see FinancialReportLine.columns).
+export type IncomeStatementMode =
+  | 'current'
+  | 'current_ytd'
+  | 'current_last_year'
+  | 'current_budget'
+  | 'budget_12'
+  | 'variance'
+  | 'actual_12';
+
 export interface FinancialReportLine {
   line: number;
   fieldtype: GLRepFieldType;
   name: string;
   printdet: string;
-  amount: number;
+  // "current" mode (and every Balance Sheet line, which only has one mode)
+  amount?: number;
+  // Every other Income Statement mode: whatever named columns that mode
+  // produces (e.g. current/ytd/budget/ytd_budget, or month1..month12) —
+  // deliberately untyped since the shape varies by mode.
+  [key: string]: number | string | undefined;
 }
 
 export interface IncomeStatementResponse {
   report_title: string;
   as_of_period: number;
+  mode: IncomeStatementMode;
   currentyr: number | null;
   lines: FinancialReportLine[];
   net_result: number | null;
@@ -385,5 +404,9 @@ export interface BalanceSheetResponse {
   as_of_period: number;
   currentyr: number | null;
   lines: FinancialReportLine[];
+  total_assets: number;
+  total_liabilities_and_equity: number;
+  net_income: number;
+  is_balanced: boolean;
   is_seeded: boolean;
 }

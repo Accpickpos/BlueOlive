@@ -17,11 +17,11 @@ class IsStockMover(permissions.BasePermission):
     def has_permission(self, request, view):
         if not (request.user and request.user.is_authenticated):
             return False
-        return (
-            hasattr(request.user, "groups")
-            and request.user.groups.filter(
-                name__in=["Cashier", "Accountant", "Admin"]
-            ).exists()
+        return getattr(request.user, "role", None) in (
+            "CASHIER",
+            "MANAGER",
+            "ACCOUNTANT",
+            "ADMIN",
         )
 
 
@@ -31,7 +31,28 @@ class IsStockAccountant(permissions.BasePermission):
     def has_permission(self, request, view):
         if not (request.user and request.user.is_authenticated):
             return False
-        return (
-            hasattr(request.user, "groups")
-            and request.user.groups.filter(name__in=["Accountant", "Admin"]).exists()
-        )
+        return getattr(request.user, "role", None) in ("MANAGER", "ACCOUNTANT", "ADMIN")
+
+
+class StockConsolidationEnabledMixin:
+    """
+    Gates every action on a ViewSet behind Tenant.enable_stock_consolidation.
+
+    Unlike the whole-app OPTIONAL_ADDON_APPS toggle (enforced at the URL
+    layer by tenancy.middleware.AddonAccessMiddleware), Stock Consolidation
+    (inter-branch transfers) is a sub-feature of the mandatory stock_control
+    app, so it's gated per-ViewSet instead. Overrides check_permissions
+    (not permission_classes) so it still applies to @action methods that
+    declare their own permission_classes (e.g. approve/dispatch/receive),
+    which would otherwise bypass a class-level permission_classes entry.
+    """
+
+    def check_permissions(self, request):
+        super().check_permissions(request)
+        tenant = getattr(request, "tenant", None)
+        if not getattr(tenant, "enable_stock_consolidation", True):
+            self.permission_denied(
+                request,
+                message="Stock Consolidation (inter-branch transfers) is disabled for this account.",
+                code="stock_consolidation_disabled",
+            )

@@ -699,15 +699,18 @@ class ShopUserViewSet(viewsets.ModelViewSet):
             creator_role = getattr(creator, "role", None)
             creator_is_superuser = getattr(creator, "is_superuser", False)
 
-            # MANAGERs cannot create ADMIN users
+            # MANAGERs cannot create ADMIN or ACCOUNTANT users (cross-shop/
+            # business-owner-level roles stay an ADMIN-only decision)
             if (
-                role == "ADMIN"
+                role in ("ADMIN", "ACCOUNTANT")
                 and creator_role == "MANAGER"
                 and not creator_is_superuser
             ):
                 from rest_framework.exceptions import PermissionDenied
 
-                raise PermissionDenied("MANAGER users cannot create ADMIN users.")
+                raise PermissionDenied(
+                    "MANAGER users cannot create ADMIN or ACCOUNTANT users."
+                )
 
             # Non-admin/non-manager users can only create CASHIER users
             if creator_role not in ("ADMIN", "MANAGER") and not creator_is_superuser:

@@ -61,7 +61,11 @@ from .serializers import (
     StockTakeSerializer,
     StockTransactionSerializer,
 )
-from .permissions import IsStockAccountant, IsStockMover
+from .permissions import (
+    IsStockAccountant,
+    IsStockMover,
+    StockConsolidationEnabledMixin,
+)
 from .services import StockTransactionService
 
 # ─────────────────────────────────────────────
@@ -1372,6 +1376,7 @@ class BranchViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.Mod
 
 class BranchStockViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     access_module = "stock_control"
+    action_function_types = {"consolidated": "REPORT"}
     queryset = BranchStock.objects.select_related("branch", "stock_item")
     serializer_class = BranchStockSerializer
     permission_classes = [IsAuthenticated]
@@ -1390,6 +1395,74 @@ class BranchStockViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewset
         if branch:
             qs = qs.filter(branch=branch)
         return Response(BranchStockSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=["get"])
+    def consolidated(self, request):
+        """
+        On-hand quantity per stock item across every branch, with a
+        per-branch breakdown and a grand total - the "main shop" view of
+        where all stock actually sits. Restricted to callers viewing from
+        the HQ branch (?branch=<branch_code>), same as Stock Consolidation
+        (inter-branch transfers) itself.
+        """
+        if not getattr(request.tenant, "enable_stock_consolidation", True):
+            return Response(
+                {
+                    "error": "Stock Consolidation (inter-branch transfers) is disabled for this account."
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        branch_code = request.query_params.get("branch")
+        if not branch_code:
+            return Response(
+                {"error": "branch query param is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        viewing_branch = Branch.objects.filter(branch_code=branch_code).first()
+        if not viewing_branch or viewing_branch.branch_type != "HQ":
+            return Response(
+                {
+                    "error": "The consolidated stock view is only available from the head-office (HQ) branch."
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        qs = BranchStock.objects.select_related("branch", "stock_item").order_by(
+            "stock_item__stock_code", "branch__branch_code"
+        )
+        search = request.query_params.get("search")
+        if search:
+            qs = qs.filter(
+                Q(stock_item__stock_code__icontains=search)
+                | Q(stock_item__description__icontains=search)
+            )
+
+        items: dict[str, dict] = {}
+        for row in qs:
+            entry = items.setdefault(
+                row.stock_item.stock_code,
+                {
+                    "stock_code": row.stock_item.stock_code,
+                    "description": row.stock_item.description,
+                    "branches": [],
+                    "total_quantity": Decimal("0"),
+                },
+            )
+            entry["branches"].append(
+                {
+                    "branch_code": row.branch.branch_code,
+                    "branch_name": row.branch.branch_name,
+                    "quantity": row.quantity,
+                }
+            )
+            entry["total_quantity"] += row.quantity
+
+        results = list(items.values())
+        page = self.paginate_queryset(results)
+        if page is not None:
+            return self.get_paginated_response(page)
+        return Response(results)
 
 
 # ─────────────────────────────────────────────
@@ -1443,7 +1516,7 @@ class GroupOrderItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, view
 # ─────────────────────────────────────────────
 
 
-class BranchTransferViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class BranchTransferViewSet(StockConsolidationEnabledMixin, ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     """
     Manage inter-branch transfers (IBT).
 
@@ -1642,7 +1715,7 @@ class BranchTransferViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, view
         )
 
 
-class BranchTransferItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class BranchTransferItemViewSet(StockConsolidationEnabledMixin, ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     access_module = "stock_control"
     queryset = BranchTransferItem.objects.select_related("transfer", "stock_item")
     serializer_class = BranchTransferItemSerializer
@@ -1656,7 +1729,7 @@ class BranchTransferItemViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, 
 # ─────────────────────────────────────────────
 
 
-class BranchTransferInvoiceViewSet(ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
+class BranchTransferInvoiceViewSet(StockConsolidationEnabledMixin, ModuleFunctionPermissionMixin, ShopFilterMixin, viewsets.ModelViewSet):
     access_module = "stock_control"
     queryset = BranchTransferInvoice.objects.select_related("transfer")
     serializer_class = BranchTransferInvoiceSerializer

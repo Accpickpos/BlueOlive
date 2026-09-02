@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuthContext } from "@/lib/AuthContext";
 import {
   Home,
   FileText,
@@ -98,6 +99,7 @@ const menuConfig = [
         name: "General Ledger",
         base: "/dashboard/admin/general-ledger",
         icon: BookOpen,
+        addon: "general_ledger",
         children: [
           { type: "link", name: "Maintenance", href: "/dashboard/admin/general-ledger/maintenance", icon: FileText },
           { type: "link", name: "Transactions", href: "/dashboard/admin/general-ledger/transactions", icon: DollarSign },
@@ -118,12 +120,12 @@ const menuConfig = [
         ],
       },
       { type: "link", name: "Settings", href: "/dashboard/admin/settings", icon: UserCog },
-      { type: "link", name: "Stockfinder Orders", href: "/dashboard/admin/stockfinder/orders", icon: Package },
+      { type: "link", name: "Stockfinder Orders", href: "/dashboard/admin/stockfinder/orders", icon: Package, addon: "stockfinder" },
       { type: "link", name: "API Keys", href: "/dashboard/admin/api-keys", icon: Key },
       { type: "link", name: "Import Data", href: "/dashboard/admin/import", icon: Upload },
       { type: "link", name: "Inter-Branch Transfers", href: "/dashboard/admin/ibt", icon: ArrowRight },
       { type: "link", name: "Inter-Branch Items", href: "/dashboard/admin/ibi", icon: Package },
-      { type: "link", name: "Stock Consolidation", href: "/dashboard/admin/stock-consolidation", icon: Layers },
+      { type: "link", name: "Stock Consolidation", href: "/dashboard/admin/stock-consolidation", icon: Layers, feature: "stock_consolidation" },
     ],
   },
 
@@ -151,7 +153,7 @@ const menuConfig = [
     ],
   },
 
-  { type: "link", name: "Gas", href: "/dashboard/gas", icon: Repeat },
+  { type: "link", name: "Gas", href: "/dashboard/gas", icon: Repeat, addon: "gas" },
 
   { type: "link", name: "Messaging", href: "/dashboard/messaging", icon: MessageSquare },
   { type: "link", name: "Expenses", href: "/dashboard/expenses", icon: DollarSign },
@@ -160,6 +162,7 @@ const menuConfig = [
 
 export default function Sidebar({ isMobileOpen = false, onMobileClose }: { isMobileOpen?: boolean; onMobileClose?: () => void }) {
   const pathname = usePathname();
+  const { hasAddon, stockConsolidationEnabled } = useAuthContext();
   const [openDropdowns, setOpenDropdowns] = useState<{ [key: string]: boolean }>({});
   const [mounted, setMounted] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -177,7 +180,11 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: { isMob
     setOpenDropdowns((prev) => ({ ...prev, [name]: !prev[name] }));
   };
 
-  const hasAccess = (menu: any) => true;
+  const hasAccess = (menu: any) => {
+    if (menu.addon && !hasAddon(menu.addon)) return false;
+    if (menu.feature === "stock_consolidation" && !stockConsolidationEnabled) return false;
+    return true;
+  };
 
   // ================== RENDER MENU ==================
   const renderMenu = (menu: any, depth = 0) => {

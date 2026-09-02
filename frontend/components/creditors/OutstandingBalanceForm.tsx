@@ -25,8 +25,11 @@ export default function OutstandingBalanceForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<OutstandingBalanceCaptureData>({
-    supplier_account_number: balance?.supplier_id || 0,
+    creditor: balance?.creditor || 0,
+    supplier_account_number: balance?.supplier_account_number || '',
     capture_date: balance?.capture_date || new Date().toISOString().split('T')[0],
+    as_at_date: balance?.as_at_date || new Date().toISOString().split('T')[0],
+    balance: balance?.balance || 0,
     balance_current: balance?.balance_current || 0,
     balance_30_days: balance?.balance_30_days || 0,
     balance_60_days: balance?.balance_60_days || 0,
@@ -38,7 +41,21 @@ export default function OutstandingBalanceForm({
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    
+
+    if (name === 'creditor') {
+      // The Supplier select's value is the creditor id (the real FK the
+      // balance is saved against) - supplier_account_number is separate,
+      // optional reference text, auto-filled here from the chosen
+      // supplier's account code for traceability, not used for lookup.
+      const selectedSupplier = suppliers.find(s => s.id === parseInt(value, 10));
+      setFormData(prev => ({
+        ...prev,
+        creditor: parseInt(value, 10) || 0,
+        supplier_account_number: selectedSupplier?.supplier_number || '',
+      }));
+      return;
+    }
+
     setFormData(prev => ({
       ...prev,
       [name]: name.includes('balance') ? parseFloat(value) || 0 : value,
@@ -92,8 +109,8 @@ export default function OutstandingBalanceForm({
             Supplier *
           </label>
           <select
-            name="supplier_account_number"
-            value={formData.supplier_account_number}
+            name="creditor"
+            value={formData.creditor || ''}
             onChange={handleChange}
             required
             disabled={!!balance}
@@ -101,8 +118,8 @@ export default function OutstandingBalanceForm({
           >
             <option value="">Select a supplier</option>
             {suppliers.map(supplier => (
-              <option key={supplier.account_number} value={supplier.account_number}>
-                {supplier.account_number} - {supplier.name}
+              <option key={supplier.id} value={supplier.id}>
+                {supplier.supplier_number} - {supplier.name}
               </option>
             ))}
           </select>

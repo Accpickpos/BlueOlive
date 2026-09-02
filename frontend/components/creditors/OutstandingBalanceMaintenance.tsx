@@ -40,15 +40,23 @@ export default function OutstandingBalanceMaintenance() {
     setError(null);
     try {
       console.log('Loading outstanding balances...');
+      // The backend (OutstandingBalanceViewSet.filterset_fields) only
+      // supports exact-match creditor/as_at_date/capture_date, not a date
+      // range - creditor filtering happens server-side, the start/end date
+      // range this screen offers is applied client-side against as_at_date.
       const data = await api.listOutstandingBalances({
-        supplier_account_number: filterSupplier || undefined,
-        start_date: startDate || undefined,
-        end_date: endDate || undefined,
+        creditor: filterSupplier || undefined,
       });
       console.log('Outstanding balances response:', data);
-      const balanceItems = Array.isArray(data) ? data : (data?.items || []);
+      const results = data?.results || [];
+      const balanceItems = results.filter((b: OutstandingBalance) => {
+        if (startDate && b.as_at_date < startDate) return false;
+        if (endDate && b.as_at_date > endDate) return false;
+        return true;
+      });
       setBalances(balanceItems);
-      setTotalOutstanding(data?.total_outstanding || '0.00');
+      const total = balanceItems.reduce((sum: number, b: OutstandingBalance) => sum + (Number(b.balance) || 0), 0);
+      setTotalOutstanding(total.toFixed(2));
       if (balanceItems.length === 0) {
         console.warn('No outstanding balance data returned');
       }
@@ -234,13 +242,13 @@ export default function OutstandingBalanceMaintenance() {
                     {balance.transaction_number}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900">
-                    {new Date(balance.transaction_date).toLocaleDateString()}
+                    {balance.transaction_date ? new Date(balance.transaction_date).toLocaleDateString() : '-'}
                   </td>
                   <td className="px-4 py-3 text-sm text-right text-gray-900">
-                    R{typeof balance.original_amount === 'number' ? balance.original_amount.toFixed(2) : parseFloat(balance.original_amount as string).toFixed(2)}
+                    R{(Number(balance.original_amount) || 0).toFixed(2)}
                   </td>
                   <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900">
-                    R{typeof balance.balance_due === 'number' ? balance.balance_due.toFixed(2) : parseFloat(balance.balance_due as string).toFixed(2)}
+                    R{(Number(balance.balance_due) || 0).toFixed(2)}
                   </td>
                   <td className="px-4 py-3 text-sm text-right text-gray-900">
                     {balance.age_period === 0 ? 'Current' : `${balance.age_period} days`}

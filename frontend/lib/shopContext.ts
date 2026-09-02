@@ -13,6 +13,7 @@ export interface Shop {
   logo?: string | null;
   address?: string | null;
   phone?: string | null;
+  email?: string | null;
 }
 
 /**

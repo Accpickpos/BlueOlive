@@ -383,6 +383,24 @@ class Tenant(models.Model):
         max_length=100, blank=True, help_text="Stripe customer ID for this tenant"
     )
 
+    # Optional per-tenant addons (see settings.OPTIONAL_ADDON_APPS). Only a
+    # subset of SHOP_APP_LABELS - everything else is mandatory core and always
+    # migrated regardless of this list.
+    enabled_addons = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Subset of settings.OPTIONAL_ADDON_APPS enabled for this tenant",
+    )
+
+    # Stock Consolidation (inter-branch stock transfers, apps.stock_control
+    # BranchTransfer/BranchTransferItem/BranchTransferInvoice) is a
+    # sub-feature of the mandatory stock_control app, not a whole optional
+    # app - so it gets its own flag rather than living in enabled_addons.
+    enable_stock_consolidation = models.BooleanField(
+        default=True,
+        help_text="Allow inter-branch stock transfers (Stock Consolidation) for this tenant",
+    )
+
     class Meta:
         verbose_name = "Tenant"
 
@@ -393,6 +411,26 @@ class Tenant(models.Model):
     def clean(self):
         if not self.subdomain:
             raise ValidationError("Subdomain is required for tenant isolation.")
+
+        from django.conf import settings as django_settings
+
+        allowed = set(getattr(django_settings, "OPTIONAL_ADDON_APPS", []))
+        enabled = set(self.enabled_addons or [])
+        unknown = enabled - allowed
+        if unknown:
+            raise ValidationError(
+                f"Unknown addon(s): {', '.join(sorted(unknown))}. "
+                f"Must be a subset of {sorted(allowed)}."
+            )
+
+        dependencies = getattr(django_settings, "ADDON_DEPENDENCIES", {})
+        for addon, required in dependencies.items():
+            if addon in enabled:
+                missing = [r for r in required if r not in enabled]
+                if missing:
+                    raise ValidationError(
+                        f"Addon '{addon}' requires {missing} to also be enabled."
+                    )
 
     def __str__(self):
         return self.name
@@ -424,6 +462,9 @@ class Shop(models.Model):
     )
     phone = models.CharField(
         max_length=20, blank=True, null=True, help_text="Shop phone number"
+    )
+    email = models.EmailField(
+        blank=True, null=True, help_text="Shop email address for documents"
     )
     logo = models.ImageField(
         upload_to="shop_logos/",

@@ -9,8 +9,10 @@ aggregation payload, not a serialized model list — there's no single
 queryset/serializer pair to hang a ViewSet off.
 """
 
+import csv
 from decimal import Decimal
 
+from django.http import HttpResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -47,6 +49,21 @@ def _income_flow(account: GLMast, curperiod: int) -> Decimal:
     for p in range(1, curperiod + 1):
         total += getattr(account, f"period{p}")
     return total
+
+
+def _rows_to_csv(filename: str, fieldnames, rows) -> HttpResponse:
+    """Shared CSV export for the three report endpoints below (the manual's
+    'Export to Spreadsheet' options on Trial Balance/Income Statement/
+    Balance Sheet, and the dedicated Utilities > Export Trial Balance to
+    Spreadsheet). Plain csv.DictWriter over the same row dicts the JSON
+    response already builds — no separate formatting path to keep in sync."""
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    writer = csv.DictWriter(response, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(row)
+    return response
 
 
 @api_view(["GET"])
@@ -93,6 +110,14 @@ def trial_balance(request):
             }
         )
 
+    if request.query_params.get("format") == "csv":
+        rows.append({"accno": "", "name": "TOTAL", "drorcr": "", "debit": float(total_debit), "credit": float(total_credit)})
+        return _rows_to_csv(
+            f"trial-balance-period{curperiod}.csv",
+            ["accno", "name", "drorcr", "debit", "credit"],
+            rows,
+        )
+
     return Response(
         {
             "report_title": "Trial Balance",
@@ -106,25 +131,78 @@ def trial_balance(request):
     )
 
 
-def _build_financial_report(report_type: str, curperiod: int):
-    """
-    The Pastel-style report-writer traversal shared by Income Statement and
-    Balance Sheet. GLRep rows for the requested type are walked in strictly
-    ascending `line` order, maintaining computed[line_number] for every row
-    already processed.
+#: Income Statement display modes documented in the manual (7. General
+#: Ledger, Enquiries > 5. Income Statement): Current Period+YTD, Current
+#: Period+Last Year, Current Period+Budget, Budgeted Values-12 Months,
+#: Budget Variance, Actual Values-12 Months. "current" (this module's
+#: original single-column behavior) is kept as the default for backward
+#: compatibility with existing callers.
+INCOME_STATEMENT_MODES = {
+    "current",
+    "current_ytd",
+    "current_last_year",
+    "current_budget",
+    "budget_12",
+    "variance",
+    "actual_12",
+}
 
-    THE CRITICAL PITFALL (spelled out because it's the classic bug in this
-    kind of report-writer): a "D" (Detail) row's start/endcalc are GLMast
-    .repline values — the chart of accounts' own numbering. A row of type
-    "H"/"T"/"S" (Heading/Total/Subtotal)'s start/endcalc are GLRep.line
-    values of OTHER, EARLIER report rows — the report layout's own
-    numbering. These are two independent 1-9999 namespaces that only
-    coincidentally share the same validator range. Summing GLMast.repline
-    for a Total row (or vice versa) silently produces a nonsense number
-    that still looks plausible — always branch on fieldtype before deciding
-    which namespace start/endcalc refers to.
+
+def _account_columns(account: GLMast, curperiod: int, mode: str) -> dict:
     """
-    rows = list(GLRep.objects.filter(type=report_type).order_by("line"))
+    The named numeric column(s) one GLMast account contributes under a given
+    Income Statement mode. Every mode returns a dict (even "current", which
+    has always returned a single "amount" key) so _build_income_statement
+    can sum columns generically regardless of mode.
+    """
+
+    def flow(prefix, n):
+        return getattr(account, f"{prefix}{n}")
+
+    def ytd(prefix, upto):
+        return sum((flow(prefix, p) for p in range(1, upto + 1)), Decimal("0.00"))
+
+    if mode == "current":
+        return {"amount": _income_flow(account, curperiod)}
+    if mode == "current_ytd":
+        return {"current": flow("period", curperiod), "ytd": ytd("period", curperiod)}
+    if mode == "current_last_year":
+        return {
+            "current": flow("period", curperiod),
+            "last_year": flow("lastyear", curperiod),
+            "ytd": ytd("period", curperiod),
+            "last_year_ytd": ytd("lastyear", curperiod),
+        }
+    if mode == "current_budget":
+        return {
+            "current": flow("period", curperiod),
+            "budget": flow("budget", curperiod),
+            "ytd": ytd("period", curperiod),
+            "ytd_budget": ytd("budget", curperiod),
+        }
+    if mode == "budget_12":
+        return {f"month{p}": flow("budget", p) for p in range(1, 13)}
+    if mode == "variance":
+        return {
+            "current_variance": flow("period", curperiod) - flow("budget", curperiod),
+            "ytd_variance": ytd("period", curperiod) - ytd("budget", curperiod),
+        }
+    if mode == "actual_12":
+        return {f"month{p}": flow("period", p) for p in range(1, 13)}
+    raise ValueError(f"Unknown income statement mode: {mode!r}")
+
+
+def _build_income_statement(curperiod: int, mode: str):
+    """
+    Same GLRep report-writer traversal as before (see the namespace-pitfall
+    note that used to live on _build_financial_report, still true here: a
+    "D" row's start/endcalc are GLMast.repline values; "H"/"T"/"S" rows'
+    start/endcalc are GLRep.line values of earlier rows — two independent
+    1-9999 namespaces), generalized to sum a dict of named columns per line
+    instead of a single amount, so every INCOME_STATEMENT_MODES layout can
+    share one traversal.
+    """
+    rows = list(GLRep.objects.filter(type="I").order_by("line"))
     computed = {}
     output = []
 
@@ -133,18 +211,52 @@ def _build_financial_report(report_type: str, curperiod: int):
             accounts = GLMast.objects.filter(
                 repline__gte=rep_row.start, repline__lte=rep_row.endcalc
             )
-            if report_type == "I":
-                amount = sum(
-                    _income_flow(a, curperiod) for a in accounts
-                ) or Decimal("0.00")
-            else:
-                amount = sum(
-                    _account_balance(a, curperiod) for a in accounts
-                ) or Decimal("0.00")
+            cols = {}
+            for account in accounts:
+                for key, val in _account_columns(account, curperiod, mode).items():
+                    cols[key] = cols.get(key, Decimal("0.00")) + val
+        elif rep_row.fieldtype in ("H", "T", "S"):
+            cols = {}
+            for line in range(rep_row.start, rep_row.endcalc + 1):
+                for key, val in computed.get(line, {}).items():
+                    cols[key] = cols.get(key, Decimal("0.00")) + val
+        else:
+            cols = {}
+
+        computed[rep_row.line] = cols
+        output.append(
+            {
+                "line": rep_row.line,
+                "fieldtype": rep_row.fieldtype,
+                "name": rep_row.name,
+                "printdet": rep_row.printdet,
+                **{key: float(val) for key, val in cols.items()},
+            }
+        )
+
+    return output
+
+
+def _build_balance_sheet(curperiod: int):
+    """Same traversal as _build_income_statement, single "amount" column
+    only — the manual doesn't document multiple Balance Sheet layouts the
+    way it does for Income Statement."""
+    rows = list(GLRep.objects.filter(type="B").order_by("line"))
+    computed = {}
+    output = []
+
+    for rep_row in rows:
+        if rep_row.fieldtype == "D":
+            accounts = GLMast.objects.filter(
+                repline__gte=rep_row.start, repline__lte=rep_row.endcalc
+            )
+            amount = sum(
+                (_account_balance(a, curperiod) for a in accounts), Decimal("0.00")
+            )
         elif rep_row.fieldtype in ("H", "T", "S"):
             amount = sum(
-                computed.get(line, Decimal("0.00"))
-                for line in range(rep_row.start, rep_row.endcalc + 1)
+                (computed.get(line, Decimal("0.00")) for line in range(rep_row.start, rep_row.endcalc + 1)),
+                Decimal("0.00"),
             )
         else:
             amount = Decimal("0.00")
@@ -160,7 +272,7 @@ def _build_financial_report(report_type: str, curperiod: int):
             }
         )
 
-    return output, computed
+    return output
 
 
 @api_view(["GET"])
@@ -170,17 +282,38 @@ def income_statement(request):
     curperiod = _int_or_none(request.query_params.get("as_of_period")) or (
         param.curperiod if param else 12
     )
+    mode = request.query_params.get("mode", "current")
+    if mode not in INCOME_STATEMENT_MODES:
+        return Response(
+            {"error": f"mode must be one of {sorted(INCOME_STATEMENT_MODES)}"},
+            status=400,
+        )
 
-    output, computed = _build_financial_report("I", curperiod)
+    output = _build_income_statement(curperiod, mode)
     net_result = None
     total_rows = [r for r in output if r["fieldtype"] == "T"]
-    if total_rows:
+    if total_rows and mode == "current":
+        # Only "current" mode has a single "the net result" figure (its one
+        # "amount" column) — existing callers depend on this being a plain
+        # number. Other modes have several columns on their last Total row
+        # (current/ytd/budget/etc, or 12 discrete months) with no single
+        # figure that summarizes them; callers wanting those read them from
+        # "lines" (the last fieldtype="T" row) instead.
         net_result = total_rows[-1]["amount"]
+
+    if request.query_params.get("format") == "csv":
+        columns = sorted({k for r in output for k in r if k not in ("line", "fieldtype", "name", "printdet")})
+        return _rows_to_csv(
+            f"income-statement-{mode}-period{curperiod}.csv",
+            ["line", "fieldtype", "name", *columns],
+            output,
+        )
 
     return Response(
         {
             "report_title": "Income Statement",
             "as_of_period": curperiod,
+            "mode": mode,
             "currentyr": param.currentyr if param else None,
             "lines": output,
             "net_result": net_result,
@@ -197,7 +330,46 @@ def balance_sheet(request):
         param.curperiod if param else 12
     )
 
-    output, computed = _build_financial_report("B", curperiod)
+    output = _build_balance_sheet(curperiod)
+
+    # Assets == Liabilities+Equity tie-out, derived from the accounting
+    # identity rather than from guessing which two GLRep Total rows
+    # represent each side of the format (GLRep has no such field - just a
+    # free-text `name` - so that would have been guesswork). Double-entry
+    # guarantees sum(all Debit-normal balances/flows) ==
+    # sum(all Credit-normal balances/flows) across the WHOLE ledger; split
+    # by account type that rearranges to:
+    #   Total Assets (B, drorcr=D) - Total Liab+Equity (B, drorcr=C)
+    #     == Net Income (I, drorcr=C flows - I, drorcr=D flows)
+    # i.e. Assets == Liab+Equity + Net Income. The "+ Net Income" term is
+    # only zero right after Year End closes P&L into
+    # GLParam.retained_earnings_accno - mid-period it's expected to be
+    # nonzero, which is why this checks the full identity rather than a bare
+    # Assets == Liab+Equity comparison.
+    b_accounts = GLMast.objects.filter(type="B")
+    total_assets = sum(
+        (_account_balance(a, curperiod) for a in b_accounts if a.drorcr == "D"),
+        Decimal("0.00"),
+    )
+    total_liab_equity = sum(
+        (_account_balance(a, curperiod) for a in b_accounts if a.drorcr == "C"),
+        Decimal("0.00"),
+    )
+    i_accounts = GLMast.objects.filter(type="I")
+    net_income = sum(
+        (_income_flow(a, curperiod) for a in i_accounts if a.drorcr == "C"),
+        Decimal("0.00"),
+    ) - sum(
+        (_income_flow(a, curperiod) for a in i_accounts if a.drorcr == "D"),
+        Decimal("0.00"),
+    )
+
+    if request.query_params.get("format") == "csv":
+        return _rows_to_csv(
+            f"balance-sheet-period{curperiod}.csv",
+            ["line", "fieldtype", "name", "amount"],
+            output,
+        )
 
     return Response(
         {
@@ -205,12 +377,10 @@ def balance_sheet(request):
             "as_of_period": curperiod,
             "currentyr": param.currentyr if param else None,
             "lines": output,
-            # A real Assets == Liabilities+Equity tie-out requires knowing
-            # which two Total rows represent each side of the format, which
-            # is a convention of the seeded GLRep data, not something this
-            # traversal can infer generically. Left as a TODO until
-            # Maintenance data for GLRep (type="B") is seeded and that
-            # convention is confirmed.
+            "total_assets": float(total_assets),
+            "total_liabilities_and_equity": float(total_liab_equity),
+            "net_income": float(net_income),
+            "is_balanced": total_assets == total_liab_equity + net_income,
             "is_seeded": bool(output),
         }
     )

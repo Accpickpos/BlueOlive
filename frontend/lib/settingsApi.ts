@@ -51,8 +51,8 @@ export interface IncomeCategory {
 
 export interface ExpenseCategory {
   id: number;
-  category_number: string;
-  number?: string;
+  category_number?: string;
+  number?: number;
   name: string;
   description?: string;
   category_type?: string;

@@ -1,6 +1,48 @@
 from apps.settings.models import TimeStampedModel
 from django.conf import settings
 from django.db import models
+from tenancy.models import EncryptedCharField
+
+
+class StockFinderConfig(TimeStampedModel):
+    """
+    Per-shop Stockfinder integration settings (base URL, credentials, sync
+    behavior). Whether Stockfinder is available to this tenant AT ALL is a
+    separate, tenant-level decision (Tenant.enabled_addons, enforced by
+    tenancy.middleware.AddonAccessMiddleware) - this model only holds the
+    per-shop configuration values once the addon is enabled.
+    """
+
+    name = models.CharField(max_length=100, help_text="Label for this configuration")
+    base_url = models.URLField(help_text="Stockfinder API base URL")
+    api_key = EncryptedCharField(max_length=255, blank=True)
+    api_secret = EncryptedCharField(max_length=255, blank=True)
+    fitment_center_code = models.CharField(
+        max_length=100, blank=True, help_text="This shop's Stockfinder fitment-center code"
+    )
+    auto_sync_stock = models.BooleanField(
+        default=False, help_text="Periodically push this shop's stock catalog to Stockfinder"
+    )
+    sync_interval_minutes = models.PositiveIntegerField(default=60)
+    last_sync = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    enable_custom_pricing = models.BooleanField(default=False)
+    custom_price_field_1 = models.CharField(max_length=50, blank=True)
+    custom_price_field_2 = models.CharField(max_length=50, blank=True)
+    custom_price_field_3 = models.CharField(max_length=50, blank=True)
+    webhook_enabled = models.BooleanField(default=True)
+    webhook_secret = EncryptedCharField(
+        max_length=255,
+        blank=True,
+        help_text="Per-shop HMAC secret Stockfinder signs webhook payloads with",
+    )
+
+    class Meta:
+        verbose_name = "Stockfinder Configuration"
+        verbose_name_plural = "Stockfinder Configurations"
+
+    def __str__(self):
+        return self.name
 
 
 class StockFinderSalesOrder(TimeStampedModel):
@@ -96,6 +138,10 @@ class StockFinderSalesOrderLine(TimeStampedModel):
     local_stock_item = models.ForeignKey(
         "stock_control.StockItem", on_delete=models.SET_NULL, null=True, blank=True
     )
+    unmatched = models.BooleanField(
+        default=False,
+        help_text="True if stock_code (or barcode fallback) matched no local StockItem",
+    )
 
     class Meta:
         verbose_name = "Stockfinder Order Line"
@@ -175,6 +221,15 @@ class StockFinderPurchaseOrderLine(TimeStampedModel):
     unit_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     line_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     quantity_received = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+    # Link to local
+    local_stock_item = models.ForeignKey(
+        "stock_control.StockItem", on_delete=models.SET_NULL, null=True, blank=True
+    )
+    unmatched = models.BooleanField(
+        default=False,
+        help_text="True if stock_code (or barcode fallback) matched no local StockItem",
+    )
 
     class Meta:
         verbose_name = "Stockfinder PO Line"

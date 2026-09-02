@@ -9,6 +9,8 @@ export interface Shop {
   schema_name: string;
   is_head_office: boolean;
   is_current: boolean;
+  enabled_addons: string[];
+  enable_stock_consolidation: boolean;
 }
 
 export interface User {
@@ -26,6 +28,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  isAccountant: boolean;
   setUser: (user: User | null) => void;
   refetch: () => Promise<void>;
   // Shop-related properties
@@ -35,6 +38,12 @@ interface AuthContextType {
   refetchShops: () => Promise<void>;
   // Subscribe to shop changes - useful for auto-refreshing data
   onShopChange: (callback: (shop: Shop) => void) => () => void;
+  // Tenant-level optional addons (cash_book/general_ledger/gas/stockfinder) -
+  // same list on every shop (Tenant.enabled_addons is tenant-wide, not per-shop)
+  hasAddon: (addon: string) => boolean;
+  // Tenant-wide toggle for Stock Consolidation (inter-branch transfers) -
+  // same value on every shop (Tenant.enable_stock_consolidation)
+  stockConsolidationEnabled: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -125,6 +134,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const hasAddon = useCallback((addon: string) => {
+    return (currentShop?.enabled_addons ?? accessibleShops[0]?.enabled_addons ?? []).includes(addon);
+  }, [currentShop, accessibleShops]);
+
+  const stockConsolidationEnabled =
+    currentShop?.enable_stock_consolidation ?? accessibleShops[0]?.enable_stock_consolidation ?? true;
+
   const switchShop = useCallback(async (shopId: number) => {
     try {
       const response = await apiRequest('/api/v1/tenants/switch-shop/', {
@@ -204,6 +220,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     isAuthenticated: user !== null,
     isAdmin: user?.is_admin || false,
+    isAccountant: user?.role === 'ACCOUNTANT',
     setUser,
     refetch,
     currentShop,
@@ -211,6 +228,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     switchShop,
     refetchShops,
     onShopChange,
+    hasAddon,
+    stockConsolidationEnabled,
   };
 
   return (

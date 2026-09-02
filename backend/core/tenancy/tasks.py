@@ -11,7 +11,7 @@ from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 from tenancy.models import Shop, Tenant
-from tenancy.shop_manager import create_shop_schema
+from tenancy.shop_manager import create_shop_schema, provision_addon_for_tenant
 from tenancy.utils import register_tenant_connection
 
 logger = logging.getLogger(__name__)
@@ -215,6 +215,37 @@ def complete_tenant_signup_async(
                 f"[CELERY] Max retries exceeded completing signup for tenant {tenant_id}"
             )
             return f"Failed to complete signup for tenant {tenant_id} after max retries"
+
+
+@shared_task(bind=True, max_retries=3, acks_late=True)
+def provision_addon_async(self, tenant_id, addon_label):
+    """
+    Async task to retroactively migrate a newly-enabled addon into every
+    existing shop schema for a tenant. Triggered by the platform-owner
+    TenantViewSet when enabled_addons grows for an already-provisioned
+    tenant (see apps/saas_admin/tenant_views.py).
+
+    acks_late=True + idempotent for the same reason as setup_shop_schema_async
+    below (migrate_shop_apps only applies pending migrations).
+    """
+    try:
+        tenant = Tenant.objects.get(id=tenant_id)
+        register_tenant_connection(tenant)
+        provision_addon_for_tenant(tenant, addon_label)
+        logger.info(
+            f"[CELERY] Provisioned addon '{addon_label}' for tenant {tenant_id}"
+        )
+        return f"Addon {addon_label} provisioned for tenant {tenant_id}"
+    except Tenant.DoesNotExist:
+        logger.error(f"[CELERY] Tenant {tenant_id} not found for addon provisioning")
+        return f"Tenant {tenant_id} not found"
+    except Exception as e:
+        logger.error(
+            f"[CELERY] Error provisioning addon '{addon_label}' for tenant "
+            f"{tenant_id}: {e}",
+            exc_info=True,
+        )
+        raise self.retry(exc=e, countdown=5 * (2**self.request.retries))
 
 
 @shared_task(bind=True, max_retries=3, acks_late=True)

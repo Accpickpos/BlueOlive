@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import ShopsListPanel from '@/components/ShopsListPanel';
 import UsersListPanel from '@/components/UsersListPanel';
+import OwnerRoute from '@/components/OwnerRoute';
 
 function AdminPageContent() {
   const [refreshKey, setRefreshKey] = useState(0);
@@ -34,34 +35,36 @@ function AdminPageContent() {
   };
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-gray-900">Admin Panel</h1>
-      
-      {/* Status Messages */}
-      {statusMessage && (
-        <div className={`p-4 rounded-lg ${
-          statusMessage.type === 'success' 
-            ? 'bg-green-50 text-green-800 border border-green-200' 
-            : 'bg-blue-50 text-blue-800 border border-blue-200'
-        }`}>
-          <div className="flex items-center justify-between">
-            <span>{statusMessage.message}</span>
-            <button 
-              onClick={() => setStatusMessage(null)}
-              className="text-current opacity-60 hover:opacity-100"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
-      
-      {/* Shops List */}
-      <ShopsListPanel refreshKey={refreshKey} />
+    <OwnerRoute>
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold text-gray-900">Admin Panel</h1>
 
-      {/* Users List */}
-      <UsersListPanel refreshKey={refreshKey} />
-    </div>
+        {/* Status Messages */}
+        {statusMessage && (
+          <div className={`p-4 rounded-lg ${
+            statusMessage.type === 'success'
+              ? 'bg-green-50 text-green-800 border border-green-200'
+              : 'bg-blue-50 text-blue-800 border border-blue-200'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span>{statusMessage.message}</span>
+              <button
+                onClick={() => setStatusMessage(null)}
+                className="text-current opacity-60 hover:opacity-100"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Shops List */}
+        <ShopsListPanel refreshKey={refreshKey} />
+
+        {/* Users List */}
+        <UsersListPanel refreshKey={refreshKey} />
+      </div>
+    </OwnerRoute>
   );
 }
 

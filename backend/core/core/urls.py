@@ -55,6 +55,21 @@ class LoginRequiredTemplateView(LoginRequiredMixin, TemplateView):
     pass
 
 
+# SECURITY: Tenant staff/admin/manager/accountant users all get is_staff=True
+# (see ShopUser.save()), which is Django admin's default login requirement.
+# Restrict /admin/ to real platform superusers so tenant users can never
+# reach it, even with valid credentials.
+def _require_superuser(self, request):
+    return bool(
+        request.user
+        and request.user.is_active
+        and request.user.is_superuser
+    )
+
+
+admin.site.has_permission = _require_superuser.__get__(admin.site, type(admin.site))
+
+
 # API v1 routes - All endpoints versioned under /api/v1/
 v1_api_patterns = [
     # Platform Management

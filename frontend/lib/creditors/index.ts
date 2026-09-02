@@ -14,6 +14,11 @@
 
 'use client';
 
+import { creditorsMasterApi } from './master';
+import { creditorsTransactionsApi } from './transactions';
+import { creditorsDocumentsApi } from './documents';
+import { creditorsReportingApi } from './reporting';
+
 // Re-export all modules
 export { creditorsMasterApi } from './master';
 export { creditorsTransactionsApi } from './transactions';
@@ -45,30 +50,30 @@ export type {
  */
 export const creditorsApi = {
   // Master data
-  accounts: require('./master').creditorsMasterApi.accounts,
-  summary: require('./master').creditorsMasterApi.summary,
+  accounts: creditorsMasterApi.accounts,
+  summary: creditorsMasterApi.summary,
 
   // Transactions
-  transactions: require('./transactions').creditorsTransactionsApi.transactions,
-  journals: require('./transactions').creditorsTransactionsApi.journals,
-  payments: require('./transactions').creditorsTransactionsApi.payments,
-  openItems: require('./transactions').creditorsTransactionsApi.openItems,
-  openItemAllocations: require('./transactions').creditorsTransactionsApi.openItemAllocations,
-  openItemAudits: require('./transactions').creditorsTransactionsApi.openItemAudits,
+  transactions: creditorsTransactionsApi.transactions,
+  journals: creditorsTransactionsApi.journals,
+  payments: creditorsTransactionsApi.payments,
+  openItems: creditorsTransactionsApi.openItems,
+  openItemAllocations: creditorsTransactionsApi.openItemAllocations,
+  openItemAudits: creditorsTransactionsApi.openItemAudits,
 
   // Documents
-  grns: require('./documents').creditorsDocumentsApi.grns,
-  invoices: require('./documents').creditorsDocumentsApi.invoices,
-  creditNotes: require('./documents').creditorsDocumentsApi.creditNotes,
-  rfc: require('./documents').creditorsDocumentsApi.rfc,
+  grns: creditorsDocumentsApi.grns,
+  invoices: creditorsDocumentsApi.invoices,
+  creditNotes: creditorsDocumentsApi.creditNotes,
+  rfc: creditorsDocumentsApi.rfc,
 
   // Reporting
-  ledger: require('./reporting').creditorsReportingApi.ledger,
-  expenseMonthly: require('./reporting').creditorsReportingApi.expenseMonthly,
-  expenseTransactions: require('./reporting').creditorsReportingApi.expenseTransactions,
-  paymentOrders: require('./reporting').creditorsReportingApi.paymentOrders,
-  expenseCategories: require('./reporting').creditorsReportingApi.expenseCategories,
-  outstandingBalances: require('./reporting').creditorsReportingApi.outstandingBalances,
+  ledger: creditorsReportingApi.ledger,
+  expenseMonthly: creditorsReportingApi.expenseMonthly,
+  expenseTransactions: creditorsReportingApi.expenseTransactions,
+  paymentOrders: creditorsReportingApi.paymentOrders,
+  expenseCategories: creditorsReportingApi.expenseCategories,
+  outstandingBalances: creditorsReportingApi.outstandingBalances,
 };
 
 export default creditorsApi;

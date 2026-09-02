@@ -6,16 +6,23 @@ Endpoints for creating and managing tenant users (app managers/admins)
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from rest_framework import status, viewsets
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import (
+    action,
+    api_view,
+    authentication_classes,
+    permission_classes,
+)
 from rest_framework.response import Response
 from tenancy.models import Shop, Tenant
 
+from .auth import PlatformOwnerJWTAuthentication
 from .permissions import IsPlatformSuperuser
 
 User = get_user_model()
 
 
 @api_view(["POST"])
+@authentication_classes([PlatformOwnerJWTAuthentication])
 @permission_classes([IsPlatformSuperuser])
 def create_tenant_admin(request):
     """
@@ -130,6 +137,7 @@ def create_tenant_admin(request):
 
 
 @api_view(["GET", "POST"])
+@authentication_classes([PlatformOwnerJWTAuthentication])
 @permission_classes([IsPlatformSuperuser])
 def list_tenant_users(request):
     """
@@ -210,6 +218,7 @@ def list_tenant_users(request):
 
 
 @api_view(["POST"])
+@authentication_classes([PlatformOwnerJWTAuthentication])
 @permission_classes([IsPlatformSuperuser])
 def toggle_user_status(request):
     """
@@ -257,6 +266,7 @@ def toggle_user_status(request):
 
 
 @api_view(["POST"])
+@authentication_classes([PlatformOwnerJWTAuthentication])
 @permission_classes([IsPlatformSuperuser])
 def reset_user_password(request):
     """
@@ -298,6 +308,7 @@ def reset_user_password(request):
 
 
 @api_view(["POST"])
+@authentication_classes([PlatformOwnerJWTAuthentication])
 @permission_classes([IsPlatformSuperuser])
 def assign_user_shops(request):
     """

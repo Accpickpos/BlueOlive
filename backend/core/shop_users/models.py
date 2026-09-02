@@ -45,9 +45,10 @@ class ShopUser(AbstractUser):
     # Role field - simplified to 4 core roles matching API specification
     ROLE_CHOICES = [
         ("ADMIN", "Admin - Full tenant access"),
-        ("MANAGER", "Manager - Can manage shop users"),
+        ("MANAGER", "Manager - Manages a single shop"),
+        ("ACCOUNTANT", "Accountant - Cross-shop financial access"),
         ("STAFF", "Staff - Staff member with limited access"),
-        ("CASHIER", "Cashier - Basic access"),
+        ("CASHIER", "Cashier - Till operator, single shop"),
     ]
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="CASHIER")
 
@@ -101,10 +102,11 @@ class ShopUser(AbstractUser):
 
     def has_shop_access(self, shop_id):
         """Check if user has access to a specific shop."""
-        # Admins and managers have access to all shops in their tenant
-        if self.is_superuser or self.role in ("ADMIN", "MANAGER"):
+        # Admins have tenant-wide access; accountants can switch between
+        # every shop in the tenant to review finances across branches.
+        # Managers, staff and cashiers are scoped to their assigned shops only.
+        if self.is_superuser or self.role in ("ADMIN", "ACCOUNTANT"):
             return True
-        # Other users only have access to assigned shops
         return shop_id in self.shop_ids
 
     def can_edit_user(self, other_user):
@@ -162,7 +164,7 @@ class ShopUser(AbstractUser):
         role = (
             getattr(self, "role", "CASHIER") or "CASHIER"
         )  # Default to CASHIER if not set
-        self.is_staff = role in ("ADMIN", "MANAGER", "STAFF")
+        self.is_staff = role in ("ADMIN", "MANAGER", "ACCOUNTANT", "STAFF")
 
         if not self.tenant_id and not self.is_superuser:
             from tenancy.tenant_context import get_current_tenant
@@ -246,10 +248,11 @@ class ShopUser(AbstractUser):
 
         logger = logging.getLogger(__name__)
 
-        # Admins have access to all shops in their tenant
-        if self.is_superuser or self.role == "ADMIN":
+        # Admins and accountants have access to all shops in their tenant
+        # (accountants need to switch between shops to review finances)
+        if self.is_superuser or self.role in ("ADMIN", "ACCOUNTANT"):
             logger.debug(
-                f"[get_active_shops] User {self.id} is admin, returning all tenant shops"
+                f"[get_active_shops] User {self.id} is admin/accountant, returning all tenant shops"
             )
             if not self.tenant_id:
                 return Shop.objects.none()
@@ -311,8 +314,8 @@ class ShopUser(AbstractUser):
         """
         from tenancy.models import Shop
 
-        # Admins can access any shop in their tenant
-        if self.is_superuser or self.role == "ADMIN":
+        # Admins and accountants can access any shop in their tenant
+        if self.is_superuser or self.role in ("ADMIN", "ACCOUNTANT"):
             shop = (
                 Shop.objects.using("default").filter(id=shop_id, is_active=True).first()
             )

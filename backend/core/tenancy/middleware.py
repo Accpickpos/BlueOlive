@@ -515,6 +515,47 @@ class TenantMiddleware:
         return None
 
 
+class AddonAccessMiddleware:
+    """
+    Blocks requests to an optional-addon app's URL prefix (cash_book,
+    general_ledger, gas, stockfinder - see settings.OPTIONAL_ADDON_APPS) for
+    a tenant that hasn't enabled it.
+
+    Placed after TenantMiddleware in MIDDLEWARE so request.tenant is already
+    set. Gates at the URL layer (rather than each app's own permission
+    classes) because core/urls.py wires every app's routes unconditionally
+    for every request - a disabled addon's tables may not even exist in a
+    given tenant's shop schema, so without this the first query would 500
+    with ProgrammingError instead of a clean 403.
+
+    Runs BEFORE authentication, so an unauthenticated caller (e.g. the
+    Stockfinder webhook, which is AllowAny) is still gated correctly -
+    request.tenant is resolved from the Host header regardless of auth.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+        self.prefix_map = getattr(settings, "ADDON_URL_PREFIXES", {})
+
+    def __call__(self, request):
+        addon = self._required_addon(request.path)
+        if addon:
+            tenant = getattr(request, "tenant", None)
+            enabled = getattr(tenant, "enabled_addons", None) or []
+            if not tenant or addon not in enabled:
+                return JsonResponse(
+                    {"error": f"The '{addon}' addon is not enabled for this account."},
+                    status=403,
+                )
+        return self.get_response(request)
+
+    def _required_addon(self, path):
+        for addon, prefixes in self.prefix_map.items():
+            if any(path.startswith(prefix) for prefix in prefixes):
+                return addon
+        return None
+
+
 class TenantRequiredMiddleware:
     """
     Middleware to enforce that a valid tenant must be identified.
