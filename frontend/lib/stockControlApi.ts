@@ -40,6 +40,7 @@ import type {
   PaginatedBranches,
   BranchStock,
   PaginatedBranchStock,
+  ConsolidatedStockItem,
   GroupOrder,
   GroupOrderItem,
   PaginatedGroupOrders,
@@ -1028,6 +1029,22 @@ export const stockControlApi = {
       const response = await api.get<BranchStock[]>(
         ENDPOINTS.STOCK_CONTROL.BRANCH_STOCK_LOW,
         { params: branchCode ? { branch: branchCode } : undefined }
+      );
+      return response.data;
+    },
+
+    /**
+     * On-hand quantity per stock item across every branch, with a
+     * per-branch breakdown and a grand total. Only available when called
+     * with the HQ branch's code - the backend 403s for any other branch.
+     */
+    getConsolidated: async (hqBranchCode: string, search?: string) => {
+      const response = await api.get<{
+        results?: ConsolidatedStockItem[];
+        count?: number;
+      } | ConsolidatedStockItem[]>(
+        ENDPOINTS.STOCK_CONTROL.BRANCH_STOCK_CONSOLIDATED,
+        { params: { branch: hqBranchCode, search } }
       );
       return response.data;
     },

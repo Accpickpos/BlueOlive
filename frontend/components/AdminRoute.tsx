@@ -15,14 +15,15 @@ interface AdminRouteProps {
  * Protects routes that require admin access
  * Shows access denied message for non-admin users (logged in as regular user)
  * Shows login required message for unauthenticated users
- * 
+ *
  * Usage:
  * <AdminRoute>
  *   <AdminPanel />
  * </AdminRoute>
  */
 export default function AdminRoute({ children }: AdminRouteProps) {
-  const { user, isLoading, isAdmin } = useAuthContext();
+  const { user, isLoading, isAdmin, isAccountant } = useAuthContext();
+  const hasAccess = isAdmin || isAccountant;
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
 
@@ -58,7 +59,7 @@ export default function AdminRoute({ children }: AdminRouteProps) {
   }
 
   // If we get here, we're mounted and auth check is complete
-  console.log('AdminRoute check:', { user: user?.username, isAdmin, isLoading });
+  console.log('AdminRoute check:', { user: user?.username, isAdmin, isAccountant, isLoading });
 
   if (isLoading) {
     return (
@@ -88,7 +89,7 @@ export default function AdminRoute({ children }: AdminRouteProps) {
             <h1 className="text-3xl font-bold text-gray-900 mb-2 text-center">Admin Access Required</h1>
             
             <p className="text-gray-600 mb-6 text-center">
-              This page is restricted to administrators only. You need to log in with an admin account to access this area.
+              This page is restricted to administrators and accountants. You need to log in with an admin or accountant account to access this area.
             </p>
 
             <div className="space-y-3 mb-6">
@@ -120,8 +121,8 @@ export default function AdminRoute({ children }: AdminRouteProps) {
     );
   }
 
-  // User authenticated but not admin - show access denied message
-  if (!isAdmin) {
+  // User authenticated but lacks admin/accountant access - show access denied message
+  if (!hasAccess) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 to-orange-50 px-4">
         <div className="max-w-md w-full">
@@ -131,11 +132,11 @@ export default function AdminRoute({ children }: AdminRouteProps) {
                 <AlertCircle className="h-12 w-12 text-red-600" />
               </div>
             </div>
-            
+
             <h1 className="text-3xl font-bold text-gray-900 mb-2 text-center">Access Denied</h1>
-            
+
             <p className="text-gray-600 mb-2 text-center">
-              You need to <strong>login as an admin</strong> to access this page.
+              You need to <strong>login as an admin or accountant</strong> to access this page.
             </p>
 
             <p className="text-sm text-gray-500 mb-6 text-center">

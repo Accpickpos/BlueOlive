@@ -478,6 +478,15 @@ def get_accessible_shops(request):
         if not current_shop_id:
             current_shop_id = request.session.get("current_shop_id")
 
+        # enabled_addons is tenant-wide (not per-shop - see Tenant.enabled_addons),
+        # so the same list is attached to every shop here rather than reshaping
+        # this endpoint's response from a bare array to a wrapper object.
+        current_tenant = get_current_tenant()
+        enabled_addons = list(getattr(current_tenant, "enabled_addons", None) or [])
+        enable_stock_consolidation = getattr(
+            current_tenant, "enable_stock_consolidation", True
+        )
+
         shop_list = [
             {
                 "id": shop.id,
@@ -485,6 +494,8 @@ def get_accessible_shops(request):
                 "schema_name": shop.schema_name,
                 "is_head_office": shop.is_head_office,
                 "is_current": shop.id == current_shop_id,
+                "enabled_addons": enabled_addons,
+                "enable_stock_consolidation": enable_stock_consolidation,
             }
             for shop in shops
         ]

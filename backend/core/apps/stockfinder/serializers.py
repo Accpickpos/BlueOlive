@@ -1,11 +1,49 @@
 from rest_framework import serializers
 
 from .models import (
+    StockFinderConfig,
     StockFinderPurchaseOrder,
     StockFinderPurchaseOrderLine,
     StockFinderSalesOrder,
     StockFinderSalesOrderLine,
 )
+
+
+class StockFinderConfigSerializer(serializers.ModelSerializer):
+    """
+    Per-shop Stockfinder settings. api_key/api_secret/webhook_secret are
+    write-only - they're encrypted at rest (EncryptedCharField) and should
+    never round-trip back to the browser once saved.
+    """
+
+    class Meta:
+        model = StockFinderConfig
+        fields = [
+            "id",
+            "name",
+            "base_url",
+            "api_key",
+            "api_secret",
+            "fitment_center_code",
+            "auto_sync_stock",
+            "sync_interval_minutes",
+            "last_sync",
+            "is_active",
+            "enable_custom_pricing",
+            "custom_price_field_1",
+            "custom_price_field_2",
+            "custom_price_field_3",
+            "webhook_enabled",
+            "webhook_secret",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "last_sync", "created_at", "updated_at"]
+        extra_kwargs = {
+            "api_key": {"write_only": True},
+            "api_secret": {"write_only": True},
+            "webhook_secret": {"write_only": True},
+        }
 
 
 class StockFinderSalesOrderLineSerializer(serializers.ModelSerializer):

@@ -24,7 +24,11 @@ export const ENDPOINTS = {
   // ===== USERS =====
   USERS: {
     BASE: `${API_V1_BASE}/users/users/`,
-    SUPERUSERS: `${API_V1_BASE}/users/admin/superusers/`,
+    // Platform superuser accounts (not tenant users) - platform-owner only.
+    SUPERUSERS: `${API_V1_BASE}/users/auth/admin/superusers/`,
+    SUPERUSER_DETAIL: (id: number | string) => `${API_V1_BASE}/users/auth/admin/superusers/${id}/`,
+    SUPERUSER_SET_PASSWORD: (id: number | string) => `${API_V1_BASE}/users/auth/admin/superusers/${id}/set_password/`,
+    SUPERUSER_TOGGLE_ACTIVE: (id: number | string) => `${API_V1_BASE}/users/auth/admin/superusers/${id}/toggle_active/`,
   },
 
   // ===== TENANTS/SHOPS =====
@@ -36,8 +40,26 @@ export const ENDPOINTS = {
     ALL_SHOPS: `${API_V1_BASE}/tenants/all_shops/`,
   },
 
-  // ===== SAAS ADMIN =====
+  // ===== SAAS ADMIN (platform owner only) =====
   SAAS_ADMIN: {
+    AUTH_LOGIN: `${API_V1_BASE}/saas-admin/auth/login/`,
+    AUTH_LOGOUT: `${API_V1_BASE}/saas-admin/auth/logout/`,
+    AUTH_PROFILE: `${API_V1_BASE}/saas-admin/auth/profile/`,
+    AUTH_TOKEN_REFRESH: `${API_V1_BASE}/saas-admin/auth/token/refresh/`,
+    TENANTS: `${API_V1_BASE}/saas-admin/tenants/`,
+    TENANT_DETAIL: (id: number | string) => `${API_V1_BASE}/saas-admin/tenants/${id}/`,
+    TENANT_ACTIVATE: (id: number | string) => `${API_V1_BASE}/saas-admin/tenants/${id}/activate/`,
+    TENANT_DEACTIVATE: (id: number | string) => `${API_V1_BASE}/saas-admin/tenants/${id}/deactivate/`,
+    SHOPS: `${API_V1_BASE}/saas-admin/shops/`,
+    SHOP_DETAIL: (id: number | string) => `${API_V1_BASE}/saas-admin/shops/${id}/`,
+    SHOP_ACTIVATE: (id: number | string) => `${API_V1_BASE}/saas-admin/shops/${id}/activate/`,
+    SHOP_DEACTIVATE: (id: number | string) => `${API_V1_BASE}/saas-admin/shops/${id}/deactivate/`,
+    TENANT_STATS: `${API_V1_BASE}/saas-admin/tenant-stats/`,
+    USERS_CREATE_ADMIN: `${API_V1_BASE}/saas-admin/users/create-admin/`,
+    USERS_LIST: `${API_V1_BASE}/saas-admin/users/`,
+    USERS_TOGGLE_STATUS: `${API_V1_BASE}/saas-admin/users/toggle-status/`,
+    USERS_RESET_PASSWORD: `${API_V1_BASE}/saas-admin/users/reset-password/`,
+    USERS_ASSIGN_SHOPS: `${API_V1_BASE}/saas-admin/users/assign-shops/`,
     IMPORT_TENANTS: `${API_V1_BASE}/saas-admin/import/tenants/`,
     IMPORT_ANALYZE: `${API_V1_BASE}/saas-admin/import/analyze/`,
     IMPORT_EXECUTE: `${API_V1_BASE}/saas-admin/import/execute/`,
@@ -279,6 +301,7 @@ export const ENDPOINTS = {
     BRANCH_DETAIL:              (code: string) => `${API_V1_BASE}/stock-control/branches/${code}/`,
     BRANCH_STOCK_LEVELS:        (code: string) => `${API_V1_BASE}/stock-control/branches/${code}/stock/`,
     BRANCH_STOCK_LOW:           `${API_V1_BASE}/stock-control/branch-stock/low-stock/`,
+    BRANCH_STOCK_CONSOLIDATED: `${API_V1_BASE}/stock-control/branch-stock/consolidated/`,
 
     // ── Group Order dynamic actions ────────────────────────────────────────
     GROUP_ORDER_RECALC_TOTAL:   (id: number) => `${API_V1_BASE}/stock-control/group-orders/${id}/recalculate-total/`,

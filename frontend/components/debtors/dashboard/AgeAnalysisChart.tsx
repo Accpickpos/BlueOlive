@@ -9,31 +9,34 @@ interface AgeAnalysisChartProps {
 }
 
 export default function AgeAnalysisChart({ summary }: AgeAnalysisChartProps) {
+  const totalReceivable = summary.total_receivable || 0;
+  const pct = (amount: number) => (totalReceivable > 0 ? (amount / totalReceivable) * 100 : 0);
+
   const data = [
     {
       name: 'Current',
       amount: summary.aging_summary?.current || 0,
-      percentage: ((summary.aging_summary?.current || 0) / summary.total_receivable) * 100,
+      percentage: pct(summary.aging_summary?.current || 0),
     },
     {
       name: '0-30 Days',
       amount: summary.aging_summary?.days_30 || 0,
-      percentage: ((summary.aging_summary?.days_30 || 0) / summary.total_receivable) * 100,
+      percentage: pct(summary.aging_summary?.days_30 || 0),
     },
     {
       name: '30-60 Days',
       amount: summary.aging_summary?.days_60 || 0,
-      percentage: ((summary.aging_summary?.days_60 || 0) / summary.total_receivable) * 100,
+      percentage: pct(summary.aging_summary?.days_60 || 0),
     },
     {
       name: '60-90 Days',
       amount: summary.aging_summary?.days_90 || 0,
-      percentage: ((summary.aging_summary?.days_90 || 0) / summary.total_receivable) * 100,
+      percentage: pct(summary.aging_summary?.days_90 || 0),
     },
     {
       name: '120+ Days',
       amount: summary.aging_summary?.days_120_plus || 0,
-      percentage: ((summary.aging_summary?.days_120_plus || 0) / summary.total_receivable) * 100,
+      percentage: pct(summary.aging_summary?.days_120_plus || 0),
     },
   ];
 

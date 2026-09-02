@@ -683,8 +683,8 @@ export interface CreditorsSummary {
 // ── Expense category types (used by Settings API) ─────────────────────────
 export interface ExpenseCategory {
   id:               number;
-  category_number:  string;
-  number?:          string;
+  category_number?: string;
+  number?:          number;
   name:             string;
   category_type?:   string;
   is_active?:       boolean;

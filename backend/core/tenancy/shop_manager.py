@@ -58,8 +58,10 @@ def create_shop_schema(tenant, schema_name):
         except Exception as e:
             logger.warning(f"  Cleanup warning (non-fatal): {e}")
 
-        # Step 3: Migrate shop apps to this schema
-        migrate_shop_apps(tenant, schema_name)
+        # Step 3: Migrate shop apps to this schema (core apps always; optional
+        # addons only if this tenant has them enabled - see
+        # settings.OPTIONAL_ADDON_APPS / Tenant.enabled_addons)
+        migrate_shop_apps(tenant, schema_name, app_labels=enabled_shop_app_labels(tenant))
 
         # Step 4: Fix tel2 column NOT NULL issue for all tables
         logger.info("Step 4: Fixing tel2 column default...")
@@ -72,6 +74,38 @@ def create_shop_schema(tenant, schema_name):
         raise
     finally:
         clear_current_tenant()
+
+
+def enabled_shop_app_labels(tenant):
+    """
+    SHOP_APP_LABELS filtered down to what this tenant should actually get:
+    every mandatory core app, plus whichever OPTIONAL_ADDON_APPS are in
+    tenant.enabled_addons. Filtering the master list (rather than
+    concatenating core + enabled) preserves the ordering constraints already
+    documented on SHOP_APP_LABELS itself (settings first, gas after
+    debtors/stock_control/general_ledger).
+    """
+    all_labels = getattr(settings, "SHOP_APP_LABELS", [])
+    optional = set(getattr(settings, "OPTIONAL_ADDON_APPS", []))
+    enabled = set(getattr(tenant, "enabled_addons", None) or [])
+    return [label for label in all_labels if label not in optional or label in enabled]
+
+
+def provision_addon_for_tenant(tenant, addon_label):
+    """
+    Retroactively migrate a single newly-enabled addon app into every one of
+    a tenant's existing (active) shop schemas. Called when a platform owner
+    flips an addon on for a tenant that was already provisioned - initial
+    provisioning (create_shop_schema) already covers apps enabled at signup
+    time.
+
+    Deliberately one-directional: disabling an addon never un-migrates/drops
+    its tables (destructive, out of scope) - it only stops being reachable
+    (AddonAccessMiddleware) and stops appearing in nav. Its tables sit
+    harmlessly in the schema until/unless re-enabled.
+    """
+    for shop in tenant.shops.filter(is_active=True):
+        migrate_shop_apps(tenant, shop.schema_name, app_labels=[addon_label])
 
 
 def migrate_shop_apps(tenant, schema_name, app_labels=None):

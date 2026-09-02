@@ -75,13 +75,19 @@ from apps.stock_control.models import StockItem, StockTransaction
 from django.db import connections, transaction
 from django.http import StreamingHttpResponse
 from rest_framework import status
-from rest_framework.decorators import api_view, parser_classes, permission_classes
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    parser_classes,
+    permission_classes,
+)
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from tenancy.models import Shop, Tenant
 from tenancy.tenant_context import clear_current, set_current_shop, set_current_tenant
 from tenancy.utils import register_tenant_connection
 
+from .auth import PlatformOwnerJWTAuthentication
 from .permissions import IsPlatformSuperuser
 
 _tl = _threading.local()
@@ -1137,6 +1143,7 @@ def _uoc(manager, lookup, defaults, mode, schema_name=None):
 
 
 @api_view(["GET"])
+@authentication_classes([PlatformOwnerJWTAuthentication])
 @permission_classes([IsPlatformSuperuser])
 def list_tenants_and_shops(request):
     """
@@ -1167,6 +1174,7 @@ def list_tenants_and_shops(request):
 
 
 @api_view(["POST"])
+@authentication_classes([PlatformOwnerJWTAuthentication])
 @permission_classes([IsPlatformSuperuser])
 @parser_classes([MultiPartParser])
 def analyze_csv(request):
@@ -1240,6 +1248,7 @@ def analyze_csv(request):
 
 
 @api_view(["POST"])
+@authentication_classes([PlatformOwnerJWTAuthentication])
 @permission_classes([IsPlatformSuperuser])
 @parser_classes([MultiPartParser])
 def import_csv(request):

@@ -14,6 +14,7 @@ from shop_users.user_management_serializers import (
     UserManagementSerializer,
 )
 from tenancy.permissions import IsAdminUser
+from tenancy.platform_auth import PlatformOwnerJWTAuthentication
 
 User = get_user_model()
 
@@ -38,8 +39,15 @@ class UserManagementViewSet(viewsets.ModelViewSet):
     - DELETE /api/admin/users/{id}/ - Delete user
     - POST /api/admin/users/{id}/set_password/ - Change password
     - POST /api/admin/users/{id}/toggle_active/ - Activate/Deactivate user
+
+    NOTE: authentication_classes is overridden to PlatformOwnerJWTAuthentication
+    because the global default (TenantJWTAuthentication) always resolves the
+    authenticated user from a *tenant* database - a superuser's ShopUser row
+    lives only in the `default` database, so that lookup would fail on every
+    request after the initial login. See tenancy/platform_auth.py.
     """
 
+    authentication_classes = [PlatformOwnerJWTAuthentication]
     permission_classes = [IsAdminUser]
     serializer_class = UserManagementSerializer
 

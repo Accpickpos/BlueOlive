@@ -6,7 +6,6 @@ Provides endpoints for receiving orders from Stockfinder.
 from apps.debtors.models import Debtor
 from apps.pos.models import Invoice, InvoiceLine, JobCard
 from apps.purchase_orders.models import PurchaseOrder
-from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -15,8 +14,9 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import StockFinderPurchaseOrder, StockFinderSalesOrder
+from .models import StockFinderConfig, StockFinderPurchaseOrder, StockFinderSalesOrder
 from .serializers import (
+    StockFinderConfigSerializer,
     StockFinderPurchaseOrderCreateSerializer,
     StockFinderPurchaseOrderSerializer,
     StockFinderSalesOrderCreateSerializer,
@@ -29,6 +29,19 @@ from .services import (
 )
 
 
+class StockFinderConfigViewSet(viewsets.ModelViewSet):
+    """
+    Per-shop Stockfinder configuration (base URL, credentials, sync/webhook
+    settings). Scoped to whichever shop schema the request resolved to
+    (TenantMiddleware/SchemaMiddleware), same as every other stockfinder
+    model - not tenant-wide.
+    """
+
+    serializer_class = StockFinderConfigSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = StockFinderConfig.objects.all()
+
+
 class StockFinderWebhookView(APIView):
     """
     Webhook endpoint for receiving events from Stockfinder.
@@ -39,13 +52,24 @@ class StockFinderWebhookView(APIView):
 
     def post(self, request):
         """Handle incoming webhook events from Stockfinder."""
-        # Verify the HMAC signature before doing anything else — this is the
-        # only authentication this endpoint has (permission_classes is
-        # AllowAny by necessity, since Stockfinder can't hold a session/JWT).
+        # There's no session/JWT on this endpoint - Stockfinder can't hold
+        # one - so the per-shop StockFinderConfig.webhook_secret (not a
+        # single global secret shared across every tenant) is the only
+        # authentication. request.shop is already resolved from the Host
+        # header by TenantMiddleware, so this query is naturally scoped to
+        # the right shop's schema.
+        config = StockFinderConfig.objects.filter(
+            is_active=True, webhook_enabled=True
+        ).first()
+        if not config:
+            return Response(
+                {"error": "Stockfinder is not configured for this shop"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         signature = request.headers.get("X-Signature", "")
-        secret = getattr(settings, "STOCKFINDER_WEBHOOK_SECRET", "")
         if not signature or not verify_webhook_signature(
-            request.body, signature, secret
+            request.body, signature, config.webhook_secret
         ):
             return Response(
                 {"error": "Invalid or missing webhook signature"},

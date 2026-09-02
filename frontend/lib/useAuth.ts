@@ -26,6 +26,7 @@ interface UseAuthReturn {
   isLoading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  isAccountant: boolean;
   refetch: () => Promise<void>;
 }
 
@@ -60,6 +61,7 @@ export function useAuth(): UseAuthReturn {
     isLoading,
     isAuthenticated: user !== null,
     isAdmin: user?.is_admin || false,
+    isAccountant: user?.role === 'ACCOUNTANT',
     refetch: fetchUser,
   };
 }

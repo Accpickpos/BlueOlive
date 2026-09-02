@@ -45,6 +45,7 @@ export async function getShopForPrint(): Promise<{
   name: string;
   address: string;
   phone: string;
+  email: string;
   logo: string | null;
 } | null> {
   const shopId = getCurrentShopId();
@@ -57,6 +58,7 @@ export async function getShopForPrint(): Promise<{
       name: shop.name || '',
       address: shop.address || '',
       phone: shop.phone || '',
+      email: shop.email || '',
       logo: shop.logo || null,
     };
   } catch (error) {
@@ -137,9 +139,10 @@ export function generateInvoicePrintHTML(invoice: any, shop: any, tenant: any, i
   const companyName = shop?.name || tenant?.company_name || 'Company Name';
   const companyAddress = shop?.address || tenant?.company_address || '';
   const companyPhone = shop?.phone || tenant?.phone || '';
+  const companyEmail = shop?.email || tenant?.email || '';
   const vatNumber = tenant?.vat_number || '';
   const regNumber = tenant?.registration_number || '';
-  
+
   const logoUrl = isSafeImageUrl(shop?.logo) ? shop.logo : null;
 
   const itemsHtml = lineItems.map((item: any) => {
@@ -209,6 +212,7 @@ ${COPY_WATERMARK_CSS}
         <div class="company-name">${escapeHtml(companyName)}</div>
         ${companyAddress ? `<div class="company-details">${escapeHtml(companyAddress).replace(/\n/g, '<br>')}</div>` : ''}
         ${companyPhone ? `<div class="company-details">Tel: ${escapeHtml(companyPhone)}</div>` : ''}
+        ${companyEmail ? `<div class="company-details">Email: ${escapeHtml(companyEmail)}</div>` : ''}
         ${vatNumber ? `<div class="company-details">VAT Number: ${escapeHtml(vatNumber)}</div>` : ''}
         ${regNumber ? `<div class="company-details">Registration: ${escapeHtml(regNumber)}</div>` : ''}
       </div>
@@ -288,6 +292,7 @@ export function generateReceiptPrintHTML(receipt: any, shop: any, tenant: any, i
   const companyName = shop?.name || tenant?.company_name || 'Company Name';
   const companyAddress = shop?.address || tenant?.company_address || '';
   const companyPhone = shop?.phone || tenant?.phone || '';
+  const companyEmail = shop?.email || tenant?.email || '';
   const vatNumber = tenant?.vat_number || '';
   const logoUrl = isSafeImageUrl(shop?.logo) ? shop.logo : null;
 
@@ -324,6 +329,7 @@ ${COPY_WATERMARK_CSS}
       <div class="company-name">${escapeHtml(companyName)}</div>
       ${companyAddress ? `<div class="company-details">${escapeHtml(companyAddress).replace(/\n/g, '<br>')}</div>` : ''}
       ${companyPhone ? `<div class="company-details">Tel: ${escapeHtml(companyPhone)}</div>` : ''}
+      ${companyEmail ? `<div class="company-details">Email: ${escapeHtml(companyEmail)}</div>` : ''}
       ${vatNumber ? `<div class="company-details">VAT: ${escapeHtml(vatNumber)}</div>` : ''}
     </div>
 
@@ -396,6 +402,7 @@ export function generateGenericDocumentHTML(
   const companyName = shop?.name || tenant?.company_name || 'Company Name';
   const companyAddress = shop?.address || tenant?.company_address || '';
   const companyPhone = shop?.phone || tenant?.phone || '';
+  const companyEmail = shop?.email || tenant?.email || '';
   const vatNumber = tenant?.vat_number || '';
   const regNumber = tenant?.registration_number || '';
   const logoUrl = isSafeImageUrl(shop?.logo) ? shop.logo : null;
@@ -470,6 +477,7 @@ ${COPY_WATERMARK_CSS}
         <div class="company-name">${escapeHtml(companyName)}</div>
         ${companyAddress ? `<div class="company-details">${escapeHtml(companyAddress).replace(/\n/g, '<br>')}</div>` : ''}
         ${companyPhone ? `<div class="company-details">Tel: ${escapeHtml(companyPhone)}</div>` : ''}
+        ${companyEmail ? `<div class="company-details">Email: ${escapeHtml(companyEmail)}</div>` : ''}
         ${vatNumber ? `<div class="company-details">VAT Number: ${escapeHtml(vatNumber)}</div>` : ''}
         ${regNumber ? `<div class="company-details">Registration: ${escapeHtml(regNumber)}</div>` : ''}
       </div>

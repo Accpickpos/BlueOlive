@@ -169,8 +169,14 @@ export const creditorsReportingApi = {
 
   // ── OUTSTANDING BALANCE ────────────────────────────────────────────────────
   outstandingBalances: {
-    list: async () => {
-      const { data } = await api.get(ENDPOINTS.CREDITORS.OUTSTANDING_BALANCES);
+    // Matches OutstandingBalanceViewSet.filterset_fields (apps/creditors/views.py)
+    // - the backend only supports exact-match creditor/as_at_date/capture_date,
+    // not a date range.
+    list: async (filters?: { creditor?: number; as_at_date?: string; capture_date?: string }) => {
+      const { data } = await api.get<PaginatedResponse<OutstandingBalance>>(
+        ENDPOINTS.CREDITORS.OUTSTANDING_BALANCES,
+        { params: filters }
+      );
       return data;
     },
     get: async (id: string | number) => {
@@ -239,7 +245,8 @@ export function useCreditorsAPI() {
   );
 
   const listOutstandingBalances = useCallback(
-    () => creditorsReportingApi.outstandingBalances.list(),
+    (filters?: { creditor?: number; as_at_date?: string; capture_date?: string }) =>
+      creditorsReportingApi.outstandingBalances.list(filters),
     []
   );
   const updateOutstandingBalance = useCallback(

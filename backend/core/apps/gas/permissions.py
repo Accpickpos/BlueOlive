@@ -8,35 +8,15 @@ Refunds and billed-for-replacement (a real, VAT-charged sale) only need Cashier.
 """
 
 from rest_framework import permissions
-from tenancy.tenant_context import get_current_tenant
 
-
-class GasFeatureEnabled(permissions.BasePermission):
-    """
-    Per-tenant kill switch (T10, /plan-ceo-review Section 1) — gates the whole
-    gas app behind SubscriptionPlan.features['gas'], so a bad pilot bug can be
-    disabled for one tenant without a redeploy affecting anyone else, and so
-    tenants that don't sell/rent gas cylinders never see the module at all.
-    Mirrors the existing plan.features.get('pos') pattern
-    (tenancy/management/commands/seed_subscriptions.py:196). Not yet added to
-    any seeded plan's features dict — defaults to disabled everywhere until a
-    plan explicitly opts in.
-    """
-
-    message = "Gas is not enabled for this account."
-
-    def has_permission(self, request, view):
-        tenant = get_current_tenant()
-        if not tenant:
-            return False
-        subscription = getattr(tenant, "subscription", None)
-        if not subscription or not subscription.plan:
-            # No billing system is wired into signup yet (no code path ever
-            # creates a Subscription row), so every tenant is in this state.
-            # Treat it like every other SubscriptionPlan.features flag in the
-            # codebase, which is defined but never actually enforced anywhere.
-            return True
-        return bool(subscription.plan.features.get("gas", False))
+# Per-tenant enable/disable for the whole gas app is enforced at the URL
+# layer by tenancy.middleware.AddonAccessMiddleware (settings.OPTIONAL_ADDON_APPS
+# / Tenant.enabled_addons), not here — a request never reaches these viewsets
+# at all if 'gas' isn't enabled for the tenant. This used to be a
+# GasFeatureEnabled permission class reading the never-populated
+# SubscriptionPlan.features['gas'] (dead: no signup path ever creates a
+# Subscription row, so it always defaulted to allowed) — replaced rather than
+# left alongside the real mechanism.
 
 
 class IsGasCashier(permissions.BasePermission):

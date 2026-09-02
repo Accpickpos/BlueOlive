@@ -136,6 +136,40 @@ SHOP_APP_LABELS = [
     "gas",  # Must come after debtors + stock_control + general_ledger (FK dependencies)
 ]
 
+# OPTIONAL_ADDON_APPS: subset of SHOP_APP_LABELS a tenant can opt in/out of.
+# Everything else in SHOP_APP_LABELS is mandatory core and always migrated.
+# See Tenant.enabled_addons (tenancy/models.py) for the per-tenant toggle.
+#
+# cash_book is deliberately NOT here even though it's a plausible-looking
+# candidate: apps/debtors/services.py and apps/creditors/signals.py both
+# hard-import apps.cash_book for posting receipts/payments, and debtors/
+# creditors are mandatory core - disabling cash_book for a tenant would break
+# two core modules, not just remove an optional one. Treat it as core unless
+# that coupling is removed first.
+OPTIONAL_ADDON_APPS = ["general_ledger", "gas", "stockfinder"]
+
+# DEFAULT_ADDONS_FOR_NEW_TENANTS: enabled_addons a self-signup tenant gets if
+# it doesn't specify any (see TenantSerializer.create). general_ledger is
+# standard-enough bookkeeping that most tenants want it by default; gas and
+# stockfinder are narrow/business-specific and stay opt-in.
+DEFAULT_ADDONS_FOR_NEW_TENANTS = ["general_ledger"]
+
+# ADDON_DEPENDENCIES: addon -> other addons it requires to also be enabled.
+# apps/gas/services.py hard-imports apps.general_ledger.models (GLMast/GLParam/
+# GLTran) for LedgerPostingService - gas cannot function without GL.
+ADDON_DEPENDENCIES = {
+    "gas": ["general_ledger"],
+}
+
+# ADDON_URL_PREFIXES: addon -> URL path prefixes gated by
+# tenancy.middleware.AddonAccessMiddleware. Includes both the /api/v1/ and
+# legacy /api/ duplicate prefixes defined in core/urls.py.
+ADDON_URL_PREFIXES = {
+    "general_ledger": ["/api/v1/general-ledger/", "/api/general-ledger/"],
+    "gas": ["/api/v1/gas/"],
+    "stockfinder": ["/api/v1/stockfinder/"],
+}
+
 # For the database router: specify which app labels are tenant-specific
 # This is used by TenantDatabaseRouter.allow_migrate()
 TENANT_APP_LABELS = [
@@ -265,6 +299,10 @@ MIDDLEWARE = [
     # CRITICAL: Tenant middleware BEFORE authentication
     # This ensures tenant context is set when authenticate() is called
     "tenancy.middleware.TenantMiddleware",
+    # Gates optional-addon URL prefixes (cash_book/general_ledger/gas/
+    # stockfinder) behind Tenant.enabled_addons. Needs request.tenant from
+    # TenantMiddleware above; doesn't need auth, so it runs before it.
+    "tenancy.middleware.AddonAccessMiddleware",
     # Authentication middleware AFTER tenant is set
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     # Schema middleware after both tenant and auth

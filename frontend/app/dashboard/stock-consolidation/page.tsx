@@ -30,8 +30,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Search, Loader2, ArrowLeft, Package } from 'lucide-react';
+import { Plus, Search, Loader2, ArrowLeft, Package, Ban } from 'lucide-react';
 import Link from 'next/link';
+import { useAuthContext } from '@/lib/AuthContext';
 import type { BranchTransfer } from '@/lib/types/stockControl';
 
 const statusColors: Record<string, string> = {
@@ -46,6 +47,7 @@ const statusColors: Record<string, string> = {
 };
 
 export default function StockConsolidationPage() {
+  const { stockConsolidationEnabled } = useAuthContext();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -180,6 +182,29 @@ export default function StockConsolidationPage() {
       setSearchResults([]);
     }
   };
+
+  if (!stockConsolidationEnabled) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Link href="/dashboard">
+            <Button variant="outline" size="sm">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-3xl font-bold">Stock Consolidation</h1>
+          </div>
+        </div>
+        <Card className="p-12 text-center">
+          <Ban className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+          <p className="text-gray-600 font-medium">Stock Consolidation is disabled for this account.</p>
+          <p className="text-gray-500 text-sm mt-1">An administrator can turn it back on from account settings.</p>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

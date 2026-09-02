@@ -429,6 +429,19 @@ export interface BranchStock {
   updated_at?: string;
 }
 
+export interface ConsolidatedStockBranchLine {
+  branch_code: string;
+  branch_name: string;
+  quantity: number;
+}
+
+export interface ConsolidatedStockItem {
+  stock_code: string;
+  description: string;
+  branches: ConsolidatedStockBranchLine[];
+  total_quantity: number;
+}
+
 export interface PaginatedBranches {
   count: number;
   next?: string;

@@ -98,9 +98,9 @@ urlpatterns = [
 #   GET/PATCH /integration-settings/1/
 #
 # Reports (function-based, read-only):
-#   GET /reports/trial-balance/?as_of_period=
-#   GET /reports/income-statement/?as_of_period=
-#   GET /reports/balance-sheet/?as_of_period=
+#   GET /reports/trial-balance/?as_of_period=&format=csv
+#   GET /reports/income-statement/?as_of_period=&mode=current|current_ytd|current_last_year|current_budget|budget_12|variance|actual_12&format=csv
+#   GET /reports/balance-sheet/?as_of_period=&format=csv
 #
 # Integration Transfer:
 #   POST /integration/transfer/   body: {"source": "debtors"|"creditors"|"stock_control"|"cash_book"|"all", "date_from":, "date_to":}

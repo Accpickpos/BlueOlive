@@ -86,7 +86,7 @@ export default function ExpenseCategoryMaintenance() {
   if (searchQuery) {
     filteredCategories = filteredCategories.filter(c =>
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.number.toString().includes(searchQuery)
+      (c.number?.toString() ?? '').includes(searchQuery)
     );
   }
 

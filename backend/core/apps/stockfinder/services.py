@@ -26,6 +26,34 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 
+def match_stock_item(stock_code: str) -> Optional[StockItem]:
+    """
+    Resolve a Stockfinder-supplied stock code to a local StockItem.
+
+    Stockfinder's own catalog should be seeded from ours (see
+    StockFinderConfig.auto_sync_stock), so an exact stock_code match is the
+    common case - but codes still arrive with stray whitespace/case
+    differences in practice, and a barcode is a reasonable fallback when the
+    stock_code itself doesn't resolve (e.g. a supplier/generic code
+    Stockfinder uses that happens to match a barcode we recorded). Returns
+    None (never raises) so callers can flag the line as unmatched instead of
+    silently dropping the link.
+    """
+    if not stock_code:
+        return None
+    normalized = stock_code.strip().upper()
+    if not normalized:
+        return None
+    try:
+        return StockItem.objects.get(stock_code=normalized)
+    except StockItem.DoesNotExist:
+        pass
+    try:
+        return StockItem.objects.get(barcode=normalized)
+    except (StockItem.DoesNotExist, StockItem.MultipleObjectsReturned):
+        return None
+
+
 class StockFinderAPIError(Exception):
     """Exception raised for Stockfinder API errors."""
 
@@ -89,14 +117,7 @@ class StockFinderOrderService:
     ) -> StockFinderSalesOrderLine:
         """Create an order line item."""
         stock_code = line_data.get("stock_code", "")
-
-        # Find local stock item
-        local_stock = None
-        if stock_code:
-            try:
-                local_stock = StockItem.objects.get(stock_code=stock_code)
-            except StockItem.DoesNotExist:
-                pass
+        local_stock = match_stock_item(stock_code)
 
         return StockFinderSalesOrderLine.objects.create(
             order=order,
@@ -108,6 +129,7 @@ class StockFinderOrderService:
             tax_amount=Decimal(str(line_data.get("tax_amount", 0))),
             line_total=Decimal(str(line_data.get("line_total", 0))),
             local_stock_item=local_stock,
+            unmatched=bool(stock_code) and local_stock is None,
         )
 
     def create_job_card(self, order: StockFinderSalesOrder) -> Optional[JobCard]:
@@ -240,14 +262,19 @@ class StockFinderOrderService:
         self, order: StockFinderPurchaseOrder, line_data: Dict, line_number: int
     ) -> StockFinderPurchaseOrderLine:
         """Create a purchase order line item."""
+        stock_code = line_data.get("stock_code", "")
+        local_stock = match_stock_item(stock_code)
+
         return StockFinderPurchaseOrderLine.objects.create(
             order=order,
             line_number=line_number,
-            stock_code=line_data.get("stock_code", ""),
+            stock_code=stock_code,
             description=line_data.get("description", ""),
             quantity=Decimal(str(line_data.get("quantity", 1))),
             unit_cost=Decimal(str(line_data.get("unit_cost", 0))),
             line_total=Decimal(str(line_data.get("line_total", 0))),
+            local_stock_item=local_stock,
+            unmatched=bool(stock_code) and local_stock is None,
         )
 
     def create_local_purchase_order(
@@ -272,20 +299,13 @@ class StockFinderOrderService:
                 status="pending",
             )
 
-            # Create PO lines
+            # Create PO lines (local_stock_item was already resolved by
+            # match_stock_item() when the line was first created from the
+            # incoming Stockfinder payload - see _create_po_line)
             for sf_line in sf_po.lines.all():
-                stock_item = None
-                if sf_line.stock_code:
-                    try:
-                        stock_item = StockItem.objects.get(
-                            stock_code=sf_line.stock_code
-                        )
-                    except StockItem.DoesNotExist:
-                        pass
-
                 PurchaseOrderLine.objects.create(
                     purchase_order=po,
-                    stock_item=stock_item,
+                    stock_item=sf_line.local_stock_item,
                     description=sf_line.description,
                     quantity=sf_line.quantity,
                     unit_cost=sf_line.unit_cost,

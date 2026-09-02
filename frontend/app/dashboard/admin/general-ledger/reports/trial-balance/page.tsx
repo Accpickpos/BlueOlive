@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Download, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function TrialBalanceReportPage() {
@@ -25,6 +25,23 @@ export default function TrialBalanceReportPage() {
     queryKey: ['gl-trial-balance', asOfPeriod],
     queryFn: () => glReportsApi.trialBalance(asOfPeriod ? parseInt(asOfPeriod) : undefined),
   });
+
+  const handleExportCsv = () => {
+    if (!data) return;
+    const rows = [
+      ['Account No.', 'Name', 'Debit', 'Credit'],
+      ...data.accounts.map((row) => [row.accno, row.name, row.debit, row.credit]),
+      ['', 'TOTAL', data.total_debit, data.total_credit],
+    ];
+    const csvContent = rows.map((row) => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `trial-balance-period${data.as_of_period}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6">
@@ -72,9 +89,15 @@ export default function TrialBalanceReportPage() {
             <h2 className="text-lg font-bold">
               Period {data.as_of_period} — {data.currentyr}
             </h2>
-            <Badge variant={data.is_balanced ? 'default' : 'destructive'}>
-              {data.is_balanced ? 'Balanced' : 'Out of Balance'}
-            </Badge>
+            <div className="flex items-center gap-3">
+              <Badge variant={data.is_balanced ? 'default' : 'destructive'}>
+                {data.is_balanced ? 'Balanced' : 'Out of Balance'}
+              </Badge>
+              <Button variant="outline" size="sm" onClick={handleExportCsv}>
+                <Download className="w-4 h-4 mr-2" />
+                Export CSV
+              </Button>
+            </div>
           </div>
 
           <div className="overflow-x-auto">

@@ -1,5 +1,101 @@
 # TODOS
 
+## GL: Cancelled/reversed status for GLBatch and GLStJnl
+
+**What:** Add a cancelled/reversed state to `GLBatch` (currently only tracks
+posted-or-not via `postdate`) and `GLStJnl` (no status field at all beyond the
+active journal fields), plus an enquiry endpoint separating Updated vs
+Cancelled for each, matching manual section 7.3.2/7.3.3 (General Ledger
+Enquiries: "2. Standing Journals" Updated/Cancelled, "3. Outstanding Batches").
+
+**Why:** Found auditing `apps/general_ledger` against `pdf/GL.pdf` — the
+manual documents these as real enquiry screens, but neither model has a
+concept of "cancelled" at all, so there's no data to enquire on even if a
+screen were built.
+
+**Pros:**
+- Completes the documented Enquiries menu.
+- A cancelled/reversed audit trail is generally useful for any batch-based
+  posting system (who cancelled it, when, why) beyond just manual parity.
+
+**Cons:**
+- Real new scope: needs a status field + transition rules (can a batch be
+  cancelled after any of its GLTran rows exist? before posting only?) on two
+  models, not a local fix.
+- `GLBatch.postdate` already distinguishes posted/unposted cleanly for the
+  common case — this only matters once someone needs to void a batch instead
+  of just leaving it unposted/deleting it.
+
+**Context:** Raised 2026-09-01 during a GL-vs-manual consistency check
+(user: "is the gl consistence with the pdf... is it 100%?"). Deferred rather
+than guessed at because "cancel" semantics (soft-cancel vs hard-delete,
+whether a posted batch can ever be cancelled/reversed vs only unposted ones)
+is a real design decision, not a one-line fix.
+
+**Depends on / blocked by:** Nothing blocking - additive to the existing
+`GLBatch`/`GLStJnl` models.
+
+---
+
+## GL: Group Income Statement (multi-company consolidation)
+
+**What:** The manual's General Ledger Reports menu includes "Group Income
+Statement," for franchises/groups running multiple registrations with
+identical Charts of Accounts and Report Layouts — a consolidated Income
+Statement across those registrations.
+
+**Why:** Found auditing `apps/general_ledger` against `pdf/GL.pdf`
+(Reports section, item 5). No equivalent exists anywhere in BlueOlive.
+
+**Pros:**
+- Completes manual parity for multi-branch/franchise operators.
+
+**Cons:**
+- BlueOlive already models multi-branch differently (Tenant → multiple Shops,
+  each with its own GL schema) than legacy Accpick's "multiple registrations
+  sharing a report format" model — consolidating across Shops would need new
+  cross-schema aggregation, not a port of existing logic.
+- No current tenant has asked for cross-shop consolidated reporting.
+
+**Context:** Raised 2026-09-01 during the same GL consistency check. Real new
+scope per prompt.txt's Phase 2 guidance ("do not silently implement... flag
+for /plan-eng-review") - deferred rather than built speculatively.
+
+**Depends on / blocked by:** Would depend on deciding how Shop-level GL data
+gets aggregated cross-schema at all, which doesn't exist for any other GL
+report today either.
+
+---
+
+## GL: Dedicated Reports-menu equivalents (Chart of Accounts / Ledger Accounts / Journal Entries / Transaction History reports)
+
+**What:** The manual's General Ledger Reports menu (distinct from the
+Enquiries menu) lists Chart of Accounts, Ledger Accounts, Journal Entries,
+and Transaction History as their own printable reports.
+
+**Why:** Found auditing `apps/general_ledger` against `pdf/GL.pdf`. The
+underlying data for all four is already reachable via existing endpoints
+(`master-accounts/` list, `transactions/by_batch`, `by_account`,
+`by_date_range`) — there's just no dedicated "Reports" surface presenting
+them the way the manual's separate menu does.
+
+**Pros:**
+- Low risk to add later — no new data/model work, just presentation.
+
+**Cons:**
+- Low value beyond re-presenting data the existing Enquiries-style endpoints
+  already expose — building four thin wrapper screens is UI work with no new
+  underlying capability, so it was deprioritized behind the real functional
+  gaps (Income Statement layout modes, Balance Sheet tie-out, CSV export)
+  fixed in the same pass as this entry was written.
+
+**Context:** Raised 2026-09-01 during the same GL consistency check.
+
+**Depends on / blocked by:** Nothing blocking - purely additive frontend/API
+surface over existing data.
+
+---
+
 ## Per-cylinder serial/asset tracking for LPG rentals
 
 **What:** Add serial numbers / asset tags to individual LPG cylinders, so each

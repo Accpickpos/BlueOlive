@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { glReportsApi } from '@/lib/general-ledger';
-import { FinancialReportLine } from '@/lib/types/generalLedger';
+import { FinancialReportLine, IncomeStatementMode } from '@/lib/types/generalLedger';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { ArrowLeft, Download, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
 const rowClass = (line: FinancialReportLine) => {
@@ -17,13 +18,74 @@ const rowClass = (line: FinancialReportLine) => {
   return '';
 };
 
+// Mirrors settings.OPTIONAL modes in backend reports.py INCOME_STATEMENT_MODES.
+const MODE_OPTIONS: { value: IncomeStatementMode; label: string }[] = [
+  { value: 'current', label: 'Current Period' },
+  { value: 'current_ytd', label: 'Current Period + Year to Date' },
+  { value: 'current_last_year', label: 'Current Period + Last Year' },
+  { value: 'current_budget', label: 'Current Period + Budget' },
+  { value: 'budget_12', label: 'Budgeted Values — 12 Months' },
+  { value: 'variance', label: 'Budget Variance' },
+  { value: 'actual_12', label: 'Actual Values — 12 Months' },
+];
+
+// Column keys to show, in order, for each non-"current" mode - everything
+// else on a line is metadata (line/fieldtype/name/printdet).
+const MODE_COLUMNS: Record<IncomeStatementMode, { key: string; label: string }[]> = {
+  current: [{ key: 'amount', label: 'Amount' }],
+  current_ytd: [
+    { key: 'current', label: 'Current' },
+    { key: 'ytd', label: 'Year to Date' },
+  ],
+  current_last_year: [
+    { key: 'current', label: 'Current' },
+    { key: 'last_year', label: 'Last Year' },
+    { key: 'ytd', label: 'YTD' },
+    { key: 'last_year_ytd', label: 'Last Year YTD' },
+  ],
+  current_budget: [
+    { key: 'current', label: 'Current' },
+    { key: 'budget', label: 'Budget' },
+    { key: 'ytd', label: 'YTD' },
+    { key: 'ytd_budget', label: 'YTD Budget' },
+  ],
+  budget_12: Array.from({ length: 12 }, (_, i) => ({ key: `month${i + 1}`, label: `M${i + 1}` })),
+  variance: [
+    { key: 'current_variance', label: 'Current Variance' },
+    { key: 'ytd_variance', label: 'YTD Variance' },
+  ],
+  actual_12: Array.from({ length: 12 }, (_, i) => ({ key: `month${i + 1}`, label: `M${i + 1}` })),
+};
+
+const fmt = (value: number | string | undefined) =>
+  typeof value === 'number' ? value.toLocaleString('en-ZA', { minimumFractionDigits: 2 }) : '';
+
 export default function IncomeStatementReportPage() {
   const [asOfPeriod, setAsOfPeriod] = useState<string>('');
+  const [mode, setMode] = useState<IncomeStatementMode>('current');
 
   const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['gl-income-statement', asOfPeriod],
-    queryFn: () => glReportsApi.incomeStatement(asOfPeriod ? parseInt(asOfPeriod) : undefined),
+    queryKey: ['gl-income-statement', asOfPeriod, mode],
+    queryFn: () => glReportsApi.incomeStatement(asOfPeriod ? parseInt(asOfPeriod) : undefined, mode),
   });
+
+  const columns = MODE_COLUMNS[mode];
+
+  const handleExportCsv = () => {
+    if (!data) return;
+    const rows = [
+      ['Line', 'Type', 'Name', ...columns.map((c) => c.label)],
+      ...data.lines.map((line) => [line.line, line.fieldtype, line.name, ...columns.map((c) => line[c.key] ?? '')]),
+    ];
+    const csvContent = rows.map((row) => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `income-statement-${mode}-period${data.as_of_period}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6">
@@ -41,7 +103,7 @@ export default function IncomeStatementReportPage() {
       </div>
 
       <Card className="p-6">
-        <div className="flex items-end gap-4">
+        <div className="flex items-end gap-4 flex-wrap">
           <div>
             <label className="text-sm font-medium">As of Period (1-13)</label>
             <Input
@@ -53,6 +115,21 @@ export default function IncomeStatementReportPage() {
               onChange={(e) => setAsOfPeriod(e.target.value)}
               className="w-40"
             />
+          </div>
+          <div>
+            <label className="text-sm font-medium">Layout</label>
+            <Select value={mode} onValueChange={(v) => setMode(v as IncomeStatementMode)}>
+              <SelectTrigger className="w-64">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MODE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <Button onClick={() => refetch()} disabled={isFetching}>
             {isFetching ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
@@ -72,16 +149,32 @@ export default function IncomeStatementReportPage() {
         </div>
       ) : data ? (
         <Card className="p-6">
-          <h2 className="text-lg font-bold mb-4">
-            Period {data.as_of_period} — {data.currentyr}
-          </h2>
-          <div className="space-y-1">
-            {data.lines.map((line) => (
-              <div key={line.line} className={`flex justify-between py-1 ${rowClass(line)}`}>
-                <span>{line.name}</span>
-                <span>{line.amount.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</span>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold">
+              Period {data.as_of_period} — {data.currentyr}
+            </h2>
+            <Button variant="outline" size="sm" onClick={handleExportCsv}>
+              <Download className="w-4 h-4 mr-2" />
+              Export CSV
+            </Button>
+          </div>
+          <div className="overflow-x-auto">
+            <div className="min-w-fit space-y-1">
+              <div className="flex gap-6 py-1 text-xs font-medium text-gray-500 uppercase">
+                <span className="flex-1">Account</span>
+                {columns.map((col) => (
+                  <span key={col.key} className="w-32 text-right">{col.label}</span>
+                ))}
               </div>
-            ))}
+              {data.lines.map((line) => (
+                <div key={line.line} className={`flex gap-6 py-1 ${rowClass(line)}`}>
+                  <span className="flex-1">{line.name}</span>
+                  {columns.map((col) => (
+                    <span key={col.key} className="w-32 text-right">{fmt(line[col.key])}</span>
+                  ))}
+                </div>
+              ))}
+            </div>
           </div>
           {data.net_result !== null && (
             <div className="flex justify-between mt-4 pt-4 border-t-2 border-gray-800 font-bold text-lg">

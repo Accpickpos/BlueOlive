@@ -18,11 +18,11 @@ class IsPurchaseOrderStockMover(permissions.BasePermission):
     def has_permission(self, request, view):
         if not (request.user and request.user.is_authenticated):
             return False
-        return (
-            hasattr(request.user, "groups")
-            and request.user.groups.filter(
-                name__in=["Cashier", "Accountant", "Admin"]
-            ).exists()
+        return getattr(request.user, "role", None) in (
+            "CASHIER",
+            "MANAGER",
+            "ACCOUNTANT",
+            "ADMIN",
         )
 
 
@@ -36,7 +36,4 @@ class IsPurchaseOrderAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
         if not (request.user and request.user.is_authenticated):
             return False
-        return (
-            hasattr(request.user, "groups")
-            and request.user.groups.filter(name="Admin").exists()
-        )
+        return getattr(request.user, "role", None) == "ADMIN"

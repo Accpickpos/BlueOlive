@@ -9,7 +9,6 @@ from .exceptions import RentalException
 from .models import RentalTransaction
 from .permissions import (
     ACCOUNTANT_GATED_STATES,
-    GasFeatureEnabled,
     IsGasAccountant,
     IsGasCashier,
 )
@@ -30,12 +29,12 @@ class RentalTransactionViewSet(viewsets.ReadOnlyModelViewSet):
 
     queryset = RentalTransaction.objects.select_related("debtor", "stock_item").all()
     serializer_class = RentalTransactionSerializer
-    permission_classes = [IsAuthenticated, GasFeatureEnabled]
+    permission_classes = [IsAuthenticated]
 
     @action(
         detail=False,
         methods=["post"],
-        permission_classes=[IsAuthenticated, GasFeatureEnabled, IsGasCashier],
+        permission_classes=[IsAuthenticated, IsGasCashier],
     )
     def checkout(self, request):
         serializer = RentalCheckoutSerializer(data=request.data)
@@ -76,7 +75,7 @@ class RentalTransactionViewSet(viewsets.ReadOnlyModelViewSet):
     @action(
         detail=True,
         methods=["post"],
-        permission_classes=[IsAuthenticated, GasFeatureEnabled, IsGasCashier],
+        permission_classes=[IsAuthenticated, IsGasCashier],
     )
     def returned(self, request, pk=None):
         serializer = RentalReturnSerializer(data=request.data)

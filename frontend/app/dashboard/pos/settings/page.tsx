@@ -12,6 +12,7 @@ interface ShopSettings {
   name: string;
   address: string;
   phone: string;
+  email: string;
   logo: string | null;
 }
 
@@ -25,6 +26,7 @@ export default function POSSettingsPage() {
     name: "",
     address: "",
     phone: "",
+    email: "",
     logo: null,
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -166,23 +168,26 @@ export default function POSSettingsPage() {
         name: shopSettings.name,
         address: shopSettings.address,
         phone: shopSettings.phone,
+        email: shopSettings.email,
       });
 
-      setShopSettings(prev => ({ 
-        ...prev, 
+      setShopSettings(prev => ({
+        ...prev,
         name: response.data.name,
         address: response.data.address,
         phone: response.data.phone,
+        email: response.data.email,
       }));
 
       // Update localStorage
       const currentShop = getCurrentShop();
       if (currentShop) {
-        setCurrentShop({ 
-          ...currentShop, 
+        setCurrentShop({
+          ...currentShop,
           name: response.data.name,
           address: response.data.address,
           phone: response.data.phone,
+          email: response.data.email,
         });
       }
 
@@ -314,6 +319,19 @@ export default function POSSettingsPage() {
                     onChange={(e) => handleChange('phone', e.target.value)}
                     className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Enter phone number"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={shopSettings.email}
+                    onChange={(e) => handleChange('email', e.target.value)}
+                    className="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Enter shop email address"
                   />
                 </div>
               </div>
