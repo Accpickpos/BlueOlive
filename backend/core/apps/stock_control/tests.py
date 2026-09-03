@@ -10,7 +10,8 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.test import APITestCase
+from rest_framework.test import APIClient, APITestCase
+from tenancy.models import Tenant
 
 from .models import (
     ContractPricing,
@@ -416,11 +417,16 @@ class StockTransactionServiceEndpointTest(APITestCase):
             is_superuser=True,
         )
         self.mover.groups.add(Group.objects.create(name="Cashier"))
+        # role="STAFF": IsStockMover only checks .role (CASHIER/MANAGER/
+        # ACCOUNTANT/ADMIN), not group membership — a plain default-role
+        # (CASHIER) user would actually satisfy it, defeating the point of
+        # this fixture. STAFF is the one role IsStockMover excludes.
         self.plain_user = User.objects.create_user(
             username="plain",
             email="plain@example.com",
             password="x",  # nosec B106
             is_superuser=True,
+            role="STAFF",
         )
 
     def test_non_mover_cannot_create_transaction(self):

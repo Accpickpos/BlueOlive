@@ -86,14 +86,23 @@ class TenantAwareAuthBackend(ModelBackend):
                 return None
 
             # Check password
-            if user.check_password(password):
-                if settings.DEBUG:
-                    logger.debug(f"✓ User {username} authenticated successfully")
-                return user
-            else:
+            if not user.check_password(password):
                 if settings.DEBUG:
                     logger.debug(f"✗ Invalid password for {username}")
                 return None
+
+            # This overrides ModelBackend.authenticate() entirely rather
+            # than calling super(), so ModelBackend's own is_active check
+            # (via user_can_authenticate) never ran — a deactivated user
+            # could still log in with a correct password.
+            if not self.user_can_authenticate(user):
+                if settings.DEBUG:
+                    logger.debug(f"✗ User {username} is inactive")
+                return None
+
+            if settings.DEBUG:
+                logger.debug(f"✓ User {username} authenticated successfully")
+            return user
 
         except Exception as e:
             logger.error(f"Authentication error: {str(e)}", exc_info=True)

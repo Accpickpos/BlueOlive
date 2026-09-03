@@ -473,6 +473,12 @@ class SpecialDealViewSet(
         "create": "MAINTENANCE",
         "update": "MAINTENANCE",
         "partial_update": "MAINTENANCE",
+        # No TRANSACTIONS/MAINTENANCE keyword matches "bulk_department", so
+        # the generic heuristic would default a POST like this to
+        # MAINTENANCE — which CASHIER never gets — contradicting this
+        # action's own IsStockMover permission_classes below, which already
+        # allows CASHIER.
+        "bulk_department": "TRANSACTIONS",
     }
     queryset = SpecialDeal.objects.select_related("stock_item")
     serializer_class = SpecialDealSerializer
