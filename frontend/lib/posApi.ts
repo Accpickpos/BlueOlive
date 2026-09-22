@@ -247,6 +247,38 @@ export interface TransactionQueryCreateData {
   query_status?: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
 }
 
+export type TenderReconciliationStatus = 'PENDING' | 'RECONCILED' | 'VARIANCE';
+
+export interface TenderReconciliationSummaryRow {
+  sale_date: string;
+  station_number: number;
+  tender_type: string;
+  reconciliation_status: TenderReconciliationStatus;
+  count: number;
+  total_amount: number;
+}
+
+export interface TenderReconciliationRecord {
+  id: string | number;
+  tender_type: string;
+  tender_type_display: string;
+  amount: number;
+  authorization_code: string;
+  card_type: string;
+  reconciliation_status: TenderReconciliationStatus;
+  reconciliation_status_display: string;
+  reconciliation_note: string;
+  reconciled_by: number | null;
+  reconciled_by_username: string | null;
+  reconciled_at: string | null;
+  created_at: string;
+  cash_sale: number | null;
+  invoice: number | null;
+  sale_date: string | null;
+  station_number: number | null;
+  cashier_username: string | null;
+}
+
 // Type for API responses
 export interface TransactionResponse {
   id: string | number;
@@ -1127,6 +1159,77 @@ export class POSTransactionAPI {
   async assignTransactionQuery(queryId: string | number, assignedTo: number): Promise<TransactionResponse> {
     return this.request('POST', `${ENDPOINTS.POS.TRANSACTION_QUERIES}${queryId}/assign/`, {
       assigned_to: assignedTo,
+    });
+  }
+
+  // ============================================================
+  // TENDER RECONCILIATION
+  // ============================================================
+
+  /**
+   * Per-day/station/tender-type card-tender totals, for reconciling
+   * against the physical card machine's own settlement report.
+   */
+  async getTenderReconciliationSummary(filters?: {
+    date_from?: string;
+    date_to?: string;
+    station_number?: string | number;
+    cashier?: string | number;
+    tender_type?: string;
+  }): Promise<TenderReconciliationSummaryRow[]> {
+    let endpoint = `${ENDPOINTS.POS.TENDERS}reconciliation_summary/`;
+    if (filters) {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') params.append(key, String(value));
+      });
+      if (params.toString()) {
+        endpoint += `?${params.toString()}`;
+      }
+    }
+    return this.request('GET', endpoint);
+  }
+
+  /**
+   * List individual tenders (for drilling into a reconciliation-summary row).
+   */
+  async listTenders(filters?: {
+    tender_type?: string;
+    reconciliation_status?: string;
+  }): Promise<{ results: TenderReconciliationRecord[]; count: number } | TenderReconciliationRecord[]> {
+    let endpoint = ENDPOINTS.POS.TENDERS;
+    if (filters) {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') params.append(key, String(value));
+      });
+      if (params.toString()) {
+        endpoint += `?${params.toString()}`;
+      }
+    }
+    return this.request('GET', endpoint);
+  }
+
+  /**
+   * Mark a single tender reconciled or flag a variance (note required for variance).
+   */
+  async reconcileTender(
+    tenderId: string | number,
+    reconciliationStatus: 'RECONCILED' | 'VARIANCE',
+    note?: string
+  ): Promise<TenderReconciliationRecord> {
+    return this.request('PATCH', `${ENDPOINTS.POS.TENDERS}${tenderId}/reconcile/`, {
+      reconciliation_status: reconciliationStatus,
+      reconciliation_note: note || '',
+    });
+  }
+
+  /**
+   * Mark multiple tenders reconciled at once.
+   */
+  async bulkReconcileTenders(tenderIds: (string | number)[]): Promise<{ updated: number }> {
+    return this.request('PATCH', `${ENDPOINTS.POS.TENDERS}bulk_reconcile/`, {
+      tender_ids: tenderIds,
     });
   }
 

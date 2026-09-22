@@ -32,7 +32,7 @@ class FileAnalyzer:
             # Read as text
             if isinstance(file_obj.read(1), bytes):
                 file_obj.seek(0)
-                text_content = file_obj.read().decode("utf-8", errors="ignore")
+                text_content = file_obj.read().decode("utf-8-sig", errors="ignore")
             else:
                 file_obj.seek(0)
                 text_content = file_obj.read()

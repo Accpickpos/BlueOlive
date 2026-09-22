@@ -26,6 +26,7 @@ router.register(
     r"transaction-queries", views.TransactionQueryViewSet, basename="transaction-query"
 )
 router.register(r"invoices", views.InvoiceViewSet, basename="invoice")
+router.register(r"tenders", views.TenderViewSet, basename="tender")
 
 app_name = "point_of_sale"
 

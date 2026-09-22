@@ -60,7 +60,81 @@ class TenderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tender
         fields = "__all__"
-        read_only_fields = ["created_at", "updated_at"]
+        # Reconciliation fields are only ever written via TenderViewSet's
+        # dedicated reconcile/bulk_reconcile actions, never through nested
+        # creation on a CashSale/Invoice — see TenderReconciliationSerializer.
+        read_only_fields = [
+            "created_at",
+            "updated_at",
+            "reconciliation_status",
+            "reconciled_by",
+            "reconciled_at",
+            "reconciliation_note",
+        ]
+
+
+class TenderReconciliationSerializer(serializers.ModelSerializer):
+    """Read-oriented serializer for the card-reconciliation report/actions."""
+
+    tender_type_display = serializers.CharField(
+        source="get_tender_type_display", read_only=True
+    )
+    reconciliation_status_display = serializers.CharField(
+        source="get_reconciliation_status_display", read_only=True
+    )
+    reconciled_by_username = serializers.CharField(
+        source="reconciled_by.username", read_only=True, default=None
+    )
+    sale_date = serializers.SerializerMethodField()
+    station_number = serializers.SerializerMethodField()
+    cashier_username = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Tender
+        fields = [
+            "id",
+            "tender_type",
+            "tender_type_display",
+            "amount",
+            "authorization_code",
+            "card_type",
+            "reconciliation_status",
+            "reconciliation_status_display",
+            "reconciliation_note",
+            "reconciled_by",
+            "reconciled_by_username",
+            "reconciled_at",
+            "created_at",
+            "cash_sale",
+            "invoice",
+            "sale_date",
+            "station_number",
+            "cashier_username",
+        ]
+        read_only_fields = [
+            "id",
+            "created_at",
+            "cash_sale",
+            "invoice",
+        ]
+
+    def _parent(self, obj):
+        return obj.cash_sale or obj.invoice
+
+    def get_sale_date(self, obj):
+        parent = self._parent(obj)
+        return getattr(parent, "sale_date", None) or getattr(
+            parent, "invoice_date", None
+        )
+
+    def get_station_number(self, obj):
+        parent = self._parent(obj)
+        return getattr(parent, "station_number", None)
+
+    def get_cashier_username(self, obj):
+        parent = self._parent(obj)
+        cashier = getattr(parent, "cashier", None)
+        return cashier.username if cashier else None
 
 
 class CashSaleLineSerializer(serializers.ModelSerializer):

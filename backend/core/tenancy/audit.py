@@ -38,6 +38,7 @@ class AuditLog(models.Model):
         ("PASSWORD_CHANGE", "Password Changed"),
         ("POS_POSTED", "POS Document Posted"),
         ("POS_CANCELLED", "POS Document Cancelled"),
+        ("TENDER_RECONCILED", "POS Tender Reconciled"),
     ]
 
     # Not a ForeignKey: AuditLog lives in the shared default database, but the
@@ -347,4 +348,16 @@ class POSAuditLog:
             resource_type=document_type,
             resource_id=document_number,
             details={**(details or {}), "reason": reason},
+        )
+
+    @staticmethod
+    def log_tender_reconciled(user, tender_id, reconciliation_status, note=None):
+        """Log a card/cheque/EFT tender being marked reconciled or a variance."""
+        AuditLog.log_action(
+            action="TENDER_RECONCILED",
+            request=None,
+            user=user,
+            resource_type="Tender",
+            resource_id=str(tender_id),
+            details={"status": reconciliation_status, "note": note or ""},
         )

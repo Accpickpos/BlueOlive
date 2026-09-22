@@ -227,6 +227,20 @@ DEPARTMENT_CSV_TO_MODEL_FIELD_MAP = {
     "DEPTNAME": "name",
     "SLSMTD": "sales_mtd",
     "SLSYTD": "sales_ytd",
+    "PFTMTD": "profit_mtd",
+    "PFTYTD": "profit_ytd",
+    "SLSP1": "sales_p1",
+    "SLSP2": "sales_p2",
+    "SLSP3": "sales_p3",
+    "SLSP4": "sales_p4",
+    "SLSP5": "sales_p5",
+    "SLSP6": "sales_p6",
+    "SLSP7": "sales_p7",
+    "SLSP8": "sales_p8",
+    "SLSP9": "sales_p9",
+    "SLSP10": "sales_p10",
+    "SLSP11": "sales_p11",
+    "SLSP12": "sales_p12",
 }
 
 # debtran.csv AND dtran.csv both map to DebtorTransaction.
@@ -530,18 +544,21 @@ DECIMAL_FIELDS = {
     "weight",
     # Department
     "sales_mtd",
-    "sales_month_1",
-    "sales_month_2",
-    "sales_month_3",
-    "sales_month_4",
-    "sales_month_5",
-    "sales_month_6",
-    "sales_month_7",
-    "sales_month_8",
-    "sales_month_9",
-    "sales_month_10",
-    "sales_month_11",
-    "sales_month_12",
+    "sales_ytd",
+    "profit_mtd",
+    "profit_ytd",
+    "sales_p1",
+    "sales_p2",
+    "sales_p3",
+    "sales_p4",
+    "sales_p5",
+    "sales_p6",
+    "sales_p7",
+    "sales_p8",
+    "sales_p9",
+    "sales_p10",
+    "sales_p11",
+    "sales_p12",
     # DebtorTransaction
     "subtotal",
     "vat_amount",
@@ -1206,7 +1223,7 @@ def analyze_csv(request):
 
     try:
         file_obj.seek(0)
-        text = file_obj.read().decode("utf-8", errors="ignore")
+        text = file_obj.read().decode("utf-8-sig", errors="ignore")
     except Exception as e:
         return Response(
             {"error": f"Cannot read file: {e}"}, status=status.HTTP_400_BAD_REQUEST
@@ -1353,7 +1370,7 @@ def import_csv(request):
 
     try:
         file_obj.seek(0)
-        text = file_obj.read().decode("utf-8", errors="ignore")
+        text = file_obj.read().decode("utf-8-sig", errors="ignore")
     except Exception as e:
         clear_current()
         return Response(
@@ -1676,19 +1693,31 @@ def _import_department_record(db_alias, record, mode, schema_name=None, **_):
     manager = SalesDepartment.objects.using(db_alias)
 
     if dept_name:
-        # Check if a department with this name already exists
-        existing_by_name = manager.filter(name=dept_name).first()
+        # Check if a department with this name already exists (case-insensitive —
+        # legacy DBF exports and hand-typed CSVs disagree on casing, and a plain
+        # exact match let "Electronics" and "ELECTRONICS" collide on the unique
+        # name constraint instead of being recognized as the same department).
+        existing_by_name = manager.filter(name__iexact=dept_name).first()
         if existing_by_name:
             # If found by name but different number, update or skip based on mode
             if existing_by_name.number != int(dept_number):
                 if mode == "create_only":
                     return "skipped"
-                # Update the existing department (by name)
-                existing_by_name.number = int(dept_number)
-                for key, value in defaults.items():
-                    setattr(existing_by_name, key, value)
-                existing_by_name.save(using=db_alias)
-                return "updated"
+                # Update the existing department (by name) via _uoc — every other
+                # write in this pipeline goes through _uoc's direct psycopg2
+                # connection because middleware resets the ORM connection's
+                # search_path between rows during streaming; a plain ORM
+                # .save(using=db_alias) here was the one write that skipped that
+                # protection and could silently land in the wrong tenant schema.
+                update_defaults = dict(defaults)
+                update_defaults["number"] = int(dept_number)
+                return _uoc(
+                    manager,
+                    {"name": existing_by_name.name},
+                    update_defaults,
+                    "update_only",
+                    schema_name=schema_name,
+                )
 
     # Proceed with normal lookup by number
     return _uoc(

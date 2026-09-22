@@ -7,13 +7,22 @@ table so it changes no existing behavior; a later pass rewires each app's
 permission_classes to read from it, module by module.
 """
 
-from apps.settings.models import TimeStampedModel
 from django.core.exceptions import ValidationError
 from django.db import models
 
 
-class AccessGrant(TimeStampedModel):
-    """One (role, module, function_type) access decision."""
+class AccessGrant(models.Model):
+    """One (role, module, function_type) access decision.
+
+    Lives in the shared default DB (apps.common is a SHARED_APP), so unlike
+    TimeStampedModel it carries no created_by/updated_by FK to AUTH_USER_MODEL
+    (shop_users.ShopUser) — that table only exists in per-tenant databases and
+    would break `migrate` on default. See tenancy/models.py for the same
+    plain created_at/updated_at pattern used by other shared-DB models.
+    """
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     ROLE_CHOICES = [
         ("ADMIN", "Admin - Full tenant access"),
