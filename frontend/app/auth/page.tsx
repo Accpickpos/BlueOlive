@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { login, signup, getActiveSubscriptionPlans } from '@/lib/api';
+import { login } from '@/lib/api';
 import { useAuthContext } from '@/lib/AuthContext';
 import { setTenant, setShops, setCurrentShop } from '@/lib/shopContext';
-import { ArrowLeft, BarChart3, Check } from 'lucide-react';
+import { ArrowLeft, BarChart3 } from 'lucide-react';
 import type { MaybeAxiosError } from '@/lib/types/errors';
+import MultiStepSignupForm from '@/components/signup/MultiStepSignupForm';
 
 export default function AuthPage() {
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
@@ -20,46 +21,10 @@ export default function AuthPage() {
     password: '',
   });
 
-  // Signup form state
-  const [signupData, setSignupData] = useState({
-    email: '',
-    username: '',
-    password: '',
-    confirmPassword: '',
-    firstName: '',
-    lastName: '',
-    companyName: '',
-    subdomain: '',
-    subscriptionPlanId: '',
-  });
-
-  const [plans, setPlans] = useState<any[]>([]);
-  const [plansLoading, setPlansLoading] = useState(true);
-
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [messageType, setMessageType] = useState<'error' | 'success'>('error');
   const router = useRouter();
-
-  // Fetch subscription plans on mount
-  useEffect(() => {
-    async function fetchPlans() {
-      try {
-        const data = await getActiveSubscriptionPlans();
-        setPlans(data);
-        // Set default to first non-trial plan if available
-        const nonTrialPlan = data.find((p) => !p.is_trial);
-        if (nonTrialPlan) {
-          setSignupData(prev => ({ ...prev, subscriptionPlanId: String(nonTrialPlan.id) }));
-        }
-      } catch (error) {
-        console.error('Failed to fetch plans:', error);
-      } finally {
-        setPlansLoading(false);
-      }
-    }
-    fetchPlans();
-  }, []);
 
   // Don't pre-fetch CSRF token - let it be fetched on-demand during login
   // Pre-fetching can trigger rate limiting on stale sessions
@@ -118,75 +83,6 @@ export default function AuthPage() {
     }
   };
 
-  const handleSignupSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage('');
-
-    // Validation
-    if (!signupData.email || !signupData.username || !signupData.password || 
-        !signupData.companyName || !signupData.subdomain || !signupData.subscriptionPlanId) {
-      setMessage('Please fill in all required fields and select a subscription plan');
-      setMessageType('error');
-      setLoading(false);
-      return;
-    }
-
-    if (signupData.password !== signupData.confirmPassword) {
-      setMessage('Passwords do not match');
-      setMessageType('error');
-      setLoading(false);
-      return;
-    }
-
-    if (signupData.password.length < 8) {
-      setMessage('Password must be at least 8 characters');
-      setMessageType('error');
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const response = await signup({
-        email: signupData.email,
-        username: signupData.username,
-        password: signupData.password,
-        confirm_password: signupData.confirmPassword,
-        first_name: signupData.firstName,
-        last_name: signupData.lastName,
-        company_name: signupData.companyName,
-        subdomain: signupData.subdomain,
-        subscription_plan_id: parseInt(signupData.subscriptionPlanId),
-      });
-
-      if (response.status === 201 || response.status === 200) {
-        setMessage('Account created successfully! Redirecting to dashboard...');
-        setMessageType('success');
-        
-        // Try to refetch user profile, but redirect anyway even if it fails
-        try {
-          await refetch();
-        } catch {
-          console.warn('Refetch failed, proceeding with redirect anyway');
-        }
-        
-        // Redirect to dashboard after a short delay
-        setTimeout(() => {
-          router.push('/dashboard');
-        }, 1500);
-      }
-    } catch (error: unknown) {
-      const errorMsg = 
-        (error as MaybeAxiosError)?.response?.data?.detail || 
-        (error as MaybeAxiosError)?.message ||
-        'Signup failed. Please try again.';
-      setMessage(errorMsg);
-      setMessageType('error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 py-6 px-4 sm:px-6 lg:px-8">
       {/* Top Navigation Bar */}
@@ -211,7 +107,7 @@ export default function AuthPage() {
       </div>
 
       <div className="flex-1 flex items-center justify-center">
-        <div className="w-full max-w-md">
+        <div className={`w-full ${activeTab === 'signup' ? 'max-w-2xl' : 'max-w-md'}`}>
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
@@ -252,7 +148,7 @@ export default function AuthPage() {
           </div>
 
           {/* Form Container */}
-          <div className="p-8">
+          <div className={activeTab === 'signup' ? 'p-4 sm:p-6 bg-gray-950' : 'p-8'}>
             {/* Message */}
             {message && (
               <div
@@ -333,200 +229,7 @@ export default function AuthPage() {
             )}
 
             {/* Signup Form */}
-            {activeTab === 'signup' && (
-              <form onSubmit={handleSignupSubmit} className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label htmlFor="signup-firstname" className="block text-sm font-medium text-gray-700 mb-1">
-                      First Name
-                    </label>
-                    <input
-                      id="signup-firstname"
-                      type="text"
-                      placeholder="John"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
-                      value={signupData.firstName}
-                      onChange={(e) => setSignupData({ ...signupData, firstName: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="signup-lastname" className="block text-sm font-medium text-gray-700 mb-1">
-                      Last Name
-                    </label>
-                    <input
-                      id="signup-lastname"
-                      type="text"
-                      placeholder="Doe"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
-                      value={signupData.lastName}
-                      onChange={(e) => setSignupData({ ...signupData, lastName: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor="signup-email" className="block text-sm font-medium text-gray-700 mb-1">
-                    Email Address *
-                  </label>
-                  <input
-                    id="signup-email"
-                    type="email"
-                    placeholder="you@example.com"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
-                    value={signupData.email}
-                    onChange={(e) => setSignupData({ ...signupData, email: e.target.value })}
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="signup-username" className="block text-sm font-medium text-gray-700 mb-1">
-                    Username *
-                  </label>
-                  <input
-                    id="signup-username"
-                    type="text"
-                    placeholder="yourname"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
-                    value={signupData.username}
-                    onChange={(e) => setSignupData({ ...signupData, username: e.target.value })}
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="signup-company" className="block text-sm font-medium text-gray-700 mb-1">
-                    Company Name *
-                  </label>
-                  <input
-                    id="signup-company"
-                    type="text"
-                    placeholder="Acme Corp"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
-                    value={signupData.companyName}
-                    onChange={(e) => setSignupData({ ...signupData, companyName: e.target.value })}
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="signup-subdomain" className="block text-sm font-medium text-gray-700 mb-1">
-                    Company Subdomain *
-                  </label>
-                  <div className="flex items-center">
-                    <input
-                      id="signup-subdomain"
-                      type="text"
-                      placeholder="acme-corp"
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-l-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
-                      value={signupData.subdomain}
-                      onChange={(e) => setSignupData({ ...signupData, subdomain: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
-                    />
-                    <span className="px-3 py-2 bg-gray-100 border border-l-0 border-gray-300 rounded-r-lg text-gray-600 text-sm">
-                      .blueolive.app
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">Your unique URL identifier (lowercase, hyphens only)</p>
-                </div>
-
-                <div>
-                  <label htmlFor="signup-password" className="block text-sm font-medium text-gray-700 mb-1">
-                    Password *
-                  </label>
-                  <input
-                    id="signup-password"
-                    type="password"
-                    placeholder="Minimum 8 characters"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
-                    value={signupData.password}
-                    onChange={(e) => setSignupData({ ...signupData, password: e.target.value })}
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="signup-confirm" className="block text-sm font-medium text-gray-700 mb-1">
-                    Confirm Password *
-                  </label>
-                  <input
-                    id="signup-confirm"
-                    type="password"
-                    placeholder="Confirm your password"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
-                    value={signupData.confirmPassword}
-                    onChange={(e) => setSignupData({ ...signupData, confirmPassword: e.target.value })}
-                  />
-                </div>
-
-                {/* Subscription Plan Selection */}
-                <div>
-                  <label htmlFor="signup-plan" className="block text-sm font-medium text-gray-700 mb-1">
-                    Select Your Plan *
-                  </label>
-                  {plansLoading ? (
-                    <div className="flex items-center justify-center py-4">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
-                    </div>
-                  ) : plans.length === 0 ? (
-                    <p className="text-sm text-red-500 py-2">No subscription plans available. Please try again later.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {plans.filter((p: any) => !p.is_trial).map((plan: any) => (
-                        <div
-                          key={plan.id}
-                          onClick={() => setSignupData({ ...signupData, subscriptionPlanId: plan.id.toString() })}
-                          className={`p-3 border rounded-lg cursor-pointer transition ${
-                            signupData.subscriptionPlanId === plan.id.toString()
-                              ? 'border-indigo-500 bg-indigo-50'
-                              : 'border-gray-300 hover:border-indigo-300'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <span className="font-medium text-gray-900">{plan.name}</span>
-                              <span className="ml-2 text-sm text-gray-500">(up to {plan.max_shops === 999 ? 'unlimited' : plan.max_shops} shops, {plan.max_users} users)</span>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-lg font-bold text-indigo-600">
-                                {plan.price > 0 ? `R${plan.price}` : 'FREE'}
-                              </span>
-                              <span className="text-xs text-gray-500">/month</span>
-                            </div>
-                          </div>
-                          {signupData.subscriptionPlanId === plan.id.toString() && (
-                            <div className="mt-2 flex items-center gap-1 text-xs text-indigo-600">
-                              <Check className="h-3 w-3" /> Selected - You&apos;ll start with a 14-day free trial
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <p className="text-xs text-gray-500 mt-2">
-                    You&apos;ll start with a 14-day free trial. Payment will be required after the trial ends.
-                  </p>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading || plansLoading || !signupData.subscriptionPlanId}
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed mt-4"
-                >
-                  {loading ? 'Creating Account...' : plansLoading ? 'Loading Plans...' : 'Create Account'}
-                </button>
-
-                <p className="text-xs text-gray-500 text-center mt-4">
-                  You&apos;ll be automatically logged in and taken to your dashboard after account creation.
-                  Your subscription will be activated based on the plan you selected.
-                </p>
-
-                <div className="text-center mt-4">
-                  <Link 
-                    href="/" 
-                    className="text-sm text-indigo-600 hover:text-indigo-700 font-medium flex items-center justify-center gap-2"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    Back to Home
-                  </Link>
-                </div>
-              </form>
-            )}
+            {activeTab === 'signup' && <MultiStepSignupForm />}
           </div>
         </div>
 

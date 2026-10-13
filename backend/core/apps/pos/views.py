@@ -79,6 +79,7 @@ from .serializers import (
     QuotationListSerializer,
     ReceiptOnAccountSerializer,
     RepairSerializer,
+    TenderReconciliationSerializer,
     TenderSerializer,
     TransactionQuerySerializer,
 )
@@ -1444,6 +1445,176 @@ class CashControlViewSet(
 
         serializer = CashControlHourlySerializer({"date": control_date, "hours": hours})
         return Response(serializer.data)
+
+
+class TenderViewSet(
+    ModuleFunctionPermissionMixin,
+    ShopFilterMixin,
+    POSPermissionMixin,
+    viewsets.ReadOnlyModelViewSet,
+):
+    """
+    Card/cheque/EFT tender reconciliation.
+
+    Tenders are created only as part of a CashSale/Invoice checkout (see
+    CashSaleCreateSerializer); this ViewSet exists purely for the
+    reconciliation report and reconcile/bulk_reconcile actions, so it's
+    read-only for the base CRUD verbs.
+    """
+
+    access_module = "pos"
+    queryset = Tender.objects.select_related(
+        "cash_sale", "cash_sale__cashier", "invoice", "reconciled_by"
+    ).all()
+    serializer_class = TenderReconciliationSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["tender_type", "reconciliation_status"]
+
+    def get_queryset(self):
+        """
+        DjangoFilterBackend covers tender_type/reconciliation_status; date
+        and station drill-down (from a reconciliation_summary row) go
+        through cash_sale, so they're applied here instead.
+        """
+        queryset = super().get_queryset()
+        params = self.request.query_params
+        date_from = params.get("date_from")
+        date_to = params.get("date_to")
+        station_number = params.get("station_number")
+        cashier_id = params.get("cashier")
+        if date_from:
+            queryset = queryset.filter(cash_sale__sale_date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(cash_sale__sale_date__lte=date_to)
+        if station_number:
+            queryset = queryset.filter(cash_sale__station_number=station_number)
+        if cashier_id:
+            queryset = queryset.filter(cash_sale__cashier_id=cashier_id)
+        return queryset
+
+    @action(detail=False, methods=["get"])
+    def reconciliation_summary(self, request):
+        """
+        Per-day/per-station/per-tender-type totals, so a manager can compare
+        against the physical card machine's own settlement report and catch
+        an unrecorded/declined "card" tender the same day.
+        """
+        date_from = request.query_params.get("date_from")
+        date_to = request.query_params.get("date_to")
+        station_number = request.query_params.get("station_number")
+        cashier_id = request.query_params.get("cashier")
+        tender_type = request.query_params.get("tender_type")
+
+        queryset = Tender.objects.filter(cash_sale__isnull=False)
+        if date_from:
+            queryset = queryset.filter(cash_sale__sale_date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(cash_sale__sale_date__lte=date_to)
+        if station_number:
+            queryset = queryset.filter(cash_sale__station_number=station_number)
+        if cashier_id:
+            queryset = queryset.filter(cash_sale__cashier_id=cashier_id)
+        if tender_type:
+            queryset = queryset.filter(tender_type=tender_type)
+        else:
+            queryset = queryset.exclude(tender_type="CASH")
+
+        # Meta.ordering on Tender/CashSale otherwise leaks into the GROUP BY
+        # here (each row becomes its own group) - see the CashSale/StockItem
+        # GROUP BY fixes elsewhere in this codebase for the same bug.
+        rows = (
+            queryset.order_by()
+            .values(
+                "cash_sale__sale_date",
+                "cash_sale__station_number",
+                "tender_type",
+                "reconciliation_status",
+            )
+            .annotate(count=Count("id"), total_amount=Sum("amount"))
+            .order_by(
+                "-cash_sale__sale_date", "cash_sale__station_number", "tender_type"
+            )
+        )
+
+        results = [
+            {
+                "sale_date": row["cash_sale__sale_date"],
+                "station_number": row["cash_sale__station_number"],
+                "tender_type": row["tender_type"],
+                "reconciliation_status": row["reconciliation_status"],
+                "count": row["count"],
+                "total_amount": row["total_amount"] or Decimal("0.00"),
+            }
+            for row in rows
+        ]
+        return Response(results)
+
+    @action(detail=True, methods=["patch"])
+    def reconcile(self, request, pk=None):
+        """Mark a single tender RECONCILED or VARIANCE (variance requires a note)."""
+        tender = self.get_object()
+        new_status = request.data.get("reconciliation_status")
+        note = request.data.get("reconciliation_note", "")
+
+        valid_statuses = dict(Tender.RECONCILIATION_STATUS_CHOICES)
+        if new_status not in ("RECONCILED", "VARIANCE"):
+            return Response(
+                {
+                    "error": "reconciliation_status must be one of "
+                    f"{[s for s in valid_statuses if s != 'PENDING']}"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if new_status == "VARIANCE" and not note:
+            return Response(
+                {"error": "reconciliation_note is required when flagging a variance."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if tender.reconciliation_status == "RECONCILED":
+            return Response(
+                {"error": "Cannot re-reconcile an already-reconciled tender."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        tender.reconciliation_status = new_status
+        tender.reconciliation_note = note
+        tender.reconciled_by = request.user
+        tender.reconciled_at = timezone.now()
+        tender.save(
+            update_fields=[
+                "reconciliation_status",
+                "reconciliation_note",
+                "reconciled_by",
+                "reconciled_at",
+            ]
+        )
+        POSAuditLog.log_tender_reconciled(request.user, tender.id, new_status, note)
+        return Response(TenderReconciliationSerializer(tender).data)
+
+    @action(detail=False, methods=["patch"])
+    def bulk_reconcile(self, request):
+        """Mark multiple tenders RECONCILED at once (variance stays a per-record action)."""
+        tender_ids = request.data.get("tender_ids", [])
+        if not tender_ids:
+            return Response(
+                {"error": "tender_ids list is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        eligible_ids = list(
+            Tender.objects.filter(
+                id__in=tender_ids, reconciliation_status__in=["PENDING", "VARIANCE"]
+            ).values_list("id", flat=True)
+        )
+        updated = Tender.objects.filter(id__in=eligible_ids).update(
+            reconciliation_status="RECONCILED",
+            reconciled_by=request.user,
+            reconciled_at=timezone.now(),
+        )
+        for tender_id in eligible_ids:
+            POSAuditLog.log_tender_reconciled(request.user, tender_id, "RECONCILED")
+        return Response({"updated": updated})
 
 
 class ReceiptOnAccountViewSet(

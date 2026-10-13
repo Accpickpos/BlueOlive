@@ -273,7 +273,7 @@ def analyze_csv(request):
 
     try:
         file_obj.seek(0)
-        text = file_obj.read().decode("utf-8", errors="ignore")
+        text = file_obj.read().decode("utf-8-sig", errors="ignore")
     except Exception as e:
         return Response(
             {"error": f"Cannot read file: {e}"}, status=status.HTTP_400_BAD_REQUEST
@@ -450,7 +450,7 @@ def import_csv(request):
     # --- Read CSV ---
     try:
         file_obj.seek(0)
-        text = file_obj.read().decode("utf-8", errors="ignore")
+        text = file_obj.read().decode("utf-8-sig", errors="ignore")
     except Exception as e:
         clear_current()
         return Response(

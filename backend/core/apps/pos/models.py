@@ -984,12 +984,34 @@ class Tender(TimeStampedModel):
     card_type = models.CharField(max_length=50, blank=True)
     authorization_code = models.CharField(max_length=50, blank=True)
 
+    RECONCILIATION_STATUS_CHOICES = [
+        ("PENDING", "Pending"),
+        ("RECONCILED", "Reconciled"),
+        ("VARIANCE", "Variance"),
+    ]
+    reconciliation_status = models.CharField(
+        max_length=10, choices=RECONCILIATION_STATUS_CHOICES, default="PENDING"
+    )
+    reconciled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="reconciled_tenders",
+    )
+    reconciled_at = models.DateTimeField(null=True, blank=True)
+    reconciliation_note = models.TextField(blank=True)
+
     class Meta:
         ordering = ["created_at"]
         indexes = [
             models.Index(fields=["tender_type"]),
             models.Index(
                 fields=["cash_sale", "tender_type"], name="idx_receipt_tender"
+            ),
+            models.Index(
+                fields=["reconciliation_status", "tender_type"],
+                name="idx_tender_recon_status",
             ),
         ]
         constraints = [

@@ -349,7 +349,7 @@ def _read_csv(file_obj):
         )
     try:
         file_obj.seek(0)
-        text = file_obj.read().decode("utf-8", errors="ignore")
+        text = file_obj.read().decode("utf-8-sig", errors="ignore")
     except Exception as e:
         return None, None, None, str(e)
     delim = _detect_delimiter(text)

@@ -46,7 +46,13 @@ export default function POSSettingsPage() {
     setLoading(true);
     try {
       const response = await api.get(`/api/shops/${shopId}/`);
-      const shop: ShopSettings = response.data;
+      const shop: ShopSettings = {
+        ...response.data,
+        name: response.data.name ?? "",
+        address: response.data.address ?? "",
+        phone: response.data.phone ?? "",
+        email: response.data.email ?? "",
+      };
       setShopSettings(shop);
       if (shop.logo) {
         setLogoPreview(shop.logo);
@@ -174,10 +180,10 @@ export default function POSSettingsPage() {
 
       setShopSettings(prev => ({
         ...prev,
-        name: response.data.name,
-        address: response.data.address,
-        phone: response.data.phone,
-        email: response.data.email,
+        name: response.data.name ?? "",
+        address: response.data.address ?? "",
+        phone: response.data.phone ?? "",
+        email: response.data.email ?? "",
       }));
 
       // Update localStorage
